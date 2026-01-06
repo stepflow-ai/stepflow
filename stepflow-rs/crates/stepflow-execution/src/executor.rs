@@ -13,7 +13,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::debug_executor::DebugExecutor;
 use crate::{ExecutionError, Result};
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
@@ -107,14 +106,6 @@ impl StepflowExecutor {
     /// Get the plugin router for accessing routing functionality
     pub fn plugin_router(&self) -> &PluginRouter {
         &self.plugin_router
-    }
-
-    /// Create a debug session for step-by-step execution control.
-    ///
-    /// This resumes an existing run from the state store, recovering any
-    /// completed steps and the debug queue.
-    pub async fn debug_session(&self, run_id: Uuid) -> Result<DebugExecutor> {
-        DebugExecutor::resume(self.executor(), run_id).await
     }
 }
 

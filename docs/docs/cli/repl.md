@@ -12,9 +12,9 @@ This document contains the help content for the `repl` command-line program.
 
 ## `repl`
 
-Start an interactive REPL for workflow development and debugging.
+Start an interactive REPL for workflow development.
 
-Start an interactive REPL (Read-Eval-Print Loop) for workflow development and debugging. The REPL provides an interactive environment for testing workflow fragments, debugging step execution, exploring component capabilities, and iterative workflow development.
+Start an interactive REPL (Read-Eval-Print Loop) for workflow development. The REPL provides an interactive environment for running workflows, exploring component capabilities, and iterative workflow development.
 
 # Examples
 

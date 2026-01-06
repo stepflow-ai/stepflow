@@ -892,12 +892,6 @@
             "null"
           ]
         },
-        "flowLabel": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "status": {
           "type": "string"
         },

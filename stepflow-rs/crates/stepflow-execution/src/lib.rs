@@ -15,7 +15,6 @@
 //! This crate provides the core execution infrastructure:
 //!
 //! - [`FlowExecutor`] - batch/single workflow execution with scheduler
-//! - [`DebugExecutor`] - step-by-step debugging with queue/eval API
 //! - [`StepflowExecutor`] - main entry point for workflow execution
 //!
 //! ## Execution State
@@ -28,15 +27,7 @@
 //! - [`Scheduler`] - trait for custom execution strategies
 //! - [`DepthFirstScheduler`] - complete items sequentially (time-to-first-result)
 //! - [`BreadthFirstScheduler`] - group by step (throughput, batch invocation)
-//!
-//! ## Debug Mode
-//!
-//! Debug execution differs from batch mode in *when* steps are added to the
-//! needed set, not in how they are executed. [`DebugExecutor`] composes a
-//! [`FlowExecutor`] and controls execution through task addition - steps are
-//! added incrementally via `queue_step()` rather than all at once.
 
-mod debug_executor;
 mod error;
 mod executor;
 mod flow_executor;
@@ -49,7 +40,6 @@ mod task;
 pub(crate) mod testing;
 
 // Main exports
-pub use debug_executor::{DebugExecutor, StepInspection};
 pub use error::{ExecutionError, Result};
 pub use executor::StepflowExecutor;
 pub use flow_executor::{FlowExecutor, FlowExecutorBuilder};

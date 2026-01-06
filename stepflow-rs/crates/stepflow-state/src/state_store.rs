@@ -35,10 +35,6 @@ pub struct CreateRunParams {
     pub flow_id: BlobId,
     /// Optional workflow name for display and organization
     pub workflow_name: Option<String>,
-    /// Optional workflow label for version identification
-    pub workflow_label: Option<String>,
-    /// Whether to start in debug/paused mode
-    pub debug_mode: bool,
     /// Input data for the workflow execution (one per item)
     pub inputs: Vec<ValueRef>,
     /// Runtime overrides for step inputs
@@ -57,8 +53,6 @@ impl CreateRunParams {
             flow_id,
             inputs,
             workflow_name: None,
-            workflow_label: None,
-            debug_mode: false,
             overrides: WorkflowOverrides::default(),
             variables: HashMap::new(),
         }
@@ -243,85 +237,6 @@ pub trait StateStore: Send + Sync {
         flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>>;
 
-    /// Get all flows with a specific name, ordered by creation time (newest first).
-    ///
-    /// # Arguments
-    /// * `name` - The flow name to search for
-    ///
-    /// # Returns
-    /// A vector of (flow_id, created_at) tuples for flows with the given name
-    #[allow(clippy::type_complexity)]
-    fn get_flows(
-        &self,
-        name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>;
-
-    /// Get a named workflow, optionally with a specific label.
-    ///
-    /// This unified method replaces get_latest_workflow_by_name and get_workflow_by_label.
-    /// If label is None, returns the latest workflow with the given name.
-    /// If label is Some, returns the workflow with that specific label.
-    ///
-    /// # Arguments
-    /// * `name` - The workflow name
-    /// * `label` - Optional label name. If None, returns latest workflow.
-    ///
-    /// # Returns
-    /// The workflow with metadata if found
-    fn get_named_flow(
-        &self,
-        name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>>;
-
-    /// Create or update a workflow label.
-    ///
-    /// # Arguments
-    /// * `name` - The workflow name (from workflow.name field)
-    /// * `label` - The label name (like "production", "staging")
-    /// * `flow_id` - The blob ID of the workflow
-    ///
-    /// # Returns
-    /// Success if the label was created/updated
-    fn create_or_update_label(
-        &self,
-        name: &str,
-        label: &str,
-        flow_id: BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// List all labels for a specific workflow name.
-    ///
-    /// # Arguments
-    /// * `name` - The workflow name
-    ///
-    /// # Returns
-    /// A vector of workflow labels with metadata
-    fn list_labels_for_name(
-        &self,
-        name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>>;
-
-    /// List all workflow names.
-    ///
-    /// # Returns
-    /// A vector of all unique workflow names in the system
-    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>>;
-
-    /// Delete a workflow label.
-    ///
-    /// # Arguments
-    /// * `name` - The workflow name
-    /// * `label` - The label name
-    ///
-    /// # Returns
-    /// Success if the label was deleted
-    fn delete_label(
-        &self,
-        name: &str,
-        label: &str,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
     /// Create a new run record (idempotent).
     ///
     /// If a run with the same ID already exists, this is a no-op.
@@ -432,8 +347,11 @@ pub trait StateStore: Send + Sync {
 
     // Step Status Management
 
-    /// Initialize step info for an execution.
-    fn initialize_step_info(
+    /// Initialize step info for a run.
+    ///
+    /// This should be called when starting execution of a run to create
+    /// initial step entries with their starting status.
+    fn initialize_run_steps(
         &self,
         run_id: Uuid,
         steps: &[StepInfo],
@@ -443,10 +361,9 @@ pub trait StateStore: Send + Sync {
     ///
     /// This operation may be queued and batched by the implementation for performance.
     /// Use `flush_pending_writes()` if immediate persistence is required.
-    /// For updating multiple steps efficiently, use `update_step_statuses()`.
     ///
     /// # Arguments
-    /// * `run_id` - The unique identifier for the workflow execution
+    /// * `run_id` - The unique identifier for the run
     /// * `step_index` - The index of the step to update
     /// * `status` - The new status for the step
     fn update_step_status(
@@ -456,70 +373,11 @@ pub trait StateStore: Send + Sync {
         status: stepflow_core::status::StepStatus,
     );
 
-    /// Get all step info for an execution.
-    fn get_step_info_for_execution(
+    /// Get all step info for a run.
+    fn get_step_info_for_run(
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
-
-    /// Get runnable steps for an execution based on current status.
-    /// Note: This method returns steps based on persistent status only.
-    /// Dependency checking should be done by the caller using workflow analysis.
-    fn get_runnable_steps(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
-
-    // Debug State Management
-
-    /// Add steps to the debug queue for a run.
-    ///
-    /// This adds step IDs to the queue of steps awaiting execution in debug mode.
-    /// The queue persists across HTTP requests, allowing step-through debugging
-    /// with queue + next workflow.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    /// * `step_ids` - The step IDs to add to the debug queue
-    ///
-    /// # Returns
-    /// Success if the steps were added
-    fn add_to_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Remove steps from the debug queue for a run.
-    ///
-    /// This removes step IDs from the queue after they have been executed.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    /// * `step_ids` - The step IDs to remove from the debug queue
-    ///
-    /// # Returns
-    /// Success if the steps were removed
-    fn remove_from_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get the debug queue for a run.
-    ///
-    /// Retrieves the list of step IDs that were previously queued for
-    /// execution in debug mode.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    ///
-    /// # Returns
-    /// The queued step IDs if any exist, or None if no debug queue is set
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>>;
 
     // Item Result Management
 
@@ -598,29 +456,6 @@ impl PartialOrd for StepResult {
     }
 }
 
-/// A workflow with its metadata (creation time, label info, etc.)
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorkflowWithMetadata {
-    /// The workflow definition
-    pub workflow: Arc<Flow>,
-    /// The workflow blob ID
-    pub flow_id: BlobId,
-    /// When this workflow was created/stored
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// Optional label information if accessed via label
-    pub label_info: Option<WorkflowLabelMetadata>,
-}
-
-/// Metadata about a workflow label (without the workflow itself)
-#[derive(Debug, Clone, PartialEq)]
-pub struct WorkflowLabelMetadata {
-    pub name: String,
-    pub label: String,
-    pub flow_id: BlobId,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
 /// Statistics about items in a run.
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
@@ -669,12 +504,10 @@ pub struct RunSummary {
     pub run_id: Uuid,
     pub flow_id: BlobId,
     pub flow_name: Option<String>,
-    pub flow_label: Option<String>,
     pub status: ExecutionStatus,
     /// Statistics about items in this run.
     #[serde(default)]
     pub items: ItemStatistics,
-    pub debug_mode: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -702,7 +535,6 @@ pub struct RunDetails {
 pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
     pub flow_name: Option<String>,
-    pub flow_label: Option<String>,
     /// Filter to runs under this root (includes the root itself).
     pub root_run_id: Option<Uuid>,
     /// Filter to direct children of this parent run.
@@ -750,8 +582,6 @@ pub struct RunStatus {
     pub flow_id: BlobId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_label: Option<String>,
     pub status: ExecutionStatus,
     /// Statistics about items in this run.
     pub items: ItemStatistics,
@@ -770,7 +600,6 @@ impl RunStatus {
             run_id: details.summary.run_id,
             flow_id: details.summary.flow_id.clone(),
             flow_name: details.summary.flow_name.clone(),
-            flow_label: details.summary.flow_label.clone(),
             status: details.summary.status,
             items: details.summary.items.clone(),
             created_at: details.summary.created_at,
@@ -787,7 +616,6 @@ impl RunStatus {
             run_id: details.summary.run_id,
             flow_id: details.summary.flow_id.clone(),
             flow_name: details.summary.flow_name.clone(),
-            flow_label: details.summary.flow_label.clone(),
             status: details.summary.status,
             items: details.summary.items.clone(),
             created_at: details.summary.created_at,
@@ -802,7 +630,6 @@ impl RunStatus {
             run_id: summary.run_id,
             flow_id: summary.flow_id.clone(),
             flow_name: summary.flow_name.clone(),
-            flow_label: summary.flow_label.clone(),
             status: summary.status,
             items: summary.items.clone(),
             created_at: summary.created_at,
@@ -810,30 +637,6 @@ impl RunStatus {
             results: None,
         }
     }
-}
-
-/// Run details with resolved input and result blobs.
-#[derive(Debug)]
-pub struct RunWithBlobs {
-    pub run: RunDetails,
-    pub inputs: Vec<Option<ValueRef>>,
-    pub results: Vec<Option<ValueRef>>,
-}
-
-/// Comprehensive run step details for server inspection.
-#[derive(Debug)]
-pub struct RunStepDetails {
-    pub run: RunDetails,
-    pub workflow: Option<Arc<stepflow_core::workflow::Flow>>,
-    pub step_results: Vec<StepResult>,
-}
-
-/// Complete data needed for debug session creation.
-#[derive(Debug)]
-pub struct DebugSessionData {
-    pub run: RunDetails,
-    pub workflow: Arc<stepflow_core::workflow::Flow>,
-    pub step_results: Vec<StepResult>,
 }
 
 /// Step information for a flow run.
@@ -873,10 +676,8 @@ mod tests {
                 run_id,
                 flow_id: flow_id.clone(),
                 flow_name: Some("test-workflow".to_string()),
-                flow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
                 items: ItemStatistics::single(ExecutionStatus::Completed),
-                debug_mode: false,
                 created_at: now,
                 completed_at: Some(now),
             },
@@ -896,9 +697,7 @@ mod tests {
         assert_eq!(value["runId"], json!(run_id));
         assert_eq!(value["flowId"], json!(flow_id.as_str()));
         assert_eq!(value["flowName"], json!("test-workflow"));
-        assert_eq!(value["flowLabel"], json!("production"));
         assert_eq!(value["status"], json!("completed"));
-        assert_eq!(value["debugMode"], json!(false));
 
         // Verify that detail-specific fields are also present
         assert_eq!(value["inputs"], json!([{"test": "input"}]));

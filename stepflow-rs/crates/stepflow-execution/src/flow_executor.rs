@@ -20,13 +20,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use error_stack::ResultExt as _;
 use futures::stream::{FuturesUnordered, StreamExt as _};
+use stepflow_core::status::StepStatus;
 use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::{Flow, WorkflowOverrides, apply_overrides};
 use stepflow_core::{BlobId, FlowResult};
 use stepflow_observability::RunInfoGuard;
-use stepflow_state::StateStore;
+use stepflow_state::{StateStore, StepInfo};
 use uuid::Uuid;
 
 use crate::scheduler::Scheduler;
@@ -112,7 +114,9 @@ impl FlowExecutor {
         }
     }
 
-    /// Execute tasks until idle or fuel is exhausted.
+    /// Internal execution loop that processes tasks until idle or fuel is exhausted.
+    ///
+    /// This is an internal method. Use [`execute_to_completion`] for the public API.
     ///
     /// # Arguments
     ///
@@ -121,9 +125,10 @@ impl FlowExecutor {
     ///   - `Some(n)`: Complete at most `n` tasks, then return
     ///
     /// Results are recorded to the state store as tasks complete.
-    ///
-    /// For single-task execution (debug stepping), use [`run_single_task`] instead.
-    pub async fn run(&mut self, fuel: Option<std::num::NonZeroUsize>) -> Result<()> {
+    pub(crate) async fn run_internal(
+        &mut self,
+        fuel: Option<std::num::NonZeroUsize>,
+    ) -> Result<()> {
         let mut in_flight: FuturesUnordered<futures::future::BoxFuture<'static, TaskResult>> =
             FuturesUnordered::new();
         let mut remaining = fuel.map(|f| f.get());
@@ -154,6 +159,12 @@ impl FlowExecutor {
             {
                 for task in tasks.into_iter() {
                     self.state.mark_executing(task);
+                    // Update step status to Running (best effort - don't fail if this fails)
+                    self.state_store.update_step_status(
+                        self.run_id,
+                        task.step_index,
+                        StepStatus::Running,
+                    );
                     let future = self.prepare_task_future(task)?;
                     in_flight.push(future);
                 }
@@ -172,30 +183,6 @@ impl FlowExecutor {
                 }
             }
         }
-    }
-
-    /// Execute a single ready task and return its result.
-    ///
-    /// This is optimized for debug mode where we want exactly one result
-    /// without the overhead of the general `run()` machinery.
-    ///
-    /// Returns `None` if no tasks are ready.
-    pub async fn run_single_task(&mut self) -> Result<Option<StepRunResult>> {
-        // Get one task from scheduler
-        let Some(tasks) = self.scheduler.select_next(1).into_tasks() else {
-            return Ok(None);
-        };
-
-        // Execute the single task
-        let task = tasks.into_iter().next().unwrap();
-        self.state.mark_executing(task);
-        let future = self.prepare_task_future(task)?;
-        let task_result = future.await;
-
-        // Complete and return
-        let step_result = task_result.step.clone();
-        self.complete_task(task_result);
-        Ok(Some(step_result))
     }
 
     /// Execute all items to completion.
@@ -222,10 +209,51 @@ impl FlowExecutor {
         // Initialize all items and get initial ready tasks
         self.scheduler.reset();
         let initial_tasks = self.state.initialize_all();
+
+        // Initialize step status tracking in state store
+        // Use item 0's flow since all items share the same flow structure
+        if self.state.item_count() > 0 {
+            let item = self.state.item(0);
+            let flow = item.flow();
+            let now = Utc::now();
+
+            let step_infos: Vec<StepInfo> = flow
+                .steps()
+                .iter()
+                .enumerate()
+                .map(|(idx, step)| {
+                    // Determine initial status: steps with no dependencies start as Runnable
+                    let initial_status = if initial_tasks
+                        .iter()
+                        .any(|t| t.item_index == 0 && t.step_index == idx)
+                    {
+                        StepStatus::Runnable
+                    } else {
+                        StepStatus::Blocked
+                    };
+
+                    StepInfo {
+                        run_id: self.run_id,
+                        step_index: idx,
+                        step_id: step.id.clone(),
+                        component: step.component.clone(),
+                        status: initial_status,
+                        created_at: now,
+                        updated_at: now,
+                    }
+                })
+                .collect();
+
+            // Best effort - don't fail execution if step tracking fails
+            let _ = self
+                .state_store
+                .initialize_run_steps(self.run_id, &step_infos)
+                .await;
+        }
         self.scheduler.notify_new_tasks(&initial_tasks);
 
         // Run until complete or deadlock
-        self.run(None).await?;
+        self.run_internal(None).await?;
 
         // Check for deadlock: run() returned but not complete
         if self.state.incomplete() > 0 {
@@ -331,8 +359,25 @@ impl FlowExecutor {
         let task = task_result.task();
         let result = task_result.step.result.clone();
 
+        // Update step status based on result
+        let step_status = match &result {
+            FlowResult::Success(_) => StepStatus::Completed,
+            FlowResult::Failed(_) => StepStatus::Failed,
+        };
+        self.state_store
+            .update_step_status(self.run_id, task.step_index, step_status);
+
         // Update state and get newly ready tasks
         let new_tasks = self.state.complete_task_and_get_ready(task, result.clone());
+
+        // Mark newly ready steps as Runnable in state store
+        for new_task in &new_tasks {
+            self.state_store.update_step_status(
+                self.run_id,
+                new_task.step_index,
+                StepStatus::Runnable,
+            );
+        }
 
         // Notify scheduler
         self.scheduler.task_completed(task);
@@ -369,44 +414,6 @@ impl FlowExecutor {
     /// Get read access to the execution state.
     pub fn state(&self) -> &ItemsState {
         &self.state
-    }
-
-    /// Recover a completed step from persistent storage.
-    ///
-    /// This is used during session recovery to restore step results.
-    /// It properly tracks the incomplete counter.
-    pub fn recover_step(&mut self, item_index: u32, step_index: usize, result: FlowResult) {
-        // First ensure the step is in the needed set (with proper counter tracking)
-        self.state.add_needed(item_index, step_index);
-
-        // Then mark as completed (which will update the counter)
-        let item = self.state.item_mut(item_index);
-        item.mark_completed(step_index, result);
-    }
-
-    /// Add a step to the needed set for an item.
-    ///
-    /// This is the primary method for debug mode's "task addition control".
-    /// It marks the step and its dependencies as needed, then notifies the
-    /// scheduler of any newly ready tasks.
-    ///
-    /// Returns the step indices that were newly added to the needed set.
-    pub fn add_needed(&mut self, item_index: u32, step_index: usize) -> Vec<usize> {
-        let newly_needed = self.state.add_needed(item_index, step_index);
-
-        // Notify scheduler of ready tasks
-        if !newly_needed.is_empty() {
-            let item = self.state.item(item_index);
-            let ready_steps = item.ready_steps();
-            let ready_tasks: Vec<Task> = newly_needed
-                .iter()
-                .filter(|idx| ready_steps.contains(**idx))
-                .map(|idx| Task::new(item_index, *idx))
-                .collect();
-            self.scheduler.notify_new_tasks(&ready_tasks);
-        }
-
-        newly_needed
     }
 }
 
@@ -1025,7 +1032,7 @@ mod tests {
 
         // Run with fuel=1 - should complete exactly 1 task
         items_executor
-            .run(Some(std::num::NonZeroUsize::new(1).unwrap()))
+            .run_internal(Some(std::num::NonZeroUsize::new(1).unwrap()))
             .await
             .unwrap();
 
@@ -1034,7 +1041,7 @@ mod tests {
 
         // Run with fuel=1 again
         items_executor
-            .run(Some(std::num::NonZeroUsize::new(1).unwrap()))
+            .run_internal(Some(std::num::NonZeroUsize::new(1).unwrap()))
             .await
             .unwrap();
 
@@ -1042,56 +1049,9 @@ mod tests {
         assert!(items_executor.state.incomplete() > 0);
 
         // Run with fuel=None to complete
-        items_executor.run(None).await.unwrap();
+        items_executor.run_internal(None).await.unwrap();
 
         // Now should be complete
-        assert_eq!(items_executor.state.incomplete(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_run_single_task() {
-        // Use chain flow so steps execute sequentially (each depends on previous)
-        use crate::testing::create_chain_flow;
-
-        let flow = Arc::new(create_chain_flow(3));
-        let flow_id = BlobId::from_flow(&flow).unwrap();
-        let input = ValueRef::new(json!({"x": 1}));
-
-        let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store();
-
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        // Initialize state
-        items_executor.scheduler.reset();
-        let initial_tasks = items_executor.state.initialize_all();
-        items_executor.scheduler.notify_new_tasks(&initial_tasks);
-
-        // Run single task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-        let step_result = result.unwrap();
-        assert!(matches!(step_result.result, FlowResult::Success(_)));
-
-        // Run another single task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-
-        // Run third task
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_some());
-
-        // No more tasks
-        let result = items_executor.run_single_task().await.unwrap();
-        assert!(result.is_none());
-
-        // Should be complete
         assert_eq!(items_executor.state.incomplete(), 0);
     }
 

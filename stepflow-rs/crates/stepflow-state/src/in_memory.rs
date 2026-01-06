@@ -20,7 +20,7 @@ use crate::{
     StateStore,
     state_store::{
         CreateRunParams, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters,
-        RunSummary, StepInfo, StepResult, WorkflowLabelMetadata, WorkflowWithMetadata,
+        RunSummary, StepInfo, StepResult,
     },
 };
 use stepflow_core::{
@@ -101,12 +101,6 @@ pub struct InMemoryStateStore {
     blobs: DashMap<String, BlobData>,
     /// Map from run_id to combined run state
     runs: DashMap<Uuid, RunState>,
-    /// Map from flow hash to flow content
-    flows: DashMap<String, Arc<Flow>>,
-    /// Map from (flow_name, label) to flow label metadata
-    flow_labels: DashMap<(String, String), WorkflowLabelMetadata>,
-    /// Map from run_id to debug queue (step IDs queued for execution)
-    debug_queues: DashMap<Uuid, Vec<String>>,
 }
 
 impl InMemoryStateStore {
@@ -115,9 +109,6 @@ impl InMemoryStateStore {
         Self {
             blobs: DashMap::new(),
             runs: DashMap::new(),
-            flows: DashMap::new(),
-            flow_labels: DashMap::new(),
-            debug_queues: DashMap::new(),
         }
     }
 
@@ -144,10 +135,8 @@ impl InMemoryStateStore {
                     run_id,
                     flow_id: BlobId::new("0".repeat(64)).unwrap(),
                     flow_name: None,
-                    flow_label: None,
                     status: ExecutionStatus::Running,
                     items: ItemStatistics::single(ExecutionStatus::Running),
-                    debug_mode: false,
                     created_at: chrono::Utc::now(),
                     completed_at: None,
                 },
@@ -327,133 +316,6 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn get_flows(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(BlobId, chrono::DateTime<chrono::Utc>)>, StateError>>
-    {
-        async move {
-            // TODO: Implement workflow name tracking in blob-based storage
-            // For now, return empty list since we no longer track workflow names separately
-            Ok(Vec::new())
-        }
-        .boxed()
-    }
-
-    fn get_named_flow(
-        &self,
-        name: &str,
-        label: Option<&str>,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowWithMetadata>, StateError>> {
-        let name = name.to_string();
-        let label = label.map(|s| s.to_string());
-
-        async move {
-            match label {
-                Some(label_str) => {
-                    // Get workflow by label
-                    let key = (name, label_str);
-
-                    if let Some(label_metadata) = self.flow_labels.get(&key)
-                        && let Some(workflow) = self.flows.get(&label_metadata.flow_id.to_string())
-                    {
-                        return Ok(Some(WorkflowWithMetadata {
-                            workflow: workflow.clone(),
-                            flow_id: label_metadata.flow_id.clone(),
-                            created_at: label_metadata.created_at,
-                            label_info: Some(label_metadata.value().clone()),
-                        }));
-                    }
-                    Ok(None)
-                }
-                None => {
-                    // TODO: Implement name-based workflow lookup with blob storage
-                    // For now, return None since we no longer maintain a separate workflow index
-                    Ok(None)
-                }
-            }
-        }
-        .boxed()
-    }
-
-    fn create_or_update_label(
-        &self,
-        name: &str,
-        label: &str,
-        flow_id: BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let name = name.to_string();
-        let label = label.to_string();
-
-        async move {
-            let now = chrono::Utc::now();
-            let workflow_label = WorkflowLabelMetadata {
-                name: name.clone(),
-                label: label.clone(),
-                flow_id,
-                created_at: now,
-                updated_at: now,
-            };
-
-            self.flow_labels.insert((name, label), workflow_label);
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn list_labels_for_name(
-        &self,
-        name: &str,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<WorkflowLabelMetadata>, StateError>> {
-        let name = name.to_string();
-
-        async move {
-            let results: Vec<WorkflowLabelMetadata> = self
-                .flow_labels
-                .iter()
-                .filter(|entry| entry.key().0 == name)
-                .map(|entry| entry.value().clone())
-                .collect();
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    fn list_flow_names(&self) -> BoxFuture<'_, error_stack::Result<Vec<String>, StateError>> {
-        async move {
-            let mut names = std::collections::HashSet::new();
-
-            for entry in self.flows.iter() {
-                if let Some(name) = entry.value().name() {
-                    names.insert(name.to_owned());
-                }
-            }
-
-            let mut result: Vec<String> = names.into_iter().collect();
-            result.sort();
-            Ok(result)
-        }
-        .boxed()
-    }
-
-    fn delete_label(
-        &self,
-        name: &str,
-        label: &str,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let name = name.to_string();
-        let label = label.to_string();
-
-        async move {
-            let key = (name, label);
-            self.flow_labels.remove(&key);
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn create_run(
         &self,
         params: CreateRunParams,
@@ -466,14 +328,12 @@ impl StateStore for InMemoryStateStore {
                 run_id: params.run_id,
                 flow_id: params.flow_id,
                 flow_name: params.workflow_name,
-                flow_label: params.workflow_label,
                 status: ExecutionStatus::Running,
                 items: ItemStatistics {
                     total: item_count,
                     running: item_count,
                     ..Default::default()
                 },
-                debug_mode: params.debug_mode,
                 created_at: now,
                 completed_at: None,
             },
@@ -619,13 +479,6 @@ impl StateStore for InMemoryStateStore {
                         return false;
                     }
 
-                    // Apply workflow label filter
-                    if let Some(ref workflow_label) = filters.flow_label
-                        && exec.flow_label.as_ref() != Some(workflow_label)
-                    {
-                        return false;
-                    }
-
                     true
                 })
                 .collect();
@@ -653,7 +506,7 @@ impl StateStore for InMemoryStateStore {
 
     // Step Status Management
 
-    fn initialize_step_info(
+    fn initialize_run_steps(
         &self,
         run_id: uuid::Uuid,
         steps: &[StepInfo],
@@ -661,14 +514,14 @@ impl StateStore for InMemoryStateStore {
         let steps = steps.to_vec();
 
         async move {
-            // Create a map from step_index to StepInfo for this execution
-            let mut execution_steps = HashMap::new();
+            // Create a map from step_index to StepInfo for this run
+            let mut run_steps = HashMap::new();
             for step in steps {
-                execution_steps.insert(step.step_index, step);
+                run_steps.insert(step.step_index, step);
             }
 
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                run_state.steps = execution_steps;
+                run_state.steps = run_steps;
             }
             Ok(())
         }
@@ -730,7 +583,7 @@ impl StateStore for InMemoryStateStore {
         async move { Ok(()) }.boxed()
     }
 
-    fn get_step_info_for_execution(
+    fn get_step_info_for_run(
         &self,
         run_id: uuid::Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
@@ -749,78 +602,6 @@ impl StateStore for InMemoryStateStore {
             Ok(step_infos)
         }
         .boxed()
-    }
-
-    fn get_runnable_steps(
-        &self,
-        run_id: uuid::Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
-        async move {
-            let mut runnable_steps = Vec::new();
-
-            if let Some(run_state) = self.runs.get(&run_id) {
-                // Find steps that are marked as runnable
-                for step_info in run_state.steps.values() {
-                    if step_info.status == stepflow_core::status::StepStatus::Runnable {
-                        runnable_steps.push(step_info.clone());
-                    }
-                }
-            }
-
-            // Sort by step_index for consistent ordering
-            runnable_steps.sort_by_key(|step| step.step_index);
-
-            Ok(runnable_steps)
-        }
-        .boxed()
-    }
-
-    fn add_to_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        let mut entry = self.debug_queues.entry(run_id).or_default();
-        // Use a HashSet to avoid duplicates - collect existing as owned strings
-        let existing: std::collections::HashSet<String> = entry.iter().cloned().collect();
-        for step_id in step_ids {
-            if !existing.contains(step_id) {
-                entry.push(step_id.clone());
-            }
-        }
-        async move { Ok(()) }.boxed()
-    }
-
-    fn remove_from_debug_queue(
-        &self,
-        run_id: Uuid,
-        step_ids: &[String],
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        if step_ids.is_empty() {
-            return async move { Ok(()) }.boxed();
-        }
-
-        if let Some(mut entry) = self.debug_queues.get_mut(&run_id) {
-            let to_remove: std::collections::HashSet<&String> = step_ids.iter().collect();
-            entry.retain(|id| !to_remove.contains(id));
-        }
-        async move { Ok(()) }.boxed()
-    }
-
-    fn get_debug_queue(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Vec<String>>, StateError>> {
-        let queue = self
-            .debug_queues
-            .get(&run_id)
-            .map(|entry| entry.clone())
-            .filter(|v| !v.is_empty());
-        async move { Ok(queue) }.boxed()
     }
 
     fn get_item_results(
