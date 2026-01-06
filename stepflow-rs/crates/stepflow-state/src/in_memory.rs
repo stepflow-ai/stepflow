@@ -135,7 +135,6 @@ impl InMemoryStateStore {
                     run_id,
                     flow_id: BlobId::new("0".repeat(64)).unwrap(),
                     flow_name: None,
-                    flow_label: None,
                     status: ExecutionStatus::Running,
                     items: ItemStatistics::single(ExecutionStatus::Running),
                     created_at: chrono::Utc::now(),
@@ -329,7 +328,6 @@ impl StateStore for InMemoryStateStore {
                 run_id: params.run_id,
                 flow_id: params.flow_id,
                 flow_name: params.workflow_name,
-                flow_label: params.workflow_label,
                 status: ExecutionStatus::Running,
                 items: ItemStatistics {
                     total: item_count,
@@ -477,13 +475,6 @@ impl StateStore for InMemoryStateStore {
                     // Apply workflow name filter
                     if let Some(ref workflow_name) = filters.flow_name
                         && exec.flow_name.as_ref() != Some(workflow_name)
-                    {
-                        return false;
-                    }
-
-                    // Apply workflow label filter
-                    if let Some(ref workflow_label) = filters.flow_label
-                        && exec.flow_label.as_ref() != Some(workflow_label)
                     {
                         return false;
                     }

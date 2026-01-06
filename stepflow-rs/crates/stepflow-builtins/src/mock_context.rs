@@ -100,7 +100,6 @@ impl stepflow_plugin::Context for MockExecutor {
                 run_id,
                 flow_id,
                 flow_name: None,
-                flow_label: None,
                 status,
                 items: ItemStatistics {
                     total: input_count,
@@ -153,7 +152,6 @@ impl stepflow_plugin::Context for MockExecutor {
                 run_id,
                 flow_id,
                 flow_name: None,
-                flow_label: None,
                 status: ExecutionStatus::Completed,
                 items: ItemStatistics {
                     total: count,

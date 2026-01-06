@@ -74,7 +74,6 @@ mod tests {
                 run_id,
                 flow_id,
                 workflow_name: None,
-                workflow_label: None,
                 inputs: vec![ValueRef::new(json!({}))],
                 overrides: Default::default(),
                 variables: Default::default(),

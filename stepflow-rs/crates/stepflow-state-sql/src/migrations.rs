@@ -103,7 +103,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 id TEXT PRIMARY KEY,
                 flow_id TEXT,
                 flow_name TEXT,        -- from flow.name field for display
-                flow_label TEXT,       -- label used for execution (if any)
                 status TEXT DEFAULT 'running',
                 overrides_json TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -135,18 +134,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (run_id, step_index),
                 FOREIGN KEY (run_id) REFERENCES runs(id)
-            )
-        "#,
-        // Flow labels table for named flow versions
-        r#"
-            CREATE TABLE IF NOT EXISTS flow_labels (
-                name TEXT NOT NULL,  -- from flow.name field
-                label TEXT NOT NULL, -- like "production", "staging", "latest"
-                flow_id TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (name, label),
-                FOREIGN KEY (flow_id) REFERENCES blobs(id)
             )
         "#,
         // Run items table for multi-item runs (input and result per item)
@@ -186,10 +173,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         "CREATE INDEX IF NOT EXISTS idx_runs_flow_id ON runs(flow_id)",
         "CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status)",
         "CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at)",
-        // Workflow labels indexes
-        "CREATE INDEX IF NOT EXISTS idx_flow_labels_name ON flow_labels(name)",
-        "CREATE INDEX IF NOT EXISTS idx_flow_labels_flow_id ON flow_labels(flow_id)",
-        "CREATE INDEX IF NOT EXISTS idx_flow_labels_created_at ON flow_labels(created_at)",
         // Run items indexes
         "CREATE INDEX IF NOT EXISTS idx_run_items_run_id ON run_items(run_id)",
         "CREATE INDEX IF NOT EXISTS idx_run_items_status ON run_items(run_id, status)",

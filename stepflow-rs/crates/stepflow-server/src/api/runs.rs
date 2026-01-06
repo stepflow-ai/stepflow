@@ -89,9 +89,6 @@ pub struct ListRunsQuery {
     /// Filter by flow name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_name: Option<String>,
-    /// Filter by flow label
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_label: Option<String>,
     /// Filter to runs under this root (includes the root itself)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root_run_id: Option<Uuid>,
@@ -374,7 +371,6 @@ pub async fn list_runs(
     let filters = stepflow_state::RunFilters {
         status: query.status,
         flow_name: query.flow_name,
-        flow_label: query.flow_label,
         root_run_id: query.root_run_id,
         parent_run_id: query.parent_run_id,
         max_depth: query.max_depth,

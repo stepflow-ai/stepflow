@@ -450,6 +450,5 @@ class RunStatusProtocol(Struct, kw_only=True):
     items: ItemStatistics
     createdAt: str
     flowName: str | None = None
-    flowLabel: str | None = None
     completedAt: str | None = None
     results: List[ItemResult] | None = None

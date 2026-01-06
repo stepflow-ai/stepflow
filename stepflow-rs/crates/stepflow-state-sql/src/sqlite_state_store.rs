@@ -165,13 +165,12 @@ impl SqliteStateStore {
 
         // Insert run metadata (items stored separately in run_items)
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, flow_label, status, overrides_json) VALUES (?, ?, ?, ?, 'running', ?)";
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json) VALUES (?, ?, ?, 'running', ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
             .bind(params.flow_id.to_string())
             .bind(&params.workflow_name)
-            .bind(&params.workflow_label)
             .bind(&overrides_json)
             .execute(pool)
             .await
@@ -591,7 +590,7 @@ impl StateStore for SqliteStateStore {
 
         async move {
             // First get run metadata
-            let sql = "SELECT id, flow_name, flow_label, flow_id, status, created_at, completed_at FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -614,7 +613,6 @@ impl StateStore for SqliteStateStore {
                     };
 
                     let flow_name = row.get::<Option<String>, _>("flow_name");
-                    let flow_label = row.get::<Option<String>, _>("flow_label");
                     let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
 
                     let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
@@ -668,7 +666,6 @@ impl StateStore for SqliteStateStore {
                         summary: RunSummary {
                             run_id,
                             flow_name,
-                            flow_label,
                             flow_id,
                             status,
                             items,
@@ -708,7 +705,7 @@ impl StateStore for SqliteStateStore {
             // Use a subquery to get item statistics per run
             let mut sql = r#"
                 SELECT
-                    r.id, r.flow_name, r.flow_label, r.flow_id, r.status,
+                    r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
@@ -791,7 +788,6 @@ impl StateStore for SqliteStateStore {
                 };
 
                 let flow_name = row.get::<Option<String>, _>("flow_name");
-                let flow_label = row.get::<Option<String>, _>("flow_label");
                 let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
                     .change_context(StateError::Internal)?;
 
@@ -813,7 +809,6 @@ impl StateStore for SqliteStateStore {
                 let summary = RunSummary {
                     run_id,
                     flow_name,
-                    flow_label,
                     flow_id,
                     status,
                     items,

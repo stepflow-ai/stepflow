@@ -35,8 +35,6 @@ pub struct CreateRunParams {
     pub flow_id: BlobId,
     /// Optional workflow name for display and organization
     pub workflow_name: Option<String>,
-    /// Optional workflow label for version identification
-    pub workflow_label: Option<String>,
     /// Input data for the workflow execution (one per item)
     pub inputs: Vec<ValueRef>,
     /// Runtime overrides for step inputs
@@ -55,7 +53,6 @@ impl CreateRunParams {
             flow_id,
             inputs,
             workflow_name: None,
-            workflow_label: None,
             overrides: WorkflowOverrides::default(),
             variables: HashMap::new(),
         }
@@ -507,7 +504,6 @@ pub struct RunSummary {
     pub run_id: Uuid,
     pub flow_id: BlobId,
     pub flow_name: Option<String>,
-    pub flow_label: Option<String>,
     pub status: ExecutionStatus,
     /// Statistics about items in this run.
     #[serde(default)]
@@ -539,7 +535,6 @@ pub struct RunDetails {
 pub struct RunFilters {
     pub status: Option<ExecutionStatus>,
     pub flow_name: Option<String>,
-    pub flow_label: Option<String>,
     /// Filter to runs under this root (includes the root itself).
     pub root_run_id: Option<Uuid>,
     /// Filter to direct children of this parent run.
@@ -587,8 +582,6 @@ pub struct RunStatus {
     pub flow_id: BlobId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_label: Option<String>,
     pub status: ExecutionStatus,
     /// Statistics about items in this run.
     pub items: ItemStatistics,
@@ -607,7 +600,6 @@ impl RunStatus {
             run_id: details.summary.run_id,
             flow_id: details.summary.flow_id.clone(),
             flow_name: details.summary.flow_name.clone(),
-            flow_label: details.summary.flow_label.clone(),
             status: details.summary.status,
             items: details.summary.items.clone(),
             created_at: details.summary.created_at,
@@ -624,7 +616,6 @@ impl RunStatus {
             run_id: details.summary.run_id,
             flow_id: details.summary.flow_id.clone(),
             flow_name: details.summary.flow_name.clone(),
-            flow_label: details.summary.flow_label.clone(),
             status: details.summary.status,
             items: details.summary.items.clone(),
             created_at: details.summary.created_at,
@@ -639,7 +630,6 @@ impl RunStatus {
             run_id: summary.run_id,
             flow_id: summary.flow_id.clone(),
             flow_name: summary.flow_name.clone(),
-            flow_label: summary.flow_label.clone(),
             status: summary.status,
             items: summary.items.clone(),
             created_at: summary.created_at,
@@ -686,7 +676,6 @@ mod tests {
                 run_id,
                 flow_id: flow_id.clone(),
                 flow_name: Some("test-workflow".to_string()),
-                flow_label: Some("production".to_string()),
                 status: ExecutionStatus::Completed,
                 items: ItemStatistics::single(ExecutionStatus::Completed),
                 created_at: now,
@@ -708,7 +697,6 @@ mod tests {
         assert_eq!(value["runId"], json!(run_id));
         assert_eq!(value["flowId"], json!(flow_id.as_str()));
         assert_eq!(value["flowName"], json!("test-workflow"));
-        assert_eq!(value["flowLabel"], json!("production"));
         assert_eq!(value["status"], json!("completed"));
 
         // Verify that detail-specific fields are also present

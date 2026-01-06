@@ -80,8 +80,6 @@ pub struct RunStatusProtocol {
     pub flow_id: BlobId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flow_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_label: Option<String>,
     pub status: String,
     pub items: ItemStatistics,
     pub created_at: String,
@@ -97,7 +95,6 @@ impl From<RunStatus> for RunStatusProtocol {
             run_id: status.run_id.to_string(),
             flow_id: status.flow_id,
             flow_name: status.flow_name,
-            flow_label: status.flow_label,
             status: format!("{:?}", status.status).to_lowercase(),
             items: status.items,
             created_at: status.created_at.to_rfc3339(),

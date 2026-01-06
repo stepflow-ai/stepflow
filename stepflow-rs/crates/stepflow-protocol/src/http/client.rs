@@ -517,7 +517,6 @@ mod tests {
                     run_id: Uuid::now_v7(),
                     flow_id,
                     flow_name: None,
-                    flow_label: None,
                     status: stepflow_core::status::ExecutionStatus::Running,
                     items: ItemStatistics {
                         total: input_count,
@@ -563,7 +562,6 @@ mod tests {
                     run_id,
                     flow_id,
                     flow_name: None,
-                    flow_label: None,
                     status: stepflow_core::status::ExecutionStatus::Completed,
                     items: ItemStatistics {
                         total: 1,
