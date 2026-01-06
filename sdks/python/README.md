@@ -8,10 +8,14 @@ Python SDK for building and running Stepflow workflows.
 pip install stepflow-py
 ```
 
-For embedded runtime (runs Stepflow server in-process):
-```bash
-pip install stepflow-py[runtime]
-```
+### Optional Extras
+
+| Extra | Install | Description |
+|-------|---------|-------------|
+| `runtime` | `pip install stepflow-py[runtime]` | Embedded Stepflow server (runs in-process, includes bundled binary) |
+| `http` | `pip install stepflow-py[http]` | HTTP transport for component servers (FastAPI, uvicorn) |
+| `langchain` | `pip install stepflow-py[langchain]` | LangChain runnable integration |
+| `all` | `pip install stepflow-py[all]` | All of the above |
 
 ## Quick Start
 

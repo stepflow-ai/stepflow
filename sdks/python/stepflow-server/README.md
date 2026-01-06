@@ -8,15 +8,14 @@ Python SDK for creating Stepflow component servers.
 pip install stepflow-server
 ```
 
-For HTTP server support:
-```bash
-pip install stepflow-server[http]
-```
+### Optional Extras
 
-For LangChain integration:
-```bash
-pip install stepflow-server[langchain]
-```
+| Extra | Install | Description |
+|-------|---------|-------------|
+| `http` | `pip install stepflow-server[http]` | HTTP transport mode (FastAPI, uvicorn, SSE) for production deployments |
+| `langchain` | `pip install stepflow-server[langchain]` | Register LangChain runnables as components |
+
+> **Tip:** If using the unified SDK, these extras are also available as `pip install stepflow-py[http]` and `pip install stepflow-py[langchain]`.
 
 ## Overview
 
