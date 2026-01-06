@@ -356,6 +356,23 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
     }
 }
 
+/// Port range for automatic port allocation.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PortRange {
+    /// Start of the port range (inclusive).
+    pub start: u16,
+    /// End of the port range (inclusive).
+    pub end: u16,
+}
+
+impl PortRange {
+    /// Create a new port range.
+    pub fn new(start: u16, end: u16) -> Self {
+        Self { start, end }
+    }
+}
+
 /// Configuration for a test server.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -379,7 +396,7 @@ pub struct TestServerConfig {
     /// Port range for automatic port allocation.
     /// If not specified, a random available port will be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port_range: Option<(u16, u16)>,
+    pub port_range: Option<PortRange>,
 
     /// Health check configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
