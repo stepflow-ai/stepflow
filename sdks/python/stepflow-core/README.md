@@ -10,129 +10,171 @@ pip install stepflow-core
 
 ## Overview
 
-This package provides common types used by:
-- `stepflow-runtime`: Embedded Stepflow runtime that implements `StepflowExecutor`
-- `stepflow-client`: Low-level HTTP client for direct Stepflow server API access
-- `stepflow-server`: Component server SDK for building custom components
+This package defines the `StepflowExecutor` protocol and shared types used by:
+- `stepflow-client`: HTTP client for remote Stepflow servers
+- `stepflow-runtime`: Embedded Stepflow server with bundled binary
 
-## Usage
+Both implementations are interchangeable, allowing code to work with either backend.
 
-Use `StepflowExecutor` as a type hint for code that works with workflow execution:
+## StepflowExecutor Protocol
+
+The `StepflowExecutor` protocol defines the high-level workflow execution interface:
 
 ```python
-from stepflow_core import FlowResult, StepflowExecutor
+from stepflow_core import StepflowExecutor, FlowResult
 
 async def run_workflow(executor: StepflowExecutor) -> FlowResult:
-    result = await executor.run("workflow.yaml", {"x": 1})
-    if result.is_success:
-        print(f"Output: {result.output}")
-    return result
-
-# Example with StepflowRuntime (implements StepflowExecutor)
-from stepflow_runtime import StepflowRuntime
-
-async with StepflowRuntime.start() as runtime:
-    result = await run_workflow(runtime)
+    # Works with either StepflowClient or StepflowRuntime
+    return await executor.run("workflow.yaml", {"x": 1})
 ```
 
-## Types
+### run() - Execute and wait
 
-### Execution Results
-
-- `FlowResult` - Result of a workflow execution (success/failed/skipped)
-- `FlowResultStatus` - Enum: `SUCCESS`, `FAILED`, `SKIPPED`
-- `FlowError` - Error details from a failed execution
+Execute a workflow and wait for the result:
 
 ```python
-from stepflow_core import FlowResult, FlowResultStatus, FlowError
+result = await executor.run(
+    flow="workflow.yaml",       # Path to workflow file or dict
+    input={"x": 1, "y": 2},     # Input data
+    overrides={"step1": {...}}  # Optional step overrides
+)
 
-# Create results using factory methods
-success = FlowResult.success({"answer": 42})
-failed = FlowResult.failed(400, "Validation error", {"field": "input"})
-skipped = FlowResult.skipped("Condition not met")
-
-# Check result status
 if result.is_success:
     print(result.output)
 elif result.is_failed:
     print(f"Error {result.error.code}: {result.error.message}")
+elif result.is_skipped:
+    print(f"Skipped: {result.skip_reason}")
 ```
 
-### Validation
+### submit() - Execute without waiting
 
-- `ValidationResult` - Result of workflow validation with diagnostics
-- `Diagnostic` - Single diagnostic message (error, warning, info)
+Submit a workflow for execution and return immediately:
+
+```python
+run_id = await executor.submit("workflow.yaml", {"x": 1})
+
+# Poll for completion later
+result = await executor.get_result(run_id)
+```
+
+### get_result() - Get execution result
+
+Get the result of a previously submitted workflow:
+
+```python
+result = await executor.get_result(run_id)
+```
+
+### validate() - Validate workflow
+
+Validate a workflow without executing it:
+
+```python
+validation = await executor.validate("workflow.yaml")
+
+if not validation.valid:
+    for diag in validation.errors:
+        print(f"Error: {diag.message} at {diag.location}")
+    for diag in validation.warnings:
+        print(f"Warning: {diag.message}")
+```
+
+### list_components() - Discover components
+
+List all available components:
+
+```python
+components = await executor.list_components()
+for comp in components:
+    print(f"{comp.path}: {comp.description}")
+```
+
+## Types
+
+### FlowResult
+
+Result of a workflow execution:
+
+```python
+from stepflow_core import FlowResult, FlowResultStatus
+
+# Check status
+if result.status == FlowResultStatus.SUCCESS:
+    print(result.output)
+elif result.status == FlowResultStatus.FAILED:
+    print(f"Error {result.error.code}: {result.error.message}")
+elif result.status == FlowResultStatus.SKIPPED:
+    print(f"Skipped: {result.skip_reason}")
+
+# Convenience properties
+result.is_success   # True if SUCCESS
+result.is_failed    # True if FAILED
+result.is_skipped   # True if SKIPPED
+
+# Factory methods
+FlowResult.success({"answer": 42})
+FlowResult.failed(400, "Validation error", {"field": "input"})
+FlowResult.skipped("Condition not met")
+```
+
+### ValidationResult
+
+Result of workflow validation:
 
 ```python
 from stepflow_core import ValidationResult, Diagnostic
 
-result = ValidationResult(
-    valid=False,
-    diagnostics=[
-        Diagnostic(level="error", message="Missing field", location="$.input.name"),
-        Diagnostic(level="warning", message="Deprecated step type"),
-    ]
-)
-
-# Filter diagnostics
-errors = result.errors
-warnings = result.warnings
+result.valid        # True if workflow is valid
+result.diagnostics  # List of all diagnostics
+result.errors       # Filtered list of error-level diagnostics
+result.warnings     # Filtered list of warning-level diagnostics
 ```
 
-### Runtime Configuration
+### ComponentInfo
 
-- `RestartPolicy` - Policy for restarting server subprocess (used by `StepflowRuntime`)
-- `LogEntry` - Log entry from the stepflow server
-
-```python
-from stepflow_core import RestartPolicy
-
-# Available policies
-RestartPolicy.NEVER       # Never restart
-RestartPolicy.ON_FAILURE  # Restart on non-zero exit
-RestartPolicy.ALWAYS      # Always restart on exit
-```
-
-### Component Discovery
-
-- `ComponentInfo` - Information about an available component
+Information about an available component:
 
 ```python
 from stepflow_core import ComponentInfo
 
-info = ComponentInfo(
-    path="/builtin/openai",
-    description="OpenAI chat completion",
-    input_schema={"type": "object", "properties": {...}},
-    output_schema={"type": "object", "properties": {...}},
-)
+comp.path           # e.g., "/builtin/openai"
+comp.description    # Human-readable description
+comp.input_schema   # JSON schema for input
+comp.output_schema  # JSON schema for output
 ```
 
-## Protocol
+### FlowError
 
-### StepflowExecutor
-
-`StepflowExecutor` is a Protocol that defines the high-level workflow execution interface:
+Error details from a failed execution:
 
 ```python
-from stepflow_core import StepflowExecutor
+from stepflow_core import FlowError
 
-class StepflowExecutor(Protocol):
-    @property
-    def url(self) -> str: ...
-
-    async def run(self, flow, input, overrides=None) -> FlowResult: ...
-    async def submit(self, flow, input, overrides=None) -> str: ...
-    async def get_result(self, run_id: str) -> FlowResult: ...
-    async def validate(self, flow) -> ValidationResult: ...
-    async def list_components(self) -> list[ComponentInfo]: ...
+error.code      # Numeric error code
+error.message   # Human-readable message
+error.details   # Optional additional details (dict)
 ```
 
-**Implementations:**
-- `StepflowClient` (from `stepflow-client`) - HTTP client for remote servers
-- `StepflowRuntime` (from `stepflow-runtime`) - Embedded server with subprocess management
+## Implementations
 
-Both implementations are interchangeable, allowing code to work with either backend.
+| Package | Use case |
+|---------|----------|
+| `stepflow-client` | Connect to a remote Stepflow server |
+| `stepflow-runtime` | Run an embedded server locally |
+
+```python
+from stepflow_client import StepflowClient
+from stepflow_runtime import StepflowRuntime
+
+# Remote server
+async with StepflowClient("http://localhost:7837") as client:
+    result = await client.run("workflow.yaml", {"x": 1})
+
+# Embedded server
+async with StepflowRuntime.start("config.yml") as runtime:
+    result = await runtime.run("workflow.yaml", {"x": 1})
+```
 
 ## License
 

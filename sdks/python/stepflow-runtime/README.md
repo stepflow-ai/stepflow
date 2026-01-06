@@ -12,6 +12,8 @@ pip install stepflow-runtime
 
 This package provides an embedded Stepflow server that manages a subprocess lifecycle, enabling local workflow execution without requiring a separate server installation. The server binary is bundled with the package, so no additional downloads are needed.
 
+It implements the `StepflowExecutor` protocol, making it interchangeable with `StepflowClient`. For the protocol API documentation (`run`, `submit`, `validate`, etc.), see the [stepflow-core README](../stepflow-core/README.md).
+
 ## Usage
 
 ### Basic Usage
