@@ -282,7 +282,6 @@ mod tests {
 
     fn create_test_flow() -> Flow {
         Flow::V1(FlowV1 {
-            schema: super::super::FLOW_V1_SCHEMA_URL.to_string(),
             name: Some("test_flow".to_string()),
             description: None,
             version: None,
