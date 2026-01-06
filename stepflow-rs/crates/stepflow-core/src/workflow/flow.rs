@@ -25,11 +25,68 @@ use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 #[serde(tag = "schema")]
 pub enum Flow {
     #[serde(rename = "https://stepflow.org/schemas/v1/flow.json")]
     V1(FlowV1),
+}
+
+// Manual ToSchema implementation to avoid oneOf[allOf[...]] pattern
+// that openapi-python-client cannot parse
+impl utoipa::PartialSchema for Flow {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::RefOr::Ref(utoipa::openapi::Ref::new("#/components/schemas/Flow"))
+    }
+}
+
+impl utoipa::ToSchema for Flow {
+    fn name() -> std::borrow::Cow<'static, str> {
+        "Flow".into()
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::PartialSchema as _;
+        use utoipa::openapi::schema::*;
+        use utoipa::openapi::*;
+
+        // First, collect FlowV1's schemas (it has nested types)
+        FlowV1::schemas(schemas);
+
+        // Build Flow as allOf: [FlowV1, discriminator object]
+        // This avoids the problematic oneOf[allOf[...]] pattern
+        // Note: Rename property to "schemaUrl" to avoid openapi-python-client
+        // generating a "FlowSchema" enum that conflicts with the FlowSchema struct
+        let schema = Schema::AllOf(
+            AllOfBuilder::new()
+                .item(FlowV1::schema())
+                .item(Schema::Object(
+                    ObjectBuilder::new()
+                        .property(
+                            "schema",
+                            ObjectBuilder::new()
+                                .schema_type(SchemaType::Type(Type::String))
+                                .description(Some(
+                                    "Schema version identifier. Must be 'https://stepflow.org/schemas/v1/flow.json'",
+                                ))
+                                .build(),
+                        )
+                        .required("schema")
+                        .build(),
+                ))
+                .description(Some(
+                    "A workflow consisting of a sequence of steps and their outputs.",
+                ))
+                .build(),
+        );
+
+        schemas.push(("Flow".to_string(), RefOr::T(schema)));
+    }
 }
 
 impl Default for Flow {

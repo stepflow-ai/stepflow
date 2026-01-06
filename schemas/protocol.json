@@ -51,7 +51,7 @@
       ]
     },
     "Value": {
-      "allOf": [],
+      "type": "object",
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "MethodRequest": {
@@ -187,7 +187,7 @@
               "type": "null"
             },
             {
-              "allOf": [],
+              "type": "object",
               "description": "Any JSON value (object, array, string, number, boolean, or null)"
             }
           ],

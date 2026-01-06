@@ -497,6 +497,20 @@ impl utoipa::ToSchema for ValueExpr {
         use utoipa::openapi::schema::*;
         use utoipa::openapi::*;
 
+        // First, register a helper type for recursive positions
+        // openapi-python-client can't handle recursive $ref inside oneOf union members,
+        // so we use a separate AnyValueExpr type that is just "any object"
+        schemas.push((
+            "AnyValueExpr".to_string(),
+            RefOr::T(Schema::Object(
+                ObjectBuilder::new()
+                    .description(Some(
+                        "A value expression (recursive reference, any valid ValueExpr)",
+                    ))
+                    .build(),
+            )),
+        ));
+
         // Helper for creating a string type schema
         let string_type = || {
             RefOr::T(Schema::Object(
@@ -516,7 +530,12 @@ impl utoipa::ToSchema for ValueExpr {
             ))
         };
 
+        // Helper for referencing AnyValueExpr (the recursive placeholder)
+        let any_value_ref = || RefOr::Ref(Ref::new("#/components/schemas/AnyValueExpr"));
+
         // Create a oneOf schema with each variant described
+        // Note: Recursive references use $ref to AnyValueExpr instead of ValueExpr
+        // to support openapi-python-client code generation
         let one_of_items = vec![
             // Step reference: { $step: "step_id", path?: "..." }
             Schema::Object(
@@ -549,10 +568,7 @@ impl utoipa::ToSchema for ValueExpr {
                         "$variable",
                         string_type_with_desc("JSONPath expression including variable name"),
                     )
-                    .property(
-                        "default",
-                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
-                    )
+                    .property("default", any_value_ref())
                     .required("$variable")
                     .description(Some(
                         "Variable reference: { $variable: \"path\", default?: ValueExpr }",
@@ -562,14 +578,11 @@ impl utoipa::ToSchema for ValueExpr {
             ),
             // Escaped literal: { $literal: any }
             // Note: Named "LiteralExpr" to avoid conflict with Python's typing.Literal
+            // Use AnyValueExpr ref to avoid duplicate model name generation
             Schema::Object(
                 ObjectBuilder::new()
                     .title(Some("LiteralExpr"))
-                    .property(
-                        "$literal",
-                        // Empty AllOf means "any value" (produces {} in JSON)
-                        Schema::AllOf(AllOfBuilder::new().build()),
-                    )
+                    .property("$literal", any_value_ref())
                     .required("$literal")
                     .description(Some("Escaped literal: { $literal: any }"))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
@@ -579,18 +592,9 @@ impl utoipa::ToSchema for ValueExpr {
             Schema::Object(
                 ObjectBuilder::new()
                     .title(Some("If"))
-                    .property(
-                        "$if",
-                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
-                    )
-                    .property(
-                        "then",
-                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
-                    )
-                    .property(
-                        "else",
-                        RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")),
-                    )
+                    .property("$if", any_value_ref())
+                    .property("then", any_value_ref())
+                    .property("else", any_value_ref())
                     .required("$if")
                     .required("then")
                     .description(Some(
@@ -605,8 +609,7 @@ impl utoipa::ToSchema for ValueExpr {
                     .title(Some("Coalesce"))
                     .property(
                         "$coalesce",
-                        ArrayBuilder::new()
-                            .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr"))),
+                        ArrayBuilder::new().items(any_value_ref()),
                     )
                     .required("$coalesce")
                     .description(Some("Coalesce: { $coalesce: [expr1, expr2, ...] }"))
@@ -617,7 +620,7 @@ impl utoipa::ToSchema for ValueExpr {
             Schema::Array(
                 ArrayBuilder::new()
                     .title(Some("ArrayExpr"))
-                    .items(RefOr::Ref(Ref::new("#/components/schemas/ValueExpr")))
+                    .items(any_value_ref())
                     .description(Some("Array of expressions"))
                     .build(),
             ),
@@ -625,37 +628,41 @@ impl utoipa::ToSchema for ValueExpr {
             Schema::Object(
                 ObjectBuilder::new()
                     .title(Some("ObjectExpr"))
-                    .additional_properties(Some(RefOr::Ref(Ref::new(
-                        "#/components/schemas/ValueExpr",
-                    ))))
+                    .additional_properties(Some(any_value_ref()))
                     .description(Some("Object with expression values"))
                     .build(),
             ),
-            // Literal primitive value - oneOf for null, boolean, number, string
-            Schema::OneOf(
-                OneOfBuilder::new()
-                    .title(Some("PrimitiveValue"))
-                    .description(Some("Literal primitive value"))
-                    .item(Schema::Object(
-                        ObjectBuilder::new()
-                            .schema_type(SchemaType::Type(Type::Null))
-                            .build(),
-                    ))
-                    .item(Schema::Object(
-                        ObjectBuilder::new()
-                            .schema_type(SchemaType::Type(Type::Boolean))
-                            .build(),
-                    ))
-                    .item(Schema::Object(
-                        ObjectBuilder::new()
-                            .schema_type(SchemaType::Type(Type::Number))
-                            .build(),
-                    ))
-                    .item(Schema::Object(
-                        ObjectBuilder::new()
-                            .schema_type(SchemaType::Type(Type::String))
-                            .build(),
-                    ))
+            // Literal primitive values - flattened into parent oneOf to avoid nested oneOf
+            // Null literal
+            Schema::Object(
+                ObjectBuilder::new()
+                    .title(Some("NullValue"))
+                    .schema_type(SchemaType::Type(Type::Null))
+                    .description(Some("Null literal value"))
+                    .build(),
+            ),
+            // Boolean literal
+            Schema::Object(
+                ObjectBuilder::new()
+                    .title(Some("BooleanValue"))
+                    .schema_type(SchemaType::Type(Type::Boolean))
+                    .description(Some("Boolean literal value"))
+                    .build(),
+            ),
+            // Number literal
+            Schema::Object(
+                ObjectBuilder::new()
+                    .title(Some("NumberValue"))
+                    .schema_type(SchemaType::Type(Type::Number))
+                    .description(Some("Number literal value"))
+                    .build(),
+            ),
+            // String literal
+            Schema::Object(
+                ObjectBuilder::new()
+                    .title(Some("StringValue"))
+                    .schema_type(SchemaType::Type(Type::String))
+                    .description(Some("String literal value"))
                     .build(),
             ),
         ];

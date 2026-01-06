@@ -1,90 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Flow",
-  "oneOf": [
+  "allOf": [
     {
-      "type": "object",
-      "description": "# FlowV1",
-      "properties": {
-        "name": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The name of the flow."
-        },
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The description of the flow."
-        },
-        "version": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "The version of the flow."
-        },
-        "schemas": {
-          "$ref": "#/$defs/FlowSchema",
-          "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
-        },
-        "steps": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Step"
-          },
-          "description": "The steps to execute for the flow."
-        },
-        "output": {
-          "$ref": "#/$defs/ValueExpr",
-          "description": "The outputs of the flow, mapping output names to their values."
-        },
-        "test": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/TestConfig",
-              "description": "Test configuration for the flow."
-            }
-          ]
-        },
-        "examples": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "$ref": "#/$defs/ExampleInput"
-          },
-          "description": "Example inputs for the workflow that can be used for testing and UI dropdowns."
-        },
-        "metadata": {
-          "type": "object",
-          "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
-          "additionalProperties": {},
-          "propertyNames": {
-            "type": "string"
-          }
-        },
-        "schema": {
-          "type": "string",
-          "const": "https://stepflow.org/schemas/v1/flow.json"
-        }
-      },
-      "title": "FlowV1",
-      "required": [
-        "schema"
-      ]
-    }
-  ],
-  "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.",
-  "$defs": {
-    "FlowV1": {
       "type": "object",
       "description": "# FlowV1",
       "properties": {
@@ -155,6 +73,21 @@
         }
       }
     },
+    {
+      "type": "object",
+      "required": [
+        "schema"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "description": "Schema version identifier. Must be 'https://stepflow.org/schemas/v1/flow.json'"
+        }
+      }
+    }
+  ],
+  "description": "A workflow consisting of a sequence of steps and their outputs.",
+  "$defs": {
     "FlowSchema": {
       "type": "object",
       "description": "Consolidated schema information for a flow.\n\nThis struct contains all schema/type information for the flow in a single location,\nallowing shared `$defs` across all schemas and avoiding duplication.\n\nSerializes as a valid JSON Schema with `type: \"object\"` and flow-specific\nproperties (`input`, `output`, `variables`, `steps`) under the `properties` key.",
@@ -316,7 +249,7 @@
               "description": "JSONPath expression including variable name"
             },
             "default": {
-              "$ref": "#/$defs/ValueExpr"
+              "$ref": "#/$defs/AnyValueExpr"
             }
           },
           "additionalProperties": false
@@ -330,7 +263,7 @@
           ],
           "properties": {
             "$literal": {
-              "allOf": []
+              "$ref": "#/$defs/AnyValueExpr"
             }
           },
           "additionalProperties": false
@@ -345,13 +278,13 @@
           ],
           "properties": {
             "$if": {
-              "$ref": "#/$defs/ValueExpr"
+              "$ref": "#/$defs/AnyValueExpr"
             },
             "then": {
-              "$ref": "#/$defs/ValueExpr"
+              "$ref": "#/$defs/AnyValueExpr"
             },
             "else": {
-              "$ref": "#/$defs/ValueExpr"
+              "$ref": "#/$defs/AnyValueExpr"
             }
           },
           "additionalProperties": false
@@ -367,7 +300,7 @@
             "$coalesce": {
               "type": "array",
               "items": {
-                "$ref": "#/$defs/ValueExpr"
+                "$ref": "#/$defs/AnyValueExpr"
               }
             }
           },
@@ -377,7 +310,7 @@
           "type": "array",
           "title": "ArrayExpr",
           "items": {
-            "$ref": "#/$defs/ValueExpr"
+            "$ref": "#/$defs/AnyValueExpr"
           },
           "description": "Array of expressions"
         },
@@ -386,26 +319,28 @@
           "title": "ObjectExpr",
           "description": "Object with expression values",
           "additionalProperties": {
-            "$ref": "#/$defs/ValueExpr"
+            "$ref": "#/$defs/AnyValueExpr"
           }
         },
         {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "PrimitiveValue",
-          "description": "Literal primitive value"
+          "type": "null",
+          "title": "NullValue",
+          "description": "Null literal value"
+        },
+        {
+          "type": "boolean",
+          "title": "BooleanValue",
+          "description": "Boolean literal value"
+        },
+        {
+          "type": "number",
+          "title": "NumberValue",
+          "description": "Number literal value"
+        },
+        {
+          "type": "string",
+          "title": "StringValue",
+          "description": "String literal value"
         }
       ],
       "description": "A value expression that can contain literal data or references to other values"
@@ -538,6 +473,10 @@
         }
       }
     },
+    "AnyValueExpr": {
+      "type": "object",
+      "description": "A value expression (recursive reference, any valid ValueExpr)"
+    },
     "TestServerConfig": {
       "type": "object",
       "description": "Configuration for a test server.",
@@ -574,24 +513,15 @@
           "description": "Working directory for the server process."
         },
         "portRange": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": false,
-          "prefixItems": [
+          "oneOf": [
             {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "type": "null"
             },
             {
-              "type": "integer",
-              "format": "int32",
-              "minimum": 0
+              "$ref": "#/$defs/PortRange",
+              "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used."
             }
-          ],
-          "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used."
+          ]
         },
         "healthCheck": {
           "oneOf": [
@@ -656,6 +586,28 @@
         }
       }
     },
+    "PortRange": {
+      "type": "object",
+      "description": "Port range for automatic port allocation.",
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Start of the port range (inclusive).",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "format": "int32",
+          "description": "End of the port range (inclusive).",
+          "minimum": 0
+        }
+      }
+    },
     "TestServerHealthCheck": {
       "type": "object",
       "description": "Health check configuration for test servers.",
@@ -691,7 +643,7 @@
       }
     },
     "Value": {
-      "allOf": [],
+      "type": "object",
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "FlowResult": {
@@ -779,6 +731,94 @@
           "$ref": "#/$defs/FlowError"
         }
       }
+    },
+    "Flow": {
+      "allOf": [
+        {
+          "type": "object",
+          "description": "# FlowV1",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The name of the flow."
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The description of the flow."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The version of the flow."
+            },
+            "schemas": {
+              "$ref": "#/$defs/FlowSchema",
+              "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Step"
+              },
+              "description": "The steps to execute for the flow."
+            },
+            "output": {
+              "$ref": "#/$defs/ValueExpr",
+              "description": "The outputs of the flow, mapping output names to their values."
+            },
+            "test": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/TestConfig",
+                  "description": "Test configuration for the flow."
+                }
+              ]
+            },
+            "examples": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/$defs/ExampleInput"
+              },
+              "description": "Example inputs for the workflow that can be used for testing and UI dropdowns."
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "schema"
+          ],
+          "properties": {
+            "schema": {
+              "type": "string",
+              "description": "Schema version identifier. Must be 'https://stepflow.org/schemas/v1/flow.json'"
+            }
+          }
+        }
+      ],
+      "description": "A workflow consisting of a sequence of steps and their outputs."
     }
   }
 }
