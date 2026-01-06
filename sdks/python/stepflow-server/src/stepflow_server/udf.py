@@ -19,11 +19,7 @@ from typing import Any
 import msgspec
 
 from stepflow_server.context import StepflowContext
-from stepflow_server.exceptions import (
-    CodeCompilationError,
-    SkipStep,
-    StepflowValueError,
-)
+from stepflow_server.exceptions import CodeCompilationError, StepflowValueError
 from stepflow_server.observability import get_tracer
 
 
@@ -95,14 +91,10 @@ def _create_standard_wrapper(
             args.append(context)
 
         # Call function based on whether it's async or sync
-        try:
-            if is_async:
-                return await func(*args)
-            else:
-                return func(*args)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        if is_async:
+            return await func(*args)
+        else:
+            return func(*args)
 
     return wrapper
 
@@ -117,13 +109,9 @@ def _create_async_wrapped_context_runnable_wrapper(func, validate_input):
     """Async function with InputWrapper and context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = await func(_InputWrapper(input_data), context)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = await func(_InputWrapper(input_data), context)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -132,13 +120,9 @@ def _create_async_wrapped_no_context_runnable_wrapper(func, validate_input):
     """Async function with InputWrapper, no context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = await func(_InputWrapper(input_data))
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = await func(_InputWrapper(input_data))
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -147,13 +131,9 @@ def _create_async_direct_context_runnable_wrapper(func, validate_input):
     """Async function with direct input and context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = await func(input_data, context)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = await func(input_data, context)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -162,13 +142,9 @@ def _create_async_direct_no_context_runnable_wrapper(func, validate_input):
     """Async function with direct input, no context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = await func(input_data)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = await func(input_data)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -177,13 +153,9 @@ def _create_sync_wrapped_context_runnable_wrapper(func, validate_input):
     """Sync function with InputWrapper and context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = func(_InputWrapper(input_data), context)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = func(_InputWrapper(input_data), context)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -192,13 +164,9 @@ def _create_sync_wrapped_no_context_runnable_wrapper(func, validate_input):
     """Sync function with InputWrapper, no context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = func(_InputWrapper(input_data))
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = func(_InputWrapper(input_data))
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -207,13 +175,9 @@ def _create_sync_direct_context_runnable_wrapper(func, validate_input):
     """Sync function with direct input and context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = func(input_data, context)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = func(input_data, context)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -222,13 +186,9 @@ def _create_sync_direct_no_context_runnable_wrapper(func, validate_input):
     """Sync function with direct input, no context that returns runnables."""
 
     async def wrapper(input_data, context):
-        try:
-            validate_input(input_data)
-            result = func(input_data)
-            return await result.ainvoke(input_data)
-        except SkipStep:
-            # Re-raise SkipStep to propagate it to component execution handler
-            raise
+        validate_input(input_data)
+        result = func(input_data)
+        return await result.ainvoke(input_data)
 
     return wrapper
 
@@ -434,9 +394,6 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     # Execute the cached function (validation happens inside)
     try:
         result = await compiled_func(input.input, context)
-    except SkipStep:
-        # Let SkipStep exceptions propagate unchanged
-        raise
     except Exception as e:
         raise ValueError(f"Function execution failed: {e}") from e
 
@@ -500,11 +457,18 @@ def _compile_function(code: str, input_schema: dict):
             "__import__": __import__,
             "getattr": getattr,
             "type": type,
+            # Exception types for error handling
+            "Exception": Exception,
+            "ValueError": ValueError,
+            "TypeError": TypeError,
+            "RuntimeError": RuntimeError,
+            "KeyError": KeyError,
+            "IndexError": IndexError,
+            "AttributeError": AttributeError,
         },
         "json": json,
         "math": __import__("math"),
         "re": __import__("re"),
-        "SkipStep": SkipStep,  # Make SkipStep available in user code
     }
 
     # Add LangChain imports if available

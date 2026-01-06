@@ -20,19 +20,11 @@ from uuid import uuid4
 
 from stepflow_server.generated_flow import Flow
 from stepflow_server.generated_protocol import (
-    BatchDetails,
-    BatchOutputInfo,
     BlobType,
-    EvaluateFlowParams,
-    EvaluateFlowResult,
     FlowResultFailed,
-    FlowResultSkipped,
     FlowResultSuccess,
-    GetBatchParams,
-    GetBatchResult,
     GetBlobResult,
-    GetFlowMetadataParams,
-    GetFlowMetadataResult,
+    GetRunProtocolParams,
     Message,
     Method,
     MethodError,
@@ -40,8 +32,9 @@ from stepflow_server.generated_protocol import (
     ObservabilityContext,
     PutBlobParams,
     PutBlobResult,
-    SubmitBatchParams,
-    SubmitBatchResult,
+    ResultOrder,
+    RunStatusProtocol,
+    SubmitRunProtocolParams,
 )
 from stepflow_server.message_decoder import MessageDecoder
 
@@ -227,7 +220,6 @@ class StepflowContext:
             The result value on success
 
         Raises:
-            StepflowSkipped: If the flow execution was skipped
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
@@ -256,107 +248,37 @@ class StepflowContext:
             The result value on success
 
         Raises:
-            StepflowSkipped: If the flow execution was skipped
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
-        from stepflow_server.exceptions import StepflowFailed, StepflowSkipped
-        from stepflow_server.observability import get_tracer
+        # Use the new unified runs API with a single input
+        results = await self.evaluate_run_by_id(flow_id, [input], overrides=overrides)
+        # Return the single result
+        return results[0]
 
-        tracer = get_tracer(__name__)
-        with tracer.start_as_current_span(
-            "evaluate_flow",
-            attributes={
-                "flow_id": flow_id,
-            },
-        ):
-            params = EvaluateFlowParams(
-                flow_id=flow_id,
-                input=input,
-                overrides=overrides,
-                observability=self.current_observability_context(),
-            )
-            evaluate_result = await self._send_request(
-                Method.flows_evaluate, params, EvaluateFlowResult
-            )
-            flow_result = evaluate_result.result
+    # =========================================================================
+    # Unified Runs API
+    # =========================================================================
 
-            # Check the outcome and either return the result or
-            # raise appropriate exception
-            if isinstance(flow_result, FlowResultSuccess):
-                return flow_result.result
-            elif isinstance(flow_result, FlowResultSkipped):
-                raise StepflowSkipped("Flow execution was skipped")
-            elif isinstance(flow_result, FlowResultFailed):
-                error = flow_result.error
-                raise StepflowFailed(
-                    error_code=error.code,
-                    message=error.message,
-                    data=error.data,
-                )
-            else:
-                raise Exception(f"Unexpected flow result type: {type(flow_result)}")
-
-    async def get_metadata(self, step_id: str | None = None) -> dict[str, Any]:
-        """Get metadata for the current flow and optionally a specific step.
-
-        Args:
-            step_id: The ID of the step to get metadata for. If None, uses
-                the current step ID. If neither step_id nor current step_id
-                are available, only flow metadata is returned.
-
-        Returns:
-            A dictionary containing:
-            - flow_metadata: Metadata for the current flow
-            - step_metadata: Metadata for the specified step (if step_id
-              provided and found)
-        """
-        from stepflow_server.observability import get_tracer
-
-        # Use provided step_id, or fall back to current step_id, or None
-        target_step_id = step_id or self._step_id
-
-        tracer = get_tracer(__name__)
-        attributes: dict[str, str] = {}
-        if self._flow_id:
-            attributes["flow_id"] = str(self._flow_id)
-        if target_step_id:
-            attributes["step_id"] = target_step_id
-
-        with tracer.start_as_current_span("get_metadata", attributes=attributes):
-            assert self._flow_id is not None, "flow_id is not available in context"
-            params = GetFlowMetadataParams(
-                step_id=target_step_id,
-                flow_id=self._flow_id,
-                observability=self.current_observability_context(),
-            )
-            response = await self._send_request(
-                Method.flows_get_metadata, params, GetFlowMetadataResult
-            )
-
-            result = {"flow_metadata": response.flow_metadata}
-            if response.step_metadata is not None:
-                result["step_metadata"] = response.step_metadata
-
-            return result
-
-    async def submit_batch(
+    async def submit_run(
         self,
         flow: Flow,
         inputs: list[Any],
+        wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
-    ) -> str:
-        """Submit a batch of inputs for parallel execution and return the batch ID.
+    ) -> RunStatusProtocol:
+        """Submit a run (1 or N items) for execution.
 
         Args:
             flow: The flow definition to execute
-            inputs: List of inputs to process in parallel
+            inputs: List of inputs to process (can be a single-item list)
+            wait: If True, wait for completion before returning
             max_concurrency: Maximum number of concurrent executions (optional)
-            overrides: Optional workflow overrides to apply to all runs before execution
+            overrides: Optional workflow overrides to apply
 
         Returns:
-            The batch ID for tracking the batch execution
+            RunStatusProtocol with run status and optionally results if wait=True
         """
         import msgspec
 
@@ -366,114 +288,120 @@ class StepflowContext:
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BlobType.flow)
 
-        # Delegate to submit_batch_by_id
-        return await self.submit_batch_by_id(
-            flow_id, inputs, max_concurrency, overrides=overrides
+        # Delegate to submit_run_by_id
+        return await self.submit_run_by_id(
+            flow_id, inputs, wait, max_concurrency, overrides=overrides
         )
 
-    async def submit_batch_by_id(
+    async def submit_run_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
+        wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
-    ) -> str:
-        """Submit a batch of inputs for parallel execution using a flow ID.
+    ) -> RunStatusProtocol:
+        """Submit a run by flow ID.
 
         Args:
             flow_id: The blob ID of the flow to execute
-            inputs: List of inputs to process in parallel
+            inputs: List of inputs to process
+            wait: If True, wait for completion before returning
             max_concurrency: Maximum number of concurrent executions (optional)
-            overrides: Optional workflow overrides to apply to all runs before execution
+            overrides: Optional workflow overrides to apply
 
         Returns:
-            The batch ID for tracking the batch execution
+            RunStatusProtocol with run status and optionally results if wait=True
         """
         from stepflow_server.observability import get_tracer
 
         tracer = get_tracer(__name__)
-        attributes: dict[str, str | int] = {
+        attributes: dict[str, str | int | bool] = {
             "flow_id": flow_id,
-            "batch_size": len(inputs),
+            "item_count": len(inputs),
+            "wait": wait,
         }
         if max_concurrency is not None:
             attributes["max_concurrency"] = max_concurrency
 
-        with tracer.start_as_current_span("submit_batch", attributes=attributes):
-            params = SubmitBatchParams(
-                flow_id=flow_id,
+        with tracer.start_as_current_span("submit_run", attributes=attributes):
+            params = SubmitRunProtocolParams(
+                flowId=flow_id,
                 inputs=inputs,
+                wait=wait,
+                maxConcurrency=max_concurrency,
                 overrides=overrides,
-                max_concurrency=max_concurrency,
                 observability=self.current_observability_context(),
             )
             response = await self._send_request(
-                Method.flows_submit_batch, params, SubmitBatchResult
+                Method.runs_submit, params, RunStatusProtocol
             )
-            return response.batch_id
+            return response
 
-    async def get_batch(
+    async def get_run(
         self,
-        batch_id: str,
+        run_id: str,
         wait: bool = False,
         include_results: bool = False,
-    ) -> tuple[BatchDetails, list[BatchOutputInfo] | None]:
-        """Get batch status and optionally wait for completion and retrieve results.
+        result_order: ResultOrder = ResultOrder.by_index,
+    ) -> RunStatusProtocol:
+        """Get run status and optionally wait for completion and retrieve results.
 
         Args:
-            batch_id: The ID of the batch to retrieve
-            wait: If True, wait for batch completion before returning
-            include_results: If True, include the run results in the response
+            run_id: The ID of the run to retrieve
+            wait: If True, wait for run completion before returning
+            include_results: If True, include the item results in the response
+            result_order: Order of results (byIndex or byCompletion)
 
         Returns:
-            A tuple of (batch_details, outputs) where outputs is None if
-            include_results is False
+            RunStatusProtocol with run status and optionally results
         """
         from stepflow_server.observability import get_tracer
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
-            "get_batch",
+            "get_run",
             attributes={
-                "batch_id": batch_id,
+                "run_id": run_id,
                 "wait": wait,
                 "include_results": include_results,
             },
         ):
-            params = GetBatchParams(
-                batch_id=batch_id,
+            params = GetRunProtocolParams(
+                runId=run_id,
                 wait=wait,
-                include_results=include_results,
+                includeResults=include_results,
+                resultOrder=result_order,
                 observability=self.current_observability_context(),
             )
             response = await self._send_request(
-                Method.flows_get_batch, params, GetBatchResult
+                Method.runs_get, params, RunStatusProtocol
             )
-            return (response.details, response.outputs)
+            return response
 
-    async def evaluate_batch(
+    async def evaluate_run(
         self,
         flow: Flow,
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
     ) -> list[Any]:
-        """Submit a batch, wait for completion, and return all results.
+        """Submit a run, wait for completion, and return all results.
 
-        This is a convenience method that combines submit_batch and get_batch
+        This is a convenience method that combines submit_run and get_run
         with wait=True and include_results=True.
 
         Args:
             flow: The flow definition to execute
-            inputs: List of inputs to process in parallel
+            inputs: List of inputs to process
             max_concurrency: Maximum number of concurrent executions (optional)
-            overrides: Optional workflow overrides to apply to all runs before execution
+            overrides: Optional workflow overrides to apply
 
         Returns:
             List of results corresponding to each input, in the same order
 
         Raises:
-            Exception: If any of the runs failed or were skipped
+            StepflowFailed: If any of the runs failed
         """
         import msgspec
 
@@ -483,74 +411,69 @@ class StepflowContext:
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BlobType.flow)
 
-        # Delegate to evaluate_batch_by_id
-        return await self.evaluate_batch_by_id(
+        # Delegate to evaluate_run_by_id
+        return await self.evaluate_run_by_id(
             flow_id, inputs, max_concurrency, overrides=overrides
         )
 
-    async def evaluate_batch_by_id(
+    async def evaluate_run_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
     ) -> list[Any]:
-        """Submit a batch by flow ID, wait for completion, and return all results.
+        """Submit a run by flow ID, wait for completion, and return all results.
 
-        This is a convenience method that combines submit_batch_by_id and get_batch
+        This is a convenience method that combines submit_run_by_id and get_run
         with wait=True and include_results=True.
 
         Args:
             flow_id: The blob ID of the flow to execute
-            inputs: List of inputs to process in parallel
+            inputs: List of inputs to process
             max_concurrency: Maximum number of concurrent executions (optional)
-            overrides: Optional workflow overrides to apply to all runs before execution
+            overrides: Optional workflow overrides to apply
 
         Returns:
             List of results corresponding to each input, in the same order
 
         Raises:
-            Exception: If any of the runs failed or were skipped
+            StepflowFailed: If any of the runs failed
         """
-        from stepflow_server.exceptions import StepflowFailed, StepflowSkipped
+        from stepflow_server.exceptions import StepflowFailed
 
-        # Submit the batch
-        batch_id = await self.submit_batch_by_id(
-            flow_id, inputs, max_concurrency, overrides=overrides
+        # Submit and wait for completion with results
+        run_status = await self.submit_run_by_id(
+            flow_id,
+            inputs,
+            wait=True,
+            max_concurrency=max_concurrency,
+            overrides=overrides,
         )
 
-        # Wait for completion and get results
-        _details, outputs = await self.get_batch(
-            batch_id, wait=True, include_results=True
-        )
-
-        # Extract results from outputs
-        assert outputs is not None, "include_results=True should return outputs"
+        # Extract results
+        if run_status.results is None:
+            raise Exception("Expected results in response when wait=True")
 
         results = []
-        for output_info in outputs:
-            if output_info.result is None:
+        for item_result in run_status.results:
+            if item_result.result is None:
                 raise Exception(
-                    f"Run at index {output_info.batch_input_index} has no "
-                    f"result (status: {output_info.status})"
+                    f"Item at index {item_result.itemIndex} has no "
+                    f"result (status: {item_result.status})"
                 )
 
-            flow_result = output_info.result
+            flow_result = item_result.result
 
             # Check the outcome and either append the result or raise exception
             if isinstance(flow_result, FlowResultSuccess):
                 results.append(flow_result.result)
-            elif isinstance(flow_result, FlowResultSkipped):
-                raise StepflowSkipped(
-                    f"Run at index {output_info.batch_input_index} was skipped"
-                )
             elif isinstance(flow_result, FlowResultFailed):
                 error = flow_result.error
                 raise StepflowFailed(
                     error_code=error.code,
                     message=(
-                        f"Run at index {output_info.batch_input_index} "
-                        f"failed: {error.message}"
+                        f"Item at index {item_result.itemIndex} failed: {error.message}"
                     ),
                     data=error.data,
                 )

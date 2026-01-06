@@ -20,16 +20,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .generated_flow import (
-    EscapedLiteral,
-    Reference,
-    SkipAction,
-    ValueTemplate,
-    VariableReference,
-    WorkflowRef,
-    WorkflowReference,
-)
-from .generated_flow import (
-    StepReference as GeneratedStepReference,
+    InputRef,
+    LiteralExpr,
+    StepRef,
+    ValueExpr,
+    VariableRef,
 )
 
 
@@ -107,21 +102,16 @@ class StepReference:
 
     step_id: str
     path: JsonPath = field(default_factory=JsonPath)
-    on_skip: SkipAction | None = None
 
     def __getitem__(self, key: str | int) -> StepReference:
         """Create a nested reference using index access."""
         new_path = self.path.with_index(key)
-        return StepReference(self.step_id, new_path, self.on_skip)
+        return StepReference(self.step_id, new_path)
 
     def __getattr__(self, name: str) -> StepReference:
         """Create a nested reference to a field."""
         new_path = self.path.with_field(name)
-        return StepReference(self.step_id, new_path, self.on_skip)
-
-    def with_on_skip(self, on_skip: SkipAction) -> StepReference:
-        """Create a copy of this reference with the specified onSkip action."""
-        return StepReference(self.step_id, self.path, on_skip)
+        return StepReference(self.step_id, new_path)
 
 
 @dataclass
@@ -129,40 +119,31 @@ class WorkflowInput:
     """Reference to workflow input."""
 
     path: JsonPath = field(default_factory=JsonPath)
-    on_skip: SkipAction | None = None
 
     def __getitem__(self, key: str | int) -> WorkflowInput:
         """Create a reference to a specific path in the workflow input."""
         new_path = self.path.with_index(key)
-        return WorkflowInput(new_path, self.on_skip)
+        return WorkflowInput(new_path)
 
     def __getattr__(self, name: str) -> WorkflowInput:
         """Create a reference to a field in the workflow input."""
         new_path = self.path.with_field(name)
-        return WorkflowInput(new_path, self.on_skip)
-
-    def with_on_skip(self, on_skip: SkipAction) -> WorkflowInput:
-        """Create a copy of this reference with the specified onSkip action."""
-        return WorkflowInput(self.path, on_skip)
+        return WorkflowInput(new_path)
 
 
 class InputPathBuilder:
     """Helper class for building workflow input references with method chaining."""
 
-    def __init__(self, on_skip: SkipAction | None = None):
+    def __init__(self):
         self.path = JsonPath()
-        self.on_skip = on_skip
 
-    def __call__(
-        self, path: str | None = None, on_skip: SkipAction | None = None
-    ) -> Value:
+    def __call__(self, path: str | None = None) -> Value:
         """Make InputPathBuilder callable to maintain API compatibility.
 
         This allows Value.input() to work returning a WorkflowInput reference.
 
         Args:
             path: Optional path string
-            on_skip: Optional skip action
 
         Returns:
             Value containing WorkflowInput reference with proper path handling
@@ -170,7 +151,7 @@ class InputPathBuilder:
         json_path = JsonPath()
         if path is not None and path != "$":
             json_path.fragments = [path]
-        return Value(WorkflowInput(json_path, on_skip))
+        return Value(WorkflowInput(json_path))
 
     def add_path(self, *segments: str) -> Value:
         """Add path segments and return a Value with workflow input reference.
@@ -186,7 +167,7 @@ class InputPathBuilder:
             Value.input.add_path("config", "temperature")  # $.config.temperature
         """
         path = self.path.with_field(*segments)
-        return Value(WorkflowInput(path, self.on_skip))
+        return Value(WorkflowInput(path))
 
 
 class NoDefault:
@@ -238,10 +219,30 @@ class Value:
         Returns:
             Value representing the variable reference
         """
-        variable = VariableReference(variable=name)
-        if default is not NO_DEFAULT:
-            variable.default = default
-        return Value(variable)
+        # Create VariableRef with $variable field
+        if default is NO_DEFAULT:
+            return Value(VariableRef(field_variable=name))
+        else:
+            # Convert default to ValueExpr if needed
+            default_expr = (
+                Value._convert_to_value_expr(default)
+                if not isinstance(
+                    default,
+                    StepRef
+                    | InputRef
+                    | VariableRef
+                    | LiteralExpr
+                    | list
+                    | dict
+                    | str
+                    | int
+                    | float
+                    | bool
+                    | type(None),
+                )
+                else default
+            )
+            return Value(VariableRef(field_variable=name, default=default_expr))
 
     @staticmethod
     def literal(value: Any) -> Value:
@@ -249,12 +250,10 @@ class Value:
 
         This is equivalent to using $literal in the workflow definition.
         """
-        return Value(EscapedLiteral(field_literal=value))
+        return Value(LiteralExpr(field_literal=value))
 
     @staticmethod
-    def step(
-        step_id: str, path: str | None = None, on_skip: SkipAction | None = None
-    ) -> Value:
+    def step(step_id: str, path: str | None = None) -> Value:
         """Create a reference to a step's output.
 
         This is equivalent to using $from with a step reference.
@@ -262,57 +261,54 @@ class Value:
         json_path = JsonPath()
         if path is not None and path != "$":
             json_path.fragments = [path]
-        return Value(StepReference(step_id, json_path, on_skip))
+        return Value(StepReference(step_id, json_path))
 
-    def to_value_template(self) -> ValueTemplate:
-        """Convert this Value to a ValueTemplate for use in flow definitions."""
-        return Value._convert_to_value_template(self._value)
+    def to_value_expr(self) -> ValueExpr:
+        """Convert this Value to a ValueExpr for use in flow definitions."""
+        return Value._convert_to_value_expr(self._value)
 
     @staticmethod
-    def _convert_to_value_template(data: Any) -> ValueTemplate | None:
-        """Convert arbitrary data to ValueTemplate."""
-        if data is None:
-            return None
+    def _convert_to_value_expr(data: Any) -> ValueExpr:
+        """Convert arbitrary data to ValueExpr."""
+        # For primitive types (none, str, int, float, bool), return as-is
+        if isinstance(data, None | bool | float | str | int):
+            return data
 
         if isinstance(data, Value):
-            return Value._convert_to_value_template(data._value)
+            return Value._convert_to_value_expr(data._value)
 
-        if isinstance(data, StepReference | WorkflowInput | VariableReference):
-            return Value._convert_reference_to_expr(data)
+        if isinstance(data, StepReference):
+            return Value._convert_step_reference(data)
 
-        if isinstance(data, EscapedLiteral):
+        if isinstance(data, WorkflowInput):
+            return Value._convert_workflow_input(data)
+
+        # ValueExpr types pass through as-is
+        if isinstance(data, StepRef | InputRef | VariableRef | LiteralExpr):
             return data
 
         if isinstance(data, dict):
             converted = {}
             for key, value in data.items():
-                converted[key] = Value._convert_to_value_template(value)
+                converted[key] = Value._convert_to_value_expr(value)
             return converted
 
         if isinstance(data, list):
-            return [Value._convert_to_value_template(item) for item in data]
+            return [Value._convert_to_value_expr(item) for item in data]
 
-        # For primitive types (str, int, float, bool), return as-is
-        return data
+        raise ValueError(f"Unsupported value: {data}")
 
     @staticmethod
-    def _convert_reference_to_expr(
-        ref: StepReference | WorkflowInput | VariableReference,
-    ) -> Reference:
-        """Convert a reference to a Reference."""
-        base_ref: WorkflowReference | GeneratedStepReference
-        if isinstance(ref, StepReference):
-            base_ref = GeneratedStepReference(step=ref.step_id)
-            path_str = str(ref.path) if str(ref.path) != "$" else None
-            return Reference(field_from=base_ref, path=path_str, onSkip=ref.on_skip)
-        elif isinstance(ref, WorkflowInput):
-            base_ref = WorkflowReference(workflow=WorkflowRef.input)
-            path_str = str(ref.path) if str(ref.path) != "$" else None
-            return Reference(field_from=base_ref, path=path_str, onSkip=ref.on_skip)
-        elif isinstance(ref, VariableReference):
-            return Reference(field_from=ref, path="$")
-        else:
-            raise ValueError(f"Unknown reference type: {type(ref)}")
+    def _convert_step_reference(ref: StepReference) -> StepRef:
+        """Convert a StepReference to StepRef (step reference)."""
+        path_str = str(ref.path) if str(ref.path) != "$" else None
+        return StepRef(field_step=ref.step_id, path=path_str)
+
+    @staticmethod
+    def _convert_workflow_input(ref: WorkflowInput) -> InputRef:
+        """Convert a WorkflowInput to InputRef (input reference)."""
+        path_str = str(ref.path) if str(ref.path) != "$" else "$"
+        return InputRef(field_input=path_str)
 
     def __getitem__(self, key: str | int) -> Value:
         """
@@ -338,14 +334,6 @@ class Value:
                 f"'{type(self._value).__name__}' object has no attribute '{name}'"
             )
 
-    def with_on_skip(self, on_skip: SkipAction) -> Value:
-        """Create a copy of this Value with the specified onSkip action (only for
-        references)."""
-        if isinstance(self._value, StepReference | WorkflowInput):
-            return Value(self._value.with_on_skip(on_skip))
-        else:
-            raise TypeError(f"Cannot set onSkip on {type(self._value).__name__}")
-
 
 class WorkflowInputValue(Value):
     """Special Value class for workflow input that supports attribute access."""
@@ -366,9 +354,11 @@ class WorkflowInputValue(Value):
 Valuable = (
     Value
     | StepReference
-    | VariableReference
     | WorkflowInput
-    | EscapedLiteral
+    | StepRef
+    | InputRef
+    | VariableRef
+    | LiteralExpr
     | str
     | int
     | float

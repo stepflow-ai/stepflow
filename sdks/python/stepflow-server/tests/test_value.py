@@ -14,12 +14,8 @@
 
 import pytest
 
-from stepflow_server import (
-    OnSkipDefault,
-    OnSkipSkip,
-)
 from stepflow_server.flow_builder import FlowBuilder
-from stepflow_server.generated_flow import EscapedLiteral as LiteralExpr
+from stepflow_server.generated_flow import LiteralExpr
 from stepflow_server.value import JsonPath, StepReference, Value, WorkflowInput
 
 

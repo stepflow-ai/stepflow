@@ -13,7 +13,7 @@
 # the License.
 
 from .context import StepflowContext
-from .exceptions import SkipStep
+from .expressions import ValueExpr
 from .flow_builder import FlowBuilder, StepHandle
 from .generated_flow import (
     Component,
@@ -22,13 +22,8 @@ from .generated_flow import (
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
-    OnErrorSkip,
-    OnSkipDefault,
-    OnSkipSkip,
     Schema,
-    SkipAction,
     Step,
-    ValueTemplate,
 )
 from .server import StepflowServer
 
@@ -42,8 +37,6 @@ __all__ = [
     "StepflowStdioServer",
     "StepflowContext",
     "FlowBuilder",
-    # Exceptions
-    "SkipStep",
     # Value API for cleaner workflow definitions
     "Value",
     "Valuable",
@@ -57,16 +50,13 @@ __all__ = [
     "Step",
     "Component",
     "Schema",
-    "ValueTemplate",
-    # Error and Skip Action types
+    # ValueExpr builder for $step, $input, $variable expressions
+    "ValueExpr",
+    # Error Action types
     "ErrorAction",
     "OnErrorFail",
-    "OnErrorSkip",
     "OnErrorRetry",
     "OnErrorDefault",
-    "SkipAction",
-    "OnSkipSkip",
-    "OnSkipDefault",
 ]
 
 # Add LangChain exports if available

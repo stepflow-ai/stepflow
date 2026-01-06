@@ -26,7 +26,6 @@ import msgspec
 from stepflow_server.context import StepflowContext
 from stepflow_server.exceptions import (
     ComponentNotFoundError,
-    SkipStep,
     StepflowError,
     StepflowExecutionError,
     StepflowProtocolError,
@@ -34,12 +33,13 @@ from stepflow_server.exceptions import (
 from stepflow_server.generated_protocol import (
     ComponentExecuteParams,
     ComponentExecuteResult,
+    ComponentInferSchemaParams,
+    ComponentInferSchemaResult,
     ComponentInfo,
     ComponentInfoParams,
     ComponentInfoResult,
     ComponentListParams,
     Error,
-    FlowResultSkipped,
     InitializeResult,
     ListComponentsResult,
     Message,
@@ -272,6 +272,8 @@ class StepflowServer:
                 return await self._handle_component_list(request)
             elif request.method == Method.components_info:
                 return await self._handle_component_info(request)
+            elif request.method == Method.components_infer_schema:
+                return await self._handle_component_infer_schema(request)
             elif request.method == Method.components_execute:
                 return await self._handle_component_execute(request, context)
             else:
@@ -306,7 +308,7 @@ class StepflowServer:
         # Return protocol version
         result = InitializeResult(server_protocol_version=1)
 
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_list(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/list method."""
@@ -326,7 +328,7 @@ class StepflowServer:
             )
 
         result = ListComponentsResult(components=component_infos)
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_info(self, request: MethodRequest) -> MethodResponse:
         """Handle the components/info method."""
@@ -345,7 +347,29 @@ class StepflowServer:
         )
 
         result = ComponentInfoResult(info=info)
-        return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+        return MethodSuccess(id=request.id, result=result)
+
+    async def _handle_component_infer_schema(
+        self, request: MethodRequest
+    ) -> MethodResponse:
+        """Handle the components/infer_schema method.
+
+        Infers the output schema for a component given an input schema.
+        For now, this returns the static output schema from the component's
+        type annotations. In the future, this could be extended to support
+        dynamic schema inference based on the input schema.
+        """
+        assert isinstance(request.params, ComponentInferSchemaParams)
+        params: ComponentInferSchemaParams = request.params
+
+        component = self._components.get(params.component)
+        if component is None:
+            raise ComponentNotFoundError(f"Component '{params.component}' not found")
+
+        # Return the static output schema from the component's type annotations
+        # In the future, components could implement dynamic schema inference
+        result = ComponentInferSchemaResult(output_schema=component.output_schema())
+        return MethodSuccess(id=request.id, result=result)
 
     async def _handle_component_execute(
         self, request: MethodRequest, context: StepflowContext | None = None
@@ -440,15 +464,8 @@ class StepflowServer:
                 result = ComponentExecuteResult(output=output)
                 logger.info(f"Component {params.component} executed successfully")
                 logger.debug(f"Component output: {output}")
-                return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
+                return MethodSuccess(id=request.id, result=result)
 
-        except SkipStep as e:
-            # Component requested to be skipped - return FlowResultSkipped
-            skip_result = FlowResultSkipped(reason=e.message)
-            result = ComponentExecuteResult(output=skip_result)
-            logger = logging.getLogger(__name__)
-            logger.info(f"Skipped component {params.component}: {e.message}")
-            return MethodSuccess(jsonrpc="2.0", id=request.id, result=result)
         except Exception as e:
             logger = logging.getLogger(__name__)
             logger.error(
@@ -489,7 +506,7 @@ class StepflowServer:
         if not _HAS_LANGCHAIN:
             raise StepflowExecutionError(
                 "LangChain integration requires langchain-core. "
-                "Install with: pip install stepflow-server[langchain]"
+                "Install with: pip install stepflow-py[langchain]"
             )
 
         def decorator(f: Callable) -> Callable:

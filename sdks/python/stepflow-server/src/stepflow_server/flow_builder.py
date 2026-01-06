@@ -24,19 +24,15 @@ import msgspec
 from .generated_flow import (
     Component,
     ErrorAction,
-    EscapedLiteral,
     Flow,
-    Reference,
+    FlowSchema,
+    InputRef,
+    LiteralExpr,
     Schema,
     Step,
-    ValueTemplate,
-    WorkflowReference,
-)
-from .generated_flow import (
-    StepReference as GeneratedStepReference,
-)
-from .generated_flow import (
-    Value as GeneratedValue,
+    StepRef,
+    ValueExpr,
+    VariableRef,
 )
 from .value import (
     JsonPath,
@@ -131,7 +127,7 @@ class FlowBuilder:
         self.variables_schema: dict[str, Any] | None = None
         self.steps: dict[str, Step] = {}
         self._step_handles: dict[str, StepHandle] = {}
-        self._output: ValueTemplate | None = None
+        self._output: ValueExpr | None = None
         self._output_fields: dict[str, Valuable] = {}  # For incremental output building
 
     @classmethod
@@ -151,11 +147,13 @@ class FlowBuilder:
             version=flow.version,
             metadata=flow.metadata,
         )
-        builder.input_schema = flow.inputSchema
-        builder.output_schema = flow.outputSchema
-        # For now, mark that variables schema was present but we can't reconstruct it
-        # since Schema objects don't hold the actual schema data
-        builder.variables_schema = {} if flow.variables is not None else None
+        # Extract schemas from the consolidated FlowSchema
+        if flow.schemas is not None:
+            builder.input_schema = flow.schemas.input
+            builder.output_schema = flow.schemas.output
+            # Mark variables schema was present (can't fully reconstruct)
+            if flow.schemas.variables is not None:
+                builder.variables_schema = {}
         builder._output = flow.output
 
         # Recreate steps as dict and step handles
@@ -242,9 +240,6 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        input_schema: dict[str, Any] | Schema | None = None,
-        output_schema: dict[str, Any] | Schema | None = None,
-        skip_if: StepReference | WorkflowInput | Value | None = None,
         on_error: ErrorAction | None = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
@@ -262,43 +257,17 @@ class FlowBuilder:
         # Auto-convert input data
         converted_input = self._auto_convert_input(input_data)
 
-        # Convert input data to ValueTemplate
-        input_template = self._convert_to_value_template(converted_input)
-
-        # Do not convert schemas.
-        input_schema_obj = input_schema
-        output_schema_obj = output_schema
-
-        # Convert skip_if to Expr
-        skip_if_expr = None
-        if skip_if is not None:
-            if isinstance(skip_if, Value):
-                skip_if_ref = skip_if._value
-                if isinstance(skip_if_ref, StepReference | WorkflowInput):
-                    skip_if_expr = self._convert_reference_to_expr(skip_if_ref)
-                else:
-                    raise ValueError(
-                        "skip_if Value must contain a StepReference or WorkflowInput"
-                    )
-            else:
-                skip_if_expr = self._convert_reference_to_expr(skip_if)
+        # Convert input data to ValueExpr
+        input_expr = self._convert_to_value_expr(converted_input)
 
         # on_error is already an ErrorAction or None
         on_error_action = on_error
 
-        # Create the step.
-        #
-        # We currently ignore the type checking for inputSchema and outputSchema
-        # because the datamodel code generated doesn't populate with the JSON
-        # schema fields (creating an empty struct), so there is no way to populate
-        # it correctly. The result is still correct (the JSON-encoded dictionary).
+        # Create the step
         step = Step(
             id=unique_id,
             component=component,
-            input=input_template,
-            inputSchema=input_schema_obj,  # type: ignore
-            outputSchema=output_schema_obj,  # type: ignore
-            skipIf=skip_if_expr,
+            input=input_expr,
             onError=on_error_action,
             mustExecute=must_execute,
             metadata=metadata or {},
@@ -314,7 +283,7 @@ class FlowBuilder:
 
     def set_output(self, output_data: Valuable) -> FlowBuilder:
         """Set the output of the flow."""
-        self._output = self._convert_to_value_template(output_data)
+        self._output = self._convert_to_value_expr(output_data)
         return self
 
     def add_output_field(self, key: str, value: Valuable) -> FlowBuilder:
@@ -356,7 +325,10 @@ class FlowBuilder:
             Value
             | StepReference
             | WorkflowInput
-            | EscapedLiteral
+            | StepRef
+            | InputRef
+            | VariableRef
+            | LiteralExpr
             | str
             | int
             | float
@@ -396,11 +368,26 @@ class FlowBuilder:
             output_to_use = self._output
         elif self._output_fields:
             # Build output from accumulated fields
-            output_to_use = self._convert_to_value_template(self._output_fields)
+            output_to_use = self._convert_to_value_expr(self._output_fields)
         else:
             raise ValueError(
                 "Flow output must be set before building. Use set_output() or "
                 "add_output_field() to specify the flow output."
+            )
+
+        # Build FlowSchema if any schemas are set
+        schemas = None
+        if (
+            self.input_schema is not None
+            or self.output_schema is not None
+            or self.variables_schema is not None
+        ):
+            schemas = FlowSchema(
+                defs={},
+                steps={},
+                input=self.input_schema,
+                output=self.output_schema,
+                variables=self.variables_schema,  # type: ignore
             )
 
         return Flow(
@@ -408,23 +395,15 @@ class FlowBuilder:
             name=self.name,
             description=self.description,
             version=self.version,
-            inputSchema=self.input_schema,
-            outputSchema=self.output_schema,
-            variables=self.variables_schema,  # type: ignore
+            schemas=schemas,
             steps=list(self.steps.values()),
             output=output_to_use,
             metadata=self.metadata,
         )
 
-    def _convert_to_value_template(self, data: Valuable) -> ValueTemplate | None:
-        """Convert arbitrary data to ValueTemplate."""
-        return Value._convert_to_value_template(data)
-
-    def _convert_reference_to_expr(
-        self, ref: StepReference | WorkflowInput
-    ) -> Reference:
-        """Convert a reference to a Reference."""
-        return Value._convert_reference_to_expr(ref)
+    def _convert_to_value_expr(self, data: Valuable) -> ValueExpr | None:
+        """Convert arbitrary data to ValueExpr."""
+        return Value._convert_to_value_expr(data)
 
     def get_references(self) -> list[StepReference | WorkflowInput]:
         """Extract all references used in the current flow."""
@@ -436,7 +415,7 @@ class FlowBuilder:
 
         # Get references from flow output
         if self._output:
-            references.extend(self.get_value_template_references(self._output))
+            references.extend(self.get_value_expr_references(self._output))
 
         return references
 
@@ -446,11 +425,7 @@ class FlowBuilder:
 
         # Get references from step input
         if step.input:
-            references.extend(self.get_value_template_references(step.input))
-
-        # Get references from skipIf condition
-        if step.skipIf:
-            references.extend(self.get_expr_references(step.skipIf))
+            references.extend(self.get_value_expr_references(step.input))
 
         # Get references from onError default value
         if (
@@ -458,67 +433,45 @@ class FlowBuilder:
             and hasattr(step.onError, "defaultValue")
             and step.onError.defaultValue
         ):
-            references.extend(
-                self.get_value_template_references(step.onError.defaultValue)
-            )
+            references.extend(self.get_value_expr_references(step.onError.defaultValue))
 
         return references
 
-    def get_value_template_references(
-        self, value_template: ValueTemplate
+    def get_value_expr_references(
+        self, value_expr: ValueExpr
     ) -> list[StepReference | WorkflowInput]:
-        """Extract all references from a ValueTemplate."""
+        """Extract all references from a ValueExpr."""
         references: list[StepReference | WorkflowInput] = []
 
-        if isinstance(value_template, Reference):
-            # This is a $from expression
-            references.extend(self.get_expr_references(value_template))
-        elif isinstance(value_template, EscapedLiteral):
-            # This is a $literal expression - check if it contains nested references
-            if isinstance(value_template.field_literal, dict | list):
+        if isinstance(value_expr, StepRef):
+            # Step reference
+            json_path = JsonPath()
+            if value_expr.path is not None and value_expr.path != "$":
+                json_path.fragments = [value_expr.path]
+            references.append(StepReference(value_expr.field_step, json_path))
+        elif isinstance(value_expr, InputRef):
+            # Input reference
+            json_path = JsonPath()
+            if value_expr.field_input is not None and value_expr.field_input != "$":
+                json_path.fragments = [value_expr.field_input]
+            references.append(WorkflowInput(json_path))
+        elif isinstance(value_expr, VariableRef):
+            # Variable reference - variables don't appear in step/input references
+            pass
+        elif isinstance(value_expr, LiteralExpr):
+            # Escaped literal - check if it contains nested references
+            if isinstance(value_expr.field_literal, dict | list):
                 references.extend(
-                    self.get_value_template_references(value_template.field_literal)
+                    self.get_value_expr_references(value_expr.field_literal)
                 )
-        elif isinstance(value_template, dict):
+        elif isinstance(value_expr, dict):
             # Recursively process dictionary values
-            for v in value_template.values():
-                references.extend(self.get_value_template_references(v))
-        elif isinstance(value_template, list):
+            for v in value_expr.values():
+                references.extend(self.get_value_expr_references(v))
+        elif isinstance(value_expr, list):
             # Recursively process list items
-            for item in value_template:
-                references.extend(self.get_value_template_references(item))
+            for item in value_expr:
+                references.extend(self.get_value_expr_references(item))
         # For primitive types (str, int, float, bool, None), no references
-
-        return references
-
-    def get_expr_references(
-        self, expr: Reference | EscapedLiteral | GeneratedValue
-    ) -> list[StepReference | WorkflowInput]:
-        """Extract references from an Expr."""
-        references: list[StepReference | WorkflowInput] = []
-
-        if isinstance(expr, Reference):
-            # This is a $from expression
-            base_ref = expr.field_from
-
-            if isinstance(base_ref, WorkflowReference):
-                # Reference to workflow input
-                json_path = JsonPath()
-                if expr.path is not None and expr.path != "$":
-                    json_path.fragments = [expr.path]
-                references.append(WorkflowInput(json_path, expr.onSkip))
-            elif isinstance(base_ref, GeneratedStepReference):
-                # Reference to step output
-                json_path = JsonPath()
-                if expr.path is not None and expr.path != "$":
-                    json_path.fragments = [expr.path]
-                references.append(StepReference(base_ref.step, json_path, expr.onSkip))
-        elif isinstance(expr, EscapedLiteral):
-            # This is a $literal expression - check if it contains nested references
-            if isinstance(expr.field_literal, dict | list):
-                references.extend(
-                    self.get_value_template_references(expr.field_literal)
-                )
-        # For plain values, no references
 
         return references

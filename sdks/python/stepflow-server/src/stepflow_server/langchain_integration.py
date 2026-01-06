@@ -45,7 +45,7 @@ def check_langchain_available():
     if not LANGCHAIN_AVAILABLE:
         raise StepflowExecutionError(
             "LangChain integration requires langchain-core. "
-            "Install with: pip install stepflow-server[langchain]"
+            "Install with: pip install stepflow-py[langchain]"
         )
 
 

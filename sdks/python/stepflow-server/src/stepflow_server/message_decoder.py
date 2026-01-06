@@ -31,14 +31,9 @@ from .generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
-    EvaluateFlowParams,
-    EvaluateFlowResult,
-    GetBatchParams,
-    GetBatchResult,
     GetBlobParams,
     GetBlobResult,
-    GetFlowMetadataParams,
-    GetFlowMetadataResult,
+    GetRunProtocolParams,
     Initialized,
     InitializeParams,
     InitializeResult,
@@ -53,8 +48,8 @@ from .generated_protocol import (
     PutBlobParams,
     PutBlobResult,
     RequestId,
-    SubmitBatchParams,
-    SubmitBatchResult,
+    RunStatusProtocol,
+    SubmitRunProtocolParams,
 )
 
 
@@ -225,14 +220,10 @@ def _decode_params_for_method(method: Method, params_raw: Raw):
         return msgspec.json.decode(params_raw, type=GetBlobParams)
     elif method == Method.blobs_put:
         return msgspec.json.decode(params_raw, type=PutBlobParams)
-    elif method == Method.flows_evaluate:
-        return msgspec.json.decode(params_raw, type=EvaluateFlowParams)
-    elif method == Method.flows_get_metadata:
-        return msgspec.json.decode(params_raw, type=GetFlowMetadataParams)
-    elif method == Method.flows_submit_batch:
-        return msgspec.json.decode(params_raw, type=SubmitBatchParams)
-    elif method == Method.flows_get_batch:
-        return msgspec.json.decode(params_raw, type=GetBatchParams)
+    elif method == Method.runs_submit:
+        return msgspec.json.decode(params_raw, type=SubmitRunProtocolParams)
+    elif method == Method.runs_get:
+        return msgspec.json.decode(params_raw, type=GetRunProtocolParams)
     else:
         raise StepflowProtocolError(f"Unknown method: {method.value}")
 
@@ -251,13 +242,9 @@ def _get_result_type_for_method(method: Method) -> type:
         return GetBlobResult
     elif method == Method.blobs_put:
         return PutBlobResult
-    elif method == Method.flows_evaluate:
-        return EvaluateFlowResult
-    elif method == Method.flows_get_metadata:
-        return GetFlowMetadataResult
-    elif method == Method.flows_submit_batch:
-        return SubmitBatchResult
-    elif method == Method.flows_get_batch:
-        return GetBatchResult
+    elif method == Method.runs_submit:
+        return RunStatusProtocol
+    elif method == Method.runs_get:
+        return RunStatusProtocol
     else:
         raise StepflowProtocolError(f"Unknown method: {method.value}")
