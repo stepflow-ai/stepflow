@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: load-balancer
-        image: stepflow-load-balancer:latest
+        image: localhost/stepflow-load-balancer:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
         ports:
         - name: http

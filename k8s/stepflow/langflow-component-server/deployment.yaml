@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: component-server
-        image: langflow-component-server:latest
+        image: localhost/langflow-component-server:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
         ports:
         - name: http

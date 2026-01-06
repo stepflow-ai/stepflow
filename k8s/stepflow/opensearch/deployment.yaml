@@ -58,10 +58,6 @@ spec:
               name: stepflow-secrets
               key: opensearch-password
               optional: true
-        - name: discovery.type
-          value: "single-node"
-        - name: plugins.security.disabled
-          value: "true"
         - name: DISABLE_SECURITY_PLUGIN
           value: "true"
         volumeMounts:

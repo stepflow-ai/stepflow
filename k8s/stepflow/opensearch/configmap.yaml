@@ -34,9 +34,6 @@ data:
     # Performance settings for demo
     bootstrap.memory_lock: false
 
-    # Disable security plugin for development
-    plugins.security.disabled: true
-
     # Enable index creation
     action.auto_create_index: true
 

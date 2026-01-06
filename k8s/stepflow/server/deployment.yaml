@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: stepflow-server
-        image: stepflow-server:latest
+        image: localhost/stepflow-server:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
         ports:
         - name: http
