@@ -21,7 +21,7 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
-  # Build pure Python packages (stepflow, stepflow-client, stepflow-server)
+  # Build pure Python packages
   build-pure-python:
     runs-on: ubuntu-latest
     steps:
@@ -35,29 +35,21 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
-      - name: Build stepflow (shared types)
+      - name: Build all pure Python packages
+        working-directory: sdks/python
         run: |
-          cd sdks/python/stepflow
-          uv build
+          # Build each package to the workspace dist folder
+          uv build --package stepflow-api
+          uv build --package stepflow-core
+          uv build --package stepflow-client
+          uv build --package stepflow-server
+          uv build --package stepflow-py
 
-      - name: Build stepflow-client
-        run: |
-          cd sdks/python/stepflow-client
-          uv build
-
-      - name: Build stepflow-server
-        run: |
-          cd sdks/python/stepflow-server
-          uv build
-
-      - name: Upload pure Python wheels
+      - name: Upload pure Python packages
         uses: actions/upload-artifact@v4
         with:
           name: pure-python-wheels
-          path: |
-            sdks/python/stepflow/dist/*.whl
-            sdks/python/stepflow-client/dist/*.whl
-            sdks/python/stepflow-server/dist/*.whl
+          path: sdks/python/dist/*
 
   # Build stepflow-runtime with platform-specific binary
   build-runtime:
@@ -132,31 +124,29 @@ jobs:
             -Destination sdks/python/stepflow-runtime/src/stepflow_runtime/bin/
 
       - name: Build runtime wheel
+        working-directory: sdks/python
         run: |
-          cd sdks/python/stepflow-runtime
-          uv build --wheel
+          mkdir -p runtime-dist
+          uv build --package stepflow-runtime --wheel --out-dir runtime-dist
 
-      - name: Rename wheel with platform tag (Unix)
+      - name: Retag wheel with platform tag (Unix)
         if: runner.os != 'Windows'
         run: |
-          cd sdks/python/stepflow-runtime/dist
+          cd sdks/python/runtime-dist
+          pip install wheel
           for f in *.whl; do
-            new_name="${f/py3-none-any/${{ matrix.platform_tag }}}"
-            if [ "$f" != "$new_name" ]; then
-              mv "$f" "$new_name"
-            fi
+            # Use wheel tags to properly retag the wheel (updates both filename and internal metadata)
+            python -m wheel tags --platform-tag ${{ matrix.platform_tag }} --remove "$f"
           done
           ls -la
 
-      - name: Rename wheel with platform tag (Windows)
+      - name: Retag wheel with platform tag (Windows)
         if: runner.os == 'Windows'
         run: |
-          cd sdks/python/stepflow-runtime/dist
+          cd sdks/python/runtime-dist
+          pip install wheel
           Get-ChildItem *.whl | ForEach-Object {
-            $newName = $_.Name -replace 'py3-none-any', '${{ matrix.platform_tag }}'
-            if ($newName -ne $_.Name) {
-              Rename-Item $_.FullName $newName
-            }
+            python -m wheel tags --platform-tag ${{ matrix.platform_tag }} --remove $_.FullName
           }
           Get-ChildItem
 
@@ -164,7 +154,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: runtime-wheel-${{ matrix.target }}
-          path: sdks/python/stepflow-runtime/dist/*.whl
+          path: sdks/python/runtime-dist/*.whl
 
   # Test all packages together
   test:
@@ -213,13 +203,7 @@ jobs:
 
       - name: Install wheels
         run: |
-          pip install --find-links=wheels/ stepflow stepflow-client stepflow-server stepflow-runtime
-
-      - name: Run tests (shared types)
-        run: |
-          cd sdks/python/stepflow
-          pip install pytest pytest-asyncio
-          pytest tests/ -v || echo "No tests found"
+          pip install --find-links=wheels/ stepflow-api stepflow-core stepflow-client stepflow-server stepflow-runtime stepflow-py
 
       - name: Run tests (client)
         run: |
@@ -235,10 +219,11 @@ jobs:
 
       - name: Verify imports
         run: |
-          python -c "from stepflow import FlowResult, RestartPolicy; print('stepflow OK')"
+          python -c "from stepflow_core import FlowResult, RestartPolicy; print('stepflow_core OK')"
           python -c "from stepflow_client import StepflowClient; print('stepflow_client OK')"
           python -c "from stepflow_server import StepflowServer; print('stepflow_server OK')"
           python -c "from stepflow_runtime import StepflowRuntime; print('stepflow_runtime OK')"
+          python -c "from stepflow_py import StepflowClient, StepflowServer, FlowResult; print('stepflow_py OK')"
 
   # Publish to PyPI on release
   publish:

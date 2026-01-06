@@ -1,2 +1,6 @@
 *.pyc
 __pycache__
+
+# Bundled binaries (built by CI for each platform)
+stepflow-runtime/src/stepflow_runtime/bin/stepflow-server
+stepflow-runtime/src/stepflow_runtime/bin/stepflow-server.exe
