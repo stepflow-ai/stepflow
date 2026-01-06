@@ -1,163 +1,238 @@
 # Stepflow Python SDK
 
-Python SDK for building Stepflow components and workflows.
+Python packages for building and running Stepflow workflows.
 
-## Packages
+## How the Packages Fit Together
 
-This workspace contains multiple packages:
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Your Application                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                             ▼
+        ┌───────────────────┐         ┌───────────────────┐
+        │  stepflow-client  │         │ stepflow-runtime  │
+        │  (remote server)  │         │ (embedded server) │
+        └───────────────────┘         └───────────────────┘
+                    │                             │
+                    └──────────────┬──────────────┘
+                                   ▼
+                        ┌───────────────────┐
+                        │   stepflow-core   │
+                        │ (shared types &   │
+                        │  StepflowExecutor │
+                        │    protocol)      │
+                        └───────────────────┘
 
-| Package | Description |
-|---------|-------------|
-| **stepflow-core** | Core types and interfaces (`FlowResult`, `StepflowExecutor` protocol) |
-| **stepflow-api** | Generated API client models from OpenAPI spec |
-| **stepflow-client** | HTTP client for remote Stepflow servers |
-| **stepflow-runtime** | Embedded runtime with bundled server binary |
-| **stepflow-server** | Component server SDK for building custom components |
-
-## Installation
-
-```bash
-# For building custom components
-pip install stepflow-server
-
-# For remote execution
-pip install stepflow-client
-
-# For embedded local execution
-pip install stepflow-runtime
+        ┌───────────────────┐
+        │  stepflow-server  │  ◄── Build custom components
+        │ (component SDK)   │
+        └───────────────────┘
 ```
 
-## Quick Start
+| Package | What it's for |
+|---------|---------------|
+| **stepflow-server** | Build custom Python components that workflows can call |
+| **stepflow-client** | Connect to a remote Stepflow server |
+| **stepflow-runtime** | Run an embedded Stepflow server in your Python process |
+| **stepflow-core** | Shared types (`FlowResult`, `StepflowExecutor` protocol) |
+| **stepflow-api** | Generated HTTP client (used internally) |
 
-### Building Components
+## Quick Start: End-to-End Example
+
+This example shows the complete flow: building a component, writing a workflow, and executing it.
+
+### 1. Build a Custom Component
+
+```bash
+pip install stepflow-server
+```
+
+Create `my_components.py`:
 
 ```python
-from stepflow_server import StepflowStdioServer, StepflowContext
+from stepflow_server import StepflowStdioServer
 import msgspec
 
-class MyInput(msgspec.Struct):
-    message: str
-    count: int
+class GreetInput(msgspec.Struct):
+    name: str
 
-class MyOutput(msgspec.Struct):
-    result: str
+class GreetOutput(msgspec.Struct):
+    greeting: str
 
 server = StepflowStdioServer()
 
 @server.component
-def my_component(input: MyInput) -> MyOutput:
-    return MyOutput(result=f"Processed: {input.message} x{input.count}")
-
-@server.component
-async def component_with_context(input: MyInput, context: StepflowContext) -> MyOutput:
-    blob_id = await context.put_blob({"processed": input.message})
-    return MyOutput(result=f"Stored blob: {blob_id}")
+def greet(input: GreetInput) -> GreetOutput:
+    return GreetOutput(greeting=f"Hello, {input.name}!")
 
 if __name__ == "__main__":
     server.run()
 ```
 
-### Remote Execution
+> **Note:** You don't need to run the component server manually. Stepflow launches it automatically based on your configuration (see step 2).
 
-```python
-from stepflow_client import StepflowClient
+### 2. Configure Stepflow to Use Your Component
 
-async def main():
-    client = StepflowClient("http://localhost:7837")
-    result = await client.run("workflow.yaml", {"input": "value"})
-    print(result)
+Create `stepflow-config.yml`:
+
+```yaml
+plugins:
+  builtin:
+    type: builtin
+
+  python:
+    type: stepflow
+    transport: stdio
+    command: python
+    args: ["my_components.py"]
+
+routes:
+  "/python/{*component}":
+    - plugin: python
+  "/{*component}":
+    - plugin: builtin
 ```
 
-### Embedded Runtime
+### 3. Write a Workflow
+
+Create `hello-workflow.yaml`:
+
+```yaml
+schema: "flow/v1"
+name: hello-world
+
+input:
+  type: object
+  properties:
+    name:
+      type: string
+  required: [name]
+
+steps:
+  greet:
+    component: /python/greet
+    input:
+      name: { $input: "name" }
+
+output:
+  message: { $step: "greet", path: "greeting" }
+```
+
+### 4. Execute the Workflow
+
+**Option A: Embedded runtime (no separate server)**
+
+```bash
+pip install stepflow-runtime
+```
 
 ```python
+import asyncio
 from stepflow_runtime import StepflowRuntime
 
 async def main():
     async with StepflowRuntime.start("stepflow-config.yml") as runtime:
-        result = await runtime.run("workflow.yaml", {"input": "value"})
-        print(result)
+        result = await runtime.run("hello-workflow.yaml", {"name": "World"})
+
+        if result.is_success:
+            print(result.output)  # {"message": "Hello, World!"}
+        else:
+            print(f"Error: {result.error.message}")
+
+asyncio.run(main())
 ```
 
-## Configuration
+**Option B: Remote server**
 
-The SDK is configured via environment variables:
+```bash
+pip install stepflow-client
+```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STEPFLOW_SERVICE_NAME` | Service name for observability | `stepflow-python` |
-| `STEPFLOW_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
-| `STEPFLOW_LOG_DESTINATION` | Log destination (stderr, file, otlp) | `otlp` if endpoint set |
-| `STEPFLOW_OTLP_ENDPOINT` | OTLP endpoint for traces/logs | - |
-| `STEPFLOW_TRACE_ENABLED` | Enable distributed tracing | `true` |
+```bash
+# Start the server (in another terminal)
+stepflow-server --config stepflow-config.yml
+```
+
+```python
+import asyncio
+from stepflow_client import StepflowClient
+
+async def main():
+    async with StepflowClient("http://localhost:7837") as client:
+        result = await client.run("hello-workflow.yaml", {"name": "World"})
+
+        if result.is_success:
+            print(result.output)  # {"message": "Hello, World!"}
+        else:
+            print(f"Error: {result.error.message}")
+
+asyncio.run(main())
+```
+
+## Choosing Between Client and Runtime
+
+Both `StepflowClient` and `StepflowRuntime` implement the `StepflowExecutor` protocol, so they're interchangeable:
+
+```python
+from stepflow_core import StepflowExecutor, FlowResult
+
+async def run_workflow(executor: StepflowExecutor, input: dict) -> FlowResult:
+    # Works with either StepflowClient or StepflowRuntime
+    return await executor.run("workflow.yaml", input)
+```
+
+**Use `StepflowRuntime` when:**
+- Running locally for development
+- Embedding Stepflow in a Python application
+- You don't want to manage a separate server process
+
+**Use `StepflowClient` when:**
+- Connecting to a shared/production server
+- Running in a distributed environment
+- The server is already running
+
+## StepflowExecutor API
+
+Both `StepflowClient` and `StepflowRuntime` provide these methods:
+
+```python
+# Execute and wait for result
+result = await executor.run(flow, input, overrides=None)
+
+# Submit without waiting (returns run_id)
+run_id = await executor.submit(flow, input, overrides=None)
+
+# Get result of a submitted run
+result = await executor.get_result(run_id)
+
+# Validate a workflow
+validation = await executor.validate(flow)
+
+# List available components
+components = await executor.list_components()
+```
+
+## Building Custom Components
+
+See the [stepflow-server README](stepflow-server/README.md) for detailed documentation on:
+- Defining component input/output schemas with msgspec
+- Async components with `StepflowContext` for blob storage
+- HTTP transport for production deployments
 
 ## Development
-
-### Setup
 
 ```bash
 cd sdks/python
 uv sync
-```
 
-### Available Tasks
-
-```bash
-uv run poe test       # Run all tests
+uv run poe test       # Run tests
 uv run poe fmt        # Format code
-uv run poe lint       # Lint and fix code
-uv run poe check      # Check formatting and linting (no fixes)
-uv run poe typecheck  # Run type checking
-uv run poe codegen    # Regenerate protocol types
-uv run poe api-gen    # Regenerate API client from OpenAPI
-uv run poe api-check  # Check if API client is up-to-date
-uv run poe api-update # Update OpenAPI spec from server and regenerate
+uv run poe lint       # Lint code
+uv run poe typecheck  # Type check
 ```
-
-## Code Generation
-
-This workspace uses code generation for two purposes. Both depend on JSON schema files in `../../schemas/` which are generated from the Rust codebase.
-
-### Schema Sources
-
-The JSON schemas are **not hand-written** - they're generated from Rust types:
-
-| Schema | Generated From | How to Update |
-|--------|----------------|---------------|
-| `flow.json`, `protocol.json` | Rust types in `stepflow-protocol` | `STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol` |
-| `openapi.json` | Running stepflow-server | `uv run poe api-gen --update-spec` |
-
-See [stepflow-rs/CLAUDE.md](../../stepflow-rs/CLAUDE.md#schema-generation) for details on Rust schema generation.
-
-### Protocol Types (`stepflow-server`)
-
-Protocol types (JSON-RPC messages, flow definitions) are generated from JSON schemas:
-
-```bash
-uv run poe codegen
-```
-
-Source: `../../schemas/flow.json`, `../../schemas/protocol.json` → Target: `stepflow-server/src/stepflow_server/generated_*.py`
-
-### API Client (`stepflow-api`)
-
-API client models are generated from the OpenAPI specification:
-
-```bash
-# Regenerate from stored spec
-uv run poe api-gen
-
-# Update spec from server AND regenerate (builds and runs Rust server temporarily)
-uv run poe api-update
-
-# Check if models are up-to-date (CI)
-uv run poe api-check
-```
-
-Source: `../../schemas/openapi.json` → Target: `stepflow-api/src/stepflow_api/models/`
-
-See [stepflow-api README](stepflow-api/README.md) for details on the generation process and custom overrides.
 
 ## License
 
-Licensed under the Apache License, Version 2.0.
+Apache-2.0
