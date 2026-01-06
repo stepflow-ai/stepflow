@@ -1,0 +1,103 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: stepflow-o12y
+data:
+  prometheus.yml: |
+    # Prometheus configuration for Stepflow observability
+
+    global:
+      scrape_interval: 15s      # How frequently to scrape targets
+      evaluation_interval: 15s  # How frequently to evaluate rules
+      external_labels:
+        cluster: 'stepflow-kind'
+        environment: 'development'
+
+    scrape_configs:
+      # Scrape Prometheus itself
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+            labels:
+              component: 'prometheus'
+
+      # Scrape OpenTelemetry Collector's own metrics
+      - job_name: 'otel-collector'
+        static_configs:
+          - targets: ['otel-collector.stepflow-o12y.svc.cluster.local:8888']
+            labels:
+              component: 'otel-collector'
+
+      # Scrape metrics from OpenTelemetry Collector's Prometheus exporter
+      # This is where Stepflow application metrics will appear
+      - job_name: 'stepflow-via-otel'
+        static_configs:
+          - targets: ['otel-collector.stepflow-o12y.svc.cluster.local:8889']
+            labels:
+              source: 'otlp'
+
+      # Jaeger metrics
+      - job_name: 'jaeger'
+        static_configs:
+          - targets: ['jaeger.stepflow-o12y.svc.cluster.local:14269']
+            labels:
+              component: 'jaeger'
+
+      # Loki metrics
+      - job_name: 'loki'
+        static_configs:
+          - targets: ['loki.stepflow-o12y.svc.cluster.local:3100']
+            labels:
+              component: 'loki'
+
+      # Grafana metrics
+      - job_name: 'grafana'
+        static_configs:
+          - targets: ['grafana.stepflow-o12y.svc.cluster.local:3000']
+            labels:
+              component: 'grafana'
+
+      # Stepflow server pods (if they expose metrics endpoint)
+      - job_name: 'stepflow-server'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stepflow
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: stepflow-server
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: $1:9090
+
+      # Stepflow load balancer pods (if they expose metrics endpoint)
+      - job_name: 'stepflow-load-balancer'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stepflow
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: stepflow-load-balancer
+          - source_labels: [__meta_kubernetes_pod_ip]
+            target_label: __address__
+            replacement: $1:9090

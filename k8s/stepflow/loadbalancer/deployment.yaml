@@ -1,0 +1,99 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stepflow-load-balancer
+  namespace: stepflow
+  labels:
+    app: stepflow-load-balancer
+    component: load-balancer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stepflow-load-balancer
+  template:
+    metadata:
+      labels:
+        app: stepflow-load-balancer
+        component: load-balancer
+    spec:
+      containers:
+      - name: load-balancer
+        image: stepflow-load-balancer:latest
+        imagePullPolicy: Never  # Use local image loaded into Kind
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: METRICS_ADDRESS
+          value: "0.0.0.0:9090"
+        - name: UPSTREAM_SERVICE
+          value: "langflow-component-server-headless.stepflow.svc.cluster.local:8080"
+        # Stepflow logging configuration
+        - name: STEPFLOW_LOG_LEVEL
+          value: "debug"
+        - name: STEPFLOW_OTHER_LOG_LEVEL
+          value: "warn"
+        - name: STEPFLOW_LOG_FORMAT
+          value: "json"
+        # Stepflow OpenTelemetry configuration
+        - name: STEPFLOW_OTLP_ENDPOINT
+          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+        - name: STEPFLOW_TRACE_ENABLED
+          value: "true"
+        - name: STEPFLOW_METRICS_ENABLED
+          value: "true"
+        # Standard OTEL variables for compatibility
+        - name: OTEL_SERVICE_NAME
+          value: "stepflow-load-balancer"
+        # Pod metadata from downward API
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # OpenTelemetry resource attributes for Grafana correlation
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=kubernetes,service.namespace=stepflow,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3

@@ -1,0 +1,76 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: stepflow-o12y
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+
+    positions:
+      filename: /tmp/positions.yaml
+
+    clients:
+      - url: http://loki.stepflow-o12y.svc.cluster.local:3100/loki/api/v1/push
+
+    scrape_configs:
+      # Scrape logs from all pods in stepflow namespace
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - stepflow
+        pipeline_stages:
+          - cri: {}  # Parse CRI format (containerd)
+          # Extract trace context from key=value format logs
+          - regex:
+              expression: '.*trace_id=(?P<trace_id>\S+).*span_id=(?P<span_id>\S+).*run_id=(?P<run_id>\S+).*flow_id=(?P<flow_id>\S+).*'
+          # Extract log level from structured logs
+          - regex:
+              expression: '.*(INFO|DEBUG|WARN|ERROR|TRACE).*'
+              source: log
+          - labels:
+              trace_id:
+              span_id:
+              run_id:
+              flow_id:
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_component]
+            target_label: component
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: job
+            replacement: stepflow/$1
+          # Add path for pod logs
+          - replacement: /var/log/pods/*$1/*.log
+            separator: /
+            source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            target_label: __path__

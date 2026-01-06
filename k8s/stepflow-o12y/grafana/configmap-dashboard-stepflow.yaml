@@ -1,0 +1,188 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-stepflow
+  namespace: stepflow-o12y
+data:
+  workflow-overview.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(stepflow_workflow_executions_total)",
+              "refId": "A"
+            }
+          ],
+          "title": "Active Workflows",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {"type": "linear"},
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "options": {
+            "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "none"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "stepflow_workflow_duration_seconds_sum / stepflow_workflow_duration_seconds_count",
+              "legendFormat": "duration",
+              "refId": "A"
+            }
+          ],
+          "title": "Workflow Duration (seconds)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 8},
+          "id": 3,
+          "options": {
+            "mode": "markdown",
+            "content": "## Workflow Traces\n\nView distributed traces for workflow executions:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=stepflow-server)\n- Click on **TraceID** links in the logs panel below to view individual traces\n\n**Tip**: Logs are automatically linked to traces via `trace_id` - click any trace ID in the logs to view the full trace."
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [],
+          "title": "Trace Navigation",
+          "type": "text"
+        },
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 12},
+          "id": 4,
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": false,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "loki", "uid": "loki"},
+              "expr": "{job=~\"stepflow/.*\"}",
+              "refId": "A"
+            }
+          ],
+          "title": "Stepflow Logs",
+          "type": "logs"
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["stepflow", "workflows"],
+      "templating": {"list": []},
+      "time": {"from": "now-6h", "to": "now"},
+      "timepicker": {},
+      "timezone": "",
+      "title": "Stepflow Workflow Overview",
+      "uid": "stepflow-workflow-overview",
+      "version": 1,
+      "weekStart": ""
+    }
