@@ -1,6 +1,7 @@
 # Stepflow Python SDK Workspace
 #
-# Individual packages:
+# Packages:
+#   - stepflow-py/       - Unified SDK (install this)
 #   - stepflow-core/     - Core types and interfaces
 #   - stepflow-api/      - Generated API client models
 #   - stepflow-client/   - HTTP client for remote servers
@@ -9,6 +10,7 @@
 
 [tool.uv.workspace]
 members = [
+    "stepflow-py",
     "stepflow-core",
     "stepflow-api",
     "stepflow-client",
@@ -17,6 +19,7 @@ members = [
 ]
 
 [tool.uv.sources]
+stepflow-py = { workspace = true }
 stepflow-core = { workspace = true }
 stepflow-api = { workspace = true }
 stepflow-client = { workspace = true }

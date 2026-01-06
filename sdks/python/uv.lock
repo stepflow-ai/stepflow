@@ -11,6 +11,7 @@ members = [
     "stepflow-api",
     "stepflow-client",
     "stepflow-core",
+    "stepflow-py",
     "stepflow-runtime",
     "stepflow-server",
 ]
@@ -1458,6 +1459,43 @@ dev = [
 name = "stepflow-core"
 version = "0.1.0"
 source = { editable = "stepflow-core" }
+
+[[package]]
+name = "stepflow-py"
+version = "0.1.0"
+source = { editable = "stepflow-py" }
+dependencies = [
+    { name = "stepflow-client" },
+    { name = "stepflow-core" },
+    { name = "stepflow-server" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "stepflow-runtime" },
+    { name = "stepflow-server", extra = ["http", "langchain"] },
+]
+http = [
+    { name = "stepflow-server", extra = ["http"] },
+]
+langchain = [
+    { name = "stepflow-server", extra = ["langchain"] },
+]
+runtime = [
+    { name = "stepflow-runtime" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "stepflow-client", editable = "stepflow-client" },
+    { name = "stepflow-core", editable = "stepflow-core" },
+    { name = "stepflow-py", extras = ["runtime", "http", "langchain"], marker = "extra == 'all'", editable = "stepflow-py" },
+    { name = "stepflow-runtime", marker = "extra == 'runtime'", editable = "stepflow-runtime" },
+    { name = "stepflow-server", editable = "stepflow-server" },
+    { name = "stepflow-server", extras = ["http"], marker = "extra == 'http'", editable = "stepflow-server" },
+    { name = "stepflow-server", extras = ["langchain"], marker = "extra == 'langchain'", editable = "stepflow-server" },
+]
+provides-extras = ["runtime", "http", "langchain", "all"]
 
 [[package]]
 name = "stepflow-runtime"

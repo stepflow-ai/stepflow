@@ -1,58 +1,38 @@
 # Stepflow Python SDK
 
-Python packages for building and running Stepflow workflows.
+Python SDK for building and running Stepflow workflows.
 
-## How the Packages Fit Together
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Your Application                            │
-└─────────────────────────────────────────────────────────────────────┘
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                             ▼
-        ┌───────────────────┐         ┌───────────────────┐
-        │  stepflow-client  │         │ stepflow-runtime  │
-        │  (remote server)  │         │ (embedded server) │
-        └───────────────────┘         └───────────────────┘
-                    │                             │
-                    └──────────────┬──────────────┘
-                                   ▼
-                        ┌───────────────────┐
-                        │   stepflow-core   │
-                        │ (shared types &   │
-                        │  StepflowExecutor │
-                        │    protocol)      │
-                        └───────────────────┘
-
-        ┌───────────────────┐
-        │  stepflow-server  │  ◄── Build custom components
-        │ (component SDK)   │
-        └───────────────────┘
-```
-
-| Package | What it's for |
-|---------|---------------|
-| **stepflow-server** | Build custom Python components that workflows can call |
-| **stepflow-client** | Connect to a remote Stepflow server |
-| **stepflow-runtime** | Run an embedded Stepflow server in your Python process |
-| **stepflow-core** | Shared types (`FlowResult`, `StepflowExecutor` protocol) |
-| **stepflow-api** | Generated HTTP client (used internally) |
-
-## Quick Start: End-to-End Example
-
-This example shows the complete flow: building a component, writing a workflow, and executing it.
-
-### 1. Build a Custom Component
+## Installation
 
 ```bash
-pip install stepflow-server
+pip install stepflow-py
 ```
 
-Create `my_components.py`:
+For embedded runtime (runs Stepflow server in-process):
+```bash
+pip install stepflow-py[runtime]
+```
+
+## Quick Start
+
+### Run a Workflow
 
 ```python
-from stepflow_server import StepflowStdioServer
+from stepflow_py import StepflowClient
+
+async with StepflowClient("http://localhost:7837") as client:
+    result = await client.run("workflow.yaml", {"name": "World"})
+
+    if result.is_success:
+        print(result.output)
+    else:
+        print(f"Error: {result.error.message}")
+```
+
+### Build a Component
+
+```python
+from stepflow_py import StepflowServer
 import msgspec
 
 class GreetInput(msgspec.Struct):
@@ -61,7 +41,48 @@ class GreetInput(msgspec.Struct):
 class GreetOutput(msgspec.Struct):
     greeting: str
 
-server = StepflowStdioServer()
+server = StepflowServer()
+
+@server.component
+def greet(input: GreetInput) -> GreetOutput:
+    return GreetOutput(greeting=f"Hello, {input.name}!")
+
+server.run()  # Stepflow launches this automatically via config
+```
+
+### Embedded Runtime
+
+Run workflows without a separate server:
+
+```python
+from stepflow_py import StepflowRuntime  # requires stepflow-py[runtime]
+
+async with StepflowRuntime.start("stepflow-config.yml") as runtime:
+    result = await runtime.run("workflow.yaml", {"name": "World"})
+    print(result.output)
+```
+
+## End-to-End Example
+
+### 1. Create a Component
+
+```bash
+pip install stepflow-py
+```
+
+Create `my_components.py`:
+
+```python
+from stepflow_py import StepflowServer
+import msgspec
+
+class GreetInput(msgspec.Struct):
+    name: str
+
+class GreetOutput(msgspec.Struct):
+    greeting: str
+
+server = StepflowServer()
 
 @server.component
 def greet(input: GreetInput) -> GreetOutput:
@@ -71,9 +92,7 @@ if __name__ == "__main__":
     server.run()
 ```
 
-> **Note:** You don't need to run the component server manually. Stepflow launches it automatically based on your configuration (see step 2).
-
-### 2. Configure Stepflow to Use Your Component
+### 2. Configure Stepflow
 
 Create `stepflow-config.yml`:
 
@@ -81,7 +100,6 @@ Create `stepflow-config.yml`:
 plugins:
   builtin:
     type: builtin
-
   python:
     type: stepflow
     transport: stdio
@@ -97,7 +115,7 @@ routes:
 
 ### 3. Write a Workflow
 
-Create `hello-workflow.yaml`:
+Create `hello.yaml`:
 
 ```yaml
 schema: "flow/v1"
@@ -106,8 +124,7 @@ name: hello-world
 input:
   type: object
   properties:
-    name:
-      type: string
+    name: { type: string }
   required: [name]
 
 steps:
@@ -120,106 +137,88 @@ output:
   message: { $step: "greet", path: "greeting" }
 ```
 
-### 4. Execute the Workflow
-
-**Option A: Embedded runtime (no separate server)**
+### 4. Run It
 
 ```bash
-pip install stepflow-runtime
+pip install stepflow-py[runtime]
 ```
 
 ```python
 import asyncio
-from stepflow_runtime import StepflowRuntime
+from stepflow_py import StepflowRuntime
 
 async def main():
     async with StepflowRuntime.start("stepflow-config.yml") as runtime:
-        result = await runtime.run("hello-workflow.yaml", {"name": "World"})
-
-        if result.is_success:
-            print(result.output)  # {"message": "Hello, World!"}
-        else:
-            print(f"Error: {result.error.message}")
+        result = await runtime.run("hello.yaml", {"name": "World"})
+        print(result.output)  # {"message": "Hello, World!"}
 
 asyncio.run(main())
 ```
 
-**Option B: Remote server**
+## Package Structure
 
-```bash
-pip install stepflow-client
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          stepflow-py                                │
+│                    (unified SDK - install this)                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                   │
+          ┌────────────────────────┼────────────────────────┐
+          ▼                        ▼                        ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│  stepflow-client  │  │ stepflow-runtime  │  │  stepflow-server  │
+│  (remote server)  │  │(embedded runtime) │  │  (component SDK)  │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
+          │                        │                        │
+          ▼                        └────────────┬───────────┘
+┌───────────────────┐                           ▼
+│   stepflow-api    │               ┌───────────────────┐
+│ (generated HTTP)  │               │   stepflow-core   │
+└───────────────────┘               │  (shared types)   │
+                                    └───────────────────┘
 ```
 
-```bash
-# Start the server (in another terminal)
-stepflow-server --config stepflow-config.yml
-```
+| Package | Description |
+|---------|-------------|
+| **stepflow-py** | Unified SDK (install this) |
+| **stepflow-client** | HTTP client for remote servers |
+| **stepflow-runtime** | Embedded runtime with bundled server |
+| **stepflow-server** | SDK for building Python components |
+| **stepflow-core** | Shared types (`FlowResult`, `StepflowExecutor`) |
+| **stepflow-api** | Generated HTTP client (internal) |
+
+## API Reference
+
+### StepflowExecutor Protocol
+
+Both `StepflowClient` and `StepflowRuntime` implement this protocol:
 
 ```python
-import asyncio
-from stepflow_client import StepflowClient
+from stepflow_py import StepflowExecutor
 
-async def main():
-    async with StepflowClient("http://localhost:7837") as client:
-        result = await client.run("hello-workflow.yaml", {"name": "World"})
+async def run_workflow(executor: StepflowExecutor):
+    # Execute and wait
+    result = await executor.run(flow, input, overrides=None)
 
-        if result.is_success:
-            print(result.output)  # {"message": "Hello, World!"}
-        else:
-            print(f"Error: {result.error.message}")
+    # Submit without waiting
+    run_id = await executor.submit(flow, input, overrides=None)
 
-asyncio.run(main())
+    # Get result later
+    result = await executor.get_result(run_id)
+
+    # Validate workflow
+    validation = await executor.validate(flow)
+
+    # List components
+    components = await executor.list_components()
 ```
 
-## Choosing Between Client and Runtime
+### Component Development
 
-Both `StepflowClient` and `StepflowRuntime` implement the `StepflowExecutor` protocol, so they're interchangeable:
-
-```python
-from stepflow_core import StepflowExecutor, FlowResult
-
-async def run_workflow(executor: StepflowExecutor, input: dict) -> FlowResult:
-    # Works with either StepflowClient or StepflowRuntime
-    return await executor.run("workflow.yaml", input)
-```
-
-**Use `StepflowRuntime` when:**
-- Running locally for development
-- Embedding Stepflow in a Python application
-- You don't want to manage a separate server process
-
-**Use `StepflowClient` when:**
-- Connecting to a shared/production server
-- Running in a distributed environment
-- The server is already running
-
-## StepflowExecutor API
-
-Both `StepflowClient` and `StepflowRuntime` provide these methods:
-
-```python
-# Execute and wait for result
-result = await executor.run(flow, input, overrides=None)
-
-# Submit without waiting (returns run_id)
-run_id = await executor.submit(flow, input, overrides=None)
-
-# Get result of a submitted run
-result = await executor.get_result(run_id)
-
-# Validate a workflow
-validation = await executor.validate(flow)
-
-# List available components
-components = await executor.list_components()
-```
-
-## Building Custom Components
-
-See the [stepflow-server README](stepflow-server/README.md) for detailed documentation on:
-- Defining component input/output schemas with msgspec
-- Async components with `StepflowContext` for blob storage
-- HTTP transport for production deployments
+See the [stepflow-server README](stepflow-server/README.md) for:
+- Input/output schemas with msgspec
+- Async components with `StepflowContext`
+- HTTP transport for production
 
 ## Development
 

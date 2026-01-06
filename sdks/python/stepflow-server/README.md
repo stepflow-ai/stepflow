@@ -177,14 +177,6 @@ Create workflow value references.
 - `Value.step(step_id, path)` - Reference step output
 - `Value.literal(value)` - Escape literal values
 
-## Migration from stepflow-py
-
-This package was renamed from `stepflow-py`. To migrate:
-
-1. Replace `pip install stepflow-py` with `pip install stepflow-server`
-2. Update imports from `stepflow_py` to `stepflow_server`
-3. Update entry point from `stepflow_py` to `stepflow_server`
-
 ## License
 
 Apache-2.0
