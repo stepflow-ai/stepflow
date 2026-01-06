@@ -294,54 +294,6 @@ pub fn create_diamond_flow() -> Flow {
         .build()
 }
 
-/// Create a single-step flow that takes input and outputs the step result.
-///
-/// This is the simplest possible flow for testing basic execution.
-pub fn create_single_step_flow() -> Flow {
-    FlowBuilder::test_flow()
-        .steps(vec![
-            StepBuilder::new("step1")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build(),
-        ])
-        .output(ValueExpr::Step {
-            step: "step1".to_string(),
-            path: Default::default(),
-        })
-        .build()
-}
-
-/// Create a two-step chain flow: step1 → step2.
-///
-/// step1 takes input, step2 depends on step1's output.
-/// The flow output references step2.
-pub fn create_two_step_chain_flow() -> Flow {
-    FlowBuilder::test_flow()
-        .steps(vec![
-            StepBuilder::new("step1")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build(),
-            StepBuilder::new("step2")
-                .component("/mock/test")
-                .input(ValueExpr::Step {
-                    step: "step1".to_string(),
-                    path: Default::default(),
-                })
-                .build(),
-        ])
-        .output(ValueExpr::Step {
-            step: "step2".to_string(),
-            path: Default::default(),
-        })
-        .build()
-}
-
 /// Create a test executor with custom input-to-behavior mapping.
 ///
 /// Each tuple maps an input JSON value to the FlowResult that should be returned.
