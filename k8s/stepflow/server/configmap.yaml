@@ -1,0 +1,51 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stepflow-server-config
+  namespace: stepflow
+  labels:
+    app: stepflow-server
+    component: orchestration
+data:
+  stepflow-config.yml: |
+    # Stepflow Configuration for Kubernetes Deployment
+    # Routes Langflow component execution to Kubernetes load balancer
+
+    plugins:
+      # Built-in components (OpenAI, eval, etc.)
+      builtin:
+        type: builtin
+
+      # Langflow components via Kubernetes load balancer
+      # Cluster-internal routing via service DNS
+      langflow_k8s:
+        type: stepflow
+        transport: http
+        url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
+
+    routes:
+      # Route all /langflow/* components to Kubernetes cluster
+      "/langflow/{*component}":
+        - plugin: langflow_k8s
+
+      # Route builtin components explicitly
+      "/builtin/{*component}":
+        - plugin: builtin
+
+    # State store configuration (using in-memory for demo)
+    stateStore:
+      type: inMemory

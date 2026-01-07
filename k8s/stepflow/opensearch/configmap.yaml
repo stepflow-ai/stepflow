@@ -1,0 +1,105 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-config
+  namespace: stepflow
+  labels:
+    app: opensearch
+    component: search
+data:
+  opensearch.yml: |
+    cluster.name: stepflow
+    node.name: opensearch-0
+
+    # Single node cluster
+    discovery.type: single-node
+
+    # Network settings
+    network.host: 0.0.0.0
+
+    # Performance settings for demo
+    bootstrap.memory_lock: false
+
+    # Enable index creation
+    action.auto_create_index: true
+
+  init-index.sh: |
+    #!/bin/bash
+    # Initialize OpenSearch index with proper mappings for document ingestion
+
+    OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
+    INDEX_NAME="${INDEX_NAME:-documents}"
+
+    echo "Waiting for OpenSearch to be ready..."
+    until curl -s "$OPENSEARCH_URL" > /dev/null 2>&1; do
+        echo "OpenSearch not ready yet, waiting..."
+        sleep 2
+    done
+
+    echo "OpenSearch is ready. Checking if index '$INDEX_NAME' exists..."
+
+    # Check if index already exists
+    if curl -s -f "$OPENSEARCH_URL/$INDEX_NAME" > /dev/null 2>&1; then
+        echo "Index '$INDEX_NAME' already exists. Skipping creation."
+        exit 0
+    fi
+
+    echo "Creating index '$INDEX_NAME' with base mapping..."
+
+    # Create index with base mapping
+    # The knn_vector fields for embeddings will be added dynamically by the workflow
+    curl -X PUT "$OPENSEARCH_URL/$INDEX_NAME" \
+        -H 'Content-Type: application/json' \
+        -d '{
+      "settings": {
+        "index": {
+          "knn": true,
+          "knn.algo_param.ef_search": 100,
+          "number_of_replicas": 0
+        }
+      },
+      "mappings": {
+        "properties": {
+          "text": {
+            "type": "text",
+            "analyzer": "standard"
+          },
+          "filename": {
+            "type": "keyword"
+          },
+          "mimetype": {
+            "type": "keyword"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "keyword"
+          },
+          "embedding_model": {
+            "type": "keyword"
+          },
+          "embedding_dimensions": {
+            "type": "integer"
+          }
+        }
+      }
+    }'
+
+    echo ""
+    echo "Index '$INDEX_NAME' created successfully!"
+    echo "Note: Vector embedding fields will be added dynamically by the workflow."

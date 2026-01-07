@@ -1,0 +1,131 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: stepflow-o12y
+  labels:
+    app: jaeger
+    component: observability
+spec:
+  type: ClusterIP
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+      protocol: TCP
+    - name: grpc
+      port: 14250
+      targetPort: 14250
+      protocol: TCP
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+      protocol: TCP
+    - name: metrics
+      port: 14269
+      targetPort: 14269
+      protocol: TCP
+  selector:
+    app: jaeger
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-ui
+  namespace: stepflow-o12y
+  labels:
+    app: jaeger
+    component: observability
+spec:
+  type: NodePort
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+      nodePort: 30686
+      protocol: TCP
+  selector:
+    app: jaeger
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: stepflow-o12y
+  labels:
+    app: jaeger
+    component: observability
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+        component: observability
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.54
+        env:
+          - name: COLLECTOR_OTLP_ENABLED
+            value: "true"
+          - name: SPAN_STORAGE_TYPE
+            value: "memory"
+          - name: MEMORY_MAX_TRACES
+            value: "10000"
+        ports:
+          - name: ui
+            containerPort: 16686
+            protocol: TCP
+          - name: grpc
+            containerPort: 14250
+            protocol: TCP
+          - name: otlp-grpc
+            containerPort: 4317
+            protocol: TCP
+          - name: otlp-http
+            containerPort: 4318
+            protocol: TCP
+          - name: metrics
+            containerPort: 14269
+            protocol: TCP
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 14269
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 14269
+          initialDelaySeconds: 5
+          periodSeconds: 5

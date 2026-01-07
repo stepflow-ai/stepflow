@@ -1,0 +1,136 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: stepflow-o12y
+data:
+  config.yaml: |
+    # OpenTelemetry Collector configuration for Stepflow observability
+    #
+    # This collector receives telemetry data from Stepflow via OTLP and routes it to:
+    # - Jaeger (traces)
+    # - Prometheus (metrics)
+    # - Loki (logs)
+
+    receivers:
+      # OTLP receiver for traces, metrics, and logs
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "*"
+
+      # Prometheus receiver to scrape collector's own metrics
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'otel-collector'
+              scrape_interval: 10s
+              static_configs:
+                - targets: ['localhost:8888']
+
+    processors:
+      # Batch processor to reduce number of outgoing connections
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+
+      # Memory limiter to prevent OOM
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+      # Resource processor to add deployment environment info
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: kubernetes
+            action: insert
+          - key: service.namespace
+            value: stepflow
+            action: insert
+
+      # Attributes processor for filtering/transforming
+      attributes:
+        actions:
+          - key: http.url
+            action: delete  # Remove potentially sensitive URLs from spans
+
+    exporters:
+      # Export traces to Jaeger
+      otlp/jaeger:
+        endpoint: jaeger.stepflow-o12y.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+      # Export metrics to Prometheus
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        namespace: stepflow
+        send_timestamps: true
+        metric_expiration: 5m
+
+      # Export logs to Loki
+      loki:
+        endpoint: http://loki.stepflow-o12y.svc.cluster.local:3100/loki/api/v1/push
+
+      # Logging exporter for debugging (outputs to collector's stdout)
+      logging:
+        verbosity: normal
+        sampling_initial: 5
+        sampling_thereafter: 200
+
+    extensions:
+      # Health check extension for k8s probes
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      # Configure telemetry for the collector itself
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          level: detailed
+          address: 0.0.0.0:8888
+
+      # Enable extensions
+      extensions: [health_check]
+
+      pipelines:
+        # Traces pipeline: OTLP -> batch -> Jaeger
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, batch]
+          exporters: [otlp/jaeger, logging]
+
+        # Metrics pipeline: OTLP + Prometheus -> batch -> Prometheus exporter
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, resource, batch]
+          exporters: [prometheus, logging]
+
+        # Logs pipeline: OTLP -> batch -> Loki
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, resource, attributes, batch]
+          exporters: [loki, logging]
