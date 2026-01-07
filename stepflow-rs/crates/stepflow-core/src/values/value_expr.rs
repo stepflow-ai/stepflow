@@ -497,50 +497,60 @@ impl utoipa::ToSchema for ValueExpr {
         use utoipa::openapi::schema::*;
         use utoipa::openapi::*;
 
-        // First, register a helper type for recursive positions
-        // openapi-python-client can't handle recursive $ref inside oneOf union members,
-        // so we use a separate AnyValueExpr type that is just "any object"
+        // openapi-python-client can handle recursive $ref when:
+        // 1. Variants are extracted as named top-level types
+        // 2. The oneOf references them via $ref
+        // 3. Those named types can have recursive $ref back to ValueExpr
+        //
+        // However, it CANNOT handle:
+        // - type: array with recursive items in oneOf
+        // - type: object with recursive additionalProperties in oneOf
+        // - Inline empty object schemas (generates duplicate model names)
+        //
+        // So we extract object variants as named types (full recursion),
+        // and keep ArrayExpr/ObjectExpr inline with generic items/additionalProperties.
+
+        // Register AnyValue as a named type for "any JSON value" positions
+        // This avoids duplicate model names from inline empty object schemas
         schemas.push((
-            "AnyValueExpr".to_string(),
+            "AnyValue".to_string(),
             RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .description(Some(
-                        "A value expression (recursive reference, any valid ValueExpr)",
-                    ))
+                    .description(Some("Any JSON value"))
                     .build(),
             )),
         ));
 
+        // Helper for referencing AnyValue
+        let any_value_ref = || RefOr::Ref(Ref::new("#/components/schemas/AnyValue"));
+
         // Helper for creating a string type schema
         let string_type = || {
-            RefOr::T(Schema::Object(
+            Schema::Object(
                 ObjectBuilder::new()
                     .schema_type(SchemaType::Type(Type::String))
                     .build(),
-            ))
+            )
         };
 
         // Helper for creating a string type with description
         let string_type_with_desc = |desc: &'static str| {
-            RefOr::T(Schema::Object(
+            Schema::Object(
                 ObjectBuilder::new()
                     .schema_type(SchemaType::Type(Type::String))
                     .description(Some(desc))
                     .build(),
-            ))
+            )
         };
 
-        // Helper for referencing AnyValueExpr (the recursive placeholder)
-        let any_value_ref = || RefOr::Ref(Ref::new("#/components/schemas/AnyValueExpr"));
+        // Helper for referencing ValueExpr (for recursive types)
+        let value_expr_ref = || RefOr::Ref(Ref::new("#/components/schemas/ValueExpr"));
 
-        // Create a oneOf schema with each variant described
-        // Note: Recursive references use $ref to AnyValueExpr instead of ValueExpr
-        // to support openapi-python-client code generation
-        let one_of_items = vec![
-            // Step reference: { $step: "step_id", path?: "..." }
-            Schema::Object(
+        // Register StepRef as a named type
+        schemas.push((
+            "StepRef".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("StepRef"))
                     .property("$step", string_type())
                     .property("path", string_type_with_desc("JSONPath expression"))
                     .required("$step")
@@ -549,52 +559,66 @@ impl utoipa::ToSchema for ValueExpr {
                     ))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Input reference: { $input: "path" }
-            Schema::Object(
+            )),
+        ));
+
+        // Register InputRef as a named type
+        schemas.push((
+            "InputRef".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("InputRef"))
                     .property("$input", string_type_with_desc("JSONPath expression"))
                     .required("$input")
                     .description(Some("Workflow input reference: { $input: \"path\" }"))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Variable reference: { $variable: "path", default?: ValueExpr }
-            Schema::Object(
+            )),
+        ));
+
+        // Register VariableRef as a named type (has recursive $ref to ValueExpr)
+        schemas.push((
+            "VariableRef".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("VariableRef"))
                     .property(
                         "$variable",
                         string_type_with_desc("JSONPath expression including variable name"),
                     )
-                    .property("default", any_value_ref())
+                    .property("default", value_expr_ref())
                     .required("$variable")
                     .description(Some(
                         "Variable reference: { $variable: \"path\", default?: ValueExpr }",
                     ))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Escaped literal: { $literal: any }
-            // Note: Named "LiteralExpr" to avoid conflict with Python's typing.Literal
-            // Use AnyValueExpr ref to avoid duplicate model name generation
-            Schema::Object(
+            )),
+        ));
+
+        // Register LiteralExpr as a named type
+        // Note: Named "LiteralExpr" to avoid conflict with Python's typing.Literal
+        // $literal can hold any JSON value - it's an escape hatch to prevent expansion
+        schemas.push((
+            "LiteralExpr".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("LiteralExpr"))
                     .property("$literal", any_value_ref())
                     .required("$literal")
-                    .description(Some("Escaped literal: { $literal: any }"))
+                    .description(Some(
+                        "Escaped literal: { $literal: any } - prevents recursive expression parsing",
+                    ))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Conditional: { $if: condition, then: expr, else?: expr }
-            Schema::Object(
+            )),
+        ));
+
+        // Register IfExpr as a named type (has recursive $ref to ValueExpr)
+        schemas.push((
+            "IfExpr".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("If"))
-                    .property("$if", any_value_ref())
-                    .property("then", any_value_ref())
-                    .property("else", any_value_ref())
+                    .property("$if", value_expr_ref())
+                    .property("then", value_expr_ref())
+                    .property("else", value_expr_ref())
                     .required("$if")
                     .required("then")
                     .description(Some(
@@ -602,85 +626,102 @@ impl utoipa::ToSchema for ValueExpr {
                     ))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Coalesce: { $coalesce: [expr1, expr2, ...] }
-            Schema::Object(
+            )),
+        ));
+
+        // Register CoalesceExpr as a named type (has recursive $ref to ValueExpr in array)
+        schemas.push((
+            "CoalesceExpr".to_string(),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("Coalesce"))
-                    .property(
-                        "$coalesce",
-                        ArrayBuilder::new().items(any_value_ref()),
-                    )
+                    .property("$coalesce", ArrayBuilder::new().items(value_expr_ref()))
                     .required("$coalesce")
                     .description(Some("Coalesce: { $coalesce: [expr1, expr2, ...] }"))
                     .additional_properties(Some(AdditionalProperties::FreeForm(false)))
                     .build(),
-            ),
-            // Array of expressions
-            Schema::Array(
+            )),
+        ));
+
+        // Build the ValueExpr oneOf schema
+        // Object variants use $ref to named types (enables recursive typing)
+        // ArrayExpr and ObjectExpr are inline with generic items (openapi-python-client limitation)
+
+        // Collect all oneOf items
+        let one_of_items: Vec<RefOr<Schema>> = vec![
+            // Object variants - $ref to named types (supports recursion)
+            RefOr::Ref(Ref::new("#/components/schemas/StepRef")),
+            RefOr::Ref(Ref::new("#/components/schemas/InputRef")),
+            RefOr::Ref(Ref::new("#/components/schemas/VariableRef")),
+            RefOr::Ref(Ref::new("#/components/schemas/LiteralExpr")),
+            RefOr::Ref(Ref::new("#/components/schemas/IfExpr")),
+            RefOr::Ref(Ref::new("#/components/schemas/CoalesceExpr")),
+            // ArrayExpr - inline with generic items (openapi-python-client can't handle
+            // type: array with recursive items in oneOf)
+            RefOr::T(Schema::Array(
                 ArrayBuilder::new()
                     .title(Some("ArrayExpr"))
                     .items(any_value_ref())
                     .description(Some("Array of expressions"))
                     .build(),
-            ),
-            // Object with expression values
-            Schema::Object(
+            )),
+            // ObjectExpr - inline with generic additionalProperties
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
                     .title(Some("ObjectExpr"))
                     .additional_properties(Some(any_value_ref()))
                     .description(Some("Object with expression values"))
                     .build(),
-            ),
-            // Literal primitive values - flattened into parent oneOf to avoid nested oneOf
-            // Null literal
-            Schema::Object(
+            )),
+            // Primitive types - inline
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("NullValue"))
                     .schema_type(SchemaType::Type(Type::Null))
-                    .description(Some("Null literal value"))
                     .build(),
-            ),
-            // Boolean literal
-            Schema::Object(
+            )),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("BooleanValue"))
                     .schema_type(SchemaType::Type(Type::Boolean))
-                    .description(Some("Boolean literal value"))
                     .build(),
-            ),
-            // Number literal
-            Schema::Object(
+            )),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("NumberValue"))
                     .schema_type(SchemaType::Type(Type::Number))
-                    .description(Some("Number literal value"))
                     .build(),
-            ),
-            // String literal
-            Schema::Object(
+            )),
+            RefOr::T(Schema::Object(
                 ObjectBuilder::new()
-                    .title(Some("StringValue"))
                     .schema_type(SchemaType::Type(Type::String))
-                    .description(Some("String literal value"))
                     .build(),
-            ),
+            )),
         ];
 
-        // Build the final oneOf schema
+        // Build oneOf - need to convert RefOr items to Schema items
         let mut one_of_builder = OneOfBuilder::new();
         for item in one_of_items {
-            one_of_builder = one_of_builder.item(item);
+            match item {
+                RefOr::Ref(r) => {
+                    // For refs, we need to create a schema that just has the $ref
+                    // utoipa's OneOf only accepts Schema, not RefOr, so we serialize
+                    // refs using an allOf with a single ref item
+                    one_of_builder = one_of_builder.item(Schema::AllOf(
+                        AllOfBuilder::new().item(RefOr::Ref(r)).build(),
+                    ));
+                }
+                RefOr::T(schema) => {
+                    one_of_builder = one_of_builder.item(schema);
+                }
+            }
         }
 
-        schemas.push((
-            "ValueExpr".to_string(),
-            RefOr::T(Schema::OneOf(
-                one_of_builder
-                    .description(Some("A value expression that can contain literal data or references to other values"))
-                    .build()
-            ))
-        ));
+        let value_expr_schema = Schema::OneOf(
+            one_of_builder
+                .description(Some(
+                    "A value expression that can contain literal data or references to other values",
+                ))
+                .build(),
+        );
+
+        schemas.push(("ValueExpr".to_string(), RefOr::T(value_expr_schema)));
     }
 }
 
