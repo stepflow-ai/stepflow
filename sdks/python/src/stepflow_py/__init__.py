@@ -25,14 +25,12 @@ from .generated_flow import (
     Schema,
     Step,
 )
-from .http_server import StepflowHttpServer
 from .server import StepflowServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 
 __all__ = [
     # Core classes
     "StepflowServer",
-    "StepflowHttpServer",
     "StepflowContext",
     "FlowBuilder",
     # Value API for cleaner workflow definitions

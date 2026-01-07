@@ -661,9 +661,9 @@ class StepflowServer:
             instance_id: Optional instance ID for load balancer routing
                 (auto-generated if not provided)
         """
-        from .http_server import _run_http_server
+        from .http_server import run_http_server
 
-        await _run_http_server(
+        await run_http_server(
             server=self,
             host=host,
             port=port,

@@ -310,7 +310,7 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
     return app
 
 
-async def _run_http_server(
+async def run_http_server(
     server: StepflowServer,
     host: str = "127.0.0.1",
     port: int = 0,
@@ -366,57 +366,17 @@ async def _run_http_server(
     await uvicorn_server.serve()
 
 
-# Backward compatibility: Keep StepflowHttpServer as an alias
-class StepflowHttpServer:
-    """Deprecated: Use StepflowServer().run() instead.
+def create_test_app(server: StepflowServer, instance_id: str | None = None) -> FastAPI:
+    """Create a FastAPI app for testing purposes.
 
-    This class is maintained for backward compatibility only.
+    Args:
+        server: StepflowServer instance with registered components
+        instance_id: Optional instance ID (auto-generated if not provided)
+
+    Returns:
+        FastAPI application instance for testing
     """
-
-    def __init__(
-        self,
-        server: StepflowServer | None = None,
-        host: str = "127.0.0.1",
-        port: int = 0,
-        instance_id: str | None = None,
-        workers: int = 3,
-        backlog: int = 128,
-        timeout_keep_alive: int = 5,
-    ):
-        self.server = server or StepflowServer()
-        self.host = host
-        self.port = port
-        self.workers = workers
-        self.backlog = backlog
-        self.timeout_keep_alive = timeout_keep_alive
-        self.instance_id = instance_id or _generate_instance_id()
-        self._app: FastAPI | None = None
-        self._ctx: _HttpServerContext | None = None
-
-    @property
-    def app(self) -> FastAPI:
-        """Get or create the FastAPI app instance for testing."""
-        if self._app is None:
-            self._ctx = _HttpServerContext(self.server, self.instance_id)
-            self._app = _create_app(self._ctx)
-        assert self._app is not None
-        return self._app
-
-    async def run(self):
-        """Start the HTTP server."""
-        await _run_http_server(
-            self.server,
-            self.host,
-            self.port,
-            self.workers,
-            self.backlog,
-            self.timeout_keep_alive,
-        )
-
-    def component(self, *args, **kwargs):
-        """Delegate component registration to the underlying server."""
-        return self.server.component(*args, **kwargs)
-
-    def langchain_component(self, *args, **kwargs):
-        """Delegate langchain_component registration to the underlying server."""
-        return self.server.langchain_component(*args, **kwargs)
+    if instance_id is None:
+        instance_id = _generate_instance_id()
+    ctx = _HttpServerContext(server, instance_id)
+    return _create_app(ctx)
