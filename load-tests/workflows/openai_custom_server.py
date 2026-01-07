@@ -24,7 +24,7 @@ import sys
 
 import msgspec
 import openai
-from stepflow_py import StepflowHttpServer, StepflowServer
+from stepflow_py import StepflowServer
 
 
 class OpenAIChatInput(msgspec.Struct):
@@ -44,8 +44,7 @@ class OpenAIChatOutput(msgspec.Struct):
     usage: dict
 
 
-_server = StepflowServer()
-server = StepflowHttpServer(_server)
+server = StepflowServer()
 
 
 @server.component

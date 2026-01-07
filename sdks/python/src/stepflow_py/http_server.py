@@ -317,13 +317,15 @@ async def _run_http_server(
     workers: int = 3,
     backlog: int = 128,
     timeout_keep_alive: int = 5,
+    instance_id: str | None = None,
 ) -> None:
     """Start the HTTP server.
 
     When port is 0, the server binds to an available port and announces
     the actual port via stdout in JSON format: {"port": N}
     """
-    instance_id = _generate_instance_id()
+    if instance_id is None:
+        instance_id = _generate_instance_id()
     ctx = _HttpServerContext(server, instance_id)
     app = _create_app(ctx)
 

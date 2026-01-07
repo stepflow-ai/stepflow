@@ -15,11 +15,10 @@
 import argparse
 import asyncio
 
-from stepflow_py.http_server import StepflowHttpServer
 from stepflow_py.server import StepflowServer
 
 # Create server instance
-server = StepflowHttpServer(StepflowServer())
+server = StepflowServer()
 
 
 def main():
@@ -65,11 +64,8 @@ Environment variables:
 
     args = parser.parse_args()
 
-    # Create HTTP server with specified host/port
-    http_server = StepflowHttpServer(server.server, host=args.host, port=args.port)
-
-    # Start HTTP server
-    asyncio.run(http_server.run())
+    # Start HTTP server with specified host/port
+    asyncio.run(server.run(host=args.host, port=args.port))
 
 
 if __name__ == "__main__":

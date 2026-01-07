@@ -26,7 +26,7 @@ from typing import Any
 package_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(package_root))
 
-from stepflow_py import StepflowContext, StepflowHttpServer, StepflowServer
+from stepflow_py import StepflowContext, StepflowServer
 
 from stepflow_langflow_integration.components.component_tool import (
     component_tool_executor,
@@ -34,8 +34,7 @@ from stepflow_langflow_integration.components.component_tool import (
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 
 # Create server instance (following the exact pattern from stepflow_py/main.py)
-_server = StepflowServer()
-server = StepflowHttpServer(_server)
+server = StepflowServer()
 
 # Create UDF executor
 udf_executor = UDFExecutor()

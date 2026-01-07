@@ -27,13 +27,12 @@ This demonstrates:
 import asyncio
 import sys
 
-from stepflow_py import StepflowHttpServer, StepflowServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 from typing import List, Optional
 
 # Create the server
-_server = StepflowServer()
-server = StepflowHttpServer(_server)
+server = StepflowServer()
 
 
 # Business domain types

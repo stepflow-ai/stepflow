@@ -28,7 +28,7 @@ import asyncio
 
 import msgspec
 
-from stepflow_py import StepflowContext, StepflowHttpServer, StepflowServer
+from stepflow_py import StepflowContext, StepflowServer
 
 # Only run examples if LangChain is available
 try:
@@ -41,8 +41,7 @@ except ImportError:
     exit(1)
 
 # Create the server
-_server = StepflowServer()
-server = StepflowHttpServer(_server)
+server = StepflowServer()
 
 if LANGCHAIN_AVAILABLE:
     # ============================================================================
@@ -178,7 +177,7 @@ if __name__ == "__main__":
     print(file=sys.stderr)
     print("Available components:", file=sys.stderr)
 
-    components = _server.get_components()
+    components = server.get_components()
     for name, component in components.items():
         print(f"  - {name}: {component.description or 'No description'}", file=sys.stderr)
 

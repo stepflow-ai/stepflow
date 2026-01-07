@@ -21,7 +21,7 @@ import asyncio
 import logging
 from typing import Any
 
-from stepflow_py import StepflowContext, StepflowHttpServer, StepflowServer
+from stepflow_py import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
 
@@ -42,8 +42,7 @@ class StepflowLangflowServer:
 
     def __init__(self):
         """Initialize the Langflow component server."""
-        self._server = StepflowServer()
-        self.http_server = StepflowHttpServer(self._server)
+        self.server = StepflowServer()
         self.udf_executor = UDFExecutor()
 
         # Register components
@@ -52,7 +51,7 @@ class StepflowLangflowServer:
     def _register_components(self) -> None:
         """Register all Langflow components."""
 
-        @self.http_server.component(name="udf_executor")
+        @self.server.component(name="udf_executor")
         async def udf_executor(
             input_data: dict[str, Any], context: StepflowContext
         ) -> dict[str, Any]:
@@ -66,8 +65,8 @@ class StepflowLangflowServer:
             return await self.udf_executor.execute(input_data, context)
 
         # TODO: Register native component implementations
-        # self.http_server.component(name="openai_chat", func=self._openai_chat)
-        # self.http_server.component(name="chat_input", func=self._chat_input)
+        # self.server.component(name="openai_chat", func=self._openai_chat)
+        # self.server.component(name="chat_input", func=self._chat_input)
 
     def run(self) -> None:
         """Run the component server."""
@@ -78,7 +77,7 @@ class StepflowLangflowServer:
 
         nest_asyncio.apply()
 
-        asyncio.run(self.http_server.run())
+        asyncio.run(self.server.run())
 
 
 if __name__ == "__main__":

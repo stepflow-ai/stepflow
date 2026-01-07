@@ -22,7 +22,7 @@ import asyncio
 import sys
 
 import msgspec
-from stepflow_py import StepflowHttpServer, StepflowServer
+from stepflow_py import StepflowServer
 
 
 class MessageInput(msgspec.Struct):
@@ -40,8 +40,7 @@ class MessageOutput(msgspec.Struct):
     total_length: int
 
 
-_server = StepflowServer()
-server = StepflowHttpServer(_server)
+server = StepflowServer()
 
 
 @server.component

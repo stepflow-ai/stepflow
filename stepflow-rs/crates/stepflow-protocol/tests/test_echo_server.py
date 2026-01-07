@@ -21,7 +21,7 @@ import asyncio
 import sys
 
 try:
-    from stepflow_py import StepflowServer, StepflowHttpServer
+    from stepflow_py import StepflowServer
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)
@@ -49,18 +49,17 @@ async def main():
 
     args = parser.parse_args()
 
-    # Create core server instance
-    core_server = StepflowServer()
+    # Create server instance
+    server = StepflowServer()
 
     # Register the echo component
-    core_server.component(
+    server.component(
         echo_component, name="echo", description="Echo component for testing"
     )
 
-    # Create HTTP server
-    http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
+    # Start HTTP server
     print(f"Starting HTTP echo server on {args.host}:{args.port}", file=sys.stderr)
-    await http_server.run()
+    await server.run(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

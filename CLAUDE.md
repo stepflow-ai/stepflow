@@ -253,7 +253,7 @@ The protocol supports bidirectional communication allowing components to make ca
 ### Python SDK Example
 
 ```python
-from stepflow_py import StepflowHttpServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -262,7 +262,7 @@ class MyInput(msgspec.Struct):
 class MyOutput(msgspec.Struct):
     blob_id: str
 
-server = StepflowHttpServer()
+server = StepflowServer()
 
 @server.component
 async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:

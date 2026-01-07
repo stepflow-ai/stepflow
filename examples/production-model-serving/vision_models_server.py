@@ -30,7 +30,7 @@ import sys
 import os
 
 try:
-    from stepflow_py import StepflowHttpServer, StepflowServer, StepflowContext
+    from stepflow_py import StepflowServer, StepflowContext
     import msgspec
 
     SDK_AVAILABLE = True
@@ -438,5 +438,4 @@ if __name__ == "__main__":
         f"GPU available: {CV_AVAILABLE and torch.cuda.is_available() if CV_AVAILABLE else False}"
     )
 
-    http_server = StepflowHttpServer(server)
-    asyncio.run(http_server.run())
+    asyncio.run(server.run())

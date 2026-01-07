@@ -645,6 +645,7 @@ class StepflowServer:
         workers: int = 3,
         backlog: int = 128,
         timeout_keep_alive: int = 5,
+        instance_id: str | None = None,
     ) -> None:
         """Start the server using HTTP transport.
 
@@ -657,6 +658,8 @@ class StepflowServer:
             workers: Number of worker processes (default: 3)
             backlog: Maximum number of pending connections (default: 128)
             timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
+            instance_id: Optional instance ID for load balancer routing
+                (auto-generated if not provided)
         """
         from .http_server import _run_http_server
 
@@ -667,4 +670,5 @@ class StepflowServer:
             workers=workers,
             backlog=backlog,
             timeout_keep_alive=timeout_keep_alive,
+            instance_id=instance_id,
         )
