@@ -638,7 +638,7 @@ class StepflowServer:
             return decorator
         return decorator(func)
 
-    async def start_http(
+    async def run(
         self,
         host: str = "127.0.0.1",
         port: int = 0,
@@ -658,9 +658,9 @@ class StepflowServer:
             backlog: Maximum number of pending connections (default: 128)
             timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
         """
-        from .http_server import StepflowHttpServer
+        from .http_server import _run_http_server
 
-        http_server = StepflowHttpServer(
+        await _run_http_server(
             server=self,
             host=host,
             port=port,
@@ -668,4 +668,3 @@ class StepflowServer:
             backlog=backlog,
             timeout_keep_alive=timeout_keep_alive,
         )
-        await http_server.run()

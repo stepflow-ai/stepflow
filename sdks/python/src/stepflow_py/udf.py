@@ -13,7 +13,7 @@
 # the License.
 
 import inspect
-import sys
+import logging
 from typing import Any
 
 import msgspec
@@ -21,6 +21,8 @@ import msgspec
 from stepflow_py.context import StepflowContext
 from stepflow_py.exceptions import CodeCompilationError, StepflowValueError
 from stepflow_py.observability import get_tracer
+
+logger = logging.getLogger(__name__)
 
 
 class UdfCompilationError(CodeCompilationError):
@@ -345,13 +347,10 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
     """
     # Check if we have a cached function for this blob_id
     if input.blob_id in _function_cache:
-        print(f"Using cached function for blob_id: {input.blob_id}", file=sys.stderr)
+        logger.debug(f"Using cached function for blob_id: {input.blob_id}")
         compiled_func = _function_cache[input.blob_id]["function"]
     else:
-        print(
-            f"Loading and compiling function for blob_id: {input.blob_id}",
-            file=sys.stderr,
-        )
+        logger.debug(f"Loading and compiling function for blob_id: {input.blob_id}")
 
         # Get the blob containing the function definition
         try:

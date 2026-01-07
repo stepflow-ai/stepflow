@@ -45,7 +45,7 @@ pub struct SubprocessHandle {
     #[allow(dead_code)] // Kept for kill_on_drop behavior
     child: Child,
     url: String,
-    stderr_task: tokio::task::JoinHandle<()>,
+    output_task: tokio::task::JoinHandle<()>,
     #[cfg(unix)]
     pgid: i32,
 }
@@ -60,8 +60,8 @@ impl SubprocessHandle {
 impl Drop for SubprocessHandle {
     fn drop(&mut self) {
         log::debug!("SubprocessHandle being dropped, cleaning up");
-        // Abort the stderr monitoring task when the handle is dropped
-        self.stderr_task.abort();
+        // Abort monitoring task when the handle is dropped
+        self.output_task.abort();
 
         // Kill the entire process group to ensure grandchildren are terminated.
         // kill_on_drop only kills the direct child, not grandchildren (e.g., python spawned by uv).
@@ -118,12 +118,21 @@ impl SubprocessLauncher {
         #[cfg(unix)]
         let pgid = child.id().map(|pid| pid as i32).unwrap_or(0);
 
-        // Read port from stdout
-        let port = self.read_port_from_stdout(&mut child).await?;
-        let url = format!("http://127.0.0.1:{}", port);
+        // Create a oneshot channel for port announcement
+        let (port_tx, port_rx) = tokio::sync::oneshot::channel();
 
-        // Start stderr monitoring
-        let stderr_task = self.spawn_stderr_monitor(&mut child);
+        // Start output monitoring task which will read and send the port
+        let output_task = self.spawn_output_monitor(&mut child, port_tx);
+
+        // Wait for port announcement from the monitor task
+        let port = tokio::time::timeout(Duration::from_secs(30), port_rx)
+            .await
+            .change_context(TransportError::Spawn)
+            .attach_printable("Timeout waiting for port announcement from subprocess")?
+            .change_context(TransportError::Spawn)
+            .attach_printable("Output monitor task closed without sending port")?;
+
+        let url = format!("http://127.0.0.1:{}", port);
 
         // Wait for health check
         self.wait_for_health(&url).await?;
@@ -133,7 +142,7 @@ impl SubprocessLauncher {
         Ok(SubprocessHandle {
             child,
             url,
-            stderr_task,
+            output_task,
             #[cfg(unix)]
             pgid,
         })
@@ -213,59 +222,77 @@ impl SubprocessLauncher {
         }
     }
 
-    /// Read the port announcement from the subprocess stdout.
-    async fn read_port_from_stdout(&self, child: &mut Child) -> Result<u16> {
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| error_stack::report!(TransportError::Spawn))
-            .attach_printable("Failed to get subprocess stdout")?;
-
-        let mut reader = BufReader::new(stdout).lines();
-        let timeout = Duration::from_secs(30);
-
-        let result = tokio::time::timeout(timeout, async {
-            // Read first line only - this should be the port announcement
-            if let Some(line) = reader.next_line().await.change_context(TransportError::Spawn)? {
-                let announcement: PortAnnouncement =
-                    serde_json::from_str(&line).change_context(TransportError::Spawn).attach_printable_lazy(|| {
-                        format!(
-                            "Failed to parse port announcement. Expected JSON like {{\"port\": N}}, got: {}",
-                            line
-                        )
-                    })?;
-                log::info!("Subprocess announced port: {}", announcement.port);
-                Ok(announcement.port)
-            } else {
-                Err(error_stack::report!(TransportError::Spawn)
-                    .attach_printable("Subprocess closed stdout without announcing port"))
-            }
-        })
-        .await;
-
-        match result {
-            Ok(Ok(port)) => Ok(port),
-            Ok(Err(e)) => Err(e),
-            Err(_) => Err(error_stack::report!(TransportError::Spawn)
-                .attach_printable("Timeout waiting for port announcement from subprocess")),
-        }
-    }
-
-    /// Spawn a task to monitor and log stderr from the subprocess.
-    fn spawn_stderr_monitor(&self, child: &mut Child) -> tokio::task::JoinHandle<()> {
+    /// Spawn a task to monitor stdout and stderr, extracting port from first line of stdout.
+    fn spawn_output_monitor(
+        &self,
+        child: &mut Child,
+        port_tx: tokio::sync::oneshot::Sender<u16>,
+    ) -> tokio::task::JoinHandle<()> {
+        let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let verbose = std::env::var("STEPFLOW_COMPONENT_STDERR")
             .map(|v| v.to_lowercase() == "verbose")
             .unwrap_or(false);
 
         tokio::spawn(async move {
-            if let Some(stderr) = stderr {
-                let mut reader = BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = reader.next_line().await {
-                    if verbose {
-                        log::info!("Component stderr: {}", line);
-                    } else {
-                        log::debug!("Component stderr: {}", line);
+            let mut stdout_reader = stdout.map(|s| BufReader::new(s).lines());
+            let mut stderr_reader = stderr.map(|s| BufReader::new(s).lines());
+            let mut port_tx = Some(port_tx);
+
+            loop {
+                tokio::select! {
+                    // Read from stdout
+                    result = async {
+                        if let Some(ref mut reader) = stdout_reader {
+                            reader.next_line().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        match result {
+                            Ok(Some(line)) => {
+                                // First line should be port announcement
+                                if let Some(tx) = port_tx.take() {
+                                    if let Ok(announcement) = serde_json::from_str::<PortAnnouncement>(&line) {
+                                        log::info!("Subprocess announced port: {}", announcement.port);
+                                        let _ = tx.send(announcement.port);
+                                        continue; // Don't log the port announcement line
+                                    } else {
+                                        log::warn!("Expected port announcement, got: {}", line);
+                                        // Put sender back in case next line is the announcement
+                                        port_tx = Some(tx);
+                                    }
+                                }
+                                // Log subsequent stdout lines
+                                if verbose {
+                                    log::info!("Component stdout: {}", line);
+                                } else {
+                                    log::debug!("Component stdout: {}", line);
+                                }
+                            }
+                            Ok(None) => break, // EOF
+                            Err(_) => break,   // Error
+                        }
+                    }
+                    // Read from stderr
+                    result = async {
+                        if let Some(ref mut reader) = stderr_reader {
+                            reader.next_line().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        match result {
+                            Ok(Some(line)) => {
+                                if verbose {
+                                    log::info!("Component stderr: {}", line);
+                                } else {
+                                    log::debug!("Component stderr: {}", line);
+                                }
+                            }
+                            Ok(None) => break, // EOF
+                            Err(_) => break,   // Error
+                        }
                     }
                 }
             }
