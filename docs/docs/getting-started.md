@@ -122,7 +122,6 @@ plugins:
     type: builtin
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["run", "python", "hello_formatter.py"]
 

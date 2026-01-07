@@ -201,7 +201,6 @@ plugins:
   
   k8s_components:
     type: stepflow
-    transport: http
     url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
 
 routes:

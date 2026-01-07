@@ -243,6 +243,7 @@ mod tests {
     #[test]
     fn test_env_variables_fallback() {
         // Set a test environment variable
+        // SAFETY: This test runs single-threaded and immediately cleans up the env var after use
         unsafe {
             env::set_var("STEPFLOW_VAR_TEST_KEY", "env-value");
         }
@@ -262,6 +263,7 @@ mod tests {
         assert_eq!(value, "env-value");
 
         // Clean up
+        // SAFETY: This test runs single-threaded and this is the cleanup for the set_var above
         unsafe {
             env::remove_var("STEPFLOW_VAR_TEST_KEY");
         }
@@ -270,6 +272,7 @@ mod tests {
     #[test]
     fn test_env_variables_json_parsing() {
         // Set environment variable with JSON value
+        // SAFETY: This test runs single-threaded and immediately cleans up the env var after use
         unsafe {
             env::set_var("STEPFLOW_VAR_CONFIG", r#"{"nested": true, "value": 42}"#);
         }
@@ -288,6 +291,7 @@ mod tests {
         assert_eq!(value["value"], 42);
 
         // Clean up
+        // SAFETY: This test runs single-threaded and this is the cleanup for the set_var above
         unsafe {
             env::remove_var("STEPFLOW_VAR_CONFIG");
         }

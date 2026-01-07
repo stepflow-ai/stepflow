@@ -2,24 +2,22 @@ plugins:
   builtin:
     type: builtin
 
-  # Test HTTP transport
+  # Test HTTP transport with remote URL
   test_http:
     type: stepflow
-    transport: http
     url: "http://127.0.0.1:${TEST_PORT:-8080}"
 
-  # Test STDIO transport for comparison
-  test_stdio:
+  # Test subprocess HTTP transport
+  test_subprocess:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
 
 routes:
   "/test/{component}":
     - plugin: test_http
-  "/test_stdio/{component}":
-    - plugin: test_stdio
+  "/test_subprocess/{component}":
+    - plugin: test_subprocess
   "/builtin/{component}":
     - plugin: builtin
 

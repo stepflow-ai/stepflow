@@ -35,7 +35,7 @@ test:
   servers:
     test_http:
       command: "uv"
-      args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py", "--http", "--port", "{port}"]
+      args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py", "--port", "{port}"]
       env: {}
       working_directory: ""
       port_range: [18000, 19000]
@@ -53,7 +53,6 @@ test:
         type: builtin
       test_http:
         type: stepflow
-        transport: http
         url: "{test_http.url}"
 
     routes:

@@ -342,8 +342,9 @@ fn test_visualize_path_explicit_output_creates_file() {
 #[test]
 fn test_visualize_path_inferred_svg_creates_file() {
     // Skip if graphviz not installed
+    #[allow(clippy::print_stdout)]
     if which::which("dot").is_err() {
-        eprintln!("Skipping test: graphviz not installed");
+        println!("Skipping test: graphviz not installed");
         return;
     }
 
@@ -385,8 +386,9 @@ fn test_visualize_path_inferred_svg_creates_file() {
 #[test]
 fn test_visualize_path_relative_workflow_from_subdir() {
     // Skip if graphviz not installed
+    #[allow(clippy::print_stdout)]
     if which::which("dot").is_err() {
-        eprintln!("Skipping test: graphviz not installed");
+        println!("Skipping test: graphviz not installed");
         return;
     }
 
@@ -467,8 +469,9 @@ fn test_visualize_path_explicit_output_relative_to_cwd() {
 #[test]
 fn test_visualize_path_inferred_output_blocked_by_existing() {
     // Skip if graphviz not installed
+    #[allow(clippy::print_stdout)]
     if which::which("dot").is_err() {
-        eprintln!("Skipping test: graphviz not installed");
+        println!("Skipping test: graphviz not installed");
         return;
     }
 

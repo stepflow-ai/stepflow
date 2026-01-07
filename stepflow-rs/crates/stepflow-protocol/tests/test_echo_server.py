@@ -18,17 +18,14 @@ Simple echo server for testing HTTP protocol
 """
 import argparse
 import asyncio
-import json
 import sys
-from typing import Any, Dict
 
 try:
-    from stepflow_py.server import StepflowServer, StepflowStdioServer
-    from stepflow_py.http_server import StepflowHttpServer
+    from stepflow_py import StepflowServer, StepflowHttpServer
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)
-    print("Please install with: pip install stepflow-py[http]", file=sys.stderr)
+    print("Please install with: pip install stepflow-py", file=sys.stderr)
     sys.exit(1)
 
 
@@ -47,7 +44,6 @@ def echo_component(input: EchoInput) -> EchoOutput:
 
 async def main():
     parser = argparse.ArgumentParser(description="Echo Test Server")
-    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument("--port", type=int, default=8080, help="HTTP port")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
 
@@ -61,16 +57,10 @@ async def main():
         echo_component, name="echo", description="Echo component for testing"
     )
 
-    if args.http:
-        # Create HTTP server
-        http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
-        print(f"Starting HTTP echo server on {args.host}:{args.port}", file=sys.stderr)
-        await http_server.run()
-    else:
-        # Create STDIO server wrapper
-        stdio_server = StepflowStdioServer(core_server)
-        print("Starting stdio echo server", file=sys.stderr)
-        stdio_server.run()
+    # Create HTTP server
+    http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
+    print(f"Starting HTTP echo server on {args.host}:{args.port}", file=sys.stderr)
+    await http_server.run()
 
 
 if __name__ == "__main__":

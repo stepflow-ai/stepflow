@@ -23,7 +23,6 @@ plugins:
     type: builtin
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_py"]
     env:
@@ -98,7 +97,7 @@ plugins:
 
 External component servers that implement the Stepflow protocol.
 
-#### STDIO Transport
+#### Subprocess Mode
 
 For local development and subprocess-based component servers:
 
@@ -106,7 +105,6 @@ For local development and subprocess-based component servers:
 plugins:
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py"]
     env:
@@ -120,7 +118,7 @@ plugins:
 - **`args`**: Command-line arguments (supports environment variable substitution)
 - **`env`** (optional): Environment variables to set (supports substitution)
 
-#### HTTP Transport
+#### Remote Mode
 
 For distributed architectures and remote component servers:
 
@@ -128,7 +126,6 @@ For distributed architectures and remote component servers:
 plugins:
   remote_server:
     type: stepflow
-    transport: http
     url: "http://localhost:8080"
 ```
 
@@ -261,7 +258,6 @@ plugins:
 
   python_sdk:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_py"]
     env:
@@ -269,7 +265,6 @@ plugins:
 
   text_models:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "text_models_server.py"]
     env:
@@ -279,7 +274,6 @@ plugins:
 
   vision_models:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "vision_models_server.py"]
     env:
@@ -311,12 +305,10 @@ plugins:
 
   text_models_cluster:
     type: stepflow
-    transport: http
     url: "http://text-models:8080"
 
   vision_models_cluster:
     type: stepflow
-    transport: http
     url: "http://vision-models:8081"
 
 routes:

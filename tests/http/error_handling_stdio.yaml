@@ -39,7 +39,6 @@ test:
         type: builtin
       test_stdio:
         type: stepflow
-        transport: stdio
         command: uv
         args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
 

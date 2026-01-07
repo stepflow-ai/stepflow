@@ -886,7 +886,7 @@ mod tests {
         // The recursive structure of ValueExpr (Array(Vec<ValueExpr>), Object with ValueExpr, etc.)
         // caused the derived utoipa::ToSchema to recurse infinitely during schema generation
         // With #[schema(as = serde_json::Value)], this should complete without stack overflow
-        use utoipa::ToSchema;
+        use utoipa::ToSchema as _;
         let _name = ValueExpr::name();
         // If we get here without stack overflow, the implementation is safe
     }

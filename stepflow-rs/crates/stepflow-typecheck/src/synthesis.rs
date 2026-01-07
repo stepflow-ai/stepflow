@@ -888,7 +888,7 @@ mod tests {
         assert_eq!(infer_type_from_value(&json!(null)).to_string(), "null");
         assert_eq!(infer_type_from_value(&json!(true)).to_string(), "boolean");
         assert_eq!(infer_type_from_value(&json!(42)).to_string(), "integer");
-        assert_eq!(infer_type_from_value(&json!(3.14)).to_string(), "number");
+        assert_eq!(infer_type_from_value(&json!(3.15)).to_string(), "number");
         assert_eq!(infer_type_from_value(&json!("hello")).to_string(), "string");
     }
 

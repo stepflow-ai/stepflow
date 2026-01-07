@@ -20,7 +20,6 @@ data:
       # Kubernetes components via Stepflow load balancer
       k8s_components:
         type: stepflow
-        transport: http
         url: "http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080"
 
     routes:

@@ -17,10 +17,11 @@
 Clean architecture without CachedStepflowContext.
 """
 
+import asyncio
 import logging
 from typing import Any
 
-from stepflow_py import StepflowContext, StepflowServer
+from stepflow_py import StepflowContext, StepflowHttpServer, StepflowServer
 
 from .udf_executor import UDFExecutor
 
@@ -41,7 +42,8 @@ class StepflowLangflowServer:
 
     def __init__(self):
         """Initialize the Langflow component server."""
-        self.server = StepflowServer()
+        self._server = StepflowServer()
+        self.http_server = StepflowHttpServer(self._server)
         self.udf_executor = UDFExecutor()
 
         # Register components
@@ -50,7 +52,7 @@ class StepflowLangflowServer:
     def _register_components(self) -> None:
         """Register all Langflow components."""
 
-        @self.server.component(name="udf_executor")
+        @self.http_server.component(name="udf_executor")
         async def udf_executor(
             input_data: dict[str, Any], context: StepflowContext
         ) -> dict[str, Any]:
@@ -64,44 +66,19 @@ class StepflowLangflowServer:
             return await self.udf_executor.execute(input_data, context)
 
         # TODO: Register native component implementations
-        # self.server.component(name="openai_chat", func=self._openai_chat)
-        # self.server.component(name="chat_input", func=self._chat_input)
+        # self.http_server.component(name="openai_chat", func=self._openai_chat)
+        # self.http_server.component(name="chat_input", func=self._chat_input)
 
     def run(self) -> None:
-        """Run the component server in STDIO mode."""
-        self.server.start_stdio()
-
-    async def serve(
-        self,
-        host: str = "localhost",
-        port: int = 8000,
-        workers: int = 3,
-        backlog: int = 128,
-        timeout_keep_alive: int = 5,
-    ) -> None:
-        """Run the component server in HTTP mode.
-
-        Args:
-            host: Server host
-            port: Server port
-            workers: Number of worker processes
-            backlog: Maximum number of pending connections
-            timeout_keep_alive: Keep-alive timeout in seconds
-        """
-        # Apply nest_asyncio to allow nested event loops in HTTP mode
+        """Run the component server."""
+        # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
         import nest_asyncio  # type: ignore
 
         nest_asyncio.apply()
 
-        await self.server.start_http(
-            host=host,
-            port=port,
-            workers=workers,
-            backlog=backlog,
-            timeout_keep_alive=timeout_keep_alive,
-        )
+        asyncio.run(self.http_server.run())
 
 
 if __name__ == "__main__":

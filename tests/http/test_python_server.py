@@ -17,7 +17,7 @@
 Test Python server for HTTP transport integration testing.
 
 This server provides both bidirectional (context-using) and non-bidirectional components
-to test different aspects of the HTTP transport layer. It can run in both stdio and HTTP modes.
+to test different aspects of the HTTP transport layer.
 """
 
 import argparse
@@ -30,7 +30,6 @@ import uuid
 
 try:
     from stepflow_py.server import StepflowServer
-    from stepflow_py.stdio_server import StepflowStdioServer
     from stepflow_py.http_server import StepflowHttpServer
     from stepflow_py import StepflowContext
     from stepflow_py.exceptions import StepflowExecutionError
@@ -438,8 +437,7 @@ async def main():
     parser = argparse.ArgumentParser(
         description="Test Python Server for HTTP Transport"
     )
-    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
-    parser.add_argument("--port", type=int, default=8080, help="HTTP port")
+    parser.add_argument("--port", type=int, default=0, help="HTTP port (0 for auto-assign)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
 
     args = parser.parse_args()
@@ -491,19 +489,11 @@ async def main():
         description="Execute a configurable multi-step workflow with blob storage",
     )
 
-    if args.http:
-        # Create HTTP server
-        http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
-        print(f"Starting HTTP test server on {args.host}:{args.port}", file=sys.stderr)
-        await http_server.run()
-    else:
-        # Create STDIO server wrapper and return it for sync execution
-        return StepflowStdioServer(core_server)
+    # Create HTTP server (always runs in HTTP mode now)
+    http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
+    print(f"Starting HTTP test server on {args.host}:{args.port}", file=sys.stderr)
+    await http_server.run()
 
 
 if __name__ == "__main__":
-    result = asyncio.run(main())
-    # If we got a stdio server back, run it synchronously (outside asyncio context)
-    if result is not None:
-        print("Starting stdio test server", file=sys.stderr)
-        result.run()
+    asyncio.run(main())

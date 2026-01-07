@@ -69,7 +69,6 @@ class StepflowConfigBuilder:
                 "builtin": {"type": "builtin"},
                 "langflow": {
                     "type": "stepflow",
-                    "transport": "stdio",
                     "command": "uv",
                     "args": [
                         "--project",

@@ -297,7 +297,7 @@ mod tests {
             "properties": {
                 "default_bool": { "type": "boolean", "default": true },
                 "default_str": { "type": "string", "default": "hello" },
-                "default_num": { "type": "number", "default": 3.14 },
+                "default_num": { "type": "number", "default": 3.15 },
                 "optional_bool": { "type": "boolean" },
                 "optional_str": { "type": "string" },
                 "optional_num": { "type": "number" },
@@ -326,7 +326,7 @@ mod tests {
             variable_schema
                 .default_value("default_num")
                 .map(|v| v.clone_value()),
-            Some(json!(3.14))
+            Some(json!(3.15))
         );
         assert_eq!(
             variable_schema

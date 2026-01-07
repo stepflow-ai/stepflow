@@ -41,12 +41,8 @@ pub enum TransportError {
     },
     #[error("component server failed with exit code {exit_code:?}")]
     ServerFailure { exit_code: Option<i32> },
-    #[error("error closing stepflow component process")]
-    Close,
     #[error("invalid command: {}", .0.display())]
     InvalidCommand(PathBuf),
-    #[error("error in receive loop")]
-    RecvLoop,
     #[error("command not found: {0}")]
     MissingCommand(String),
     #[error("unknown method: {method:?}")]

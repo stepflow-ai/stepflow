@@ -84,7 +84,6 @@ uv run --project sdks/python stepflow_py
 plugins:
   python_stdio:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_py"]
 
@@ -126,7 +125,6 @@ stepflow_py --http --host 0.0.0.0 --port 8080
 plugins:
   python_http:
     type: stepflow
-    transport: http
     url: "http://localhost:8080"
 
 routes:

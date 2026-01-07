@@ -31,52 +31,7 @@ use crate::protocol::{
     ComponentExecuteParams, ComponentInfoParams, ComponentListParams, InitializeParams,
     Initialized, ObservabilityContext,
 };
-use crate::stdio::{
-    client::{StdioClient, StdioClientHandle},
-    launcher::Launcher,
-};
-use serde::de::DeserializeOwned;
-
-#[derive(Clone)]
-enum StepflowClientHandle {
-    Stdio(StdioClientHandle),
-    Http(HttpClientHandle),
-}
-
-impl StepflowClientHandle {
-    async fn method<I>(&self, params: &I) -> Result<I::Response>
-    where
-        I: crate::protocol::ProtocolMethod + serde::Serialize + Send + Sync + std::fmt::Debug,
-        I::Response: DeserializeOwned + Send + Sync + 'static,
-    {
-        match self {
-            StepflowClientHandle::Stdio(client) => client
-                .method(params)
-                .await
-                .change_context(PluginError::Execution),
-            StepflowClientHandle::Http(client) => client
-                .method(params)
-                .await
-                .change_context(PluginError::Execution),
-        }
-    }
-
-    async fn notify<I>(&self, params: &I) -> Result<()>
-    where
-        I: crate::protocol::ProtocolNotification + serde::Serialize + Send + Sync + std::fmt::Debug,
-    {
-        match self {
-            StepflowClientHandle::Stdio(client) => client
-                .notify(params)
-                .await
-                .change_context(PluginError::Execution),
-            StepflowClientHandle::Http(client) => client
-                .notify(params)
-                .await
-                .change_context(PluginError::Execution),
-        }
-    }
-}
+use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct StepflowPluginConfig {
@@ -84,20 +39,27 @@ pub struct StepflowPluginConfig {
     pub transport: StepflowTransport,
 }
 
+/// Configuration for Stepflow plugin transport.
+///
+/// Either `command` or `url` must be provided (but not both):
+/// - `command`: Launch a subprocess HTTP server
+/// - `url`: Connect to an existing HTTP server
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "transport")]
+#[serde(untagged)]
 pub enum StepflowTransport {
-    #[serde(rename = "stdio")]
-    Stdio {
+    /// Subprocess mode: launch a process that runs an HTTP server.
+    /// The process must print {"port": N} to stdout when ready.
+    Subprocess {
         command: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         args: Vec<String>,
-        /// Environment variables to pass to the sub-process.
+        /// Environment variables to pass to the subprocess.
         /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
         #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
         env: IndexMap<String, String>,
     },
-    #[serde(rename = "http")]
-    Http { url: String },
+    /// Remote mode: connect directly to an existing HTTP endpoint.
+    Remote { url: String },
 }
 
 impl PluginConfig for StepflowPluginConfig {
@@ -107,26 +69,17 @@ impl PluginConfig for StepflowPluginConfig {
         self,
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
-        let transport = self.transport.clone();
-        match transport {
-            StepflowTransport::Stdio {
-                ref command,
-                ref args,
-                ref env,
-            } => {
-                let launcher = Launcher::try_new(
-                    working_directory.to_owned(),
-                    command.clone(),
-                    args.clone(),
-                    env.clone(),
-                )?;
+        match self.transport {
+            StepflowTransport::Subprocess { command, args, env } => {
+                let launcher =
+                    SubprocessLauncher::try_new(working_directory.to_owned(), command, args, env)?;
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
-                    StepflowPluginState::UninitializedStdio(launcher),
+                    StepflowPluginState::UninitializedSubprocess(launcher),
                 )))
             }
-            StepflowTransport::Http { ref url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
-                StepflowPluginState::UninitializedHttp(url.clone()),
+            StepflowTransport::Remote { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
+                StepflowPluginState::UninitializedRemote(url),
             ))),
         }
     }
@@ -146,25 +99,44 @@ impl StepflowPlugin {
 
 enum StepflowPluginState {
     Empty,
-    UninitializedStdio(Launcher),
-    UninitializedHttp(String),
-    Initialized(StepflowClientHandle),
+    UninitializedSubprocess(SubprocessLauncher),
+    UninitializedRemote(String),
+    /// Initialized subprocess mode: keeps launcher for restart capability
+    InitializedSubprocess {
+        launcher: SubprocessLauncher,
+        #[allow(dead_code)]
+        subprocess: Box<SubprocessHandle>,
+        client: HttpClientHandle,
+    },
+    /// Initialized remote mode: just the client handle
+    InitializedRemote(HttpClientHandle),
 }
 
 impl StepflowPlugin {
-    async fn client_handle(&self) -> Result<StepflowClientHandle> {
+    async fn client_handle(&self) -> Result<HttpClientHandle> {
         let guard = self.state.read().await;
         match &*guard {
-            StepflowPluginState::Initialized(handle) => Ok(handle.clone()),
+            StepflowPluginState::InitializedSubprocess { client, .. } => Ok(client.clone()),
+            StepflowPluginState::InitializedRemote(handle) => Ok(handle.clone()),
             _ => Err(PluginError::Execution).attach_printable("client not initialized"),
         }
+    }
+
+    /// Check if this plugin is in subprocess mode (can be restarted)
+    async fn is_subprocess_mode(&self) -> bool {
+        let guard = self.state.read().await;
+        matches!(
+            &*guard,
+            StepflowPluginState::UninitializedSubprocess(_)
+                | StepflowPluginState::InitializedSubprocess { .. }
+        )
     }
 
     /// Get client handle, creating it if necessary
     async fn get_or_create_client_handle(
         &self,
         context: Arc<dyn Context>,
-    ) -> Result<StepflowClientHandle> {
+    ) -> Result<HttpClientHandle> {
         // First try to get existing handle
         if let Ok(handle) = self.client_handle().await {
             return Ok(handle);
@@ -174,53 +146,112 @@ impl StepflowPlugin {
         self.create_client(context).await
     }
 
-    /// Execute component with a single attempt (extracted from original execute method)
-    async fn try_execute_component(
-        &self,
-        component: &Component,
-        context: &ExecutionContext,
-        input: &ValueRef,
-        attempt: u32,
-    ) -> Result<FlowResult> {
-        // Create observability context from execution context
-        let observability = ObservabilityContext::from_execution_context(context);
+    /// Restart the subprocess and reinitialize the client.
+    /// Only valid for subprocess mode - returns error for remote mode.
+    async fn restart_subprocess(&self, context: Arc<dyn Context>) -> Result<HttpClientHandle> {
+        let mut guard = self.state.write().await;
 
-        // Use get_or_create_client_handle to handle reinitialization after restart
-        let client_handle = self
-            .get_or_create_client_handle(context.context().clone())
-            .await?;
-        let response = client_handle
-            .method(&ComponentExecuteParams {
-                component: component.clone(),
-                input: input.clone(),
-                attempt,
-                observability,
+        // Extract the launcher from current state
+        let launcher = match std::mem::replace(&mut *guard, StepflowPluginState::Empty) {
+            StepflowPluginState::InitializedSubprocess { launcher, .. } => launcher,
+            StepflowPluginState::UninitializedSubprocess(launcher) => launcher,
+            other => {
+                // Put the state back and return error
+                *guard = other;
+                return Err(PluginError::Execution)
+                    .attach_printable("Cannot restart: not in subprocess mode");
+            }
+        };
+
+        log::info!("Restarting subprocess HTTP server after crash");
+
+        // Launch new subprocess (clone launcher to keep for future restarts)
+        let subprocess = launcher
+            .clone()
+            .launch()
+            .await
+            .change_context(PluginError::Execution)
+            .attach_printable("Unable to restart subprocess HTTP server")?;
+
+        let url = subprocess.url().to_string();
+
+        // Create new HTTP client
+        let client = HttpClient::try_new(url, Arc::downgrade(&context))
+            .await
+            .change_context(PluginError::Execution)
+            .attach_printable("Unable to create HTTP client for restarted subprocess")?;
+
+        // Reinitialize the server
+        let observability = ObservabilityContext::from_current_span();
+        let handle = client.handle();
+
+        handle
+            .method(&InitializeParams {
+                runtime_protocol_version: 1,
+                observability: if observability.trace_id.is_some() {
+                    Some(observability)
+                } else {
+                    None
+                },
             })
             .await
-            .change_context(PluginError::Execution)?;
+            .change_context(PluginError::Execution)
+            .attach_printable("Failed to initialize restarted subprocess")?;
 
-        Ok(FlowResult::Success(response.output))
+        handle
+            .notify(&Initialized {})
+            .await
+            .change_context(PluginError::Execution)
+            .attach_printable("Failed to send initialized notification to restarted subprocess")?;
+
+        // Store new state
+        *guard = StepflowPluginState::InitializedSubprocess {
+            launcher,
+            subprocess: Box::new(subprocess),
+            client: handle.clone(),
+        };
+
+        Ok(handle)
     }
 
-    async fn create_client(&self, context: Arc<dyn Context>) -> Result<StepflowClientHandle> {
+    async fn create_client(&self, context: Arc<dyn Context>) -> Result<HttpClientHandle> {
         let mut guard = self.state.write().await;
         match std::mem::replace(&mut *guard, StepflowPluginState::Empty) {
-            StepflowPluginState::UninitializedStdio(launcher) => {
-                let client = StdioClient::try_new(launcher, context)
+            StepflowPluginState::UninitializedSubprocess(launcher) => {
+                // Launch subprocess and get URL (clone launcher to keep for restarts)
+                let subprocess = launcher
+                    .clone()
+                    .launch()
                     .await
                     .change_context(PluginError::Initializing)
-                    .attach_printable("Unable to launch component server")?;
-                let handle = StepflowClientHandle::Stdio(client.handle());
-                *guard = StepflowPluginState::Initialized(handle.clone());
+                    .attach_printable("Unable to launch subprocess HTTP server")?;
+
+                let url = subprocess.url().to_string();
+
+                // Create HTTP client with the subprocess URL
+                // Use Weak reference to break circular dependency (executor -> plugin -> client -> context -> executor)
+                let client = HttpClient::try_new(url, Arc::downgrade(&context))
+                    .await
+                    .change_context(PluginError::Initializing)
+                    .attach_printable("Unable to create HTTP client for subprocess")?;
+
+                let handle = client.handle();
+                // Store launcher for restart capability, subprocess to keep it alive
+                *guard = StepflowPluginState::InitializedSubprocess {
+                    launcher,
+                    subprocess: Box::new(subprocess),
+                    client: handle.clone(),
+                };
                 Ok(handle)
             }
-            StepflowPluginState::UninitializedHttp(url) => {
-                let client = HttpClient::try_new(url, context)
+            StepflowPluginState::UninitializedRemote(url) => {
+                let client = HttpClient::try_new(url, Arc::downgrade(&context))
                     .await
                     .change_context(PluginError::Initializing)
                     .attach_printable("Unable to create HTTP client")?;
-                let handle = StepflowClientHandle::Http(client.handle());
-                *guard = StepflowPluginState::Initialized(handle.clone());
+
+                let handle = client.handle();
+                *guard = StepflowPluginState::InitializedRemote(handle.clone());
                 Ok(handle)
             }
             _ => Err(PluginError::Initializing)
@@ -267,7 +298,6 @@ impl Plugin for StepflowPlugin {
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        // TODO: Enrich this? Component not found, etc. based on the protocol error code?
         let client_handle = self.client_handle().await?;
         let response = client_handle
             .method(&ComponentInfoParams {
@@ -285,51 +315,59 @@ impl Plugin for StepflowPlugin {
         context: ExecutionContext,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        // Get the client handle (will create if not initialized)
-        let client_handle = self
-            .get_or_create_client_handle(context.context().clone())
-            .await?;
+        const MAX_ATTEMPTS: u32 = 3;
+        let can_restart = self.is_subprocess_mode().await;
 
-        // For stdio transport, capture the restart counter before execution
-        let (initial_restart_count, mut restart_rx) = match &client_handle {
-            StepflowClientHandle::Stdio(stdio_handle) => {
-                let (count, rx) = stdio_handle.restart_counter();
-                (Some(count), Some(rx))
-            }
-            StepflowClientHandle::Http(_) => (None, None),
-        };
+        for attempt in 1..=MAX_ATTEMPTS {
+            // Create observability context from execution context
+            let observability = ObservabilityContext::from_execution_context(&context);
 
-        // First attempt
-        match self
-            .try_execute_component(component, &context, &input, 1)
-            .await
-        {
-            Ok(result) => Ok(result),
-            Err(e) => {
-                // Only retry for stdio transport when subprocess was restarted
-                if let (Some(initial_count), Some(restart_rx)) =
-                    (initial_restart_count, restart_rx.as_mut())
-                {
-                    // Check if a restart occurred by comparing the current counter
-                    let current_count = *restart_rx.borrow_and_update();
+            // Get the client handle (will create if not initialized)
+            let client_handle = self
+                .get_or_create_client_handle(context.context().clone())
+                .await?;
 
-                    if current_count > initial_count {
-                        log::info!(
-                            "Component execution failed due to process restart (count: {} -> {}), retrying once",
-                            initial_count,
-                            current_count
+            let result = client_handle
+                .method(&ComponentExecuteParams {
+                    component: component.clone(),
+                    input: input.clone(),
+                    attempt,
+                    observability,
+                })
+                .await;
+
+            match result {
+                Ok(response) => return Ok(FlowResult::Success(response.output)),
+                Err(err) => {
+                    // If we can restart (subprocess mode) and have attempts left, try to restart
+                    if can_restart && attempt < MAX_ATTEMPTS {
+                        log::warn!(
+                            "Component execution failed (attempt {}/{}), restarting subprocess: {}",
+                            attempt,
+                            MAX_ATTEMPTS,
+                            err
                         );
 
-                        // Retry the execution once with the restored subprocess
-                        return self
-                            .try_execute_component(component, &context, &input, 2)
-                            .await;
-                    }
-                }
+                        // Try to restart the subprocess
+                        if let Err(restart_err) =
+                            self.restart_subprocess(context.context().clone()).await
+                        {
+                            log::error!("Failed to restart subprocess: {}", restart_err);
+                            // If restart fails, return the original error
+                            return Err(err).change_context(PluginError::Execution);
+                        }
 
-                // No restart occurred or not stdio transport - propagate the error
-                Err(e)
+                        // Continue to next attempt
+                        continue;
+                    }
+
+                    // No more retries or can't restart - return error
+                    return Err(err).change_context(PluginError::Execution);
+                }
             }
         }
+
+        // Should not reach here, but just in case
+        Err(PluginError::Execution).attach_printable("Max retry attempts exceeded")
     }
 }

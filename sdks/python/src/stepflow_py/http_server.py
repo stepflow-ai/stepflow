@@ -73,8 +73,8 @@ class StepflowHttpServer:
     def __init__(
         self,
         server: StepflowServer | None = None,
-        host: str = "localhost",
-        port: int = 8080,
+        host: str = "127.0.0.1",
+        port: int = 0,
         instance_id: str | None = None,
         workers: int = 3,
         backlog: int = 128,
@@ -384,7 +384,14 @@ class StepflowHttpServer:
             )
 
     async def run(self):
-        """Start the HTTP server."""
+        """Start the HTTP server.
+
+        When port is 0, the server binds to an available port and announces
+        the actual port via stdout in JSON format: {"port": N}
+
+        This allows the Stepflow orchestrator to discover the server's port
+        when launching component servers as subprocesses.
+        """
         logger.info(
             f"Starting Stepflow Streamable HTTP server on {self.host}:{self.port}"
         )
@@ -400,12 +407,35 @@ class StepflowHttpServer:
             app=self.app,
             host=self.host,
             port=self.port,
-            log_level="info",
+            log_level="warning",  # Reduce noise, logging goes to stderr
             workers=self.workers,
             backlog=self.backlog,
             timeout_keep_alive=self.timeout_keep_alive,
         )
         server = uvicorn.Server(config)
+
+        # Override startup to announce port after binding
+        original_startup = server.startup
+
+        async def startup_with_port_announcement(*args, **kwargs):
+            await original_startup(*args, **kwargs)
+            # After binding, announce the actual port to stdout
+            # This is read by the Stepflow orchestrator
+            for s in server.servers:
+                for sock in s.sockets:
+                    addr = sock.getsockname()
+                    actual_port = addr[1]
+                    # Print port announcement to stdout (JSON format)
+                    # All other output should go to stderr
+                    import json
+
+                    announcement = {"port": actual_port}
+                    print(json.dumps(announcement), flush=True)
+                    logger.info(f"Server listening on port {actual_port}")
+                    return  # Only announce once
+
+        # Monkey-patch the startup method using object attribute assignment
+        object.__setattr__(server, "startup", startup_with_port_announcement)
         await server.serve()
 
     def component(self, *args, **kwargs):

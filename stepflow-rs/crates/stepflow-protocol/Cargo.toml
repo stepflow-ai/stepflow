@@ -17,7 +17,6 @@ error-stack.workspace = true
 fastrace.workspace = true
 futures.workspace = true
 indexmap.workspace = true
-libc = "0.2"
 reqwest.workspace = true
 reqwest-eventsource.workspace = true
 serde_json.workspace = true
@@ -30,10 +29,12 @@ utoipa.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-stream.workspace = true
 log.workspace = true
 uuid.workspace = true
 which.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
 
 [dev-dependencies]
 similar-asserts.workspace = true

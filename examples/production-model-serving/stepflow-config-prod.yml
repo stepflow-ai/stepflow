@@ -24,7 +24,6 @@ plugins:
   # text model server instances, potentially running on CPU-optimized nodes
   text_models_cluster:
     type: stepflow
-    transport: http
     url: "http://text-models:8080"
     # In a real production setup, this might be:
     # url: "https://text-models.production.company.com"
@@ -35,7 +34,6 @@ plugins:
   # These might run on different instance types with specialized hardware
   vision_models_cluster:
     type: stepflow
-    transport: http
     url: "http://vision-models:8081"
     # In production:
     # url: "https://vision-models.production.company.com"

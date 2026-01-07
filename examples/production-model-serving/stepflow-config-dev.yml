@@ -21,7 +21,6 @@ plugins:
   # This gives us access to the Python UDF component for embedded Python code
   python_sdk:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_py"]
     env:
@@ -31,7 +30,6 @@ plugins:
   # In development, this spawns a local Python process running the text models server
   text_models:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "text_models_server.py"]
     env:
@@ -47,7 +45,6 @@ plugins:
   # Separate process for vision models allows independent scaling and resource allocation
   vision_models:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "vision_models_server.py"]
     env:

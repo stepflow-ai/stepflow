@@ -15,10 +15,11 @@
 import argparse
 import asyncio
 
-from stepflow_py.stdio_server import StepflowStdioServer
+from stepflow_py.http_server import StepflowHttpServer
+from stepflow_py.server import StepflowServer
 
 # Create server instance
-server = StepflowStdioServer()
+server = StepflowHttpServer(StepflowServer())
 
 
 def main():
@@ -49,31 +50,26 @@ Environment variables:
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
     parser.add_argument(
-        "--port", type=int, default=8080, help="HTTP port (default: 8080)"
+        "--port",
+        type=int,
+        default=0,
+        help="HTTP port (0 for auto-assign, default: 0)",
     )
     parser.add_argument(
         "--host",
         type=str,
-        default="localhost",
-        help="HTTP host (default: localhost)",
+        default="127.0.0.1",
+        help="HTTP host (default: 127.0.0.1)",
     )
 
     args = parser.parse_args()
 
-    if args.http:
-        # Import HTTP server here to avoid import if not needed
-        from stepflow_py.http_server import StepflowHttpServer
+    # Create HTTP server with specified host/port
+    http_server = StepflowHttpServer(server.server, host=args.host, port=args.port)
 
-        # Create HTTP server wrapping the stdio server
-        http_server = StepflowHttpServer(server._server, host=args.host, port=args.port)
-
-        # Start HTTP server
-        asyncio.run(http_server.run())
-    else:
-        # Start the stdio server
-        server.run()
+    # Start HTTP server
+    asyncio.run(http_server.run())
 
 
 if __name__ == "__main__":

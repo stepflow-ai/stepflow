@@ -18,8 +18,11 @@ Custom Python component server for message manipulation
 Used for load testing Stepflow with Python custom components (no OpenAI)
 """
 
+import asyncio
+import sys
+
 import msgspec
-from stepflow_py import StepflowStdioServer
+from stepflow_py import StepflowHttpServer, StepflowServer
 
 
 class MessageInput(msgspec.Struct):
@@ -37,7 +40,8 @@ class MessageOutput(msgspec.Struct):
     total_length: int
 
 
-server = StepflowStdioServer()
+_server = StepflowServer()
+server = StepflowHttpServer(_server)
 
 
 @server.component
@@ -79,4 +83,4 @@ def process_text(input: MessageInput) -> MessageOutput:
 
 
 if __name__ == "__main__":
-    server.run()
+    asyncio.run(server.run())

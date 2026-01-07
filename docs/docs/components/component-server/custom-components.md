@@ -75,7 +75,6 @@ Configure the component server in `stepflow-config.yml`:
 plugins:
   my_components:
     type: stepflow
-    transport: stdio
     command: python
     args: ["my_server.py"]
 
