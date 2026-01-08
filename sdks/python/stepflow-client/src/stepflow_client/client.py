@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from stepflow_api import Client
+from stepflow_api import ApiClient as Client
 from stepflow_api.api.component import list_components as api_list_components
 from stepflow_api.api.flow import (
     delete_flow as api_delete_flow,
