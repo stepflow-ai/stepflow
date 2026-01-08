@@ -95,7 +95,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-stepflow-worker = { path = "../../sdks/python", editable = true }
+stepflow-worker = { path = "../../sdks/python/stepflow-worker", editable = true }
 
 [tool.poe]
 # comment this out to debug poe tasks
