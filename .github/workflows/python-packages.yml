@@ -226,6 +226,8 @@ jobs:
           python -c "from stepflow_py import StepflowClient, StepflowServer, FlowResult; print('stepflow_py OK')"
 
   # Publish to PyPI on release
+  # Note: stepflow-worker is excluded from publishing here because it has its
+  # own release workflow (release_python.yml) with changelog generation
   publish:
     if: github.event_name == 'release'
     needs: [test]
@@ -238,6 +240,12 @@ jobs:
         with:
           path: dist/
           merge-multiple: true
+
+      - name: Exclude stepflow-worker (has separate release workflow)
+        run: |
+          rm -f dist/stepflow_worker-*.whl dist/stepflow_worker-*.tar.gz || true
+          echo "Remaining packages to publish:"
+          find dist/ -name "*.whl" -o -name "*.tar.gz" | sort
 
       - name: List wheels
         run: |
