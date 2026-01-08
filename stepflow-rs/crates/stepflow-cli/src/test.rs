@@ -361,7 +361,10 @@ pub async fn run_tests(
             }
             Ok(None) => {
                 // Skipped file (not a flow file)
-                println!("{}: Skipped (invalid or non-flow file)", flow_path.display());
+                println!(
+                    "{}: Skipped (invalid or non-flow file)",
+                    flow_path.display()
+                );
             }
             Err(e) => {
                 // Error loading or running tests

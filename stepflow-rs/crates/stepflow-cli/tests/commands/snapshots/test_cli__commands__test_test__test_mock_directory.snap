@@ -46,6 +46,7 @@ Running Test Case lazy_evaluation_true_branch
 ----------
 Running Test Case lazy_evaluation_false_branch
 tests/mock/lazy_evaluation.yaml: 2/2 passed
+tests/mock/stepflow-config.yml: Skipped (invalid or non-flow file)
 tests/mock/basic.yaml: 3/3 passed
 tests/mock/error_fail.yaml: 2/2 passed
 tests/mock/error_use_default.yaml: 2/2 passed
