@@ -15,7 +15,7 @@
 import argparse
 import asyncio
 
-from stepflow_py.server import StepflowServer
+from stepflow_worker.server import StepflowServer
 
 # Create server instance
 server = StepflowServer()
@@ -31,7 +31,7 @@ def main():
     #   STEPFLOW_LOG_FILE: File path for file logging
     #   STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for trace/log export
     #   STEPFLOW_TRACE_ENABLED: Enable tracing (default: true)
-    from stepflow_py.observability import setup_observability
+    from stepflow_worker.observability import setup_observability
 
     setup_observability()
 

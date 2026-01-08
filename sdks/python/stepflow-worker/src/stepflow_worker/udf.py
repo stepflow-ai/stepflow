@@ -18,9 +18,9 @@ from typing import Any
 
 import msgspec
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import CodeCompilationError, StepflowValueError
-from stepflow_py.observability import get_tracer
+from stepflow_worker.context import StepflowContext
+from stepflow_worker.exceptions import CodeCompilationError, StepflowValueError
+from stepflow_worker.observability import get_tracer
 
 logger = logging.getLogger(__name__)
 

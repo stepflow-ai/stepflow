@@ -16,8 +16,8 @@
 
 import msgspec
 
-from stepflow_py import ValueExpr
-from stepflow_py.generated_flow import (
+from stepflow_worker import ValueExpr
+from stepflow_worker.generated_flow import (
     Coalesce,
     If,
     InputRef,

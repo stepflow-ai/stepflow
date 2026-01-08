@@ -22,7 +22,7 @@ import asyncio
 import sys
 
 import msgspec
-from stepflow_py import StepflowServer
+from stepflow_worker import StepflowServer
 
 
 class MessageInput(msgspec.Struct):

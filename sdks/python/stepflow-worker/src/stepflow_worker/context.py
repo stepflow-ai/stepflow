@@ -18,8 +18,8 @@ import asyncio
 from typing import Any, TypeVar
 from uuid import uuid4
 
-from stepflow_py.generated_flow import Flow
-from stepflow_py.generated_protocol import (
+from stepflow_worker.generated_flow import Flow
+from stepflow_worker.generated_protocol import (
     BlobType,
     FlowResultFailed,
     FlowResultSuccess,
@@ -36,7 +36,7 @@ from stepflow_py.generated_protocol import (
     RunStatusProtocol,
     SubmitRunProtocolParams,
 )
-from stepflow_py.message_decoder import MessageDecoder
+from stepflow_worker.message_decoder import MessageDecoder
 
 """
 Context API for stepflow components to interact with the runtime.
@@ -83,7 +83,7 @@ class StepflowContext:
             ObservabilityContext with current span as parent, or None if
             no span is active.
         """
-        from stepflow_py.observability import get_current_observability_context
+        from stepflow_worker.observability import get_current_observability_context
 
         return get_current_observability_context(
             run_id=self._run_id,
@@ -141,7 +141,7 @@ class StepflowContext:
         Returns:
             The blob ID (SHA-256 hash) for the stored data
         """
-        from stepflow_py.observability import get_tracer
+        from stepflow_worker.observability import get_tracer
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -167,8 +167,8 @@ class StepflowContext:
         Returns:
             The JSON data associated with the blob ID
         """
-        from stepflow_py.generated_protocol import GetBlobParams
-        from stepflow_py.observability import get_tracer
+        from stepflow_worker.generated_protocol import GetBlobParams
+        from stepflow_worker.observability import get_tracer
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -313,7 +313,7 @@ class StepflowContext:
         Returns:
             RunStatusProtocol with run status and optionally results if wait=True
         """
-        from stepflow_py.observability import get_tracer
+        from stepflow_worker.observability import get_tracer
 
         tracer = get_tracer(__name__)
         attributes: dict[str, str | int | bool] = {
@@ -356,7 +356,7 @@ class StepflowContext:
         Returns:
             RunStatusProtocol with run status and optionally results
         """
-        from stepflow_py.observability import get_tracer
+        from stepflow_worker.observability import get_tracer
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -440,7 +440,7 @@ class StepflowContext:
         Raises:
             StepflowFailed: If any of the runs failed
         """
-        from stepflow_py.exceptions import StepflowFailed
+        from stepflow_worker.exceptions import StepflowFailed
 
         # Submit and wait for completion with results
         run_status = await self.submit_run_by_id(

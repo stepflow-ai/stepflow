@@ -53,7 +53,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
-    from stepflow_py.generated_protocol import ObservabilityContext
+    from stepflow_worker.generated_protocol import ObservabilityContext
 
 # Context variables for diagnostic context
 _diagnostic_context: contextvars.ContextVar[dict[str, str] | None] = (
@@ -374,7 +374,7 @@ def get_current_observability_context(
         ObservabilityContext with current span's trace_id and span_id,
         or None if no span is active.
     """
-    from stepflow_py.generated_protocol import ObservabilityContext
+    from stepflow_worker.generated_protocol import ObservabilityContext
 
     # Get the current span
     current_span = trace.get_current_span()

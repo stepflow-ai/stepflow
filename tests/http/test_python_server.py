@@ -29,8 +29,8 @@ import time
 import uuid
 
 try:
-    from stepflow_py import StepflowServer, StepflowContext
-    from stepflow_py.exceptions import StepflowExecutionError
+    from stepflow_worker import StepflowServer, StepflowContext
+    from stepflow_worker.exceptions import StepflowExecutionError
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)

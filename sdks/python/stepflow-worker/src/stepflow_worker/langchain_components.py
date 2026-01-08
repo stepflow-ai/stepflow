@@ -23,9 +23,9 @@ from typing import Any
 
 import msgspec
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowExecutionError
-from stepflow_py.langchain_integration import (
+from stepflow_worker.context import StepflowContext
+from stepflow_worker.exceptions import StepflowExecutionError
+from stepflow_worker.langchain_integration import (
     check_langchain_available,
     create_runnable_config,
     deserialize_runnable,

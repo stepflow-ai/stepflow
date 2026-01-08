@@ -12,8 +12,8 @@ All notable changes to this project will be documented in this file.
 # Template for the changelog body
 body = """
 {%- if version -%}
-    {%- set clean_version = version | trim_start_matches(pat="stepflow-py-") -%}
-    ## <a id="{{ clean_version }}"></a> [Stepflow Python SDK {{ clean_version }}](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-{{ clean_version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+    {%- set clean_version = version | trim_start_matches(pat="stepflow-worker-") -%}
+    ## <a id="{{ clean_version }}"></a> [Stepflow Python SDK {{ clean_version }}](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-worker-{{ clean_version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
 {%- else -%}
     ## unreleased
 {%- endif -%}
@@ -76,7 +76,7 @@ commit_parsers = [
 # Protect breaking changes from being skipped due to matching a skipping commit_parser
 protect_breaking_commits = false
 # Glob pattern for matching git tags
-tag_pattern = "stepflow-py-[0-9.]*"
+tag_pattern = "stepflow-worker-[0-9.]*"
 # Regex for skipping tags
 # Regex for ignoring tags
 ignore_tags = ""

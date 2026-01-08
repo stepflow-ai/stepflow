@@ -29,7 +29,7 @@ try:
     import msgspec
     from langchain_core.runnables import RunnableLambda
 
-    from stepflow_py import StepflowServer, except ImportError as e:
+    from stepflow_worker import StepflowServer, except ImportError as e:
     print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
     print("Please install with:", file=sys.stderr)
     print("  cd ../../sdks/python", file=sys.stderr)

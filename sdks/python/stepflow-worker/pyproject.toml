@@ -1,0 +1,149 @@
+[project]
+name = "stepflow-worker"
+version = "0.8.0"
+description = "Python SDK for Stepflow components and workflows."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "DataStax Inc."}
+]
+maintainers = [
+    {name = "DataStax Inc."}
+]
+requires-python = ">=3.11"
+keywords = [
+    "workflow",
+    "automation",
+    "ai",
+    "components",
+    "stepflow",
+    "orchestration",
+    "pipeline"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed"
+]
+dependencies = [
+    "msgspec>=0.19.0",
+    "jsonschema>=4.17.0",
+    "types-jsonschema>=4.17.0",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+]
+
+[project.urls]
+Homepage = "https://stepflow-ai.github.io/stepflow/"
+Documentation = "https://stepflow-ai.github.io/stepflow/"
+Repository = "https://github.com/stepflow-ai/stepflow"
+"Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
+Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/stepflow-worker/CHANGELOG.md"
+"Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-worker"
+
+[project.optional-dependencies]
+http = [
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "sse-starlette>=1.6.5",
+]
+langchain = [
+    "langchain-core>=0.3",
+]
+
+[dependency-groups]
+dev = [
+    "datamodel-code-generator[http,ruff]>=0.31.2",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=4.1.0",
+    "poethepoet>=0.24.0",
+    "ruff>=0.9.4",
+    "mypy>=1.8.0",
+    "deptry>=0.22.0",
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "sse-starlette>=1.6.5",
+    "openai>=1.97.1",
+    "httpx>=0.25.0",
+    "pytest-mock>=3.14.1",
+    "langchain-core>=0.3.72",
+]
+
+[project.scripts]
+stepflow_worker = "stepflow_worker.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stepflow_worker"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["**/generated_*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+"**/generated_*.py" = ["E501", "UP006", "UP035"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+exclude = ["**/generated_*.py"]
+
+[tool.deptry]
+ignore = ["DEP002"]
+extend_exclude = ["types-jsonschema"]
+
+[tool.deptry.package_module_name_map]
+opentelemetry-api = "opentelemetry"
+opentelemetry-sdk = "opentelemetry"
+opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+strict_equality = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "stepflow_worker.generated_flow"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "stepflow_worker.generated_protocol"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"

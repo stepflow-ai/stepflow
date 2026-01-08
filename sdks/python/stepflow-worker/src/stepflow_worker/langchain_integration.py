@@ -22,8 +22,8 @@ from typing import Any
 
 import msgspec
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowExecutionError
+from stepflow_worker.context import StepflowContext
+from stepflow_worker.exceptions import StepflowExecutionError
 
 # Import cache for runnable import paths
 _import_cache: dict[str, Any] = {}

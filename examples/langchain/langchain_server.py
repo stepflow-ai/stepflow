@@ -28,7 +28,7 @@ import asyncio
 
 import msgspec
 
-from stepflow_py import StepflowContext, StepflowServer
+from stepflow_worker import StepflowContext, StepflowServer
 
 # Only run examples if LangChain is available
 try:
@@ -140,7 +140,7 @@ if LANGCHAIN_AVAILABLE:
         """Directly invoke a runnable from Python import path with caching."""
 
         # Use the SDK function for the core functionality
-        from stepflow_py.langchain_integration import invoke_named_runnable
+        from stepflow_worker.langchain_integration import invoke_named_runnable
 
         result = await invoke_named_runnable(
             import_path=input.import_path,

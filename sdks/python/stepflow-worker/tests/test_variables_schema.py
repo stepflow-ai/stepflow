@@ -14,7 +14,7 @@
 
 """Test variables schema functionality in FlowBuilder."""
 
-from stepflow_py import FlowBuilder, Value
+from stepflow_worker import FlowBuilder, Value
 
 
 def test_variables_schema_from_dict():

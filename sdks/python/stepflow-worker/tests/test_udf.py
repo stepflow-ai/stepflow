@@ -16,9 +16,9 @@ import msgspec
 import pytest
 from pytest_mock import MockerFixture
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import StepflowValueError
-from stepflow_py.udf import UdfCompilationError, _compile_function, _InputWrapper
+from stepflow_worker.context import StepflowContext
+from stepflow_worker.exceptions import StepflowValueError
+from stepflow_worker.udf import UdfCompilationError, _compile_function, _InputWrapper
 
 
 class DummyContext:
@@ -43,7 +43,7 @@ def mock_context(mocker: MockerFixture) -> StepflowContext:
     Mocks my_module.MyClass with autospec=True.
     """
     mock_context_class = mocker.patch(
-        "stepflow_py.context.StepflowContext", autospec=True
+        "stepflow_worker.context.StepflowContext", autospec=True
     )
     mock_instance = mock_context_class.return_value
     mock_instance.session_id = "test_session"
@@ -402,7 +402,7 @@ async def test_udf_compilation_error_includes_blob_context():
     """
     Test that UdfCompilationError includes blob_id context when called through udf().
     """
-    from stepflow_py.udf import UdfInput, udf
+    from stepflow_worker.udf import UdfInput, udf
 
     # Create a mock context
     async def mock_get_blob(self, blob_id):

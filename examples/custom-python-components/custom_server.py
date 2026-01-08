@@ -27,7 +27,7 @@ This demonstrates:
 import asyncio
 import sys
 
-from stepflow_py import StepflowServer, StepflowContext
+from stepflow_worker import StepflowServer, StepflowContext
 import msgspec
 from typing import List, Optional
 
