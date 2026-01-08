@@ -20,13 +20,13 @@ uv run --project sdks/python pytest
 
 ```bash
 # Run in stdio mode (default)
-uv run --project sdks/python stepflow_py
+uv run --project sdks/python stepflow_worker
 
 # Run in HTTP mode
-uv run --project sdks/python --extra http stepflow_py --http --port 8080
+uv run --project sdks/python --extra http stepflow_worker --http --port 8080
 
 # Run with custom host and port
-uv run --project sdks/python --extra http stepflow_py --http --host 0.0.0.0 --port 8080
+uv run --project sdks/python --extra http stepflow_worker --http --host 0.0.0.0 --port 8080
 ```
 
 ### Type Generation
@@ -74,7 +74,7 @@ JSON-RPC over stdio communication with the parent process.
 **Usage**:
 ```bash
 # Run in stdio mode
-uv run --project sdks/python stepflow_py
+uv run --project sdks/python stepflow_worker
 
 # No additional dependencies required
 ```
@@ -85,7 +85,7 @@ plugins:
   python_stdio:
     type: stepflow
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python", "run", "stepflow_worker"]
 
 routes:
   "/python/{*component}":
@@ -105,19 +105,19 @@ JSON-RPC over HTTP with Server-Sent Events (SSE) for bidirectional communication
 **Installation**:
 ```bash
 # Install with HTTP support
-pip install stepflow-py[http]
+pip install stepflow-worker[http]
 
 # Or with uv
-uv add stepflow-py[http]
+uv add stepflow-worker[http]
 ```
 
 **Usage**:
 ```bash
 # Basic HTTP mode
-stepflow_py --http
+stepflow_worker --http
 
 # Custom host and port
-stepflow_py --http --host 0.0.0.0 --port 8080
+stepflow_worker --http --host 0.0.0.0 --port 8080
 ```
 
 **Configuration** (in stepflow-config.yml):
@@ -182,7 +182,7 @@ The HTTP transport implements MCP-style session negotiation for proper connectio
 ### Basic Component Registration
 
 ```python
-from stepflow_py import StepflowStdioServer
+from stepflow_worker import StepflowStdioServer
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -207,7 +207,7 @@ server.run()
 Components can receive a `StepflowContext` parameter to access runtime operations:
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_worker import StepflowStdioServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -240,7 +240,7 @@ server.run()
 The Python SDK uses HTTP transport by default:
 
 ```python
-from stepflow_py import StepflowServer, StepflowContext
+from stepflow_worker import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):

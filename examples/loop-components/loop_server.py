@@ -27,7 +27,7 @@ This demonstrates:
 import asyncio
 import sys
 
-from stepflow_py import StepflowServer, StepflowContext
+from stepflow_worker import StepflowServer, StepflowContext
 import msgspec
 from typing import List, Any, Dict
 
@@ -101,7 +101,7 @@ async def iterate(input: IterateInput, context: StepflowContext) -> IterateOutpu
 
         # Result doesn't have expected structure
         else:
-            from stepflow_py.exceptions import StepflowValueError
+            from stepflow_worker.exceptions import StepflowValueError
 
             raise StepflowValueError(
                 "Iteration flow output must contain either 'result' or 'next' field"

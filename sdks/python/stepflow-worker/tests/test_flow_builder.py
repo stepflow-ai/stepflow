@@ -14,7 +14,7 @@
 
 import pytest
 
-from stepflow_py import (
+from stepflow_worker import (
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
@@ -22,7 +22,7 @@ from stepflow_py import (
     Value,
     WorkflowInput,
 )
-from stepflow_py.flow_builder import FlowBuilder
+from stepflow_worker.flow_builder import FlowBuilder
 
 
 def test_basic_flow_builder():

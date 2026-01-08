@@ -137,14 +137,14 @@ if [[ "$CREATE_PR" == true ]] && ! command_exists gh; then
 fi
 
 # Ensure we're in the project root directory
-if [[ ! -d "sdks/python" ]] || [[ ! -f "sdks/python/pyproject.toml" ]]; then
+if [[ ! -d "sdks/python" ]] || [[ ! -f "sdks/python/stepflow-worker/pyproject.toml" ]]; then
     echo -e "${RED}Error: Must be run from project root directory${NC}" >&2
-    echo "Expected to find sdks/python/pyproject.toml" >&2
+    echo "Expected to find sdks/python/stepflow-worker/pyproject.toml" >&2
     exit 1
 fi
 
 # Change to Python SDK directory for operations
-cd sdks/python
+cd sdks/python/stepflow-worker
 
 # Check git status only if creating PR
 if [[ "$CREATE_PR" == true ]] && [[ -n "$(git status --porcelain)" ]]; then
@@ -215,9 +215,9 @@ fi
 echo -e "${BLUE}Generating changelog (Python SDK changes only)${NC}"
 if [[ -n "$TAG_MESSAGE" ]]; then
     echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
-    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
+    git-cliff --config cliff.toml --tag "stepflow-worker-$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
 else
-    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend CHANGELOG.md
+    git-cliff --config cliff.toml --tag "stepflow-worker-$NEW_VERSION" -u --prepend CHANGELOG.md
 fi
 
 echo -e "${GREEN}✅ Release preparation complete!${NC}"
@@ -242,7 +242,7 @@ echo ""
 echo -e "${BLUE}Creating pull request...${NC}"
 
 # Create release branch
-RELEASE_BRANCH="release/stepflow-py-v$NEW_VERSION"
+RELEASE_BRANCH="release/stepflow-worker-v$NEW_VERSION"
 echo -e "${BLUE}Creating release branch: $RELEASE_BRANCH${NC}"
 
 # Check if release branch already exists
@@ -265,7 +265,7 @@ if [[ -f "uv.lock" ]]; then
 else
     git add pyproject.toml CHANGELOG.md
 fi
-git commit -m "chore: release stepflow-py v$NEW_VERSION
+git commit -m "chore: release stepflow-worker v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
 - Update CHANGELOG.md with release notes"
@@ -275,9 +275,9 @@ echo -e "${BLUE}Pushing release branch...${NC}"
 git push -u origin "$RELEASE_BRANCH" --force
 
 # Create PR
-PR_BODY="## Release stepflow-py v$NEW_VERSION
+PR_BODY="## Release stepflow-worker v$NEW_VERSION
 
-This PR prepares the release of stepflow-py v$NEW_VERSION.
+This PR prepares the release of stepflow-worker v$NEW_VERSION.
 
 ### Changes
 - Version bump from $CURRENT_VERSION to $NEW_VERSION
@@ -289,10 +289,10 @@ This PR prepares the release of stepflow-py v$NEW_VERSION.
 3. The release will be automatically tagged and published to PyPI"
 
 PR_URL=$(gh pr create \
-    --title "chore: release stepflow-py v$NEW_VERSION" \
+    --title "chore: release stepflow-worker v$NEW_VERSION" \
     --body "$PR_BODY" \
     --label "release" \
-    --label "release:stepflow-py")
+    --label "release:stepflow-worker")
 
 echo -e "${GREEN}✅ Release PR created successfully!${NC}"
 echo -e "${BLUE}PR URL: $PR_URL${NC}"

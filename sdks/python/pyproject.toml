@@ -1,65 +1,11 @@
-[project]
-name = "stepflow-py"
-version = "0.8.0"
-description = "Python SDK for Stepflow components and workflows."
-readme = "README.md"
-license = {text = "Apache-2.0"}
-authors = [
-    {name = "DataStax Inc."}
-]
-maintainers = [
-    {name = "DataStax Inc."}
-]
-requires-python = ">=3.11"
-keywords = [
-    "workflow",
-    "automation",
-    "ai",
-    "components",
-    "stepflow",
-    "orchestration",
-    "pipeline"
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: System :: Distributed Computing",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Typing :: Typed"
-]
-dependencies = [
-    "msgspec>=0.19.0",
-    "jsonschema>=4.17.0",
-    "types-jsonschema>=4.17.0",
-    "opentelemetry-api>=1.20.0",
-    "opentelemetry-sdk>=1.20.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
-]
+# Python SDK workspace configuration
+# The main package is in stepflow-worker/
 
-[project.urls]
-Homepage = "https://stepflow-ai.github.io/stepflow/"
-Documentation = "https://stepflow-ai.github.io/stepflow/"
-Repository = "https://github.com/stepflow-ai/stepflow"
-"Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
-Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/CHANGELOG.md"
-"Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python"
+[tool.uv.workspace]
+members = ["stepflow-worker"]
 
-[project.optional-dependencies]
-http = [
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
-    "sse-starlette>=1.6.5",
-]
-langchain = [
-    "langchain-core>=0.3",
-]
+[tool.uv.sources]
+stepflow-worker = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -80,15 +26,7 @@ dev = [
     "langchain-core>=0.3.72",
 ]
 
-[project.scripts]
-stepflow_py = "stepflow_py.main:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [tool.poe]
-# comment this out to debug poe tasks
 verbosity = -1
 
 [tool.poe.env]
@@ -113,10 +51,11 @@ cmd = "uvx ${RUFF} check --fix ."
 
 [tool.poe.tasks.type-check]
 help = "Runs `mypy` to check for static type issues"
-cmd = "uv run mypy src tests"
+cmd = "uv run --project stepflow-worker mypy stepflow-worker/src stepflow-worker/tests"
 
 [tool.poe.tasks.dep-check]
 help = "Runs `deptry` to check for dependency issues"
+cwd = "stepflow-worker"
 cmd = "uvx ${DEPTRY} src tests"
 
 [tool.poe.tasks.codegen-check]
@@ -130,10 +69,9 @@ sequence = [
 ]
 
 [tool.poe.tasks.test]
-help = "Run tests"
-cmd = "uv run pytest tests"
+help = "Run tests for all packages"
+cmd = "uv run --project stepflow-worker pytest stepflow-worker/tests"
 
-# Aliases for common commands
 [tool.poe.tasks.fmt]
 help = "Alias for fmt-fix"
 ref = "fmt-fix"
@@ -161,8 +99,8 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
-"generate.py" = ["T201", "E501"]  # Allow prints and long lines in build script
-"**/generated_*.py" = ["E501", "UP006", "UP035"]  # Generated files can have long lines and old typing imports
+"generate.py" = ["T201", "E501"]
+"**/generated_*.py" = ["E501", "UP006", "UP035"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -171,11 +109,9 @@ docstring-code-format = true
 exclude = ["**/generated_*.py"]
 
 [tool.deptry]
-# types-* packages are type stubs for mypy and not directly imported
 ignore = ["DEP002"]
 extend_exclude = ["types-jsonschema"]
 
-# OpenTelemetry packages all provide the 'opentelemetry' module
 [tool.deptry.package_module_name_map]
 opentelemetry-api = "opentelemetry"
 opentelemetry-sdk = "opentelemetry"
@@ -190,25 +126,22 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
-
-# Disable some strict checks for now - can be enabled gradually
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
 no_implicit_optional = false
 strict_equality = false
 
-# Ignore errors in tests and generated files
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_py.generated_flow"
+module = "stepflow_worker.generated_flow"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_py.generated_protocol"
+module = "stepflow_worker.generated_protocol"
 ignore_errors = true
 
 [tool.pytest.ini_options]

@@ -18,8 +18,8 @@ This module provides a convenient builder class for creating Stepflow value expr
 without having to directly instantiate the generated ValueExpr types.
 
 Example:
-    >>> from stepflow_py.expressions import ValueExpr
-    >>> from stepflow_py.generated_flow import Step
+    >>> from stepflow_worker.expressions import ValueExpr
+    >>> from stepflow_worker.generated_flow import Step
     >>>
     >>> # Create a step that references another step's output
     >>> step = Step(

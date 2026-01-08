@@ -24,7 +24,7 @@ import sys
 
 import msgspec
 import openai
-from stepflow_py import StepflowServer
+from stepflow_worker import StepflowServer
 
 
 class OpenAIChatInput(msgspec.Struct):

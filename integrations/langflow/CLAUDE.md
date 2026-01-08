@@ -369,9 +369,9 @@ uv run stepflow-langflow execute tests/fixtures/langflow/simple_agent.json \
 
 ### Import Errors
 
-**Symptom**: `ImportError: cannot import name 'X' from 'stepflow_py'`
+**Symptom**: `ImportError: cannot import name 'X' from 'stepflow_worker'`
 
-**Solution**: Ensure stepflow-py is installed in editable mode:
+**Solution**: Ensure stepflow-worker is installed in editable mode:
 ```bash
 cd ../../sdks/python
 uv sync
@@ -411,7 +411,7 @@ from pathlib import Path
 
 # Third-party
 import msgspec
-from stepflow_py import Flow, FlowBuilder
+from stepflow_worker import Flow, FlowBuilder
 
 # Local
 from ..exceptions import ConversionError
@@ -454,7 +454,7 @@ logger.error("Conversion failed: %s", error)
 
 ### Core Dependencies
 
-- `stepflow-py`: Stepflow Python SDK (local editable install)
+- `stepflow-worker`: Stepflow Python SDK (local editable install)
 - `langflow-nightly`: Langflow library for component execution
 - `lfx-nightly`: Langflow extensions
 - `pyyaml`: YAML serialization

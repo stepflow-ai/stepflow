@@ -45,11 +45,11 @@ jobs:
             echo "Tag: ${{ github.event.client_payload.tag }}"
           else
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "tag=stepflow-py-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-worker-${{ inputs.version }}" >> $GITHUB_OUTPUT
             echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
             echo "Source: manual workflow dispatch"
             echo "Version: ${{ inputs.version }}"
-            echo "Tag: stepflow-py-${{ inputs.version }}"
+            echo "Tag: stepflow-worker-${{ inputs.version }}"
             echo "Skip tag: ${{ inputs.skip_tag_creation }}"
           fi
 
@@ -66,57 +66,57 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: |
           uv venv --python ${{ env.PYTHON_VERSION }}
           uv pip install -U pip
 
       - name: Install dependencies
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: |
           uv sync --all-extras --group dev
 
       - name: Run code generation check
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: uv run poe codegen-check
 
       - name: Run linting
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: |
           uv run poe fmt-check
           uv run poe lint-check
 
       - name: Run type checking
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: uv run poe type-check
 
       - name: Run dependency checking
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: uv run poe dep-check
 
       - name: Run tests
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: uv run poe test
 
       - name: Build package
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: uv build
 
       - name: Verify build
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-worker
         run: |
           echo "Built packages:"
           ls -la dist/
 
           # Test that the built wheel can be imported
           uv pip install dist/*.whl --force-reinstall
-          uv run python -c "import stepflow_py; print(f'stepflow_py version: {stepflow_py.__version__ if hasattr(stepflow_py, \"__version__\") else \"unknown\"}')"
+          uv run python -c "import stepflow_worker; print(f'stepflow_worker version: {stepflow_worker.__version__ if hasattr(stepflow_worker, \"__version__\") else \"unknown\"}')"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: python-package-distributions
-          path: sdks/python/dist/
+          path: sdks/python/stepflow-worker/dist/
           retention-days: 7
 
   publish-to-pypi:
@@ -126,7 +126,7 @@ jobs:
     if: needs.determine-version.outputs.skip_tag == 'false'
     environment:
       name: pypi
-      url: https://pypi.org/p/stepflow-py
+      url: https://pypi.org/p/stepflow-worker
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
 
@@ -165,7 +165,7 @@ jobs:
           cat > release-notes.md << 'EOF'
           ## Stepflow Python SDK v${{ needs.determine-version.outputs.version }}
 
-          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)**
+          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/stepflow-worker/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-worker/${{ needs.determine-version.outputs.version }}/)**
 
           This release includes the Python SDK for Stepflow with the following distribution files:
 
@@ -173,35 +173,35 @@ jobs:
 
           **Via pip:**
           ```bash
-          pip install stepflow-py==${{ needs.determine-version.outputs.version }}
+          pip install stepflow-worker==${{ needs.determine-version.outputs.version }}
           ```
 
           **With HTTP support:**
           ```bash
-          pip install stepflow-py[http]==${{ needs.determine-version.outputs.version }}
+          pip install stepflow-worker[http]==${{ needs.determine-version.outputs.version }}
           ```
 
           **Via uv:**
           ```bash
-          uv add stepflow-py==${{ needs.determine-version.outputs.version }}
+          uv add stepflow-worker==${{ needs.determine-version.outputs.version }}
           ```
 
           ### 📦 Distribution Files
 
           The following files are included in this release:
-          - **Wheel**: `stepflow_py-${{ needs.determine-version.outputs.version }}-py3-none-any.whl`
-          - **Source Distribution**: `stepflow_py-${{ needs.determine-version.outputs.version }}.tar.gz`
+          - **Wheel**: `stepflow_worker-${{ needs.determine-version.outputs.version }}-py3-none-any.whl`
+          - **Source Distribution**: `stepflow_worker-${{ needs.determine-version.outputs.version }}.tar.gz`
 
           ### 🔗 Links
 
-          - **PyPI Package**: https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/
+          - **PyPI Package**: https://pypi.org/project/stepflow-worker/${{ needs.determine-version.outputs.version }}/
           - **Documentation**: https://github.com/${{ github.repository }}/tree/main/sdks/python
           - **Examples**: https://github.com/${{ github.repository }}/tree/main/sdks/python/examples
 
           ### 🚀 Usage
 
           ```python
-          from stepflow_py import StepflowStdioServer
+          from stepflow_worker import StepflowStdioServer
 
           server = StepflowStdioServer()
 
@@ -214,7 +214,7 @@ jobs:
 
           For HTTP server mode:
           ```bash
-          stepflow_py --http --port 8080
+          stepflow_worker --http --port 8080
           ```
           EOF
 
@@ -224,13 +224,13 @@ jobs:
           ls -la ./release-artifacts/
 
           # Verify expected files exist
-          if ! ls ./release-artifacts/stepflow_py-*.whl 1> /dev/null 2>&1; then
-            echo "ERROR: No wheel file found matching stepflow_py-*.whl"
+          if ! ls ./release-artifacts/stepflow_worker-*.whl 1> /dev/null 2>&1; then
+            echo "ERROR: No wheel file found matching stepflow_worker-*.whl"
             exit 1
           fi
 
-          if ! ls ./release-artifacts/stepflow_py-*.tar.gz 1> /dev/null 2>&1; then
-            echo "ERROR: No source distribution found matching stepflow_py-*.tar.gz"
+          if ! ls ./release-artifacts/stepflow_worker-*.tar.gz 1> /dev/null 2>&1; then
+            echo "ERROR: No source distribution found matching stepflow_worker-*.tar.gz"
             exit 1
           fi
 
@@ -243,9 +243,9 @@ jobs:
           gh release create "${{ needs.determine-version.outputs.tag }}" \
             --title "Stepflow Python SDK v${{ needs.determine-version.outputs.version }}" \
             --notes-file release-notes.md \
-            sdks/python/CHANGELOG.md \
-            ./release-artifacts/stepflow_py-*.whl \
-            ./release-artifacts/stepflow_py-*.tar.gz
+            sdks/python/stepflow-worker/CHANGELOG.md \
+            ./release-artifacts/stepflow_worker-*.whl \
+            ./release-artifacts/stepflow_worker-*.tar.gz
 
   summary:
     name: Release Summary
@@ -292,13 +292,13 @@ jobs:
           echo "### 🐍 Python SDK Features" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Version**: ${{ env.PYTHON_VERSION }}+" >> $GITHUB_STEP_SUMMARY
           echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
-          echo "- **HTTP Support**: Optional extra (stepflow-py[http])" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTTP Support**: Optional extra (stepflow-worker[http])" >> $GITHUB_STEP_SUMMARY
           echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
             echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "**PyPI:** [stepflow-py v${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
+            echo "**PyPI:** [stepflow-worker v${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-worker/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
             echo "**GitHub Release:** [Stepflow Python SDK v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
           fi

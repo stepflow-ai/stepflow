@@ -23,14 +23,14 @@ from typing import Any, assert_never
 
 import msgspec
 
-from stepflow_py.context import StepflowContext
-from stepflow_py.exceptions import (
+from stepflow_worker.context import StepflowContext
+from stepflow_worker.exceptions import (
     ComponentNotFoundError,
     StepflowError,
     StepflowExecutionError,
     StepflowProtocolError,
 )
-from stepflow_py.generated_protocol import (
+from stepflow_worker.generated_protocol import (
     ComponentExecuteParams,
     ComponentExecuteResult,
     ComponentInferSchemaParams,
@@ -51,11 +51,11 @@ from stepflow_py.generated_protocol import (
     Notification,
     RequestId,
 )
-from stepflow_py.udf import udf
+from stepflow_worker.udf import udf
 
 # Check if LangChain is available
 try:
-    from stepflow_py.langchain_components import register_langchain_components
+    from stepflow_worker.langchain_components import register_langchain_components
 
     _HAS_LANGCHAIN = True
 except ImportError:
@@ -387,7 +387,7 @@ class StepflowServer:
 
             from opentelemetry import trace as otel_trace
 
-            from stepflow_py.observability import (
+            from stepflow_worker.observability import (
                 extract_trace_context,
                 get_tracer,
                 set_diagnostic_context,
@@ -510,7 +510,7 @@ class StepflowServer:
             )
 
         def decorator(f: Callable) -> Callable:
-            from stepflow_py.langchain_integration import (
+            from stepflow_worker.langchain_integration import (
                 check_langchain_available,
                 create_runnable_config,
                 get_runnable_schemas,

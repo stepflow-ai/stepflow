@@ -21,7 +21,7 @@ import asyncio
 import sys
 
 try:
-    from stepflow_py import StepflowServer
+    from stepflow_worker import StepflowServer
     import msgspec
 except ImportError:
     print("Error: This test requires the Python SDK", file=sys.stderr)

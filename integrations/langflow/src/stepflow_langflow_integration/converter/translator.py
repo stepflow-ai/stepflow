@@ -21,7 +21,7 @@ from typing import Any
 
 import msgspec
 import yaml
-from stepflow_py import Flow, FlowBuilder, Value
+from stepflow_worker import Flow, FlowBuilder, Value
 
 from ..exceptions import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
@@ -188,7 +188,7 @@ class LangflowConverter:
         """Convert Flow to YAML string.
 
         Args:
-            workflow: Flow object (official stepflow_py type)
+            workflow: Flow object (official stepflow_worker type)
 
         Returns:
             YAML string

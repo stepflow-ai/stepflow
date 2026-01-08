@@ -30,7 +30,7 @@ import sys
 import os
 
 try:
-    from stepflow_py import StepflowServer, StepflowContext
+    from stepflow_worker import StepflowServer, StepflowContext
     import msgspec
 
     SDK_AVAILABLE = True
