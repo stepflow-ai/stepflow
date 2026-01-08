@@ -346,24 +346,37 @@ pub async fn run_tests(
     let mut results: Vec<WorkflowTestResult> = Vec::new();
 
     for flow_path in flow_files {
-        let result = run_single_flow_test(&flow_path, config_path.clone(), &options)
-            .await
-            .unwrap_or_else(|e| {
-                panic!("Failed to execute tests in {}: {e:#?}", flow_path.display())
-            });
+        let result = run_single_flow_test(&flow_path, config_path.clone(), &options).await;
 
-        let Some(result) = result else {
-            continue;
-        };
-
-        // Print immediate feedback
-        println!(
-            "{}: {}/{} passed",
-            flow_path.display(),
-            result.passed_cases,
-            result.total_cases
-        );
-        results.push(result);
+        match result {
+            Ok(Some(result)) => {
+                // Print immediate feedback
+                println!(
+                    "{}: {}/{} passed",
+                    flow_path.display(),
+                    result.passed_cases,
+                    result.total_cases
+                );
+                results.push(result);
+            }
+            Ok(None) => {
+                // Skipped file (not a flow file)
+                println!("{}: Skipped (invalid or non-flow file)", flow_path.display());
+            }
+            Err(e) => {
+                // Error loading or running tests
+                println!("{}: Error - {e:#}", flow_path.display());
+                results.push(WorkflowTestResult {
+                    file_status: FileStatus::Errored(format!("{e:#}")),
+                    workflow_path: flow_path.clone(),
+                    total_cases: 0,
+                    passed_cases: 0,
+                    failed_cases: 0,
+                    execution_errors: 0,
+                    updates: HashMap::new(),
+                });
+            }
+        }
     }
 
     // Apply all updates at the end if requested
@@ -377,8 +390,15 @@ pub async fn run_tests(
 
 fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
     let rdr = File::open(path).change_context_lazy(|| MainError::MissingFile(path.to_owned()))?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_reader(rdr)
-        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+
+    // Try to parse as YAML, but if it fails, treat it as a non-flow file
+    let value: serde_yaml_ng::Value = match serde_yaml_ng::from_reader(rdr) {
+        Ok(v) => v,
+        Err(_) => {
+            // Invalid YAML or parsing error - skip this file
+            return Ok(None);
+        }
+    };
 
     let Some(object) = value.as_mapping() else {
         return Ok(None);
@@ -386,11 +406,15 @@ fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
 
     match object.get("schema").and_then(|s| s.as_str()) {
         Some(schema) if Flow::supported_schema(schema) => {
+            // Try to deserialize as Flow, but if it fails with the right schema, that's an error
             let flow: Flow = serde_yaml_ng::from_value(value)
                 .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
             Ok(Some(Arc::new(flow)))
         }
-        _ => Ok(None),
+        _ => {
+            // No schema field or unsupported schema - skip this file
+            Ok(None)
+        }
     }
 }
 
