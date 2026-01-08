@@ -185,9 +185,7 @@ def analyze(input_file: Path):
 
 
 @main.command()
-@click.option(
-    "--host", default="localhost", help="Server host"
-)
+@click.option("--host", default="localhost", help="Server host")
 @click.option("--port", default=0, help="Server port (0 for auto-assign)")
 @click.option("--protocol-prefix", default="langflow", help="Protocol prefix")
 def serve(
