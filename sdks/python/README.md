@@ -6,7 +6,7 @@ Python SDK for building Stepflow components and workflows.
 
 ```bash
 # Install from source
-uv add stepflow-py
+uv add stepflow-worker
 ```
 
 ## Configuration
@@ -15,7 +15,7 @@ The SDK is configured via environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `STEPFLOW_SERVICE_NAME` | Service name for observability | `stepflow-python` |
+| `STEPFLOW_SERVICE_NAME` | Service name for observability | `stepflow-workerthon` |
 | `STEPFLOW_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `STEPFLOW_LOG_DESTINATION` | Log destination (stderr, file, otlp, comma-separated) | `otlp` if OTLP endpoint set, else `stderr` |
 | `STEPFLOW_LOG_FILE` | File path for file logging | - |
@@ -26,7 +26,7 @@ The SDK is configured via environment variables:
 ```bash
 STEPFLOW_SERVICE_NAME=my-python-components \
 STEPFLOW_OTLP_ENDPOINT=http://localhost:4317 \
-uv run stepflow_py
+uv run stepflow_worker
 ```
 
 **Example with OTLP + stderr logging:**
@@ -34,14 +34,14 @@ uv run stepflow_py
 STEPFLOW_SERVICE_NAME=my-components \
 STEPFLOW_LOG_DESTINATION=stderr,otlp \
 STEPFLOW_OTLP_ENDPOINT=http://localhost:4317 \
-uv run stepflow_py
+uv run stepflow_worker
 ```
 
 **Example with only stderr logging (no OTLP):**
 ```bash
 STEPFLOW_SERVICE_NAME=my-components \
 STEPFLOW_LOG_LEVEL=DEBUG \
-uv run stepflow_py
+uv run stepflow_worker
 ```
 
 ## Usage
@@ -49,7 +49,7 @@ uv run stepflow_py
 ### Creating a Component Server
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_worker import StepflowStdioServer, StepflowContext
 import msgspec
 
 # Define input/output types
@@ -123,7 +123,7 @@ The generation script automatically handles the generation and applies necessary
 
 ### Project Structure
 
-- `src/stepflow_py/` - Main SDK code
+- `src/stepflow_worker/` - Main SDK code
   - `generated_protocol.py` - Auto-generated protocol types from JSON schema
   - `protocol.py` - Hybrid protocol layer with envelope patterns for efficient deserialization
   - `server.py` - Component server implementation

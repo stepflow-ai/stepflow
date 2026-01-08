@@ -22,8 +22,7 @@ and how diagnostic context is automatically included in logs.
 import logging
 
 import msgspec
-
-from stepflow_py import StepflowContext, StepflowServer
+from stepflow_worker import StepflowContext, StepflowServer
 
 # Create server instance
 server = StepflowServer()
