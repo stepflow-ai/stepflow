@@ -25,11 +25,68 @@ use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 #[serde(tag = "schema")]
 pub enum Flow {
     #[serde(rename = "https://stepflow.org/schemas/v1/flow.json")]
     V1(FlowV1),
+}
+
+// Manual ToSchema implementation to avoid oneOf[allOf[...]] pattern
+// that openapi-python-client cannot parse
+impl utoipa::PartialSchema for Flow {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::RefOr::Ref(utoipa::openapi::Ref::new("#/components/schemas/Flow"))
+    }
+}
+
+impl utoipa::ToSchema for Flow {
+    fn name() -> std::borrow::Cow<'static, str> {
+        "Flow".into()
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::PartialSchema as _;
+        use utoipa::openapi::schema::*;
+        use utoipa::openapi::*;
+
+        // First, collect FlowV1's schemas (it has nested types)
+        FlowV1::schemas(schemas);
+
+        // Build Flow as allOf: [FlowV1, discriminator object]
+        // This avoids the problematic oneOf[allOf[...]] pattern
+        // Note: Rename property to "schemaUrl" to avoid openapi-python-client
+        // generating a "FlowSchema" enum that conflicts with the FlowSchema struct
+        let schema = Schema::AllOf(
+            AllOfBuilder::new()
+                .item(FlowV1::schema())
+                .item(Schema::Object(
+                    ObjectBuilder::new()
+                        .property(
+                            "schema",
+                            ObjectBuilder::new()
+                                .schema_type(SchemaType::Type(Type::String))
+                                .description(Some(
+                                    "Schema version identifier. Must be 'https://stepflow.org/schemas/v1/flow.json'",
+                                ))
+                                .build(),
+                        )
+                        .required("schema")
+                        .build(),
+                ))
+                .description(Some(
+                    "A workflow consisting of a sequence of steps and their outputs.",
+                ))
+                .build(),
+        );
+
+        schemas.push(("Flow".to_string(), RefOr::T(schema)));
+    }
 }
 
 impl Default for Flow {
@@ -75,6 +132,12 @@ impl Flow {
     }
 
     pub fn latest(&self) -> &FlowV1 {
+        match self {
+            Flow::V1(flow_v1) => flow_v1,
+        }
+    }
+
+    pub fn latest_mut(&mut self) -> &mut FlowV1 {
         match self {
             Flow::V1(flow_v1) => flow_v1,
         }
@@ -350,6 +413,23 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
     }
 }
 
+/// Port range for automatic port allocation.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PortRange {
+    /// Start of the port range (inclusive).
+    pub start: u16,
+    /// End of the port range (inclusive).
+    pub end: u16,
+}
+
+impl PortRange {
+    /// Create a new port range.
+    pub fn new(start: u16, end: u16) -> Self {
+        Self { start, end }
+    }
+}
+
 /// Configuration for a test server.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -373,7 +453,7 @@ pub struct TestServerConfig {
     /// Port range for automatic port allocation.
     /// If not specified, a random available port will be used.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port_range: Option<(u16, u16)>,
+    pub port_range: Option<PortRange>,
 
     /// Health check configuration.
     #[serde(default, skip_serializing_if = "Option::is_none")]

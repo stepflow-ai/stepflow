@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::Arc;
 use utoipa::openapi::schema::Schema;
-use utoipa::openapi::{AllOfBuilder, RefOr};
+use utoipa::openapi::{ObjectBuilder, RefOr};
 
 /// A literal value which may be passed to a component.
 ///
@@ -46,8 +46,10 @@ impl Default for ValueRef {
 
 impl utoipa::PartialSchema for ValueRef {
     fn schema() -> RefOr<Schema> {
-        RefOr::T(utoipa::openapi::schema::Schema::AllOf(
-            AllOfBuilder::new()
+        // Use an empty object schema to represent "any JSON value"
+        // This avoids the invalid empty allOf: [] pattern
+        RefOr::T(Schema::Object(
+            ObjectBuilder::new()
                 .description(Some(
                     "Any JSON value (object, array, string, number, boolean, or null)",
                 ))

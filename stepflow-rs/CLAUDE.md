@@ -99,7 +99,7 @@ When modifying core types, regenerate schemas and derived code:
 
 ```bash
 # Regenerate JSON schemas from Rust types
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test
 
 # Then regenerate Python types from updated schemas
 cd ../sdks/python

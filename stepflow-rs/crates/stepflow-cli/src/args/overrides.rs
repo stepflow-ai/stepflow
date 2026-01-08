@@ -161,7 +161,7 @@ mod tests {
     fn test_parse_overrides_json_string() {
         let args = OverrideArgs {
             overrides_json: Some(
-                r#"{"step1": {"value": {"input": {"temperature": 0.8}}}}"#.to_string(),
+                r#"{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}"#.to_string(),
             ),
             ..Default::default()
         };
@@ -174,7 +174,7 @@ mod tests {
     fn test_parse_overrides_yaml_string() {
         let args = OverrideArgs {
             overrides_yaml: Some(
-                "step1:\n  value:\n    input:\n      temperature: 0.8".to_string(),
+                "steps:\n  step1:\n    value:\n      input:\n        temperature: 0.8".to_string(),
             ),
             ..Default::default()
         };

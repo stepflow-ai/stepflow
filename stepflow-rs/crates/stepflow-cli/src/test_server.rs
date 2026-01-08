@@ -167,8 +167,8 @@ impl TestServerManager {
 
     /// Allocate a port for a server.
     fn allocate_port(&self, _name: &str, config: &TestServerConfig) -> Result<u16> {
-        if let Some((start, end)) = config.port_range {
-            for port in start..=end {
+        if let Some(ref range) = config.port_range {
+            for port in range.start..=range.end {
                 if is_port_available(port) {
                     return Ok(port);
                 }
