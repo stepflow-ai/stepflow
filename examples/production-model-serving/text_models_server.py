@@ -231,17 +231,14 @@ async def analyze_sentiment(input: SentimentAnalysisInput) -> SentimentAnalysisO
         model = get_or_load_model(input.model_name)
         config = MODEL_REGISTRY[input.model_name]
 
-        print(
-            f"Analyzing sentiment for: {input.text} using {input.model_name}",
-            file=sys.stderr,
-        )
+        print(f"Analyzing sentiment for: {input.text} using {input.model_name}")
         if not HF_AVAILABLE:
             # Mock response
             result = {"label": "POSITIVE", "score": 0.9}
         else:
             # Real inference
             result = model(input.text)[0]
-        print(f"Sentiment result: {result}", file=sys.stderr)
+        print(f"Sentiment result: {result}")
 
         inference_time = (time.time() - start_time) * 1000
 

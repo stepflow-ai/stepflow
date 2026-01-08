@@ -156,31 +156,20 @@ if LANGCHAIN_AVAILABLE:
 if __name__ == "__main__":
     import sys
 
-    print("LangChain Stepflow Integration Examples", file=sys.stderr)
-    print("======================================", file=sys.stderr)
-    print(file=sys.stderr)
-    print(
-        "This server demonstrates three practical approaches to LangChain integration:",
-        file=sys.stderr,
-    )
-    print(
-        "1. Decorated runnable: @server.langchain_component decorator", file=sys.stderr
-    )
-    print(
-        "2. Named runnable: Direct invocation with import paths via /invoke_named",
-        file=sys.stderr,
-    )
-    print(
-        "3. UDF: /udf with user-provided Python code (via blob_id, self-contained)",
-        file=sys.stderr,
-    )
-    print(file=sys.stderr)
-    print("Available components:", file=sys.stderr)
+    print("LangChain Stepflow Integration Examples")
+    print("======================================")
+    print()
+    print("This server demonstrates three practical approaches to LangChain integration:")
+    print("1. Decorated runnable: @server.langchain_component decorator")
+    print("2. Named runnable: Direct invocation with import paths via /invoke_named")
+    print("3. UDF: /udf with user-provided Python code (via blob_id, self-contained)")
+    print()
+    print("Available components:")
 
     components = server.get_components()
     for name, component in components.items():
-        print(f"  - {name}: {component.description or 'No description'}", file=sys.stderr)
+        print(f"  - {name}: {component.description or 'No description'}")
 
-    print(file=sys.stderr)
-    print("Starting Stepflow HTTP server...", file=sys.stderr)
+    print()
+    print("Starting Stepflow HTTP server...")
     asyncio.run(server.run())

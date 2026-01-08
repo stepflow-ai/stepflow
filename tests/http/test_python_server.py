@@ -180,8 +180,7 @@ async def data_analysis_component(
     """Analyze data and store detailed results as a blob."""
 
     print(
-        f"Received data for analysis: {input.data} with analysis type: {input.analysis_type}",
-        file=sys.stderr,
+        f"Received data for analysis: {input.data} with analysis type: {input.analysis_type}"
     )
     if input.analysis_type == "statistics":
         # Calculate basic statistics
@@ -488,7 +487,7 @@ async def main():
     )
 
     # Start HTTP server
-    print(f"Starting HTTP test server on {args.host}:{args.port}", file=sys.stderr)
+    print(f"Starting HTTP test server on {args.host}:{args.port}")
     await server.run(host=args.host, port=args.port)
 
 

@@ -58,7 +58,7 @@ async def main():
     )
 
     # Start HTTP server
-    print(f"Starting HTTP echo server on {args.host}:{args.port}", file=sys.stderr)
+    print(f"Starting HTTP echo server on {args.host}:{args.port}")
     await server.run(host=args.host, port=args.port)
 
 

@@ -161,17 +161,12 @@ def double_value(input: DoubleInput) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    print(
-        f"Registered components: {list(server.get_components().keys())}",
-        file=sys.stderr,
-    )
+    print(f"Registered components: {list(server.get_components().keys())}")
 
     # Check if the component is actually registered
     components = server.get_components()
-    print(f"'iterate' in components: {'iterate' in components}", file=sys.stderr)
-    print(
-        f"Component details: {components.get('iterate', 'NOT FOUND')}", file=sys.stderr
-    )
-    print(f"Server initialized: {server.is_initialized()}", file=sys.stderr)
+    print(f"'iterate' in components: {'iterate' in components}")
+    print(f"Component details: {components.get('iterate', 'NOT FOUND')}")
+    print(f"Server initialized: {server.is_initialized()}")
 
     asyncio.run(server.run())

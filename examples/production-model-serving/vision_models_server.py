@@ -427,7 +427,7 @@ async def vision_health_check(input: VisionHealthInput) -> VisionHealthOutput:
         gpu_memory_info=gpu_memory_info,
         model_details=model_details,
     )
-    print(f"Health check result: {result}", file=sys.stderr)
+    print(f"Health check result: {result}")
     return result
 
 
