@@ -91,7 +91,7 @@ sequence = ["lint", "test"]
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["**/generated_*.py"]
+extend-exclude = ["**/generated_*.py", "**/stepflow-api/**", "stepflow-api"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]

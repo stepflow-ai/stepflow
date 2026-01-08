@@ -1,6 +1,7 @@
 excludes:
   - docs/.*
   - stepflow-ui/.*
+  - sdks/python/stepflow-api/.*
   - .*\.ya?ml
   - .*\.snap
   - .*\.toml
