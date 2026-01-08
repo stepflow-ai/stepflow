@@ -30,20 +30,15 @@ import sys
 import os
 
 try:
-    from stepflow_py import StepflowStdioServer, StepflowContext
-    from stepflow_py.server import StepflowServer
-
-    try:
-        from stepflow_py.http_server import StepflowHttpServer
-    except ImportError:
-        StepflowHttpServer = None
+    from stepflow_py import StepflowServer, StepflowContext
     import msgspec
 
     SDK_AVAILABLE = True
 except ImportError as e:
-    print(f"Stepflow SDK not available: {e}")
+    print(f"Stepflow SDK not available: {e}", file=sys.stderr)
     print(
-        "Please install stepflow-py or run from the project root with proper PYTHONPATH"
+        "Please install stepflow-py or run from the project root with proper PYTHONPATH",
+        file=sys.stderr
     )
     SDK_AVAILABLE = False
 from typing import List, Optional, Dict, Any, Tuple
@@ -432,38 +427,15 @@ async def vision_health_check(input: VisionHealthInput) -> VisionHealthOutput:
         gpu_memory_info=gpu_memory_info,
         model_details=model_details,
     )
-    print(f"Health check result: {result}", file=sys.stderr)
+    print(f"Health check result: {result}")
     return result
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Vision Models Server")
-    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
-    parser.add_argument("--port", type=int, default=8081, help="Port for HTTP mode")
-    parser.add_argument(
-        "--host", type=str, default="localhost", help="Host for HTTP mode"
-    )
-    args = parser.parse_args()
-
     logger.info("Starting Vision Models Server")
     logger.info(f"Available models: {list(VISION_MODEL_REGISTRY.keys())}")
     logger.info(
         f"GPU available: {CV_AVAILABLE and torch.cuda.is_available() if CV_AVAILABLE else False}"
     )
 
-    if args.http:
-        if StepflowHttpServer is None:
-            logger.error("HTTP mode requested but StepflowHttpServer not available")
-            sys.exit(1)
-        logger.info(f"Running in HTTP mode on {args.host}:{args.port}")
-        http_server = StepflowHttpServer(host=args.host, port=args.port, server=server)
-
-        import asyncio
-
-        asyncio.run(http_server.run())
-    else:
-        stdio_server = StepflowStdioServer(server)
-        logger.info("Running in STDIO mode")
-        stdio_server.run()
+    asyncio.run(server.run())

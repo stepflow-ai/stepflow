@@ -37,7 +37,6 @@ from stepflow_py.generated_protocol import (
     ObservabilityContext,
 )
 from stepflow_py.server import ComponentEntry, StepflowServer
-from stepflow_py.stdio_server import StepflowStdioServer
 
 
 # Helper function to create test observability context
@@ -566,7 +565,7 @@ async def test_decorator_sync():
 
 @pytest.mark.asyncio
 async def test_decorator_async():
-    server = StepflowStdioServer()
+    server = StepflowServer()
 
     @server.component
     async def async_component(input: ValidInput) -> ValidOutput:

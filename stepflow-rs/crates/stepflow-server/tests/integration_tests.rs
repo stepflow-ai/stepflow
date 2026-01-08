@@ -27,7 +27,7 @@ use stepflow_observability::{
 };
 use stepflow_plugin::DynPlugin;
 use stepflow_state::InMemoryStateStore;
-use tower::{Service, ServiceExt};
+use tower::{Service as _, ServiceExt};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
 

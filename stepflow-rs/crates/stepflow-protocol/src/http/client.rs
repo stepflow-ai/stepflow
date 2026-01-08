@@ -17,7 +17,7 @@
 //! - Receive either direct JSON responses or SSE streams
 //! - Handle bidirectional communication through SSE when needed
 
-use std::sync::Arc;
+use std::sync::Weak;
 
 use error_stack::ResultExt as _;
 use futures::stream::StreamExt as _;
@@ -37,7 +37,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// Create a new HTTP client for streamable HTTP transport
-    pub async fn try_new(url: String, context: Arc<dyn Context>) -> Result<Self> {
+    pub async fn try_new(url: String, context: Weak<dyn Context>) -> Result<Self> {
         let client = reqwest::Client::new();
 
         // Pre-build static headers to avoid recreating them for each request
@@ -70,7 +70,7 @@ impl HttpClient {
 pub struct HttpClientHandle {
     client: reqwest::Client,
     url: String,
-    context: Arc<dyn Context>,
+    context: Weak<dyn Context>,
     request_headers: reqwest::header::HeaderMap,
 }
 
@@ -339,7 +339,13 @@ impl HttpClientHandle {
         };
 
         // Handle the request asynchronously with concurrent outgoing message processing
-        let context = self.context.clone();
+        let context = match self.context.upgrade() {
+            Some(ctx) => ctx,
+            None => {
+                log::warn!("Context no longer available for bidirectional request");
+                return Ok(());
+            }
+        };
         let client_handle = self.clone();
         let instance_id = instance_id.map(|s| s.to_string());
 
@@ -360,7 +366,7 @@ impl HttpClientHandle {
             };
 
             // Start the handler and the message sender concurrently
-            let handler_future = handler.handle_message(request, outgoing_tx, context.clone());
+            let handler_future = handler.handle_message(request, outgoing_tx, context);
             let sender_future = async {
                 while let Some(outgoing_message) = outgoing_rx.recv().await {
                     if let Err(e) = client_handle
@@ -593,7 +599,7 @@ mod tests {
         let url = "http://localhost:8080".to_string();
 
         // Test that we can create a client without errors
-        let result = HttpClient::try_new(url, context).await;
+        let result = HttpClient::try_new(url, Arc::downgrade(&context)).await;
         assert!(result.is_ok());
 
         let client = result.unwrap();

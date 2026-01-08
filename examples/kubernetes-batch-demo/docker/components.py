@@ -172,18 +172,10 @@ if __name__ == "__main__":
         logger.info(f"Starting component server in HTTP mode on port 8080")
         logger.info(f"Instance ID: {INSTANCE_ID}")
 
-        # Import and start HTTP server with instance ID
-        from stepflow_py.http_server import StepflowHttpServer
+        # Start HTTP server with instance ID
         import asyncio
 
-        http_server = StepflowHttpServer(
-            server=server,
-            host="0.0.0.0",
-            port=8080,
-            instance_id=INSTANCE_ID
-        )
-
-        asyncio.run(http_server.run())
+        asyncio.run(server.run(host="0.0.0.0", port=8080, instance_id=INSTANCE_ID))
     else:
         logger.info("Starting component server in STDIO mode")
         logger.info(f"Instance ID: {INSTANCE_ID}")

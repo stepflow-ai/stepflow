@@ -17,7 +17,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
   - See `stepflow-rs/CLAUDE.md` for Rust development, building, testing, and conventions
 
 - **`sdks/`**: Language-specific SDKs for building component servers
-  - `sdks/python/`: Python SDK with stdio and HTTP transport mode.
+  - `sdks/python/`: Python SDK for building HTTP component servers.
      See `sdks/python/CLAUDE.md` for Python SDK development
 
 - **`integrations/`**: Third-party integrations
@@ -38,7 +38,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 ## Specialized Guides
 
 - **Rust Development**: See `stepflow-rs/CLAUDE.md` for Rust conventions, testing, error handling, and coding standards
-- **Python SDK**: See `sdks/python/CLAUDE.md` for Python development, version compatibility, and HTTP/stdio modes
+- **Python SDK**: See `sdks/python/CLAUDE.md` for Python development and version compatibility
 
 ## Key Concepts
 
@@ -60,7 +60,7 @@ Configuration file (`stepflow-config.yml`) defines plugins, routing rules, and s
 ### Plugin Types
 
 **builtin**: Built-in components (OpenAI, eval, create_messages)
-**stepflow**: Component servers with stdio or http transport
+**stepflow**: Component servers (subprocess or remote HTTP)
 **mcp**: Model Context Protocol servers
 
 ### Example Configuration
@@ -70,18 +70,18 @@ plugins:
   builtin:
     type: builtin
 
-  python_stdio:
+  # Subprocess mode: launches component server, reads port from stdout
+  python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_py"]
     env:  # Optional, supports ${VAR:-default} substitution
       PYTHONPATH: "${HOME}/custom/path"
       USER_CONFIG: "${USER:-anonymous}"
 
-  python_http:
+  # Remote mode: connects to existing HTTP server
+  remote_server:
     type: stepflow
-    transport: http
     url: "http://localhost:8080"
 
   filesystem:
@@ -93,9 +93,9 @@ plugins:
 
 routes:
   "/python/{*component}":
-    - plugin: python_stdio
-  "/python_http/{*component}":
-    - plugin: python_http
+    - plugin: python
+  "/remote/{*component}":
+    - plugin: remote_server
   "/filesystem/{*component}":
     - plugin: filesystem
   "/{*component}":
@@ -253,7 +253,7 @@ The protocol supports bidirectional communication allowing components to make ca
 ### Python SDK Example
 
 ```python
-from stepflow_py import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -262,7 +262,7 @@ class MyInput(msgspec.Struct):
 class MyOutput(msgspec.Struct):
     blob_id: str
 
-server = StepflowStdioServer()
+server = StepflowServer()
 
 @server.component
 async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
@@ -270,7 +270,9 @@ async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
     blob_id = await context.put_blob(input.data)
     return MyOutput(blob_id=blob_id)
 
-server.run()
+# Start HTTP server (prints port to stdout for Stepflow orchestrator)
+import asyncio
+asyncio.run(server.run())
 ```
 
 See `sdks/python/CLAUDE.md` for more Python SDK patterns.

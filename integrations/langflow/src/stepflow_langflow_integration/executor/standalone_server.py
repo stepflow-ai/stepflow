@@ -26,7 +26,7 @@ from typing import Any
 package_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(package_root))
 
-from stepflow_py import StepflowContext, StepflowStdioServer
+from stepflow_py import StepflowContext, StepflowServer
 
 from stepflow_langflow_integration.components.component_tool import (
     component_tool_executor,
@@ -34,7 +34,7 @@ from stepflow_langflow_integration.components.component_tool import (
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 
 # Create server instance (following the exact pattern from stepflow_py/main.py)
-server = StepflowStdioServer()
+server = StepflowServer()
 
 # Create UDF executor
 udf_executor = UDFExecutor()
@@ -72,12 +72,13 @@ def main():
     - STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for tracing/logging
     - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-python)
     """
+    import asyncio
+
     import nest_asyncio  # type: ignore
 
     nest_asyncio.apply()
-    # Start the server - this handles all the asyncio setup correctly
-    # and calls setup_observability() to configure logging
-    server.run()
+    # Start the HTTP server - this handles all the asyncio setup correctly
+    asyncio.run(server.run())
 
 
 if __name__ == "__main__":

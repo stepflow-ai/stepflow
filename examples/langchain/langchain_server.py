@@ -24,8 +24,11 @@ This demonstrates three practical approaches to using LangChain with Stepflow:
 Run with: python examples/langchain/langchain_server.py
 """
 
-from stepflow_py import StepflowStdioServer, StepflowContext
+import asyncio
+
 import msgspec
+
+from stepflow_py import StepflowContext, StepflowServer
 
 # Only run examples if LangChain is available
 try:
@@ -38,7 +41,7 @@ except ImportError:
     exit(1)
 
 # Create the server
-server = StepflowStdioServer()
+server = StepflowServer()
 
 if LANGCHAIN_AVAILABLE:
     # ============================================================================
@@ -151,12 +154,12 @@ if LANGCHAIN_AVAILABLE:
 
 
 if __name__ == "__main__":
+    import sys
+
     print("LangChain Stepflow Integration Examples")
     print("======================================")
     print()
-    print(
-        "This server demonstrates three practical approaches to LangChain integration:"
-    )
+    print("This server demonstrates three practical approaches to LangChain integration:")
     print("1. Decorated runnable: @server.langchain_component decorator")
     print("2. Named runnable: Direct invocation with import paths via /invoke_named")
     print("3. UDF: /udf with user-provided Python code (via blob_id, self-contained)")
@@ -168,5 +171,5 @@ if __name__ == "__main__":
         print(f"  - {name}: {component.description or 'No description'}")
 
     print()
-    print("Starting Stepflow server...")
-    server.run()
+    print("Starting Stepflow HTTP server...")
+    asyncio.run(server.run())

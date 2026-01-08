@@ -84,7 +84,6 @@ uv run --project sdks/python stepflow_py
 plugins:
   python_stdio:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_py"]
 
@@ -126,7 +125,6 @@ stepflow_py --http --host 0.0.0.0 --port 8080
 plugins:
   python_http:
     type: stepflow
-    transport: http
     url: "http://localhost:8080"
 
 routes:
@@ -239,10 +237,10 @@ server.run()
 
 ### HTTP Server Components
 
-Components work identically in both stdio and HTTP modes:
+The Python SDK uses HTTP transport by default:
 
 ```python
-from stepflow_py import StepflowHttpServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -251,27 +249,24 @@ class MyInput(msgspec.Struct):
 class MyOutput(msgspec.Struct):
     blob_id: str
 
-# Use StepflowHttpServer instead of StepflowStdioServer
-server = StepflowHttpServer()
+server = StepflowServer()
 
 @server.component
 async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
-    # Identical implementation as stdio version
+    # Store data as a blob
     blob_id = await context.put_blob(input.data)
     return MyOutput(blob_id=blob_id)
 
 if __name__ == "__main__":
     import argparse
+    import asyncio
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--http", action="store_true")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
 
-    if args.http:
-        server.run_http(host=args.host, port=args.port)
-    else:
-        server.run()
+    asyncio.run(server.run(host=args.host, port=args.port))
 ```
 
 ## Architecture Notes

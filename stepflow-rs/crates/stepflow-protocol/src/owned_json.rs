@@ -43,10 +43,12 @@ impl<T: std::fmt::Debug> std::fmt::Debug for OwnedJson<T> {
 }
 
 impl<T> OwnedJson<T> {
+    #[allow(dead_code)]
     pub fn json(&self) -> &str {
         &self.json
     }
 
+    #[allow(dead_code)]
     pub fn map<O>(self, f: impl FnOnce(T) -> O) -> OwnedJson<O> {
         OwnedJson {
             json: self.json,

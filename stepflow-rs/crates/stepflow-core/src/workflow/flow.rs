@@ -681,7 +681,6 @@ mod tests {
 
             std::fs::write(&flow_schema_path, &generated_schema_str)
                 .expect("Failed to write updated schema");
-            eprintln!("Updated flow.json at {}", flow_schema_path);
         } else {
             match std::fs::read_to_string(&flow_schema_path) {
                 Ok(expected_schema_str) => {
@@ -713,8 +712,9 @@ mod tests {
         // Print the schema for manual comparison during development
         // This test is primarily for development/debugging - will be replaced
         // by the actual schema comparison test once we verify the output
+        #[allow(clippy::print_stdout)]
         if std::env::var("PRINT_SCHEMA").is_ok() {
-            eprintln!("Generated Flow schema:\n{}", generated_str);
+            println!("Generated Flow schema:\n{}", generated_str);
         }
 
         // Basic structural checks

@@ -3,12 +3,10 @@ plugins:
     type: builtin
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_py"]
   langchain:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "langchain_server.py"]
     env:

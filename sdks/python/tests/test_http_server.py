@@ -37,7 +37,7 @@ from stepflow_py.generated_protocol import (
     Notification,
     ObservabilityContext,
 )
-from stepflow_py.http_server import StepflowHttpServer
+from stepflow_py.http_server import create_test_app
 from stepflow_py.server import StepflowServer
 
 POST_HEADERS = {
@@ -49,8 +49,9 @@ POST_HEADERS = {
 class ServerHelper:
     """Helper class for HTTP server testing with live server."""
 
-    def __init__(self, http_server):
-        self.http_server = http_server
+    def __init__(self, app, server):
+        self.app = app
+        self.server = server
         self.url = None
         self._httpx_client = None
         self._cleanup_func = None
@@ -123,10 +124,10 @@ class ServerHelper:
             port = s.getsockname()[1]
 
         # Initialize the server
-        self.http_server.server.set_initialized(True)
+        self.server.set_initialized(True)
 
         config = uvicorn.Config(
-            app=self.http_server.app,
+            app=self.app,
             host="localhost",
             port=port,
             log_level="critical",  # Suppress all logs except critical errors
@@ -305,15 +306,15 @@ def core_server():
 
 
 @pytest.fixture(scope="session")
-def http_server(core_server):
-    """Create streamable HTTP server with test components."""
-    return StepflowHttpServer(server=core_server)
+def http_app(core_server):
+    """Create FastAPI app with test components for testing."""
+    return create_test_app(core_server)
 
 
 @pytest_asyncio.fixture
-async def test_server(http_server):
+async def test_server(http_app, core_server):
     """Create a ServerHelper instance with live server automatically started."""
-    server = ServerHelper(http_server)
+    server = ServerHelper(http_app, core_server)
     await server._start_live_server()
     try:
         yield server

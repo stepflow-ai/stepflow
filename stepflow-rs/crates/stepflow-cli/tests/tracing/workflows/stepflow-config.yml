@@ -6,7 +6,6 @@ plugins:
 
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["run", "--project", "../../../../../../sdks/python", "stepflow_py"]
     env:

@@ -18,10 +18,13 @@ Custom Python component server for OpenAI API calls
 Used for load testing Stepflow with Python custom components
 """
 
+import asyncio
 import os
+import sys
+
 import msgspec
 import openai
-from stepflow_py import StepflowStdioServer
+from stepflow_py import StepflowServer
 
 
 class OpenAIChatInput(msgspec.Struct):
@@ -41,7 +44,7 @@ class OpenAIChatOutput(msgspec.Struct):
     usage: dict
 
 
-server = StepflowStdioServer()
+server = StepflowServer()
 
 
 @server.component
@@ -83,4 +86,4 @@ def openai_chat(input: OpenAIChatInput) -> OpenAIChatOutput:
 
 
 if __name__ == "__main__":
-    server.run()
+    asyncio.run(server.run())

@@ -76,7 +76,6 @@ test:
       - http
       - python
       - test_python_server.py
-      - --http
       - --port
       - '{port}'
       env: {}
@@ -97,7 +96,6 @@ test:
         type: builtin
       test_http:
         type: stepflow
-        transport: http
         url: '{test_http.url}'
     routes:
       /builtin/{component}:

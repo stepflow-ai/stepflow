@@ -134,7 +134,7 @@ impl Context for MockContext {
 async fn test_http_plugin_creation_failure() {
     // Test streamable HTTP transport (now the only HTTP transport)
     let config = StepflowPluginConfig {
-        transport: StepflowTransport::Http {
+        transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18080".to_string(),
         },
     };
@@ -201,7 +201,7 @@ async fn test_http_protocol_integration() {
 
     // Create streamable HTTP plugin (now the primary HTTP transport)
     let config = StepflowPluginConfig {
-        transport: StepflowTransport::Http {
+        transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18081".to_string(),
         },
     };
@@ -352,7 +352,7 @@ async fn test_http_plugin_lifecycle() {
 
     // Create streamable HTTP plugin (now the primary HTTP transport)
     let config = StepflowPluginConfig {
-        transport: StepflowTransport::Http {
+        transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18082".to_string(),
         },
     };

@@ -33,6 +33,12 @@ pub struct StepflowExecutor {
     self_weak: std::sync::Weak<Self>,
 }
 
+impl Drop for StepflowExecutor {
+    fn drop(&mut self) {
+        log::info!("StepflowExecutor being dropped, cleaning up plugins");
+    }
+}
+
 impl StepflowExecutor {
     /// Create a new stepflow executor with a custom state store and plugin router.
     pub fn new(

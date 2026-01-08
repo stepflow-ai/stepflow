@@ -124,6 +124,7 @@ impl<'a> ToSchema for Message<'a> {
 }
 
 impl<'a> Message<'a> {
+    #[allow(dead_code)]
     pub fn into_response(self) -> Option<MethodResponse<'a>> {
         match self {
             Self::Response(r) => Some(r),
@@ -201,6 +202,7 @@ pub struct Error<'a> {
 }
 
 impl<'a> Error<'a> {
+    #[allow(dead_code)]
     pub fn method_not_found(method: Method) -> Self {
         Error {
             code: -32601, // Method not found
@@ -255,6 +257,7 @@ pub struct MethodRequest<'a> {
 }
 
 impl<'a> MethodRequest<'a> {
+    #[allow(dead_code)]
     pub fn new(id: impl Into<RequestId>, method: Method, params: Option<LazyValue<'a>>) -> Self {
         MethodRequest {
             jsonrpc: JsonRpc,
@@ -376,6 +379,7 @@ impl<'a> MethodResponse<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn into_success(self) -> Option<LazyValue<'a>> {
         match self {
             MethodResponse::Success(s) => Some(s.result),
@@ -608,7 +612,7 @@ mod tests {
 
             std::fs::write(protocol_schema_path, &generated_schema_str)
                 .expect("Failed to write updated schema");
-            eprintln!("Updated protocol.json at {}", protocol_schema_path);
+            // Schema updated - test passes silently
         } else {
             // Try to read the existing schema for comparison
             match std::fs::read_to_string(protocol_schema_path) {
@@ -640,8 +644,9 @@ mod tests {
         let generated_str = serde_json::to_string_pretty(&generated).unwrap();
 
         // Print the schema for manual comparison during development
+        #[allow(clippy::print_stdout)]
         if std::env::var("PRINT_SCHEMA").is_ok() {
-            eprintln!("Generated Protocol schema:\n{}", generated_str);
+            println!("Generated Protocol schema:\n{}", generated_str);
         }
 
         // Basic structural checks

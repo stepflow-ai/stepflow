@@ -17,6 +17,7 @@
 Clean architecture without CachedStepflowContext.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -67,41 +68,16 @@ class StepflowLangflowServer:
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)
 
-    def run(self) -> None:
-        """Run the component server in STDIO mode."""
-        self.server.start_stdio()
-
-    async def serve(
-        self,
-        host: str = "localhost",
-        port: int = 8000,
-        workers: int = 3,
-        backlog: int = 128,
-        timeout_keep_alive: int = 5,
-    ) -> None:
-        """Run the component server in HTTP mode.
-
-        Args:
-            host: Server host
-            port: Server port
-            workers: Number of worker processes
-            backlog: Maximum number of pending connections
-            timeout_keep_alive: Keep-alive timeout in seconds
-        """
-        # Apply nest_asyncio to allow nested event loops in HTTP mode
+    def run(self, *args, **kwargs) -> None:
+        """Run the component server."""
+        # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
         import nest_asyncio  # type: ignore
 
         nest_asyncio.apply()
 
-        await self.server.start_http(
-            host=host,
-            port=port,
-            workers=workers,
-            backlog=backlog,
-            timeout_keep_alive=timeout_keep_alive,
-        )
+        asyncio.run(self.server.run(*args, **kwargs))
 
 
 if __name__ == "__main__":

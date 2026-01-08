@@ -132,7 +132,6 @@ plugins:
     type: builtin
   python:  # Only needed for math-eval example
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_py"]
 

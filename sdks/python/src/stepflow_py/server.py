@@ -638,47 +638,37 @@ class StepflowServer:
             return decorator
         return decorator(func)
 
-    def start_stdio(
+    async def run(
         self,
-        stdin: Any = None,  # asyncio.StreamReader | None
-        stdout: Any = None,  # asyncio.StreamWriter | None
-    ) -> None:
-        """Start the server using STDIO transport.
-
-        Args:
-            stdin: Optional StreamReader to read from (defaults to sys.stdin)
-            stdout: Optional StreamWriter to write to (defaults to sys.stdout)
-        """
-        from .stdio_server import StepflowStdioServer
-
-        stdio_server = StepflowStdioServer(server=self)
-        stdio_server.run(stdin=stdin, stdout=stdout)
-
-    async def start_http(
-        self,
-        host: str = "localhost",
-        port: int = 8080,
+        host: str = "127.0.0.1",
+        port: int = 0,
         workers: int = 3,
         backlog: int = 128,
         timeout_keep_alive: int = 5,
+        instance_id: str | None = None,
     ) -> None:
         """Start the server using HTTP transport.
 
+        When port is 0, the server binds to an available port and announces
+        the actual port via stdout in JSON format: {"port": N}
+
         Args:
-            host: Server host (default: localhost)
-            port: Server port (default: 8080)
+            host: Server host (default: 127.0.0.1)
+            port: Server port (0 for auto-assign, default: 0)
             workers: Number of worker processes (default: 3)
             backlog: Maximum number of pending connections (default: 128)
             timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
+            instance_id: Optional instance ID for load balancer routing
+                (auto-generated if not provided)
         """
-        from .http_server import StepflowHttpServer
+        from .http_server import run_http_server
 
-        http_server = StepflowHttpServer(
+        await run_http_server(
             server=self,
             host=host,
             port=port,
             workers=workers,
             backlog=backlog,
             timeout_keep_alive=timeout_keep_alive,
+            instance_id=instance_id,
         )
-        await http_server.run()

@@ -95,7 +95,6 @@ flow_execution (ROOT, trace_id == run_id)
   ```yaml
   python:
     type: stepflow
-    transport: stdio
     env:
       STEPFLOW_TRACE_ENABLED: "${STEPFLOW_TRACE_ENABLED:-false}"
       STEPFLOW_OTLP_ENDPOINT: "${STEPFLOW_OTLP_ENDPOINT}"

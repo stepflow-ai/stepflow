@@ -35,7 +35,6 @@ def batch_config():
             "builtin": {"type": "builtin"},
             "python": {
                 "type": "stepflow",
-                "transport": "stdio",
                 "command": "uv",
                 "args": [
                     "--project",

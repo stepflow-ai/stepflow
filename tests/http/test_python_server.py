@@ -17,7 +17,7 @@
 Test Python server for HTTP transport integration testing.
 
 This server provides both bidirectional (context-using) and non-bidirectional components
-to test different aspects of the HTTP transport layer. It can run in both stdio and HTTP modes.
+to test different aspects of the HTTP transport layer.
 """
 
 import argparse
@@ -29,10 +29,7 @@ import time
 import uuid
 
 try:
-    from stepflow_py.server import StepflowServer
-    from stepflow_py.stdio_server import StepflowStdioServer
-    from stepflow_py.http_server import StepflowHttpServer
-    from stepflow_py import StepflowContext
+    from stepflow_py import StepflowServer, StepflowContext
     from stepflow_py.exceptions import StepflowExecutionError
     import msgspec
 except ImportError:
@@ -183,8 +180,7 @@ async def data_analysis_component(
     """Analyze data and store detailed results as a blob."""
 
     print(
-        f"Received data for analysis: {input.data} with analysis type: {input.analysis_type}",
-        file=sys.stderr,
+        f"Received data for analysis: {input.data} with analysis type: {input.analysis_type}"
     )
     if input.analysis_type == "statistics":
         # Calculate basic statistics
@@ -438,72 +434,62 @@ async def main():
     parser = argparse.ArgumentParser(
         description="Test Python Server for HTTP Transport"
     )
-    parser.add_argument("--http", action="store_true", help="Run in HTTP mode")
-    parser.add_argument("--port", type=int, default=8080, help="HTTP port")
+    parser.add_argument("--port", type=int, default=0, help="HTTP port (0 for auto-assign)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
 
     args = parser.parse_args()
 
-    # Create core server instance
-    core_server = StepflowServer()
+    # Create server instance
+    server = StepflowServer()
 
     # Register non-bidirectional components
-    core_server.component(
+    server.component(
         echo_component,
         name="echo",
         description="Echo component that returns the input message with timestamp",
     )
 
-    core_server.component(
+    server.component(
         math_component,
         name="math",
         description="Basic mathematical operations component",
     )
 
-    core_server.component(
+    server.component(
         process_list_component,
         name="process_list",
         description="Process a list of items by adding a prefix",
     )
 
-    core_server.component(
+    server.component(
         error_test_component,
         name="error_test",
         description="Test component for error handling scenarios",
     )
 
     # Register bidirectional components
-    core_server.component(
+    server.component(
         data_analysis_component,
         name="data_analysis",
         description="Analyze data and store detailed results as a blob",
     )
 
-    core_server.component(
+    server.component(
         chain_processing_component,
         name="chain_processing",
         description="Process data through a chain of operations with intermediate blob storage",
     )
 
-    core_server.component(
+    server.component(
         multi_step_workflow_component,
         name="multi_step_workflow",
         description="Execute a configurable multi-step workflow with blob storage",
     )
 
-    if args.http:
-        # Create HTTP server
-        http_server = StepflowHttpServer(core_server, host=args.host, port=args.port)
-        print(f"Starting HTTP test server on {args.host}:{args.port}", file=sys.stderr)
-        await http_server.run()
-    else:
-        # Create STDIO server wrapper and return it for sync execution
-        return StepflowStdioServer(core_server)
+    # Start HTTP server
+    print(f"Starting HTTP test server on {args.host}:{args.port}")
+    await server.run(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
-    result = asyncio.run(main())
-    # If we got a stdio server back, run it synchronously (outside asyncio context)
-    if result is not None:
-        print("Starting stdio test server", file=sys.stderr)
-        result.run()
+    asyncio.run(main())

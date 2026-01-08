@@ -35,19 +35,16 @@ plugins:
   # CPU-intensive components
   cpu_components:
     type: stepflow
-    transport: http
     url: "http://cpu-components-lb.stepflow.svc.cluster.local:8080"
-  
+
   # GPU-accelerated components (ML models)
   gpu_components:
     type: stepflow
-    transport: http
     url: "http://gpu-components-lb.stepflow.svc.cluster.local:8080"
-  
+
   # Memory-intensive components (large data processing)
   memory_components:
     type: stepflow
-    transport: http
     url: "http://memory-components-lb.stepflow.svc.cluster.local:8080"
 
 routes:

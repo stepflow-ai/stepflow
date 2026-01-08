@@ -3,14 +3,12 @@ plugins:
     type: builtin
   python:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "stepflow_py"]
     env:
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
   custom:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "openai_custom_server.py"]
     env:

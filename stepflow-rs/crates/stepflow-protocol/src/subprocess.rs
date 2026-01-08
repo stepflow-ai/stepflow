@@ -10,21 +10,15 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod error;
-mod handlers;
-pub mod http;
-mod lazy_value;
-mod owned_json;
-mod plugin;
-mod protocol;
-mod subprocess;
+//! Subprocess launcher for HTTP component servers.
+//!
+//! This module provides subprocess management for component servers that communicate
+//! via HTTP. It handles:
+//! - Spawning the subprocess with the configured command and arguments
+//! - Reading the port announcement from stdout
+//! - Polling the health endpoint until the server is ready
+//! - Monitoring stderr for logging
 
-// Re-export internal types for crate-wide access
-use handlers::*;
-use lazy_value::*;
-use owned_json::OwnedJson;
-use protocol::*;
+mod launcher;
 
-// Re-export main plugin types
-pub use error::{Result, TransportError};
-pub use plugin::{StepflowPluginConfig, StepflowTransport};
+pub use launcher::{SubprocessHandle, SubprocessLauncher};

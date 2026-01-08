@@ -9,7 +9,6 @@ plugins:
   # Research components via LangChain
   research:
     type: stepflow
-    transport: stdio
     command: uv
     args:
       - "--project"

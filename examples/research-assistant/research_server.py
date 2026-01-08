@@ -29,8 +29,7 @@ try:
     import msgspec
     from langchain_core.runnables import RunnableLambda
 
-    from stepflow_py import StepflowServer, StepflowStdioServer
-except ImportError as e:
+    from stepflow_py import StepflowServer, except ImportError as e:
     print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
     print("Please install with:", file=sys.stderr)
     print("  cd ../../sdks/python", file=sys.stderr)
@@ -439,8 +438,7 @@ The report provides a complete framework for conducting systematic research on t
 
 # Main entry point
 if __name__ == "__main__":
-    # Don't print to stdout - it interferes with JSON-RPC protocol
-    # Create and run the stdio server
-    stdio_server = StepflowStdioServer(server)
-    stdio_server.run()
+    import asyncio
+    # Create and run the HTTP server
+    asyncio.run(server.run())
 

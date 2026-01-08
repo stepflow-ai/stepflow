@@ -186,7 +186,6 @@ uv run python -m stepflow_langflow_integration.executor.standalone_server
 plugins:
   langflow:
     type: stepflow
-    transport: stdio
     command: uv
     args: ["--project", "integrations/langflow", "run", "stepflow-langflow", "serve"]
 
@@ -212,7 +211,6 @@ uv run stepflow-langflow-server --host localhost --port 9000 --workers 4
 plugins:
   langflow_http:
     type: stepflow
-    transport: http
     url: "http://localhost:8080"
 
 routes:

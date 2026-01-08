@@ -46,12 +46,13 @@ async fn main() {
 
         // Check if span context is available
         if let Some(ctx) = fastrace::collector::SpanContext::current_local_parent() {
-            eprintln!(
-                "DEBUG: Root span context found - trace_id={:032x} span_id={:016x}",
-                ctx.trace_id.0, ctx.span_id.0
+            log::debug!(
+                "Root span context found - trace_id={:032x} span_id={:016x}",
+                ctx.trace_id.0,
+                ctx.span_id.0
             );
         } else {
-            eprintln!("DEBUG: No root span context found!");
+            log::debug!("No root span context found!");
         }
 
         log::info!("Inside root span");

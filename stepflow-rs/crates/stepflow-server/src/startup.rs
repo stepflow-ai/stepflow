@@ -100,7 +100,41 @@ pub async fn start_server(
         port
     );
 
-    axum::serve(listener, app).await?;
+    // Use graceful shutdown to allow proper cleanup when SIGTERM/SIGINT is received
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    log::info!("Server shutdown complete");
 
     Ok(())
+}
+
+/// Wait for a shutdown signal (SIGTERM or SIGINT).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            log::info!("Received CTRL+C, initiating graceful shutdown");
+        }
+        _ = terminate => {
+            log::info!("Received SIGTERM, initiating graceful shutdown");
+        }
+    }
 }
