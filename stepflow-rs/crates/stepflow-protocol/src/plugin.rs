@@ -21,7 +21,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, RunContext,
 };
 use tokio::sync::RwLock;
 
@@ -186,14 +186,17 @@ impl StepflowPlugin {
         let handle = client.handle();
 
         handle
-            .method(&InitializeParams {
-                runtime_protocol_version: 1,
-                observability: if observability.trace_id.is_some() {
-                    Some(observability)
-                } else {
-                    None
+            .method(
+                &InitializeParams {
+                    runtime_protocol_version: 1,
+                    observability: if observability.trace_id.is_some() {
+                        Some(observability)
+                    } else {
+                        None
+                    },
                 },
-            })
+                None, // No run context for initialization
+            )
             .await
             .change_context(PluginError::Execution)
             .attach_printable("Failed to initialize restarted subprocess")?;
@@ -268,14 +271,17 @@ impl Plugin for StepflowPlugin {
         let observability = ObservabilityContext::from_current_span();
 
         client
-            .method(&InitializeParams {
-                runtime_protocol_version: 1,
-                observability: if observability.trace_id.is_some() {
-                    Some(observability)
-                } else {
-                    None
+            .method(
+                &InitializeParams {
+                    runtime_protocol_version: 1,
+                    observability: if observability.trace_id.is_some() {
+                        Some(observability)
+                    } else {
+                        None
+                    },
                 },
-            })
+                None, // No run context for initialization
+            )
             .await
             .change_context(PluginError::Initializing)?;
 
@@ -290,7 +296,10 @@ impl Plugin for StepflowPlugin {
     async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .method(&ComponentListParams {})
+            .method(
+                &ComponentListParams {},
+                None, // No run context for component listing
+            )
             .await
             .change_context(PluginError::ComponentInfo)?;
 
@@ -300,9 +309,12 @@ impl Plugin for StepflowPlugin {
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .method(&ComponentInfoParams {
-                component: component.clone(),
-            })
+            .method(
+                &ComponentInfoParams {
+                    component: component.clone(),
+                },
+                None, // No run context for component info
+            )
             .await
             .change_context(PluginError::ComponentInfo)?;
 
@@ -318,6 +330,10 @@ impl Plugin for StepflowPlugin {
         const MAX_ATTEMPTS: u32 = 3;
         let can_restart = self.is_subprocess_mode().await;
 
+        // Create run context for bidirectional handlers
+        // For now, root_run_id equals run_id (until sub-flow hierarchy is implemented)
+        let run_context = Arc::new(RunContext::for_root(context.run_id()));
+
         for attempt in 1..=MAX_ATTEMPTS {
             // Create observability context from execution context
             let observability = ObservabilityContext::from_execution_context(&context);
@@ -328,12 +344,15 @@ impl Plugin for StepflowPlugin {
                 .await?;
 
             let result = client_handle
-                .method(&ComponentExecuteParams {
-                    component: component.clone(),
-                    input: input.clone(),
-                    attempt,
-                    observability,
-                })
+                .method(
+                    &ComponentExecuteParams {
+                        component: component.clone(),
+                        input: input.clone(),
+                        attempt,
+                        observability,
+                    },
+                    Some(run_context.clone()),
+                )
                 .await;
 
             match result {

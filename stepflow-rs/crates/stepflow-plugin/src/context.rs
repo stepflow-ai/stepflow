@@ -20,6 +20,44 @@ use stepflow_core::{
 use stepflow_state::{RunStatus, StateStore};
 use uuid::Uuid;
 
+/// Run hierarchy context for execution.
+///
+/// This captures the run tree context for a component execution,
+/// allowing bidirectional message handlers to know which run tree
+/// they're serving.
+#[derive(Debug, Clone)]
+pub struct RunContext {
+    /// The current run ID.
+    pub run_id: Uuid,
+    /// The root run ID for this execution tree.
+    ///
+    /// For top-level runs, this equals `run_id`.
+    /// For sub-flows, this is the original run that started the tree.
+    pub root_run_id: Uuid,
+}
+
+impl RunContext {
+    /// Create a new RunContext for a root (top-level) run.
+    ///
+    /// Sets `root_run_id` equal to `run_id`.
+    pub fn for_root(run_id: Uuid) -> Self {
+        Self {
+            run_id,
+            root_run_id: run_id,
+        }
+    }
+
+    /// Create a new RunContext for a sub-flow within an existing run tree.
+    ///
+    /// The `root_run_id` is inherited from the parent context.
+    pub fn for_subflow(&self, run_id: Uuid) -> Self {
+        Self {
+            run_id,
+            root_run_id: self.root_run_id,
+        }
+    }
+}
+
 /// Trait for interacting with the workflow runtime.
 pub trait Context: Send + Sync {
     /// Submit a run with 1 or N items.
