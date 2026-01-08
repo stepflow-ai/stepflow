@@ -13,7 +13,7 @@
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
 use stepflow_core::GetRunOptions;
-use stepflow_plugin::Context;
+use stepflow_plugin::{Context, RunContext};
 use tokio::sync::mpsc;
 
 use crate::error::TransportError;
@@ -33,6 +33,7 @@ impl MethodHandler for SubmitRunHandler {
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
+        _run_context: Option<&'a Arc<RunContext>>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,
@@ -79,6 +80,7 @@ impl MethodHandler for GetRunHandler {
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
+        _run_context: Option<&'a Arc<RunContext>>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,

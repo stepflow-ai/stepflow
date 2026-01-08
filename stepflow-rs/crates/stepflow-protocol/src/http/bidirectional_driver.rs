@@ -15,7 +15,10 @@
 //! This module handles the complex logic of managing SSE streams with concurrent
 //! bidirectional request processing, keeping the main HTTP client clean and focused.
 
+use std::sync::Arc;
+
 use futures::stream::{FuturesUnordered, StreamExt as _};
+use stepflow_plugin::RunContext;
 use tokio::task::JoinHandle;
 
 use crate::error::{Result, TransportError};
@@ -38,6 +41,9 @@ use crate::{Message, OwnedJson, RequestId};
 pub struct BidirectionalDriver {
     client_handle: super::HttpClientHandle,
     instance_id: Option<String>,
+    /// Run context for this bidirectional session.
+    /// Required so handlers know which run tree they're serving.
+    run_context: Arc<RunContext>,
 }
 
 /// Result of processing an SSE message
@@ -49,11 +55,21 @@ enum SseMessageEvent {
 }
 
 impl BidirectionalDriver {
-    /// Create a new bidirectional driver with optional instance ID for load balancer routing
-    pub fn new(client_handle: super::HttpClientHandle, instance_id: Option<String>) -> Self {
+    /// Create a new bidirectional driver with instance ID and run context
+    ///
+    /// # Arguments
+    /// * `client_handle` - HTTP client handle for sending responses
+    /// * `instance_id` - Optional instance ID for load balancer routing
+    /// * `run_context` - Run context for bidirectional handlers
+    pub fn new(
+        client_handle: super::HttpClientHandle,
+        instance_id: Option<String>,
+        run_context: Arc<RunContext>,
+    ) -> Self {
         Self {
             client_handle,
             instance_id,
+            run_context,
         }
     }
 
@@ -170,8 +186,9 @@ impl BidirectionalDriver {
             request_id
         );
 
-        // Clone instance_id for the spawned task
+        // Clone instance_id and run_context for the spawned task
         let instance_id = self.instance_id.clone();
+        let run_context = self.run_context.clone();
 
         // Spawn concurrent handler
         let handle = tokio::spawn(async move {
@@ -181,6 +198,7 @@ impl BidirectionalDriver {
                     request_id.clone(),
                     owned_json,
                     instance_id.as_deref(),
+                    &run_context,
                 )
                 .await
             {

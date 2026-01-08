@@ -15,6 +15,6 @@ mod error;
 mod plugin;
 pub mod routing;
 
-pub use context::{Context, ExecutionContext};
+pub use context::{Context, ExecutionContext, RunContext};
 pub use error::{PluginError, Result};
 pub use plugin::{DynPlugin, Plugin, PluginConfig};

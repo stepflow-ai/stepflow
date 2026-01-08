@@ -13,7 +13,7 @@
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
-use stepflow_plugin::Context;
+use stepflow_plugin::{Context, RunContext};
 use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
@@ -31,6 +31,9 @@ pub trait MethodHandler: Send + Sync {
     /// # Arguments
     /// * `request` - The method request to handle
     /// * `outgoing_tx` - Channel to send messages back to the component server
+    /// * `context` - The execution context (state store, etc.)
+    /// * `run_context` - Optional run context with run_id and root_run_id.
+    ///   Present during component execution, None for non-execution calls.
     ///
     /// # Returns
     /// Result indicating if the handling was successful
@@ -39,6 +42,7 @@ pub trait MethodHandler: Send + Sync {
         request: &'a MethodRequest<'a>,
         outgoing_tx: mpsc::Sender<String>,
         context: Arc<dyn Context>,
+        run_context: Option<&'a Arc<RunContext>>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>>;
 }
 

@@ -17,11 +17,11 @@
 //! - Receive either direct JSON responses or SSE streams
 //! - Handle bidirectional communication through SSE when needed
 
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 
 use error_stack::ResultExt as _;
 use futures::stream::StreamExt as _;
-use stepflow_plugin::Context;
+use stepflow_plugin::{Context, RunContext};
 use tokio::sync::mpsc;
 
 use super::bidirectional_driver::BidirectionalDriver;
@@ -81,13 +81,22 @@ impl HttpClientHandle {
 
     /// Send a typed method request and return the typed response
     /// This follows the same pattern as StdioClientHandle
-    pub async fn method<I>(&self, params: &I) -> Result<I::Response>
+    ///
+    /// # Arguments
+    /// * `params` - The method parameters
+    /// * `run_context` - Optional run context for bidirectional communication.
+    ///   Required if the call may result in SSE streaming (bidirectional).
+    pub async fn method<I>(
+        &self,
+        params: &I,
+        run_context: Option<Arc<RunContext>>,
+    ) -> Result<I::Response>
     where
         I: ProtocolMethod + serde::Serialize + Send + Sync + std::fmt::Debug,
         I::Response: DeserializeOwned + Send + Sync + 'static,
     {
         let response = self
-            .method_dyn(I::METHOD_NAME, LazyValue::write_ref(params))
+            .method_dyn(I::METHOD_NAME, LazyValue::write_ref(params), run_context)
             .await?;
 
         response
@@ -100,6 +109,7 @@ impl HttpClientHandle {
         &self,
         method: Method,
         params: LazyValue<'_>,
+        run_context: Option<Arc<RunContext>>,
     ) -> Result<OwnedJson<LazyValue<'static>>> {
         let id = RequestId::new_uuid();
         let request = MethodRequest {
@@ -113,7 +123,7 @@ impl HttpClientHandle {
             .change_context(TransportError::SerializeRequest(method))?;
 
         let response = self
-            .send_method_request(id.clone(), request_str)
+            .send_method_request(id.clone(), request_str, run_context)
             .await?
             .owned_response()?;
 
@@ -161,7 +171,18 @@ impl HttpClientHandle {
 
     /// Send a JSON-RPC request and wait for a response
     /// Handles both direct JSON responses and SSE streams automatically
-    async fn send_method_request(&self, id: RequestId, message: String) -> Result<OwnedJson> {
+    ///
+    /// # Arguments
+    /// * `id` - The request ID
+    /// * `message` - The serialized JSON-RPC request
+    /// * `run_context` - Run context for bidirectional communication. Required if
+    ///   the response may be an SSE stream (bidirectional mode).
+    async fn send_method_request(
+        &self,
+        id: RequestId,
+        message: String,
+        run_context: Option<Arc<RunContext>>,
+    ) -> Result<OwnedJson> {
         // Send the HTTP POST request using pre-built headers
         let response = self
             .client
@@ -202,6 +223,12 @@ impl HttpClientHandle {
                 id
             );
 
+            // SSE mode requires run_context for bidirectional handlers
+            let run_context = run_context.ok_or_else(|| {
+                error_stack::report!(TransportError::Recv)
+                    .attach_printable("SSE response received but no RunContext provided")
+            })?;
+
             // Extract instance ID from response headers for routing bidirectional requests
             let instance_id = response
                 .headers()
@@ -220,7 +247,7 @@ impl HttpClientHandle {
             }
 
             // Create a bidirectional driver to handle the SSE stream
-            let driver = BidirectionalDriver::new(self.clone(), instance_id);
+            let driver = BidirectionalDriver::new(self.clone(), instance_id, run_context);
             let messages = self.sse_messages(response);
             driver.drive_to_completion(id, messages).await
         } else {
@@ -314,6 +341,7 @@ impl HttpClientHandle {
         incoming_id: RequestId,
         owned_message: OwnedJson<Message<'static>>,
         instance_id: Option<&str>,
+        run_context: &Arc<RunContext>,
     ) -> Result<()> {
         log::debug!(
             "method={}, request_id={}: Processing bidirectional request from server with concurrent message handling",
@@ -348,6 +376,7 @@ impl HttpClientHandle {
         };
         let client_handle = self.clone();
         let instance_id = instance_id.map(|s| s.to_string());
+        let run_context = run_context.clone();
 
         let future = async move {
             let (outgoing_tx, mut outgoing_rx) = mpsc::channel(100);
@@ -366,7 +395,8 @@ impl HttpClientHandle {
             };
 
             // Start the handler and the message sender concurrently
-            let handler_future = handler.handle_message(request, outgoing_tx, context);
+            let handler_future =
+                handler.handle_message(request, outgoing_tx, context, Some(&run_context));
             let sender_future = async {
                 while let Some(outgoing_message) = outgoing_rx.recv().await {
                     if let Err(e) = client_handle
