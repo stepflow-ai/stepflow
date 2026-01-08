@@ -681,7 +681,6 @@ mod tests {
 
             std::fs::write(&flow_schema_path, &generated_schema_str)
                 .expect("Failed to write updated schema");
-            // Schema updated - test passes silently
         } else {
             match std::fs::read_to_string(&flow_schema_path) {
                 Ok(expected_schema_str) => {

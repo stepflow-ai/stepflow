@@ -310,6 +310,26 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
     return app
 
 
+class _StepflowUvicornServer(uvicorn.Server):
+    """Custom uvicorn server that announces the port after binding."""
+
+    async def startup(self, sockets: list | None = None) -> None:
+        """Override startup to announce port after binding."""
+        await super().startup(sockets)
+
+        # Announce the actual port to stdout for the orchestrator
+        for server in self.servers:
+            for sock in server.sockets:
+                addr = sock.getsockname()
+                actual_port = addr[1]
+                import json
+
+                announcement = {"port": actual_port}
+                print(json.dumps(announcement), flush=True)
+                logger.info(f"Server listening on port {actual_port}")
+                return
+
+
 async def run_http_server(
     server: StepflowServer,
     host: str = "127.0.0.1",
@@ -345,24 +365,7 @@ async def run_http_server(
         backlog=backlog,
         timeout_keep_alive=timeout_keep_alive,
     )
-    uvicorn_server = uvicorn.Server(config)
-
-    original_startup = uvicorn_server.startup
-
-    async def startup_with_port_announcement(*args, **kwargs):
-        await original_startup(*args, **kwargs)
-        for s in uvicorn_server.servers:
-            for sock in s.sockets:
-                addr = sock.getsockname()
-                actual_port = addr[1]
-                import json
-
-                announcement = {"port": actual_port}
-                print(json.dumps(announcement), flush=True)
-                logger.info(f"Server listening on port {actual_port}")
-                return
-
-    object.__setattr__(uvicorn_server, "startup", startup_with_port_announcement)
+    uvicorn_server = _StepflowUvicornServer(config)
     await uvicorn_server.serve()
 
 

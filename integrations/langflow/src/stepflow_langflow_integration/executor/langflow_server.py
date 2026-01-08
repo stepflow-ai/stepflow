@@ -68,7 +68,7 @@ class StepflowLangflowServer:
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)
 
-    def run(self) -> None:
+    def run(self, *args, **kwargs) -> None:
         """Run the component server."""
         # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()
@@ -77,7 +77,7 @@ class StepflowLangflowServer:
 
         nest_asyncio.apply()
 
-        asyncio.run(self.server.run())
+        asyncio.run(self.server.run(*args, **kwargs))
 
 
 if __name__ == "__main__":

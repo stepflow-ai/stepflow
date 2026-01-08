@@ -186,14 +186,13 @@ def analyze(input_file: Path):
 
 @main.command()
 @click.option(
-    "--host", default="localhost", help="Server host (ignored, uses 127.0.0.1)"
+    "--host", default="localhost", help="Server host"
 )
 @click.option("--port", default=0, help="Server port (0 for auto-assign)")
 @click.option("--protocol-prefix", default="langflow", help="Protocol prefix")
 def serve(
     host: str,
     port: int,
-    protocol_prefix: str,
 ):
     """Start the Langflow component server.
 
@@ -201,12 +200,10 @@ def serve(
     for the stepflow orchestrator to discover.
     """
     try:
-        # Note: Messages go to stderr, stdout is for port announcement
-        click.echo("🚀 Starting Langflow component server...", err=True)
-        click.echo(f"   Protocol prefix: {protocol_prefix}", err=True)
+        click.echo("🚀 Starting Langflow component server...")
 
         server = StepflowLangflowServer()
-        server.run()
+        server.run(host=host, port=port)
 
     except KeyboardInterrupt:
         click.echo("\n🛑 Server stopped")
