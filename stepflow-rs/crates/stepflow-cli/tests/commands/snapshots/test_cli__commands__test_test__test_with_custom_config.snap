@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_test.rs
+source: crates/stepflow-cli/tests/commands/test_test.rs
 info:
   program: stepflow
   args:
@@ -8,6 +8,14 @@ info:
     - test
     - "--config=tests/builtins/stepflow-config.yml"
     - tests/builtins
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -25,6 +33,7 @@ tests/builtins/map_test.yaml: 2/2 passed
 ----------
 Running Test Case test nested flow execution
 tests/builtins/nested_eval.yaml: 1/1 passed
+tests/builtins/stepflow-config.yml: Skipped (invalid or non-flow file)
 tests/builtins/blob_test.yaml: 2/2 passed
 tests/builtins/map_test.yaml: 2/2 passed
 tests/builtins/nested_eval.yaml: 1/1 passed

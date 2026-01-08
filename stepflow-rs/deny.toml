@@ -76,13 +76,14 @@ ignore = [
     #{ crate = "a-crate-that-is-yanked@0.1.1", reason = "you can specify why you are ignoring the yanked crate" },
     { id = "RUSTSEC-2024-0436", reason = "paste is safe, but unmaintained. see https://github.com/juhaku/utoipa/issues/1336" },
     { id = "RUSTSEC-2024-0388", reason = "derivative is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/463)" },
-    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/373)"},
-    { id = "RUSTSEC-2024-0437", reason = "uncontrolled recursion in protobuf, dep but not used in pingora (see https://github.com/cloudflare/pingora/blob/71a5f5a0985aa37d83c107980d263d84c0d5c245/.cargo/audit.toml#L6)"},
-    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/158)"},
-    { id = "RUSTSEC-2025-0069", reason = "daemonize is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/699)"},
-    { id = "RUSTSEC-2024-0375", reason = "atty is unmaintained, but used in pingora (https://github.com/cloudflare/pingora/issues/450)"},
-    { id = "RUSTSEC-2021-0145", reason = "unaligned read in atty (see https://github.com/cloudflare/pingora/issues/150)"},
-    { id = "RUSTSEC-2025-0134", reason = "https://github.com/fussybeaver/bollard/issues/612 (via testcontainers)"},
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/373)" },
+    { id = "RUSTSEC-2024-0437", reason = "uncontrolled recursion in protobuf, dep but not used in pingora (see https://github.com/cloudflare/pingora/blob/71a5f5a0985aa37d83c107980d263d84c0d5c245/.cargo/audit.toml#L6)" },
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/158)" },
+    { id = "RUSTSEC-2025-0069", reason = "daemonize is unmaintained, but used in pingora (see https://github.com/cloudflare/pingora/issues/699)" },
+    { id = "RUSTSEC-2024-0375", reason = "atty is unmaintained, but used in pingora (https://github.com/cloudflare/pingora/issues/450)" },
+    { id = "RUSTSEC-2021-0145", reason = "unaligned read in atty (see https://github.com/cloudflare/pingora/issues/150)" },
+    { id = "RUSTSEC-2025-0134", reason = "https://github.com/fussybeaver/bollard/issues/612 (via testcontainers)" },
+    { id = "RUSTSEC-2026-0002", reason = "dependency of pingora" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
@@ -98,14 +99,14 @@ ignore = [
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 allow = [
-    "MIT",                             # OSI approved
-    "Apache-2.0",                      # OSI approved
-    "Apache-2.0 WITH LLVM-exception",  # OSI approved
-    "Unicode-3.0",                     # OSI approved
-    "ISC",                             # OSI approved
-    "BSD-3-Clause",                    # OSI approved
-    "BSL-1.0",                         # OSI approved
-    "Zlib",                            # OSI approved
+    "MIT",                            # OSI approved
+    "Apache-2.0",                     # OSI approved
+    "Apache-2.0 WITH LLVM-exception", # OSI approved
+    "Unicode-3.0",                    # OSI approved
+    "ISC",                            # OSI approved
+    "BSD-3-Clause",                   # OSI approved
+    "BSL-1.0",                        # OSI approved
+    "Zlib",                           # OSI approved
     "CDLA-Permissive-2.0",
     "MPL-2.0",
 ]
