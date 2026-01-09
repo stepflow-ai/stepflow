@@ -13,7 +13,7 @@
 # the License.
 
 # Stepflow Kubernetes Namespaces
-# - stepflow: Application components (server, load balancer, component servers, opensearch)
+# - stepflow: Application components (server, load balancer, workers, opensearch)
 # - stepflow-o12y: Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana)
 
 apiVersion: v1

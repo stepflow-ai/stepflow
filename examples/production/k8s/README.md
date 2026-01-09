@@ -7,8 +7,8 @@ This directory contains Kubernetes manifests for deploying Stepflow and its supp
 The Stepflow K8s deployment provides a complete local development environment with:
 
 - **Stepflow Server**: Core workflow orchestration engine
-- **Load Balancer**: Pingora-based request routing to component servers
-- **Langflow Component Server**: Python-based component execution (3 replicas)
+- **Load Balancer**: Pingora-based request routing to workers
+- **Langflow Worker**: Python-based component execution (3 replicas)
 - **OpenSearch**: Document storage and vector search
 - **Observability Stack**: Full telemetry pipeline (traces, metrics, logs)
 
@@ -71,7 +71,7 @@ From the repository root:
 # Build all three images
 podman build -t stepflow-server:latest -f docker/Dockerfile.server .
 podman build -t stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
-podman build -t langflow-component-server:latest -f docker/langflow-component-server/Dockerfile .
+podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
 ```
 
 ### 2. Create Kind Cluster
@@ -91,7 +91,7 @@ This creates a cluster named `stepflow` with port mappings for:
 ```bash
 kind load docker-image stepflow-server:latest --name stepflow
 kind load docker-image stepflow-load-balancer:latest --name stepflow
-kind load docker-image langflow-component-server:latest --name stepflow
+kind load docker-image langflow-worker:latest --name stepflow
 ```
 
 ### 4. Create Secrets
@@ -169,7 +169,7 @@ k8s/
 ├── stepflow/                      # Application manifests
 │   ├── server/                    # Stepflow server
 │   ├── loadbalancer/              # Pingora load balancer
-│   ├── langflow-component-server/ # Python component servers
+│   ├── langflow-worker/           # Python workers
 │   └── opensearch/                # OpenSearch
 └── stepflow-o12y/                 # Observability manifests
     ├── otel-collector/            # OpenTelemetry Collector
