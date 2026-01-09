@@ -36,7 +36,7 @@ fi
 
 # 1. Application components
 echo "[1/4] Removing stepflow applications..."
-kubectl delete -f stepflow/langflow-component-server/ --ignore-not-found
+kubectl delete -f stepflow/langflow-worker/ --ignore-not-found
 kubectl delete -f stepflow/loadbalancer/ --ignore-not-found
 kubectl delete -f stepflow/server/ --ignore-not-found
 

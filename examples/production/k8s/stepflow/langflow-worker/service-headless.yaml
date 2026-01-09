@@ -17,16 +17,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: langflow-component-server-headless
+  name: langflow-worker-headless
   namespace: stepflow
   labels:
-    app: langflow-component-server
+    app: langflow-worker
     component: langflow-integration
 spec:
   type: ClusterIP
   clusterIP: None  # Headless service - DNS returns individual pod IPs
   selector:
-    app: langflow-component-server
+    app: langflow-worker
   ports:
   - name: http
     port: 8080

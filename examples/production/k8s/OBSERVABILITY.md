@@ -12,8 +12,8 @@ The observability stack provides comprehensive monitoring, tracing, and logging 
 ┌─────────────────────────────────────────────────────────────┐
 │                     Stepflow Services                        │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Stepflow   │  │    Load      │  │  Component   │     │
-│  │    Server    │  │  Balancer    │  │   Server     │     │
+│  │   Stepflow   │  │    Load      │  │   Langflow   │     │
+│  │    Server    │  │  Balancer    │  │    Worker    │     │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
 │         │                  │                  │              │
 │         └──────────────────┼──────────────────┘              │
@@ -243,8 +243,8 @@ env:
 - Traces request routing
 - Emits metrics for load distribution
 
-**Langflow Component Server** (`k8s/langflow-component-server/deployment.yaml`):
-- Service name: `langflow-component-server`
+**Langflow Worker** (`k8s/langflow-worker/deployment.yaml`):
+- Service name: `langflow-worker`
 - Python-based service with auto-instrumentation
 - Additional env: `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`
 - Traces component execution
@@ -379,7 +379,7 @@ This pre-built dashboard provides a comprehensive single pane of glass:
 When viewing traces, navigate directly to related logs:
 
 1. Open Explore → Select Jaeger datasource
-2. Search for service: `stepflow-server`, `stepflow-load-balancer`, or `langflow-component-server`
+2. Search for service: `stepflow-server`, `stepflow-load-balancer`, or `langflow-worker`
 3. Click on any trace to open trace details
 4. Click on any span in the trace timeline
 5. Look for "Logs for this span" button in span details
@@ -465,7 +465,7 @@ All Grafana views share a time range picker:
 ### Direct Access (Optional)
 
 **Jaeger UI**: http://localhost:30686
-- Search traces by service: `stepflow-server`, `stepflow-load-balancer`, `langflow-component-server`
+- Search traces by service: `stepflow-server`, `stepflow-load-balancer`, `langflow-worker`
 - Filter by operation, tags, duration
 - View trace timeline and span details
 
@@ -644,7 +644,7 @@ Look for:
 curl -s "http://localhost:3100/loki/api/v1/label/app/values" | jq
 ```
 
-Should return service names like: `stepflow-server`, `stepflow-load-balancer`, `component-server`
+Should return service names like: `stepflow-server`, `stepflow-load-balancer`, `langflow-worker`
 
 **Check trace_id labels are extracted:**
 ```bash

@@ -61,7 +61,7 @@ kubectl wait --for=condition=available --timeout=180s \
 echo "[4/6] Deploying stepflow applications..."
 kubectl apply -f stepflow/server/
 kubectl apply -f stepflow/loadbalancer/
-kubectl apply -f stepflow/langflow-component-server/
+kubectl apply -f stepflow/langflow-worker/
 
 # 7. Wait for application components
 echo "[5/6] Waiting for application components..."

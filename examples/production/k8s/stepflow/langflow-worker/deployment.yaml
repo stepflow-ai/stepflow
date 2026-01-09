@@ -15,25 +15,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: langflow-component-server
+  name: langflow-worker
   namespace: stepflow
   labels:
-    app: langflow-component-server
+    app: langflow-worker
     component: langflow-integration
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: langflow-component-server
+      app: langflow-worker
   template:
     metadata:
       labels:
-        app: langflow-component-server
+        app: langflow-worker
         component: langflow-integration
     spec:
       containers:
-      - name: component-server
-        image: localhost/langflow-component-server:latest
+      - name: worker
+        image: localhost/langflow-worker:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
         ports:
         - name: http
@@ -117,7 +117,7 @@ spec:
         - name: STEPFLOW_LOG_LEVEL
           value: "DEBUG"
         - name: STEPFLOW_SERVICE_NAME
-          value: "langflow-component-server"
+          value: "langflow-worker"
         # Stepflow OpenTelemetry configuration
         - name: STEPFLOW_OTLP_ENDPOINT
           value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
@@ -127,7 +127,7 @@ spec:
           value: "stderr,otlp"
         # Standard OTEL variables for compatibility
         - name: OTEL_SERVICE_NAME
-          value: "langflow-component-server"
+          value: "langflow-worker"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=kubernetes,service.namespace=stepflow"
         - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED

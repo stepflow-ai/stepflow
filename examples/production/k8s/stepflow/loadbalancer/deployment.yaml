@@ -46,7 +46,7 @@ spec:
         - name: METRICS_ADDRESS
           value: "0.0.0.0:9090"
         - name: UPSTREAM_SERVICE
-          value: "langflow-component-server-headless.stepflow.svc.cluster.local:8080"
+          value: "langflow-worker-headless.stepflow.svc.cluster.local:8080"
         # Stepflow logging configuration
         - name: STEPFLOW_LOG_LEVEL
           value: "debug"

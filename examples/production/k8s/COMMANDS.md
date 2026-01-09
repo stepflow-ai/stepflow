@@ -60,7 +60,7 @@ kubectl apply -f k8s/stepflow-o12y/grafana/
 kubectl apply -f k8s/stepflow/opensearch/
 kubectl apply -f k8s/stepflow/server/
 kubectl apply -f k8s/stepflow/loadbalancer/
-kubectl apply -f k8s/stepflow/langflow-component-server/
+kubectl apply -f k8s/stepflow/langflow-worker/
 ```
 
 ## Pod Operations
@@ -100,7 +100,7 @@ kubectl top pod -n stepflow
 # Restart a deployment (rolling restart)
 kubectl rollout restart deployment/stepflow-server -n stepflow
 kubectl rollout restart deployment/stepflow-load-balancer -n stepflow
-kubectl rollout restart deployment/langflow-component-server -n stepflow
+kubectl rollout restart deployment/langflow-worker -n stepflow
 kubectl rollout restart deployment/opensearch -n stepflow
 
 # Restart observability components
@@ -125,8 +125,8 @@ kubectl logs -n stepflow deployment/stepflow-server -f  # follow
 # Load balancer logs
 kubectl logs -n stepflow deployment/stepflow-load-balancer --tail=100
 
-# Component server logs (all replicas)
-kubectl logs -n stepflow -l app=langflow-component-server --tail=50
+# Worker logs (all replicas)
+kubectl logs -n stepflow -l app=langflow-worker --tail=50
 
 # OpenSearch logs
 kubectl logs -n stepflow deployment/opensearch --tail=100
@@ -269,7 +269,7 @@ kubectl edit configmap stepflow-server-config -n stepflow
 # From repository root
 podman build -t stepflow-server:latest -f docker/Dockerfile.server .
 podman build -t stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
-podman build -t langflow-component-server:latest -f docker/langflow-component-server/Dockerfile .
+podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
 ```
 
 ### Load into Kind
@@ -277,7 +277,7 @@ podman build -t langflow-component-server:latest -f docker/langflow-component-se
 ```bash
 kind load docker-image stepflow-server:latest --name stepflow
 kind load docker-image stepflow-load-balancer:latest --name stepflow
-kind load docker-image langflow-component-server:latest --name stepflow
+kind load docker-image langflow-worker:latest --name stepflow
 ```
 
 ### Verify Images in Kind
@@ -346,8 +346,8 @@ kubectl get pvc -n stepflow-o12y
 # Shell into stepflow-server
 kubectl exec -it -n stepflow deployment/stepflow-server -- /bin/bash
 
-# Shell into component server
-kubectl exec -it -n stepflow deployment/langflow-component-server -- /bin/bash
+# Shell into worker
+kubectl exec -it -n stepflow deployment/langflow-worker -- /bin/bash
 
 # Run single command
 kubectl exec -n stepflow deployment/stepflow-server -- env | grep OTEL
