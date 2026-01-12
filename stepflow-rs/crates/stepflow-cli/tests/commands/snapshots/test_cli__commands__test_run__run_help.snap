@@ -1,5 +1,6 @@
 ---
 source: crates/stepflow-cli/tests/commands/test_run.rs
+assertion_line: 27
 info:
   program: stepflow
   args:
@@ -92,7 +93,7 @@ Options:
           
           When specified, the workflow is executed once per line in the file. Results are written in JSONL format (one result per line).
 
-      --max-concurrent <N>
+      --max-concurrency <N>
           Maximum number of concurrent executions (only used with --inputs).
           
           Defaults to number of inputs if not specified.

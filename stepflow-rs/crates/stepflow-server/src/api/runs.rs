@@ -23,8 +23,8 @@ use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_execution::StepflowExecutor;
-use stepflow_state::{RunDetails, RunSummary};
+use stepflow_dtos::{ResultOrder, RunDetails, RunFilters, RunSummary, StepResult};
+use stepflow_plugin::StepflowEnvironment;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -183,7 +183,7 @@ pub struct RunFlowResponse {
     tag = crate::api::RUN_TAG,
 )]
 pub async fn create_run(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Json<CreateRunResponse>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -197,18 +197,26 @@ pub async fn create_run(
     let item_count = req.input.len() as u32;
 
     // Execute the run
-    use stepflow_plugin::Context as _;
+    let params = stepflow_core::SubmitRunParams {
+        max_concurrency: req.max_concurrency,
+        overrides: req.overrides,
+        ..Default::default()
+    };
 
-    let mut params = stepflow_core::SubmitRunParams::new(flow, req.flow_id, req.input);
-    params = params.with_wait(true);
-    if let Some(max_concurrency) = req.max_concurrency {
-        params = params.with_max_concurrency(max_concurrency);
-    }
-    if !req.overrides.is_empty() {
-        params = params.with_overrides(req.overrides);
-    }
+    let run_status =
+        stepflow_execution::submit_run(&executor, flow, req.flow_id, req.input, params).await?;
 
-    let run_status = executor.submit_run(params).await?;
+    // Wait for completion and get final results
+    stepflow_execution::wait_for_completion(&executor, run_status.run_id).await?;
+    let run_status = stepflow_execution::get_run(
+        &executor,
+        run_status.run_id,
+        stepflow_core::GetRunParams {
+            include_results: true,
+            ..Default::default()
+        },
+    )
+    .await?;
 
     // For single-item runs, extract the result directly into the response
     let result = if item_count == 1 {
@@ -245,7 +253,7 @@ pub async fn create_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -278,7 +286,7 @@ pub async fn get_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run_items(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ListItemsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -293,7 +301,7 @@ pub async fn get_run_items(
 
     // Get item results from state store (ordered by item_index)
     let state_items = state_store
-        .get_item_results(run_id, stepflow_state::ResultOrder::ByIndex)
+        .get_item_results(run_id, ResultOrder::ByIndex)
         .await?;
 
     // Convert to API response type
@@ -325,7 +333,7 @@ pub async fn get_run_items(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run_flow(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunFlowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -363,12 +371,12 @@ pub async fn get_run_flow(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn list_runs(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Query(query): Query<ListRunsQuery>,
 ) -> Result<Json<ListRunsResponse>, ErrorResponse> {
     let state_store = executor.state_store();
 
-    let filters = stepflow_state::RunFilters {
+    let filters = RunFilters {
         status: query.status,
         flow_name: query.flow_name,
         root_run_id: query.root_run_id,
@@ -399,7 +407,7 @@ pub async fn list_runs(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn get_run_steps(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
     use std::collections::HashMap;
@@ -423,7 +431,7 @@ pub async fn get_run_steps(
     // Get step results for completed steps
     let step_results = state_store.list_step_results(run_id).await?;
 
-    let mut completed_steps: HashMap<usize, stepflow_state::StepResult> = HashMap::new();
+    let mut completed_steps: HashMap<usize, StepResult> = HashMap::new();
     for step_result in step_results {
         completed_steps.insert(step_result.step_idx(), step_result);
     }
@@ -482,7 +490,7 @@ pub async fn get_run_steps(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn cancel_run(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunSummary>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -537,7 +545,7 @@ pub async fn cancel_run(
     tag = crate::api::RUN_TAG,
 )]
 pub async fn delete_run(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<(), ErrorResponse> {
     let state_store = executor.state_store();

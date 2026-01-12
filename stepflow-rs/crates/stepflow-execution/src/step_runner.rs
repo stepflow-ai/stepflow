@@ -23,13 +23,15 @@
 
 use std::sync::Arc;
 
+use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{Flow, Step, StepId, ValueRef};
 use stepflow_core::{BlobId, FlowResult};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _};
+use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _, RunContext};
 
-use crate::{ExecutionError, Result, StepflowExecutor};
+use crate::{ExecutionError, Result};
+use stepflow_plugin::StepflowEnvironment;
 
 // ============================================================================
 // Result Types
@@ -50,8 +52,8 @@ pub struct StepMetadata {
 
 /// Result of executing a step, including metadata.
 ///
-/// This is the unified result type returned by [`StepRunner`] and used by
-/// both [`FlowExecutor`](crate::FlowExecutor) and [`DebugExecutor`](crate::DebugExecutor).
+/// This is the result type returned by `StepRunner` and used by
+/// [`FlowExecutor`](crate::FlowExecutor).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepRunResult {
     /// Step metadata (index, id, component).
@@ -202,8 +204,8 @@ async fn execute_step_async(
 ///     step_index,
 ///     step_input,
 ///     stepflow.clone(),
-///     run_id,
 ///     flow_id,
+///     run_context,
 /// );
 ///
 /// let result = runner.run().await;
@@ -217,12 +219,12 @@ pub struct StepRunner {
     flow: Arc<Flow>,
     /// Resolved step input (may be Success or Failed).
     step_input: FlowResult,
-    /// Executor for plugin access.
-    stepflow: Arc<StepflowExecutor>,
-    /// Run ID for execution context.
-    run_id: uuid::Uuid,
+    /// Environment for plugin access.
+    env: Arc<StepflowEnvironment>,
     /// Flow ID for execution context.
     flow_id: BlobId,
+    /// Run context for bidirectional communication (run hierarchy, subflow submission).
+    run_context: Arc<RunContext>,
 }
 
 impl StepRunner {
@@ -231,13 +233,16 @@ impl StepRunner {
     /// The `step_input` can be either `FlowResult::Success` (resolved input)
     /// or `FlowResult::Failed` (input resolution failed). If failed, `run()`
     /// will return the failure immediately.
+    ///
+    /// The `run_context` provides run hierarchy information (run_id, root_run_id)
+    /// and optionally a subflow submitter for in-process subflow execution.
     pub fn new(
         flow: Arc<Flow>,
         step_index: usize,
         step_input: FlowResult,
-        stepflow: Arc<StepflowExecutor>,
-        run_id: uuid::Uuid,
+        env: Arc<StepflowEnvironment>,
         flow_id: BlobId,
+        run_context: Arc<RunContext>,
     ) -> Self {
         let step = flow.step(step_index).clone();
         Self {
@@ -245,9 +250,9 @@ impl StepRunner {
             step_index,
             flow,
             step_input,
-            stepflow,
-            run_id,
+            env,
             flow_id,
+            run_context,
         }
     }
 
@@ -282,17 +287,17 @@ impl StepRunner {
 
         // Get plugin for this component (system error if fails)
         let (plugin, resolved_component) = self
-            .stepflow
+            .env
             .get_plugin_and_component(&self.step.component, input.clone())
-            .await?;
+            .change_context(ExecutionError::RouterError)?;
 
-        // Create execution context
+        // Create execution context with run context for bidirectional communication
         let step_id_ref = StepId::for_step(self.flow.clone(), self.step_index);
         let context = ExecutionContext::for_step(
-            self.stepflow.clone(),
-            self.run_id,
+            self.env.clone(),
             step_id_ref,
             self.flow_id,
+            self.run_context,
         );
 
         // Execute the step (system error if infrastructure fails)

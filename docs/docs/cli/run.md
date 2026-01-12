@@ -74,7 +74,7 @@ stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
 * `--inputs <FILE>` — Path to JSONL file containing multiple inputs (one JSON object per line).
 
    When specified, the workflow is executed once per line in the file. Results are written in JSONL format (one result per line).
-* `--max-concurrent <N>` — Maximum number of concurrent executions (only used with --inputs).
+* `--max-concurrency <N>` — Maximum number of concurrent executions (only used with --inputs).
 
    Defaults to number of inputs if not specified.
 * `--variables <FILE>` — The path to the variables file.

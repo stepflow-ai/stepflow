@@ -14,7 +14,7 @@ use error_stack::ResultExt as _;
 use std::{path::Path, sync::Arc};
 use stepflow_config::StepflowConfig;
 use stepflow_core::workflow::Flow;
-use stepflow_execution::StepflowExecutor;
+use stepflow_plugin::StepflowEnvironment;
 
 use crate::{
     MainError, Result,
@@ -22,9 +22,9 @@ use crate::{
 };
 
 /// Create executor from StepflowConfig
-async fn create_executor_impl(config: StepflowConfig) -> Result<Arc<StepflowExecutor>> {
+async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnvironment>> {
     config
-        .create_executor()
+        .create_environment()
         .await
         .change_context(MainError::Configuration)
 }
@@ -41,25 +41,25 @@ impl WorkflowLoader {
     /// Create an executor from a StepflowConfig
     pub async fn create_executor_from_config(
         config: StepflowConfig,
-    ) -> Result<Arc<StepflowExecutor>> {
-        create_executor_impl(config).await
+    ) -> Result<Arc<StepflowEnvironment>> {
+        create_environment(config).await
     }
 
     /// Load config and create executor in one step
     pub async fn load_and_create_executor(
         flow_path: Option<&Path>,
         config_path: Option<std::path::PathBuf>,
-    ) -> Result<Arc<StepflowExecutor>> {
+    ) -> Result<Arc<StepflowEnvironment>> {
         let config_args = ConfigArgs::with_path(config_path);
         let config = config_args.load_config(flow_path)?;
-        create_executor_impl(config).await
+        create_environment(config).await
     }
 
     /// Load workflow, config, and create executor - full setup
     pub async fn setup_workflow_execution(
         workflow_path: &Path,
         config_path: Option<std::path::PathBuf>,
-    ) -> Result<(Arc<Flow>, Arc<StepflowExecutor>)> {
+    ) -> Result<(Arc<Flow>, Arc<StepflowEnvironment>)> {
         let workflow = Self::load_workflow(workflow_path)?;
         let executor = Self::load_and_create_executor(Some(workflow_path), config_path).await?;
         Ok((workflow, executor))

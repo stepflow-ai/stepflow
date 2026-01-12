@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, ResultOrder};
-use stepflow_state::{ItemResult, ItemStatistics, RunStatus};
+use stepflow_dtos::{ItemResult, ItemStatistics, RunStatus};
 use utoipa::ToSchema;
 
 use crate::protocol::Method;

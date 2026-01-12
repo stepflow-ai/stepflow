@@ -19,7 +19,7 @@ use stepflow_core::{
     schema::SchemaRef,
     workflow::{Flow, ValueRef},
 };
-use stepflow_plugin::{Context as _, ExecutionContext};
+use stepflow_plugin::ExecutionContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -181,7 +181,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         let result = component
             .execute(mock.execution_context(), input_value.into())
@@ -216,7 +216,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         let result = component
             .execute(mock.execution_context(), input_value.into())
@@ -251,7 +251,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         let result = component
             .execute(mock.execution_context(), input_value.into())

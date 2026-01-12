@@ -13,7 +13,7 @@
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
-use stepflow_plugin::{Context, RunContext};
+use stepflow_plugin::{RunContext, StepflowEnvironment};
 use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
@@ -24,16 +24,16 @@ use crate::protocol::{Method, MethodRequest};
 /// Trait for handling incoming method calls and notifications from component servers.
 ///
 /// This enables bidirectional communication where component servers can
-/// call methods on the stepflow runtime.
+/// call methods on the stepflow runtime during component execution.
 pub trait MethodHandler: Send + Sync {
     /// Handle an incoming method call or notification.
     ///
     /// # Arguments
     /// * `request` - The method request to handle
     /// * `outgoing_tx` - Channel to send messages back to the component server
-    /// * `context` - The execution context (state store, etc.)
-    /// * `run_context` - Optional run context with run_id and root_run_id.
-    ///   Present during component execution, None for non-execution calls.
+    /// * `env` - The shared environment (state store, plugins, etc.)
+    /// * `run_context` - The run context with run_id and root_run_id.
+    ///   Always present since bidirectional requests only occur during component execution.
     ///
     /// # Returns
     /// Result indicating if the handling was successful
@@ -41,8 +41,8 @@ pub trait MethodHandler: Send + Sync {
         &self,
         request: &'a MethodRequest<'a>,
         outgoing_tx: mpsc::Sender<String>,
-        context: Arc<dyn Context>,
-        run_context: Option<&'a Arc<RunContext>>,
+        env: Arc<StepflowEnvironment>,
+        run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>>;
 }
 

@@ -26,7 +26,8 @@ mod tests {
     use serde_json::json;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
     use stepflow_core::{BlobType, FlowResult, ValueExpr, workflow::ValueRef};
-    use stepflow_state::{StateStore as _, StepResult};
+    use stepflow_dtos::StepResult;
+    use stepflow_state::StateStore as _;
     use uuid::Uuid;
 
     #[tokio::test]
@@ -77,6 +78,8 @@ mod tests {
                 inputs: vec![ValueRef::new(json!({}))],
                 overrides: Default::default(),
                 variables: Default::default(),
+                root_run_id: run_id,
+                parent_run_id: None,
             })
             .await
             .unwrap();

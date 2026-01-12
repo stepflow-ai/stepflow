@@ -12,7 +12,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use crate::{Context, ExecutionContext, Result};
+use crate::{ExecutionContext, Result, StepflowEnvironment};
 use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
     FlowResult,
@@ -23,7 +23,15 @@ use stepflow_core::{
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
 pub trait Plugin: Send + Sync {
-    async fn init(&self, context: &Arc<dyn Context>) -> Result<()>;
+    /// Ensure the plugin is initialized with the shared environment.
+    ///
+    /// This method is idempotent - calling it multiple times has no additional effect
+    /// after the first successful initialization. Plugins should track their own
+    /// initialization state and return `Ok(())` immediately if already initialized.
+    ///
+    /// Called during environment setup, before any runs are executed.
+    /// Plugins can use this to connect to external services, start background tasks, etc.
+    async fn ensure_initialized(&self, env: &Arc<StepflowEnvironment>) -> Result<()>;
 
     /// List all components available in this plugin.
     async fn list_components(&self) -> Result<Vec<ComponentInfo>>;

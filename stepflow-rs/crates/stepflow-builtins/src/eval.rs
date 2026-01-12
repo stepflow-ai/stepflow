@@ -16,7 +16,7 @@ use stepflow_core::workflow::Component;
 use stepflow_core::{
     BlobId, FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
-use stepflow_plugin::{Context as _, ExecutionContext};
+use stepflow_plugin::ExecutionContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -105,7 +105,7 @@ mod tests {
     #[tokio::test]
     async fn test_eval_component() {
         let component = EvalComponent::new();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         // Create a simple test workflow
         let test_flow = Flow::V1(FlowV1 {

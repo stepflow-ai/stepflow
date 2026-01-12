@@ -10,117 +10,26 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use chrono;
-use futures::future::FutureExt as _;
 use indexmap::IndexMap;
 use serde_json::json;
 use std::sync::Arc;
 use stepflow_components_mcp::McpPluginConfig;
 use stepflow_core::{
-    FlowResult, GetRunOptions, SubmitRunParams,
+    FlowResult,
     workflow::{Component, ValueRef},
 };
-use stepflow_plugin::{ExecutionContext, Plugin as _, PluginConfig as _};
-use stepflow_state::{InMemoryStateStore, ItemResult, ItemStatistics, RunStatus};
+use stepflow_plugin::{
+    ExecutionContext, Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment,
+};
 use uuid::Uuid;
 
-// Helper function to create a test context that can be passed to plugin.init()
-fn create_test_context() -> (Arc<dyn stepflow_plugin::Context>, ExecutionContext) {
-    struct TestContext {
-        state_store: Arc<dyn stepflow_state::StateStore>,
-    }
-    impl stepflow_plugin::Context for TestContext {
-        fn submit_run(
-            &self,
-            params: SubmitRunParams,
-        ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<RunStatus>> {
-            let input_count = params.inputs.len();
-            async move {
-                let flow_id = stepflow_core::BlobId::new(
-                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                )
-                .expect("mock blob id");
-                let now = chrono::Utc::now();
-
-                Ok(RunStatus {
-                    run_id: Uuid::now_v7(),
-                    flow_id,
-                    flow_name: None,
-                    status: stepflow_core::status::ExecutionStatus::Running,
-                    items: ItemStatistics {
-                        total: input_count,
-                        completed: 0,
-                        running: input_count,
-                        failed: 0,
-                        cancelled: 0,
-                    },
-                    created_at: now,
-                    completed_at: None,
-                    results: None,
-                })
-            }
-            .boxed()
-        }
-
-        fn get_run(
-            &self,
-            run_id: Uuid,
-            options: GetRunOptions,
-        ) -> futures::future::BoxFuture<'_, stepflow_plugin::Result<RunStatus>> {
-            async move {
-                let flow_id = stepflow_core::BlobId::new(
-                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                )
-                .expect("mock blob id");
-                let now = chrono::Utc::now();
-
-                let results = if options.include_results {
-                    Some(vec![ItemResult {
-                        item_index: 0,
-                        status: stepflow_core::status::ExecutionStatus::Completed,
-                        result: Some(FlowResult::Success(ValueRef::new(
-                            serde_json::json!({"message": "Hello from test"}),
-                        ))),
-                        completed_at: Some(now),
-                    }])
-                } else {
-                    None
-                };
-
-                Ok(RunStatus {
-                    run_id,
-                    flow_id,
-                    flow_name: None,
-                    status: stepflow_core::status::ExecutionStatus::Completed,
-                    items: ItemStatistics {
-                        total: 1,
-                        completed: 1,
-                        running: 0,
-                        failed: 0,
-                        cancelled: 0,
-                    },
-                    created_at: now,
-                    completed_at: Some(now),
-                    results,
-                })
-            }
-            .boxed()
-        }
-
-        fn state_store(&self) -> &Arc<dyn stepflow_state::StateStore> {
-            &self.state_store
-        }
-        fn working_directory(&self) -> &std::path::Path {
-            std::path::Path::new(".")
-        }
-    }
-
-    let test_context = Arc::new(TestContext {
-        state_store: Arc::new(InMemoryStateStore::new()),
-    });
-    let exec_context = ExecutionContext::for_testing(test_context.clone(), Uuid::now_v7());
-
-    (test_context, exec_context)
+// Helper function to create a test context
+async fn create_test_context() -> (Arc<StepflowEnvironment>, ExecutionContext) {
+    let env = StepflowEnvironment::new_in_memory().await.unwrap();
+    let run_id = Uuid::now_v7();
+    let run_context = Arc::new(RunContext::for_root(run_id));
+    let exec_context = ExecutionContext::for_testing(env.clone(), run_context);
+    (env, exec_context)
 }
 
 #[tokio::test]
@@ -134,8 +43,8 @@ async fn test_mcp_plugin_initialization() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (test_context, _exec_context) = create_test_context();
-    plugin.init(&test_context).await.unwrap();
+    let (env, _exec_context) = create_test_context().await;
+    plugin.ensure_initialized(&env).await.unwrap();
 
     // List components should return our mock tools
     let components = plugin.list_components().await.unwrap();
@@ -161,8 +70,8 @@ async fn test_mcp_tool_execution() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (test_context, exec_context) = create_test_context();
-    plugin.init(&test_context).await.unwrap();
+    let (env, exec_context) = create_test_context().await;
+    plugin.ensure_initialized(&env).await.unwrap();
 
     // Test echo tool
     let echo_component = Component::from_string("/mock-server/echo");
@@ -223,8 +132,8 @@ async fn test_mcp_error_handling() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (test_context, exec_context) = create_test_context();
-    plugin.init(&test_context).await.unwrap();
+    let (env, exec_context) = create_test_context().await;
+    plugin.ensure_initialized(&env).await.unwrap();
 
     // Test calling a non-existent tool
     let bad_component = Component::from_string("/mock-server/nonexistent");

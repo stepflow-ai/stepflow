@@ -152,9 +152,9 @@ impl StepflowConfig {
         Ok(config)
     }
 
-    /// Create a StepflowExecutor from this configuration
-    pub async fn create_executor(self) -> Result<Arc<stepflow_execution::StepflowExecutor>> {
-        use stepflow_execution::StepflowExecutor;
+    /// Create a StepflowEnvironment from this configuration
+    pub async fn create_environment(self) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
+        use stepflow_plugin::StepflowEnvironment;
         use stepflow_plugin::routing::PluginRouter;
 
         // Create state store from configuration
@@ -183,14 +183,11 @@ impl StepflowConfig {
             .build()
             .change_context(ConfigError::Configuration)?;
 
-        let executor = StepflowExecutor::new(state_store, working_directory, plugin_router);
-
-        // Initialize all plugins
-        executor
-            .initialize_plugins()
+        // Create environment (this also initializes all plugins)
+        let env = StepflowEnvironment::new(state_store, working_directory, plugin_router)
             .await
             .change_context(ConfigError::Configuration)?;
 
-        Ok(executor)
+        Ok(env)
     }
 }

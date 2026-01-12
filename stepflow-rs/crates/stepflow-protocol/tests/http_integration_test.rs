@@ -12,122 +12,19 @@
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-use std::future::Future;
-use std::path::Path;
-use std::pin::Pin;
 use std::process::Stdio;
-use std::sync::Arc;
 use std::time::Duration;
 
-use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
-use stepflow_plugin::{Context, ExecutionContext, Plugin as _, PluginConfig as _, PluginError};
+use std::sync::Arc;
+
+use stepflow_core::workflow::ValueRef;
+use stepflow_plugin::{
+    ExecutionContext, Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment,
+};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
-use stepflow_state::{InMemoryStateStore, ItemResult, ItemStatistics, RunStatus, StateStore};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
 use uuid::Uuid;
-
-/// Mock context for testing
-struct MockContext {
-    state_store: Arc<dyn StateStore>,
-}
-
-impl MockContext {
-    fn new() -> Self {
-        Self {
-            state_store: Arc::new(InMemoryStateStore::new()),
-        }
-    }
-}
-
-impl Context for MockContext {
-    fn submit_run(
-        &self,
-        params: SubmitRunParams,
-    ) -> Pin<
-        Box<dyn Future<Output = Result<RunStatus, error_stack::Report<PluginError>>> + Send + '_>,
-    > {
-        let input_count = params.inputs.len();
-        Box::pin(async move {
-            let flow_id = stepflow_core::BlobId::new(
-                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            )
-            .expect("mock blob id");
-            let now = chrono::Utc::now();
-
-            Ok(RunStatus {
-                run_id: Uuid::now_v7(),
-                flow_id,
-                flow_name: None,
-                status: stepflow_core::status::ExecutionStatus::Running,
-                items: ItemStatistics {
-                    total: input_count,
-                    completed: 0,
-                    running: input_count,
-                    failed: 0,
-                    cancelled: 0,
-                },
-                created_at: now,
-                completed_at: None,
-                results: None,
-            })
-        })
-    }
-
-    fn get_run(
-        &self,
-        run_id: Uuid,
-        options: GetRunOptions,
-    ) -> Pin<
-        Box<dyn Future<Output = Result<RunStatus, error_stack::Report<PluginError>>> + Send + '_>,
-    > {
-        Box::pin(async move {
-            let flow_id = stepflow_core::BlobId::new(
-                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            )
-            .expect("mock blob id");
-            let now = chrono::Utc::now();
-
-            let results = if options.include_results {
-                Some(vec![ItemResult {
-                    item_index: 0,
-                    status: stepflow_core::status::ExecutionStatus::Completed,
-                    result: Some(FlowResult::Success(ValueRef::new(
-                        serde_json::json!({"message": "Hello from mock"}),
-                    ))),
-                    completed_at: Some(now),
-                }])
-            } else {
-                None
-            };
-
-            Ok(RunStatus {
-                run_id,
-                flow_id,
-                flow_name: None,
-                status: stepflow_core::status::ExecutionStatus::Completed,
-                items: ItemStatistics {
-                    total: 1,
-                    completed: 1,
-                    running: 0,
-                    failed: 0,
-                    cancelled: 0,
-                },
-                created_at: now,
-                completed_at: Some(now),
-                results,
-            })
-        })
-    }
-
-    fn state_store(&self) -> &Arc<dyn StateStore> {
-        &self.state_store
-    }
-
-    fn working_directory(&self) -> &Path {
-        Path::new(".")
-    }
-}
 
 /// Test that we can create an HTTP plugin and it fails gracefully when no server is running
 #[tokio::test]
@@ -144,10 +41,10 @@ async fn test_http_plugin_creation_failure() {
         .await
         .expect("Should create HTTP plugin");
 
-    let context: Arc<dyn Context> = Arc::new(MockContext::new());
+    let env = StepflowEnvironment::new_in_memory().await.unwrap();
 
     // Try to initialize - this should fail since no server is running
-    let result = plugin.init(&context).await;
+    let result = plugin.ensure_initialized(&env).await;
     assert!(
         result.is_err(),
         "Expected initialization to fail with no server running"
@@ -211,10 +108,10 @@ async fn test_http_protocol_integration() {
         .await
         .expect("Should create HTTP plugin");
 
-    let context: Arc<dyn Context> = Arc::new(MockContext::new());
+    let env = StepflowEnvironment::new_in_memory().await.unwrap();
 
     // Test initialization
-    let init_result = timeout(Duration::from_secs(10), plugin.init(&context)).await;
+    let init_result = timeout(Duration::from_secs(10), plugin.ensure_initialized(&env)).await;
 
     // Clean up the server process
     let _ = python_server.kill().await;
@@ -260,8 +157,9 @@ async fn test_http_protocol_integration() {
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
+                                let run_context = Arc::new(RunContext::for_root(Uuid::now_v7()));
                                 let execution_context =
-                                    ExecutionContext::for_testing(context.clone(), Uuid::now_v7());
+                                    ExecutionContext::for_testing(env.clone(), run_context);
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),
@@ -362,10 +260,10 @@ async fn test_http_plugin_lifecycle() {
         .await
         .expect("Should create HTTP plugin");
 
-    let context: Arc<dyn Context> = Arc::new(MockContext::new());
+    let env = StepflowEnvironment::new_in_memory().await.unwrap();
 
     // Test initialization without server - should fail
-    let init_result = timeout(Duration::from_secs(2), plugin.init(&context)).await;
+    let init_result = timeout(Duration::from_secs(2), plugin.ensure_initialized(&env)).await;
     assert!(
         init_result.is_ok() && init_result.unwrap().is_err(),
         "Expected initialization to fail without server"
@@ -395,7 +293,7 @@ async fn test_http_plugin_lifecycle() {
     sleep(Duration::from_secs(3)).await;
 
     // Test initialization with server - should succeed
-    let init_result = timeout(Duration::from_secs(5), plugin.init(&context)).await;
+    let init_result = timeout(Duration::from_secs(5), plugin.ensure_initialized(&env)).await;
 
     // Clean up
     let _ = python_server.kill().await;

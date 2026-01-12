@@ -19,5 +19,8 @@ mod api;
 pub mod error;
 mod startup;
 
-pub use api::*;
-pub use startup::*;
+// Explicit exports from api module
+pub use api::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
+
+// Startup configuration
+pub use startup::{AppConfig, start_server};

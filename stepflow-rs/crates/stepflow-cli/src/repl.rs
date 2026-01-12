@@ -20,8 +20,7 @@ use stepflow_core::{
     BlobId,
     workflow::{Flow, ValueRef},
 };
-use stepflow_execution::StepflowExecutor;
-use stepflow_plugin::Context as _;
+use stepflow_plugin::StepflowEnvironment;
 
 use crate::{
     MainError, Result,
@@ -46,18 +45,31 @@ impl LastRun {
     }
 
     /// Execute this workflow
-    pub async fn execute(&self, executor: &StepflowExecutor) -> Result<()> {
-        let mut submit_params = stepflow_core::SubmitRunParams::new(
+    pub async fn execute(&self, env: &Arc<StepflowEnvironment>) -> Result<()> {
+        let run_status = stepflow_execution::submit_run(
+            env,
             self.flow.clone(),
             self.flow_id.clone(),
             vec![self.input.clone()],
-        );
-        submit_params = submit_params.with_wait(true);
+            stepflow_core::SubmitRunParams::default(),
+        )
+        .await
+        .change_context(MainError::FlowExecution)?;
 
-        let run_status = executor
-            .submit_run(submit_params)
+        // Wait for completion and fetch results
+        stepflow_execution::wait_for_completion(env, run_status.run_id)
             .await
             .change_context(MainError::FlowExecution)?;
+        let run_status = stepflow_execution::get_run(
+            env,
+            run_status.run_id,
+            stepflow_core::GetRunParams {
+                include_results: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .change_context(MainError::FlowExecution)?;
 
         // Extract result from run status
         let result = run_status
@@ -85,7 +97,7 @@ impl LastRun {
 
 /// State maintained by the REPL
 pub struct ReplState {
-    executor: Arc<StepflowExecutor>,
+    env: Arc<StepflowEnvironment>,
     last_run: Option<LastRun>,
     config_path: Option<PathBuf>,
 }
@@ -98,7 +110,7 @@ impl ReplState {
         let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
         Ok(Self {
-            executor,
+            env: executor,
             last_run: None,
             config_path,
         })
@@ -190,7 +202,7 @@ async fn handle_run_command(
 
     // Create LastRun structure and execute
     let last_run = LastRun::new(flow, flow_id, input_value);
-    last_run.execute(&state.executor).await?;
+    last_run.execute(&state.env).await?;
 
     // Store the last run
     state.last_run = Some(last_run);
@@ -210,7 +222,7 @@ async fn handle_rerun_command(input_args: InputArgs, state: &mut ReplState) -> R
     }
 
     // Execute workflow
-    last_run.execute(&state.executor).await
+    last_run.execute(&state.env).await
 }
 
 /// Handle the status command
@@ -218,7 +230,7 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("REPL Status:");
     println!("  Config: {:?}", state.config_path);
 
-    let plugins = state.executor.list_plugins().await;
+    let plugins: Vec<_> = state.env.plugins().collect();
     println!("  Executor: {} plugins loaded", plugins.len());
 
     if let Some(last_run) = &state.last_run {

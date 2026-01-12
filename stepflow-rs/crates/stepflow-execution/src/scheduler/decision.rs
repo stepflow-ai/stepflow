@@ -65,6 +65,11 @@ impl SchedulerDecision {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
+
+    fn test_run_id() -> Uuid {
+        Uuid::nil()
+    }
 
     #[test]
     fn test_scheduler_decision_idle() {
@@ -75,7 +80,9 @@ mod tests {
 
     #[test]
     fn test_scheduler_decision_execute() {
-        let decision = SchedulerDecision::execute(vec![Task::new(0, 1), Task::new(1, 2)]);
+        let run_id = test_run_id();
+        let decision =
+            SchedulerDecision::execute(vec![Task::new(run_id, 0, 1), Task::new(run_id, 1, 2)]);
         assert!(!decision.is_idle());
 
         let tasks = decision.into_tasks().unwrap();

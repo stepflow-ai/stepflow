@@ -10,168 +10,78 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::RwLock;
-use std::{pin::Pin, sync::Arc};
-use stepflow_core::status::ExecutionStatus;
-use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
-use stepflow_plugin::ExecutionContext;
-use stepflow_state::{InMemoryStateStore, ItemStatistics, RunStatus};
+use std::sync::Arc;
+use stepflow_core::{FlowResult, status::ExecutionStatus, workflow::ValueRef};
+use stepflow_plugin::{ExecutionContext, RunContext, StepflowEnvironment, subflow_channel};
+use stepflow_state::CreateRunParams;
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
 ///
 /// This provides a way to create ExecutionContext instances for testing
 /// built-in components without requiring complex workflow execution.
+/// It includes a mock subflow submitter that returns mock results.
 pub struct MockContext {
-    executor: Arc<MockExecutor>,
+    env: Arc<StepflowEnvironment>,
 }
 
 impl MockContext {
-    /// Create a new mock context.
-    pub fn new() -> Self {
-        Self {
-            executor: Arc::new(MockExecutor {
-                state_store: Arc::new(InMemoryStateStore::new()),
-                batch_inputs: RwLock::new(HashMap::new()),
-            }),
-        }
+    /// Create a new mock context with subflow support.
+    pub async fn new() -> Self {
+        let env = StepflowEnvironment::new_in_memory()
+            .await
+            .expect("In-memory environment should always initialize successfully");
+        Self { env }
     }
 
     /// Get an execution context for testing from this mock context.
+    ///
+    /// This creates a new execution context with a subflow submitter that
+    /// returns mock results immediately.
     pub fn execution_context(&self) -> ExecutionContext {
-        ExecutionContext::for_testing(self.executor.clone(), Uuid::now_v7())
-    }
-}
-
-impl Default for MockContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Mock executor implementation for testing.
-struct MockExecutor {
-    state_store: Arc<dyn stepflow_state::StateStore>,
-    /// Track batch inputs so get_batch can return mock results
-    batch_inputs: RwLock<HashMap<Uuid, usize>>,
-}
-
-impl stepflow_plugin::Context for MockExecutor {
-    fn submit_run(
-        &self,
-        params: SubmitRunParams,
-    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<RunStatus>> + Send + '_>>
-    {
+        // Create run ID for this context
         let run_id = Uuid::now_v7();
-        let input_count = params.item_count();
-        let wait = params.wait;
-        self.batch_inputs
-            .write()
-            .unwrap()
-            .insert(run_id, input_count);
 
-        Box::pin(async move {
-            let flow_id = stepflow_core::BlobId::new(
-                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            )
-            .expect("mock blob id");
-            let now = chrono::Utc::now();
+        // Create a channel for this specific execution context
+        let (submitter, mut receiver) = subflow_channel(10, run_id);
 
-            // If wait=true, return completed status with mock results
-            let (status, completed_at, results) = if wait {
-                let mock_results = (0..input_count)
-                    .map(|i| stepflow_state::ItemResult {
-                        item_index: i,
-                        status: ExecutionStatus::Completed,
-                        result: Some(FlowResult::Success(ValueRef::new(
-                            serde_json::json!({"message": "Hello from nested flow"}),
-                        ))),
-                        completed_at: Some(now),
-                    })
-                    .collect();
-                (ExecutionStatus::Completed, Some(now), Some(mock_results))
-            } else {
-                (ExecutionStatus::Running, None, None)
-            };
+        // Clone what we need for the spawned task
+        let state_store = self.env.state_store().clone();
 
-            Ok(RunStatus {
-                run_id,
-                flow_id,
-                flow_name: None,
-                status,
-                items: ItemStatistics {
-                    total: input_count,
-                    completed: if wait { input_count } else { 0 },
-                    running: if wait { 0 } else { input_count },
-                    failed: 0,
-                    cancelled: 0,
-                },
-                created_at: now,
-                completed_at,
-                results,
-            })
-        })
-    }
+        // Spawn a task that handles subflow requests with mock results
+        tokio::spawn(async move {
+            while let Some(request) = receiver.recv().await {
+                let subflow_run_id = Uuid::now_v7();
+                let input_count = request.inputs.len();
 
-    fn get_run(
-        &self,
-        run_id: Uuid,
-        options: GetRunOptions,
-    ) -> Pin<Box<dyn std::future::Future<Output = stepflow_plugin::Result<RunStatus>> + Send + '_>>
-    {
-        let input_count = self.batch_inputs.read().unwrap().get(&run_id).copied();
+                // Create the run in state store
+                let create_params =
+                    CreateRunParams::new(subflow_run_id, request.flow_id, request.inputs);
+                let _ = state_store.create_run(create_params).await;
 
-        Box::pin(async move {
-            let count = input_count.unwrap_or(1);
-            let flow_id = stepflow_core::BlobId::new(
-                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            )
-            .expect("mock blob id");
-            let now = chrono::Utc::now();
+                // Record mock results for each item
+                for item_index in 0..input_count {
+                    let mock_result = FlowResult::Success(ValueRef::new(
+                        serde_json::json!({"message": "Hello from nested flow"}),
+                    ));
+                    let _ = state_store
+                        .record_item_result(subflow_run_id, item_index, mock_result)
+                        .await;
+                }
 
-            let results = if options.include_results {
-                Some(
-                    (0..count)
-                        .map(|i| stepflow_state::ItemResult {
-                            item_index: i,
-                            status: ExecutionStatus::Completed,
-                            result: Some(FlowResult::Success(ValueRef::new(
-                                serde_json::json!({"message": "Hello from nested flow"}),
-                            ))),
-                            completed_at: Some(now),
-                        })
-                        .collect(),
-                )
-            } else {
-                None
-            };
+                // Update status to completed (this triggers state store notification)
+                let _ = state_store
+                    .update_run_status(subflow_run_id, ExecutionStatus::Completed)
+                    .await;
 
-            Ok(RunStatus {
-                run_id,
-                flow_id,
-                flow_name: None,
-                status: ExecutionStatus::Completed,
-                items: ItemStatistics {
-                    total: count,
-                    completed: count,
-                    running: 0,
-                    failed: 0,
-                    cancelled: 0,
-                },
-                created_at: now,
-                completed_at: Some(now),
-                results,
-            })
-        })
-    }
+                // Send back the run_id (caller will use state_store.wait_for_completion)
+                let _ = request.response_tx.send(subflow_run_id);
+            }
+        });
 
-    fn state_store(&self) -> &Arc<dyn stepflow_state::StateStore> {
-        &self.state_store
-    }
+        // Create run context with the submitter using the builder pattern
+        let run_context = Arc::new(RunContext::for_root(run_id).with_submitter(submitter));
 
-    fn working_directory(&self) -> &std::path::Path {
-        Path::new(".")
+        ExecutionContext::for_testing(self.env.clone(), run_context)
     }
 }

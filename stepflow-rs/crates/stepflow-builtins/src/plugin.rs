@@ -21,7 +21,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
 };
 
 /// The struct that implements the `Plugin` trait.
@@ -50,7 +50,8 @@ impl Builtins {
 }
 
 impl Plugin for Builtins {
-    async fn init(&self, _context: &Arc<dyn Context>) -> Result<()> {
+    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
+        // Builtins require no initialization - always ready
         Ok(())
     }
 

@@ -21,7 +21,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, RunContext,
+    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
 };
 use tokio::sync::RwLock;
 
@@ -133,22 +133,19 @@ impl StepflowPlugin {
     }
 
     /// Get client handle, creating it if necessary
-    async fn get_or_create_client_handle(
-        &self,
-        context: Arc<dyn Context>,
-    ) -> Result<HttpClientHandle> {
+    async fn get_or_create_client_handle(&self) -> Result<HttpClientHandle> {
         // First try to get existing handle
         if let Ok(handle) = self.client_handle().await {
             return Ok(handle);
         }
 
         // If not initialized, create a new client
-        self.create_client(context).await
+        self.create_client().await
     }
 
     /// Restart the subprocess and reinitialize the client.
     /// Only valid for subprocess mode - returns error for remote mode.
-    async fn restart_subprocess(&self, context: Arc<dyn Context>) -> Result<HttpClientHandle> {
+    async fn restart_subprocess(&self) -> Result<HttpClientHandle> {
         let mut guard = self.state.write().await;
 
         // Extract the launcher from current state
@@ -176,7 +173,7 @@ impl StepflowPlugin {
         let url = subprocess.url().to_string();
 
         // Create new HTTP client
-        let client = HttpClient::try_new(url, Arc::downgrade(&context))
+        let client = HttpClient::try_new(url)
             .await
             .change_context(PluginError::Execution)
             .attach_printable("Unable to create HTTP client for restarted subprocess")?;
@@ -195,6 +192,7 @@ impl StepflowPlugin {
                         None
                     },
                 },
+                None, // No env for initialization (no bidirectional)
                 None, // No run context for initialization
             )
             .await
@@ -217,7 +215,7 @@ impl StepflowPlugin {
         Ok(handle)
     }
 
-    async fn create_client(&self, context: Arc<dyn Context>) -> Result<HttpClientHandle> {
+    async fn create_client(&self) -> Result<HttpClientHandle> {
         let mut guard = self.state.write().await;
         match std::mem::replace(&mut *guard, StepflowPluginState::Empty) {
             StepflowPluginState::UninitializedSubprocess(launcher) => {
@@ -232,8 +230,7 @@ impl StepflowPlugin {
                 let url = subprocess.url().to_string();
 
                 // Create HTTP client with the subprocess URL
-                // Use Weak reference to break circular dependency (executor -> plugin -> client -> context -> executor)
-                let client = HttpClient::try_new(url, Arc::downgrade(&context))
+                let client = HttpClient::try_new(url)
                     .await
                     .change_context(PluginError::Initializing)
                     .attach_printable("Unable to create HTTP client for subprocess")?;
@@ -248,7 +245,7 @@ impl StepflowPlugin {
                 Ok(handle)
             }
             StepflowPluginState::UninitializedRemote(url) => {
-                let client = HttpClient::try_new(url, Arc::downgrade(&context))
+                let client = HttpClient::try_new(url)
                     .await
                     .change_context(PluginError::Initializing)
                     .attach_printable("Unable to create HTTP client")?;
@@ -264,8 +261,13 @@ impl StepflowPlugin {
 }
 
 impl Plugin for StepflowPlugin {
-    async fn init(&self, context: &Arc<dyn Context>) -> Result<()> {
-        let client = self.create_client(context.clone()).await?;
+    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
+        // Check if already initialized - this makes the method idempotent
+        if self.client_handle().await.is_ok() {
+            return Ok(());
+        }
+
+        let client = self.create_client().await?;
 
         // Create observability context for initialization (trace only, no flow/run)
         let observability = ObservabilityContext::from_current_span();
@@ -280,6 +282,7 @@ impl Plugin for StepflowPlugin {
                         None
                     },
                 },
+                None, // No env for initialization (no bidirectional)
                 None, // No run context for initialization
             )
             .await
@@ -298,6 +301,7 @@ impl Plugin for StepflowPlugin {
         let response = client_handle
             .method(
                 &ComponentListParams {},
+                None, // No env for listing (no bidirectional)
                 None, // No run context for component listing
             )
             .await
@@ -313,6 +317,7 @@ impl Plugin for StepflowPlugin {
                 &ComponentInfoParams {
                     component: component.clone(),
                 },
+                None, // No env for info (no bidirectional)
                 None, // No run context for component info
             )
             .await
@@ -330,18 +335,16 @@ impl Plugin for StepflowPlugin {
         const MAX_ATTEMPTS: u32 = 3;
         let can_restart = self.is_subprocess_mode().await;
 
-        // Create run context for bidirectional handlers
-        // For now, root_run_id equals run_id (until sub-flow hierarchy is implemented)
-        let run_context = Arc::new(RunContext::for_root(context.run_id()));
+        // Get the env and run context from ExecutionContext for bidirectional communication.
+        let env = context.env().clone();
+        let run_context = context.run_context().clone();
 
         for attempt in 1..=MAX_ATTEMPTS {
             // Create observability context from execution context
             let observability = ObservabilityContext::from_execution_context(&context);
 
             // Get the client handle (will create if not initialized)
-            let client_handle = self
-                .get_or_create_client_handle(context.context().clone())
-                .await?;
+            let client_handle = self.get_or_create_client_handle().await?;
 
             let result = client_handle
                 .method(
@@ -351,6 +354,7 @@ impl Plugin for StepflowPlugin {
                         attempt,
                         observability,
                     },
+                    Some(env.clone()),
                     Some(run_context.clone()),
                 )
                 .await;
@@ -368,9 +372,7 @@ impl Plugin for StepflowPlugin {
                         );
 
                         // Try to restart the subprocess
-                        if let Err(restart_err) =
-                            self.restart_subprocess(context.context().clone()).await
-                        {
+                        if let Err(restart_err) = self.restart_subprocess().await {
                             log::error!("Failed to restart subprocess: {}", restart_err);
                             // If restart fails, return the original error
                             return Err(err).change_context(PluginError::Execution);

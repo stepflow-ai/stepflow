@@ -36,9 +36,14 @@ impl PartialOrd for DepthFirstTask {
 
 impl Ord for DepthFirstTask {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Reverse ordering: smaller (item_index, step_index) should come first
+        // Reverse ordering: smaller (item_index, step_index, run_id) should come first
         // BinaryHeap is max-heap, so we reverse the comparison
-        (other.0.item_index, other.0.step_index).cmp(&(self.0.item_index, self.0.step_index))
+        // Note: run_id is compared last so tasks from the same item are grouped first
+        (other.0.item_index, other.0.step_index, other.0.run_id).cmp(&(
+            self.0.item_index,
+            self.0.step_index,
+            self.0.run_id,
+        ))
     }
 }
 
@@ -110,17 +115,23 @@ mod tests {
     use std::sync::Arc;
     use stepflow_core::values::ValueRef;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+    use uuid::Uuid;
+
+    fn test_run_id() -> Uuid {
+        Uuid::nil()
+    }
 
     #[test]
     fn test_depth_first_ordering() {
+        let run_id = test_run_id();
         let mut scheduler = DepthFirstScheduler::new();
 
         // Notify with tasks in arbitrary order
         scheduler.notify_new_tasks(&[
-            Task::new(1, 0),
-            Task::new(0, 1),
-            Task::new(0, 0),
-            Task::new(1, 1),
+            Task::new(run_id, 1, 0),
+            Task::new(run_id, 0, 1),
+            Task::new(run_id, 0, 0),
+            Task::new(run_id, 1, 1),
         ]);
 
         // Get all tasks
@@ -133,24 +144,25 @@ mod tests {
 
         // Should be sorted by (item_index, step_index)
         assert_eq!(tasks.len(), 4);
-        assert_eq!(tasks[0], Task::new(0, 0));
-        assert_eq!(tasks[1], Task::new(0, 1));
-        assert_eq!(tasks[2], Task::new(1, 0));
-        assert_eq!(tasks[3], Task::new(1, 1));
+        assert_eq!(tasks[0], Task::new(run_id, 0, 0));
+        assert_eq!(tasks[1], Task::new(run_id, 0, 1));
+        assert_eq!(tasks[2], Task::new(run_id, 1, 0));
+        assert_eq!(tasks[3], Task::new(run_id, 1, 1));
     }
 
     #[test]
     fn test_depth_first_with_limit() {
+        let run_id = test_run_id();
         let mut scheduler = DepthFirstScheduler::new();
 
         // Notify with 6 tasks
         scheduler.notify_new_tasks(&[
-            Task::new(0, 0),
-            Task::new(0, 1),
-            Task::new(0, 2),
-            Task::new(1, 0),
-            Task::new(1, 1),
-            Task::new(1, 2),
+            Task::new(run_id, 0, 0),
+            Task::new(run_id, 0, 1),
+            Task::new(run_id, 0, 2),
+            Task::new(run_id, 1, 0),
+            Task::new(run_id, 1, 1),
+            Task::new(run_id, 1, 2),
         ]);
 
         // Request only 2 tasks
@@ -170,40 +182,46 @@ mod tests {
 
     #[test]
     fn test_notify_new_tasks() {
+        let run_id = test_run_id();
         let mut scheduler = DepthFirstScheduler::new();
 
         // Notify with out-of-order tasks
-        scheduler.notify_new_tasks(&[Task::new(1, 0), Task::new(0, 1), Task::new(0, 0)]);
+        scheduler.notify_new_tasks(&[
+            Task::new(run_id, 1, 0),
+            Task::new(run_id, 0, 1),
+            Task::new(run_id, 0, 0),
+        ]);
 
         // Heap should contain all tasks; verify by popping in order
         let mut tasks = Vec::new();
         while let Some(DepthFirstTask(task)) = scheduler.ready_heap.pop() {
             tasks.push(task);
         }
-        assert_eq!(tasks[0], Task::new(0, 0));
-        assert_eq!(tasks[1], Task::new(0, 1));
-        assert_eq!(tasks[2], Task::new(1, 0));
+        assert_eq!(tasks[0], Task::new(run_id, 0, 0));
+        assert_eq!(tasks[1], Task::new(run_id, 0, 1));
+        assert_eq!(tasks[2], Task::new(run_id, 1, 0));
     }
 
     #[test]
     fn test_incremental_notification() {
+        let run_id = test_run_id();
         // Tests the executor contract: tasks are notified as they become ready
         let mut scheduler = DepthFirstScheduler::new();
 
         // Initial task
-        scheduler.notify_new_tasks(&[Task::new(0, 0)]);
+        scheduler.notify_new_tasks(&[Task::new(run_id, 0, 0)]);
 
         // Get first task
         let task = scheduler.select_next(1).into_tasks().unwrap().head;
-        assert_eq!(task, Task::new(0, 0));
+        assert_eq!(task, Task::new(run_id, 0, 0));
 
         // Simulate task completion - executor notifies newly ready tasks
         scheduler.task_completed(task);
-        scheduler.notify_new_tasks(&[Task::new(0, 1)]);
+        scheduler.notify_new_tasks(&[Task::new(run_id, 0, 1)]);
 
         // Get next task
         let task = scheduler.select_next(1).into_tasks().unwrap().head;
-        assert_eq!(task, Task::new(0, 1));
+        assert_eq!(task, Task::new(run_id, 0, 1));
     }
 
     #[test]
@@ -214,9 +232,10 @@ mod tests {
 
     #[test]
     fn test_reset() {
+        let run_id = test_run_id();
         let mut scheduler = DepthFirstScheduler::new();
 
-        scheduler.notify_new_tasks(&[Task::new(0, 0), Task::new(1, 0)]);
+        scheduler.notify_new_tasks(&[Task::new(run_id, 0, 0), Task::new(run_id, 1, 0)]);
         scheduler.reset();
 
         assert!(scheduler.ready_heap.is_empty());
@@ -228,6 +247,8 @@ mod tests {
     fn test_integration_with_state() {
         use crate::state::ItemsState;
         use stepflow_core::ValueExpr;
+
+        let run_id = test_run_id();
 
         // Create a flow where step2 depends on step1
         let flow = Arc::new(
@@ -253,24 +274,23 @@ mod tests {
         );
 
         let mut state = ItemsState::single(
+            run_id,
             flow,
             ValueRef::new(json!({})),
             std::collections::HashMap::new(),
         );
+        let initial_tasks = state.initialize_item(0);
 
         let mut scheduler = DepthFirstScheduler::new();
-
-        // Executor pattern: initialize_item returns ready tasks
-        let initial_tasks = state.initialize_item(0);
         scheduler.notify_new_tasks(&initial_tasks);
 
         // Only step1 should be ready (step2 depends on it)
         assert_eq!(initial_tasks.len(), 1);
-        assert_eq!(initial_tasks[0], Task::new(0, 0));
+        assert_eq!(initial_tasks[0], Task::new(run_id, 0, 0));
 
         // Get first task
         let task = scheduler.select_next(1).into_tasks().unwrap().head;
-        assert_eq!(task, Task::new(0, 0));
+        assert_eq!(task, Task::new(run_id, 0, 0));
         state.mark_executing(task);
 
         // Complete and get newly ready
@@ -283,10 +303,10 @@ mod tests {
 
         // step2 should now be ready
         assert_eq!(new_ready.len(), 1);
-        assert_eq!(new_ready[0], Task::new(0, 1));
+        assert_eq!(new_ready[0], Task::new(run_id, 0, 1));
 
         // Scheduler should return step2
         let next = scheduler.select_next(1).into_tasks().unwrap().head;
-        assert_eq!(next, Task::new(0, 1));
+        assert_eq!(next, Task::new(run_id, 0, 1));
     }
 }

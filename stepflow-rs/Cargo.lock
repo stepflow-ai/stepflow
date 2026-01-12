@@ -4601,7 +4601,6 @@ dependencies = [
 name = "stepflow-builtins"
 version = "0.8.0"
 dependencies = [
- "chrono",
  "dynosaur",
  "error-stack",
  "log",
@@ -4662,16 +4661,13 @@ dependencies = [
 name = "stepflow-components-mcp"
 version = "0.8.0"
 dependencies = [
- "chrono",
  "error-stack",
- "futures",
  "indexmap 2.12.1",
  "rust-mcp-schema",
  "serde",
  "serde_json",
  "stepflow-core",
  "stepflow-plugin",
- "stepflow-state",
  "subst",
  "thiserror 2.0.17",
  "tokio",
@@ -4690,7 +4686,6 @@ dependencies = [
  "serde_yaml_ng",
  "stepflow-builtins",
  "stepflow-components-mcp",
- "stepflow-execution",
  "stepflow-mock",
  "stepflow-plugin",
  "stepflow-protocol",
@@ -4724,6 +4719,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "stepflow-dtos"
+version = "0.8.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "stepflow-core",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
 name = "stepflow-execution"
 version = "0.8.0"
 dependencies = [
@@ -4737,6 +4744,7 @@ dependencies = [
  "serde_json",
  "stepflow-analysis",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-mock",
  "stepflow-observability",
  "stepflow-plugin",
@@ -4778,6 +4786,7 @@ dependencies = [
  "static_assertions",
  "stepflow-core",
  "stepflow-plugin",
+ "tokio",
 ]
 
 [[package]]
@@ -4806,7 +4815,6 @@ version = "0.8.0"
 dependencies = [
  "dynosaur",
  "error-stack",
- "futures",
  "indexmap 2.12.1",
  "log",
  "matchit",
@@ -4814,8 +4822,10 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-state",
  "thiserror 2.0.17",
+ "tokio",
  "trait-variant",
  "uuid",
 ]
@@ -4825,7 +4835,6 @@ name = "stepflow-protocol"
 version = "0.8.0"
 dependencies = [
  "async-stream",
- "chrono",
  "erased-serde",
  "error-stack",
  "fastrace",
@@ -4839,8 +4848,9 @@ dependencies = [
  "serde_json",
  "similar-asserts",
  "stepflow-core",
+ "stepflow-dtos",
+ "stepflow-execution",
  "stepflow-plugin",
- "stepflow-state",
  "strum",
  "subst",
  "thiserror 2.0.17",
@@ -4866,6 +4876,7 @@ dependencies = [
  "stepflow-builtins",
  "stepflow-config",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-execution",
  "stepflow-mock",
  "stepflow-observability",
@@ -4890,12 +4901,11 @@ dependencies = [
  "dashmap",
  "error-stack",
  "futures",
- "serde",
  "serde_json",
  "stepflow-core",
+ "stepflow-dtos",
  "thiserror 2.0.17",
  "tokio",
- "utoipa",
  "uuid",
 ]
 
@@ -4912,6 +4922,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-core",
+ "stepflow-dtos",
  "stepflow-state",
  "tokio",
  "uuid",

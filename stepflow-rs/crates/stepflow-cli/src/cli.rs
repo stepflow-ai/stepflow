@@ -103,8 +103,8 @@ pub enum Command {
         /// Maximum number of concurrent executions (only used with --inputs).
         ///
         /// Defaults to number of inputs if not specified.
-        #[arg(long = "max-concurrent", value_name = "N")]
-        max_concurrent: Option<usize>,
+        #[arg(long = "max-concurrency", value_name = "N")]
+        max_concurrency: Option<usize>,
 
         #[command(flatten)]
         execution_args: ExecutionArgs,
@@ -471,12 +471,10 @@ impl Cli {
                 flow_path,
                 config_args,
                 input_args,
-                max_concurrent,
+                max_concurrency,
                 execution_args,
                 output_args,
             } => {
-                use stepflow_plugin::Context as _;
-
                 let flow: Flow = load(&flow_path)?;
                 let flow_dir = flow_path.parent();
                 let config = config_args.load_config(flow_dir)?;
@@ -514,25 +512,41 @@ impl Cli {
                 }
 
                 // Submit execution (works for both single and batch)
-                let mut submit_params =
-                    stepflow_core::SubmitRunParams::new(flow.clone(), flow_id, inputs);
-                submit_params = submit_params.with_wait(true);
-                if let Some(max_concurrent) = max_concurrent {
-                    submit_params = submit_params.with_max_concurrency(max_concurrent);
-                }
-                if let Some(overrides) = overrides {
-                    submit_params = submit_params.with_overrides(overrides);
-                }
-                let run_status = executor
-                    .submit_run(submit_params)
+                let params = stepflow_core::SubmitRunParams {
+                    max_concurrency,
+                    overrides: overrides.unwrap_or_default(),
+                    ..Default::default()
+                };
+                let run_status = stepflow_execution::submit_run(
+                    &executor,
+                    flow.clone(),
+                    flow_id,
+                    inputs,
+                    params,
+                )
+                .await
+                .change_context(crate::MainError::Configuration)?;
+
+                // Wait for completion and fetch results
+                stepflow_execution::wait_for_completion(&executor, run_status.run_id)
                     .await
                     .change_context(crate::MainError::Configuration)?;
+                let run_status = stepflow_execution::get_run(
+                    &executor,
+                    run_status.run_id,
+                    stepflow_core::GetRunParams {
+                        include_results: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .change_context(crate::MainError::Configuration)?;
 
                 // Output run_id without hyphens for Jaeger trace ID compatibility
                 eprintln!("run_id: {}", run_status.run_id.simple());
 
                 // Extract results from run status
-                let results: Vec<stepflow_core::FlowResult> = run_status
+                let results: Vec<_> = run_status
                     .results
                     .map(|items| items.into_iter().filter_map(|item| item.result).collect())
                     .unwrap_or_default();

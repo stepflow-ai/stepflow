@@ -12,9 +12,9 @@
 
 //! Cross-item execution coordinator.
 //!
-//! [`ItemsState`] manages execution state across multiple items, coordinating
-//! task discovery and completion. It supports dynamic growth for nested flow
-//! evaluation where sub-flows are added as new items during execution.
+//! [`ItemsState`] manages execution state across multiple items within a single run,
+//! coordinating task discovery and completion. It supports dynamic growth for nested
+//! flow evaluation where sub-flows are added as new items during execution.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,11 +22,12 @@ use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::Flow;
+use uuid::Uuid;
 
 use super::item_state::ItemState;
 use crate::task::Task;
 
-/// Coordinates execution state across multiple items.
+/// Coordinates execution state across multiple items within a single run.
 ///
 /// ItemsState manages a collection of [`ItemState`] instances, one per item
 /// in the batch. It provides methods for discovering ready tasks across all
@@ -34,7 +35,12 @@ use crate::task::Task;
 ///
 /// The state can grow dynamically via [`add_item`](Self::add_item), which
 /// enables nested flow evaluation where sub-flows are added as new items.
+///
+/// Each ItemsState is associated with a specific run_id, which is included
+/// in all Task objects created by this state.
 pub struct ItemsState {
+    /// The run ID this state belongs to.
+    run_id: Uuid,
     /// Per-item execution state. Can grow dynamically.
     items: Vec<ItemState>,
     /// Shared variables across all items (e.g., API keys, environment config).
@@ -45,35 +51,52 @@ pub struct ItemsState {
 }
 
 impl ItemsState {
-    /// Create a new ItemsState with the given items.
+    /// Create a new ItemsState for a specific run.
     ///
     /// All items share the same variables.
-    pub fn new(variables: HashMap<String, ValueRef>) -> Self {
+    pub fn new(run_id: Uuid, variables: HashMap<String, ValueRef>) -> Self {
         Self {
+            run_id,
             items: Vec::new(),
             variables: Arc::new(variables),
             incomplete_count: 0,
         }
     }
 
-    /// Create an ItemsState with a single item.
-    pub fn single(flow: Arc<Flow>, input: ValueRef, variables: HashMap<String, ValueRef>) -> Self {
-        let mut state = Self::new(variables);
+    /// Create an ItemsState with a single item for a specific run.
+    pub fn single(
+        run_id: Uuid,
+        flow: Arc<Flow>,
+        input: ValueRef,
+        variables: HashMap<String, ValueRef>,
+    ) -> Self {
+        let mut state = Self::new(run_id, variables);
         state.add_item(flow, input);
         state
     }
 
     /// Create an ItemsState with multiple items using the same flow.
     pub fn batch(
+        run_id: Uuid,
         flow: Arc<Flow>,
         inputs: Vec<ValueRef>,
         variables: HashMap<String, ValueRef>,
     ) -> Self {
-        let mut state = Self::new(variables);
+        let mut state = Self::new(run_id, variables);
         for input in inputs {
             state.add_item(flow.clone(), input);
         }
         state
+    }
+
+    /// Get the run ID for this state.
+    pub fn run_id(&self) -> Uuid {
+        self.run_id
+    }
+
+    /// Get a reference to the shared variables.
+    pub fn variables(&self) -> &HashMap<String, ValueRef> {
+        &self.variables
     }
 
     /// Add a new item to the batch.
@@ -159,7 +182,7 @@ impl ItemsState {
         newly_unblocked
             .into_iter()
             .filter(|step_idx| item.ready_steps().contains(*step_idx))
-            .map(|step_idx| Task::new(task.item_index, step_idx))
+            .map(|step_idx| Task::new(self.run_id, task.item_index, step_idx))
             .collect()
     }
 
@@ -182,6 +205,23 @@ impl ItemsState {
     /// (and nothing in-flight), we have a deadlock.
     pub fn has_ready_tasks(&self) -> bool {
         self.items.iter().any(|item| !item.ready_steps().is_empty())
+    }
+
+    /// Get all ready tasks across all items.
+    ///
+    /// Returns tasks for all steps that are ready to execute.
+    pub fn get_ready_tasks(&self) -> Vec<Task> {
+        let run_id = self.run_id;
+        self.items
+            .iter()
+            .enumerate()
+            .flat_map(|(item_index, item)| {
+                let ready_steps: Vec<usize> = item.ready_steps().iter().collect();
+                ready_steps
+                    .into_iter()
+                    .map(move |step_index| Task::new(run_id, item_index as u32, step_index))
+            })
+            .collect()
     }
 
     /// Get the result of a completed item.
@@ -229,7 +269,7 @@ impl ItemsState {
         self.item(item_index)
             .ready_steps()
             .iter()
-            .map(|step_index| Task::new(item_index, step_index))
+            .map(|step_index| Task::new(self.run_id, item_index, step_index))
             .collect()
     }
 
@@ -273,6 +313,10 @@ mod tests {
     use stepflow_core::values::StepContext as _;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
 
+    fn test_run_id() -> Uuid {
+        Uuid::nil()
+    }
+
     fn success_result() -> FlowResult {
         FlowResult::Success(ValueRef::new(json!(null)))
     }
@@ -310,7 +354,12 @@ mod tests {
                 .build(),
         );
 
-        let mut state = ItemsState::single(flow, ValueRef::new(json!({})), HashMap::new());
+        let mut state = ItemsState::single(
+            test_run_id(),
+            flow,
+            ValueRef::new(json!({})),
+            HashMap::new(),
+        );
 
         assert_eq!(state.item_count(), 1);
 
@@ -332,14 +381,14 @@ mod tests {
             ValueRef::new(json!({"x": 2})),
             ValueRef::new(json!({"x": 3})),
         ];
-        let state = ItemsState::batch(flow, inputs, HashMap::new());
+        let state = ItemsState::batch(test_run_id(), flow, inputs, HashMap::new());
 
         assert_eq!(state.item_count(), 3);
     }
 
     #[test]
     fn test_add_item_dynamically() {
-        let mut state = ItemsState::new(HashMap::new());
+        let mut state = ItemsState::new(test_run_id(), HashMap::new());
         assert_eq!(state.item_count(), 0);
 
         let flow1 = Arc::new(create_simple_flow(&["step1"]));
@@ -383,6 +432,7 @@ mod tests {
         );
 
         let mut state = ItemsState::batch(
+            test_run_id(),
             flow,
             vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
             HashMap::new(),
@@ -393,8 +443,8 @@ mod tests {
 
         // Each item has step1 as the only ready task (step2 depends on step1)
         assert_eq!(ready.len(), 2);
-        assert!(ready.contains(&Task::new(0, 0))); // item 0, step1
-        assert!(ready.contains(&Task::new(1, 0))); // item 1, step1
+        assert!(ready.contains(&Task::new(test_run_id(), 0, 0))); // item 0, step1
+        assert!(ready.contains(&Task::new(test_run_id(), 1, 0))); // item 1, step1
     }
 
     #[test]
@@ -422,22 +472,28 @@ mod tests {
                 .build(),
         );
 
-        let mut state = ItemsState::single(flow, ValueRef::new(json!({})), HashMap::new());
+        let mut state = ItemsState::single(
+            test_run_id(),
+            flow,
+            ValueRef::new(json!({})),
+            HashMap::new(),
+        );
 
         // Initialize item - discovers needed steps
         let ready = state.initialize_item(0);
 
         // Only step1 should be ready (step2 depends on it)
         assert_eq!(ready.len(), 1);
-        assert_eq!(ready[0], Task::new(0, 0));
+        assert_eq!(ready[0], Task::new(test_run_id(), 0, 0));
 
         // Complete step1
-        state.mark_executing(Task::new(0, 0));
-        let newly_ready = state.complete_task_and_get_ready(Task::new(0, 0), success_result());
+        state.mark_executing(Task::new(test_run_id(), 0, 0));
+        let newly_ready =
+            state.complete_task_and_get_ready(Task::new(test_run_id(), 0, 0), success_result());
 
         // step2 should now be ready
         assert_eq!(newly_ready.len(), 1);
-        assert_eq!(newly_ready[0], Task::new(0, 1));
+        assert_eq!(newly_ready[0], Task::new(test_run_id(), 0, 1));
     }
 
     #[test]
@@ -460,6 +516,7 @@ mod tests {
         );
 
         let mut state = ItemsState::batch(
+            test_run_id(),
             flow,
             vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
             HashMap::new(),
@@ -473,7 +530,7 @@ mod tests {
         assert_eq!(state.incomplete(), 1);
 
         // Complete item 0
-        state.complete_task(Task::new(0, 0), success_result());
+        state.complete_task(Task::new(test_run_id(), 0, 0), success_result());
         assert_eq!(state.incomplete(), 0);
 
         // Initialize item 1
@@ -481,7 +538,7 @@ mod tests {
         assert_eq!(state.incomplete(), 1);
 
         // Complete item 1
-        state.complete_task(Task::new(1, 0), success_result());
+        state.complete_task(Task::new(test_run_id(), 1, 0), success_result());
         assert_eq!(state.incomplete(), 0);
     }
 
@@ -492,6 +549,7 @@ mod tests {
 
         let flow = Arc::new(create_simple_flow(&["step1"]));
         let state = ItemsState::batch(
+            test_run_id(),
             flow,
             vec![ValueRef::new(json!(1)), ValueRef::new(json!(2))],
             variables,
@@ -533,14 +591,19 @@ mod tests {
                 .build(),
         );
 
-        let mut state = ItemsState::single(flow, ValueRef::new(json!({})), HashMap::new());
+        let mut state = ItemsState::single(
+            test_run_id(),
+            flow,
+            ValueRef::new(json!({})),
+            HashMap::new(),
+        );
 
         // Initialize - should discover step1 and step2 as needed
         let ready_tasks = state.initialize_item(0);
 
         // Only step1 should be ready (step2 depends on it)
         assert_eq!(ready_tasks.len(), 1);
-        assert_eq!(ready_tasks[0], Task::new(0, 0));
+        assert_eq!(ready_tasks[0], Task::new(test_run_id(), 0, 0));
 
         // Both steps should be needed
         let item = state.item(0);
@@ -570,6 +633,7 @@ mod tests {
         );
 
         let mut state = ItemsState::single(
+            test_run_id(),
             flow,
             ValueRef::new(json!({"input": "data"})),
             HashMap::new(),
@@ -583,7 +647,7 @@ mod tests {
 
         // Complete step1 with a result containing nested data
         state.complete_task(
-            Task::new(0, 0),
+            Task::new(test_run_id(), 0, 0),
             FlowResult::Success(ValueRef::new(
                 json!({"result": "hello world", "extra": "ignored"}),
             )),
@@ -623,6 +687,7 @@ mod tests {
         );
 
         let mut state = ItemsState::single(
+            test_run_id(),
             flow,
             ValueRef::new(json!({"message": "hello from input"})),
             HashMap::new(),
@@ -633,7 +698,7 @@ mod tests {
 
         // Complete step1
         state.complete_task(
-            Task::new(0, 0),
+            Task::new(test_run_id(), 0, 0),
             FlowResult::Success(ValueRef::new(json!(null))),
         );
 

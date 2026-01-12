@@ -91,7 +91,7 @@ mod tests {
             user_prompt: "What is the capital of the moon?".to_string(),
         };
         let input = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
         let output = component
             .execute(mock.execution_context(), input.into())
             .await

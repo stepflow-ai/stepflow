@@ -23,7 +23,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -371,8 +371,14 @@ impl McpPlugin {
 }
 
 impl Plugin for McpPlugin {
-    async fn init(&self, _context: &Arc<dyn Context>) -> Result<()> {
-        // Don't initialize the underlying stdio plugin since we handle MCP protocol directly
+    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
+        // Check if already initialized - this makes the method idempotent
+        {
+            let state = self.state.read().await;
+            if state.mcp_client.is_some() {
+                return Ok(());
+            }
+        }
 
         // Create the MCP client
         let env: HashMap<String, String> = std::env::vars().collect();

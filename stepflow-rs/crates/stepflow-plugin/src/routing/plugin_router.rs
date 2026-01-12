@@ -166,7 +166,10 @@ mod tests {
     struct TestPlugin;
 
     impl crate::Plugin for TestPlugin {
-        async fn init(&self, _context: &Arc<dyn crate::Context>) -> crate::Result<()> {
+        async fn ensure_initialized(
+            &self,
+            _env: &Arc<crate::StepflowEnvironment>,
+        ) -> crate::Result<()> {
             Ok(())
         }
 

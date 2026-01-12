@@ -52,7 +52,7 @@ struct Args {
 
 async fn create_executor(
     config_path: Option<PathBuf>,
-) -> Result<std::sync::Arc<stepflow_execution::StepflowExecutor>> {
+) -> Result<std::sync::Arc<stepflow_plugin::StepflowEnvironment>> {
     info!("Creating Stepflow executor from configuration");
 
     let config = if let Some(path) = config_path {
@@ -64,7 +64,7 @@ async fn create_executor(
     };
 
     config
-        .create_executor()
+        .create_environment()
         .await
         .change_context(ServerError::ExecutorError)
         .attach_printable("Failed to create executor from configuration")

@@ -39,8 +39,4 @@ indexmap.workspace = true
 subst.workspace = true
 
 [dev-dependencies]
-# Testing dependencies
-stepflow-state.workspace = true
-futures.workspace = true
 uuid.workspace = true
-chrono.workspace = true

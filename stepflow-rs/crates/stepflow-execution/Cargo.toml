@@ -28,6 +28,7 @@ stepflow-analysis.workspace = true
 stepflow-observability.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
+stepflow-dtos.workspace = true
 stepflow-state.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

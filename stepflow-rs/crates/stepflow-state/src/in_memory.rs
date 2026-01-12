@@ -16,17 +16,15 @@ use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
 
-use crate::{
-    StateStore,
-    state_store::{
-        CreateRunParams, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters,
-        RunSummary, StepInfo, StepResult,
-    },
-};
+use crate::{RunCompletionNotifier, StateStore, state_store::CreateRunParams};
 use stepflow_core::{
     FlowResult,
     blob::{BlobData, BlobId, BlobType},
     workflow::{Flow, ValueRef, WorkflowOverrides},
+};
+use stepflow_dtos::{
+    ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo,
+    StepResult,
 };
 use uuid::Uuid;
 
@@ -101,6 +99,8 @@ pub struct InMemoryStateStore {
     blobs: DashMap<String, BlobData>,
     /// Map from run_id to combined run state
     runs: DashMap<Uuid, RunState>,
+    /// Notifier for run completion events
+    completion_notifier: RunCompletionNotifier,
 }
 
 impl InMemoryStateStore {
@@ -109,6 +109,7 @@ impl InMemoryStateStore {
         Self {
             blobs: DashMap::new(),
             runs: DashMap::new(),
+            completion_notifier: RunCompletionNotifier::new(),
         }
     }
 
@@ -119,6 +120,41 @@ impl InMemoryStateStore {
     /// Eviction strategies may evolve to be more nuanced (partial eviction, etc.).
     pub fn evict_execution(&self, run_id: Uuid) {
         self.runs.remove(&run_id);
+    }
+
+    /// Synchronous version of create_run for use in queue_write.
+    fn create_run_sync(&self, params: CreateRunParams) {
+        let now = chrono::Utc::now();
+        let item_count = params.item_count();
+        let inputs = params.inputs.clone();
+        let execution_details = RunDetails {
+            summary: RunSummary {
+                run_id: params.run_id,
+                flow_id: params.flow_id,
+                flow_name: params.workflow_name,
+                status: ExecutionStatus::Running,
+                items: ItemStatistics {
+                    total: item_count,
+                    running: item_count,
+                    ..Default::default()
+                },
+                created_at: now,
+                completed_at: None,
+                root_run_id: params.root_run_id,
+                parent_run_id: params.parent_run_id,
+            },
+            inputs,
+            overrides: if params.overrides.is_empty() {
+                None
+            } else {
+                Some(params.overrides)
+            },
+        };
+
+        // Idempotent: only insert if not exists (preserves existing run)
+        self.runs
+            .entry(params.run_id)
+            .or_insert_with(|| RunState::new(execution_details));
     }
 
     /// Record the result of a step execution (private implementation method).
@@ -139,6 +175,8 @@ impl InMemoryStateStore {
                     items: ItemStatistics::single(ExecutionStatus::Running),
                     created_at: chrono::Utc::now(),
                     completed_at: None,
+                    root_run_id: run_id,
+                    parent_run_id: None,
                 },
                 inputs: vec![ValueRef::new(serde_json::Value::Null)],
                 overrides: None,
@@ -320,39 +358,8 @@ impl StateStore for InMemoryStateStore {
         &self,
         params: CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let now = chrono::Utc::now();
-        let item_count = params.item_count();
-        let inputs = params.inputs.clone();
-        let execution_details = RunDetails {
-            summary: RunSummary {
-                run_id: params.run_id,
-                flow_id: params.flow_id,
-                flow_name: params.workflow_name,
-                status: ExecutionStatus::Running,
-                items: ItemStatistics {
-                    total: item_count,
-                    running: item_count,
-                    ..Default::default()
-                },
-                created_at: now,
-                completed_at: None,
-            },
-            inputs,
-            overrides: if params.overrides.is_empty() {
-                None
-            } else {
-                Some(params.overrides)
-            },
-        };
-
-        async move {
-            // Idempotent: only insert if not exists (preserves existing run)
-            self.runs
-                .entry(params.run_id)
-                .or_insert_with(|| RunState::new(execution_details));
-            Ok(())
-        }
-        .boxed()
+        self.create_run_sync(params);
+        async move { Ok(()) }.boxed()
     }
 
     fn get_run_overrides(
@@ -375,18 +382,24 @@ impl StateStore for InMemoryStateStore {
         status: ExecutionStatus,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
+            let is_terminal = matches!(
+                status,
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+            );
+
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
                 run_state.details.summary.status = status;
 
-                if matches!(
-                    status,
-                    ExecutionStatus::Completed
-                        | ExecutionStatus::Failed
-                        | ExecutionStatus::Cancelled
-                ) {
+                if is_terminal {
                     run_state.details.summary.completed_at = Some(chrono::Utc::now());
                 }
             }
+
+            // Notify waiters if the run reached a terminal status
+            if is_terminal {
+                self.completion_notifier.notify_completion(run_id);
+            }
+
             Ok(())
         }
         .boxed()
@@ -399,6 +412,8 @@ impl StateStore for InMemoryStateStore {
         result: FlowResult,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
+            let mut run_completed = false;
+
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
                 let now = chrono::Utc::now();
 
@@ -433,8 +448,15 @@ impl StateStore for InMemoryStateStore {
                     };
                     run_state.details.summary.status = status;
                     run_state.details.summary.completed_at = Some(now);
+                    run_completed = true;
                 }
             }
+
+            // Notify waiters if the run completed
+            if run_completed {
+                self.completion_notifier.notify_completion(run_id);
+            }
+
             Ok(())
         }
         .boxed()
@@ -475,6 +497,20 @@ impl StateStore for InMemoryStateStore {
                     // Apply workflow name filter
                     if let Some(ref workflow_name) = filters.flow_name
                         && exec.flow_name.as_ref() != Some(workflow_name)
+                    {
+                        return false;
+                    }
+
+                    // Apply root_run_id filter (get all runs in this tree)
+                    if let Some(root_run_id) = filters.root_run_id
+                        && exec.root_run_id != root_run_id
+                    {
+                        return false;
+                    }
+
+                    // Apply parent_run_id filter (get direct children of this parent)
+                    if let Some(parent_run_id) = filters.parent_run_id
+                        && exec.parent_run_id != Some(parent_run_id)
                     {
                         return false;
                     }
@@ -549,6 +585,10 @@ impl StateStore for InMemoryStateStore {
     ) -> error_stack::Result<(), crate::StateError> {
         // For in-memory store, process operations immediately since there's no I/O cost
         match operation {
+            crate::StateWriteOperation::CreateRun { params } => {
+                self.create_run_sync(params);
+                Ok(())
+            }
             crate::StateWriteOperation::RecordStepResult {
                 run_id,
                 step_result,
@@ -649,6 +689,58 @@ impl StateStore for InMemoryStateStore {
             }
 
             Ok(items)
+        }
+        .boxed()
+    }
+
+    fn wait_for_completion(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async move {
+            // Subscribe BEFORE checking status to avoid race condition where
+            // completion happens between status check and subscribe
+            let receiver = self.completion_notifier.subscribe();
+
+            // Now check if already complete
+            if let Some(run_state) = self.runs.get(&run_id) {
+                if matches!(
+                    run_state.details.summary.status,
+                    ExecutionStatus::Completed
+                        | ExecutionStatus::Failed
+                        | ExecutionStatus::Cancelled
+                ) {
+                    return Ok(());
+                }
+            } else {
+                return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+            }
+
+            // Wait for notification using the receiver we subscribed before status check
+            self.completion_notifier
+                .wait_for_completion_with_receiver(run_id, receiver)
+                .await;
+
+            // After receiving our notification, poll until we see the terminal status.
+            // We should only receive our run_id's notification once, so if the status
+            // isn't terminal yet (due to timing), just poll rather than waiting again.
+            loop {
+                if let Some(run_state) = self.runs.get(&run_id) {
+                    if matches!(
+                        run_state.details.summary.status,
+                        ExecutionStatus::Completed
+                            | ExecutionStatus::Failed
+                            | ExecutionStatus::Cancelled
+                    ) {
+                        return Ok(());
+                    }
+                } else {
+                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                }
+
+                // Brief yield to allow the status update to propagate
+                tokio::task::yield_now().await;
+            }
         }
         .boxed()
     }

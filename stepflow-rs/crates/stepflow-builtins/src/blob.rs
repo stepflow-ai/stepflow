@@ -184,7 +184,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         let result = component
             .execute(mock.execution_context(), input_value.into())
@@ -210,7 +210,7 @@ mod tests {
 
         // Create a valid blob ID from test data
         let test_data = json!({"retrieved": "data", "value": 123});
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         // First, store the blob
         let blob_id = mock
@@ -254,7 +254,7 @@ mod tests {
         let test_data = json!({"roundtrip": "test", "complex": {"nested": [1, 2, 3]}});
 
         // Use the same mock context for both operations to share state
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         // Create blob
         let create_input = PutBlobInput {
@@ -306,7 +306,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
 
         let result = component
             .execute(mock.execution_context(), input_value.into())
