@@ -79,7 +79,7 @@ Our comprehensive [getting started](/docs/getting-started) guide and usage [exam
 - Simple AI Chat Workflow: How to use [OpenAI chat integration](/docs/examples/openai-workflows)
 - MCP tool integration: Use [MCP tools as workflow components](/docs/examples/mcp-tools)
 - Custom component development: [Build your own components and UDFs](/docs/examples/custom-components)
-- Integrate with Lang Chain: [Use Lang Chain tools as workflow components](/docs/examples/langchain-integration)
+- Integrate with LangChain: [Use LangChain tools as workflow components](/docs/integrations/langchain)
 - Production model serving: [Deploy a model to Stepflow](/docs/examples/production-model-serving)
 
 ## What's Next?
