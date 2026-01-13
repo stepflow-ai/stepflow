@@ -10,6 +10,7 @@ The Stepflow K8s deployment provides a complete local development environment wi
 - **Load Balancer**: Pingora-based request routing to workers
 - **Langflow Worker**: Python-based component execution (3 replicas)
 - **OpenSearch**: Document storage and vector search
+- **Docling**: Document processing service (PDF, DOCX, images to structured formats)
 - **Observability Stack**: Full telemetry pipeline (traces, metrics, logs)
 
 ## Architecture
@@ -31,15 +32,16 @@ The Stepflow K8s deployment provides a complete local development environment wi
                                     │       ┌─────────┼─────────┐        │
                                     │       ▼         ▼         ▼        │
                                     │  ┌─────────┐┌─────────┐┌─────────┐ │
-                                    │  │Component││Component││Component│ │
-                                    │  │Server 1 ││Server 2 ││Server 3 │ │
-                                    │  └─────────┘└─────────┘└─────────┘ │
-                                    │                 │                   │
-                                    │                 ▼                   │
-                                    │  ┌─────────────────────────────┐   │
-                                    │  │        OpenSearch           │   │
-                                    │  │   (documents, vectors)      │   │
-                                    │  └─────────────────────────────┘   │
+                                    │  │Langflow ││Langflow ││Langflow │ │
+                                    │  │Worker 1 ││Worker 2 ││Worker 3 │ │
+                                    │  └────┬────┘└────┬────┘└────┬────┘ │
+                                    │       │         │          │       │
+                                    │       └────┬────┴────┬─────┘       │
+                                    │            ▼         ▼             │
+                                    │  ┌─────────────┐ ┌─────────────┐   │
+                                    │  │ OpenSearch  │ │   Docling   │   │
+                                    │  │ (vectors)   │ │  (parsing)  │   │
+                                    │  └─────────────┘ └─────────────┘   │
                                     └─────────────────────────────────────┘
                                                       │
                                                       │ OTLP
@@ -133,12 +135,19 @@ All pods should show `Running` status.
 | Grafana | http://localhost:3000 | Observability dashboards (admin/admin) |
 | Jaeger | http://localhost:16686 | Distributed tracing |
 | Prometheus | http://localhost:9090 | Metrics |
+| Docling API | Internal only | Document processing (see port-forward below) |
+
+**Accessing Docling** (internal service):
+```bash
+kubectl port-forward -n stepflow svc/docling-serve 5001:5001
+# Then access: http://localhost:5001/docs (API documentation)
+```
 
 ## Namespaces
 
 | Namespace | Purpose |
 |-----------|---------|
-| `stepflow` | Application workloads (server, load balancer, components, OpenSearch) |
+| `stepflow` | Application workloads (server, load balancer, workers) and infrastructure services (OpenSearch, Docling) |
 | `stepflow-o12y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
 
 ## Teardown
@@ -166,11 +175,13 @@ k8s/
 ├── namespaces.yaml                # Namespace definitions
 ├── apply.sh                       # Deployment script
 ├── teardown.sh                    # Teardown script
+├── stepflow-config.yml            # Reference config (see stepflow/server/configmap.yaml)
 ├── stepflow/                      # Application manifests
 │   ├── server/                    # Stepflow server
 │   ├── loadbalancer/              # Pingora load balancer
 │   ├── langflow-worker/           # Python workers
-│   └── opensearch/                # OpenSearch
+│   ├── opensearch/                # OpenSearch (infrastructure)
+│   └── docling/                   # Docling document processing (infrastructure)
 └── stepflow-o12y/                 # Observability manifests
     ├── otel-collector/            # OpenTelemetry Collector
     ├── jaeger/                    # Distributed tracing
@@ -193,6 +204,30 @@ The server configuration is stored in `k8s/stepflow/server/configmap.yaml`. Key 
 ### Environment Variables
 
 All services are configured via environment variables in their deployment manifests. Sensitive values (API keys, passwords) are referenced from the `stepflow-secrets` secret.
+
+## Infrastructure Services vs. Routed Components
+
+This deployment distinguishes between two types of services:
+
+### Routed Components
+
+Components accessible via the Stepflow routing configuration (e.g., `/langflow/*`, `/builtin/*`). These are invoked by workflow steps and routed through the load balancer.
+
+| Path Pattern | Plugin | Description |
+|--------------|--------|-------------|
+| `/langflow/*` | langflow_k8s | Langflow components via load balancer |
+| `/builtin/*` | builtin | Built-in components (OpenAI, eval, etc.) |
+
+### Infrastructure Services
+
+Backend services accessed directly by workers via Kubernetes DNS. These are NOT part of the Stepflow routing configuration.
+
+| Service | DNS Endpoint | Port | Purpose |
+|---------|--------------|------|---------|
+| OpenSearch | `opensearch.stepflow.svc.cluster.local` | 9200 | Document storage, vector search |
+| Docling | `docling-serve.stepflow.svc.cluster.local` | 5001 | Document processing (PDF, DOCX, images) |
+
+Workers discover these services through environment variables (e.g., `OPENSEARCH_HOST`, `DOCLING_SERVE_URL`).
 
 ## Observability
 
@@ -226,3 +261,24 @@ This deployment is designed for local development. For production:
 - Set resource limits and requests appropriately
 - Configure horizontal pod autoscaling
 - Set up alerting rules in Prometheus/Grafana
+
+## Future Work
+
+### Docling Enhancements
+
+1. **Model Serving Strategy**: The current deployment uses pre-baked models in the container image. Future work should consider:
+   - PVC-mounted model cache for updates without image rebuilds
+   - Model versioning and rollback support
+   - Shared model storage across replicas
+
+2. **GPU Acceleration**: The `docling-serve-cu126` and `docling-serve-cu128` images exist for NVIDIA GPU acceleration. To enable:
+   - Install NVIDIA device plugin in the cluster
+   - Change image to `quay.io/docling-project/docling-serve-cu126:latest`
+   - Add GPU resource requests to the deployment
+
+3. **Horizontal Scaling**: Document processing is CPU-intensive. Consider:
+   - Horizontal Pod Autoscaler (HPA) based on CPU utilization
+   - Queue-based scaling for batch processing workloads
+   - Pod disruption budgets for availability
+
+4. **Direct Docling Routing**: Future work may add `/docling/{*component}` routes for direct component access from workflows, enabling Docling as a routed component rather than infrastructure service.

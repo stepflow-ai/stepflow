@@ -1,0 +1,83 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+# =============================================================================
+# Stepflow Configuration Reference - Kubernetes Deployment
+# =============================================================================
+#
+# This is a REFERENCE FILE for documentation and local development purposes.
+# The canonical deployment configuration is in: stepflow/server/configmap.yaml
+#
+# When deploying to Kubernetes, the ConfigMap version is used. This file
+# mirrors that content and serves as:
+#   - Quick reference for local development
+#   - Documentation of the deployment configuration
+#   - Template for environment-specific customization
+#
+# =============================================================================
+# Infrastructure Services (NOT routed, accessed directly by components)
+# =============================================================================
+#
+# These services are accessed directly by Langflow workers via Kubernetes DNS.
+# They are not part of the Stepflow routing configuration.
+#
+#   OpenSearch (document storage, vector search):
+#     - DNS: opensearch.stepflow.svc.cluster.local
+#     - Port: 9200
+#     - Env vars: OPENSEARCH_HOST, OPENSEARCH_PORT
+#
+#   Docling (document processing, PDF/DOCX parsing):
+#     - DNS: docling-serve.stepflow.svc.cluster.local
+#     - Port: 5001
+#     - Env vars: DOCLING_SERVE_URL
+#
+# =============================================================================
+
+# Plugin definitions
+plugins:
+  # Built-in components (OpenAI, eval, create_messages, etc.)
+  # These execute directly in the Stepflow server process
+  builtin:
+    type: builtin
+
+  # Langflow components via Kubernetes load balancer
+  # The load balancer distributes requests across Langflow worker pods
+  # using instance-aware routing for stateful operations
+  langflow_k8s:
+    type: stepflow
+    transport: http
+    url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
+
+# Routing rules
+# Routes are evaluated in order; first match wins
+routes:
+  # Route all /langflow/* components to Kubernetes cluster
+  # Examples: /langflow/rag_query, /langflow/embed_document
+  "/langflow/{*component}":
+    - plugin: langflow_k8s
+
+  # Route builtin components explicitly
+  # Examples: /builtin/openai, /builtin/eval
+  "/builtin/{*component}":
+    - plugin: builtin
+
+# State store configuration
+# Using in-memory for demo; production should use SQLite or external store
+stateStore:
+  type: inMemory
+  # For production, consider:
+  # type: sqlite
+  # databaseUrl: "sqlite:workflow_state.db"
+  # autoMigrate: true
+  # maxConnections: 10

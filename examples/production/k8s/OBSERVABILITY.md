@@ -18,6 +18,11 @@ The observability stack provides comprehensive monitoring, tracing, and logging 
 │         │                  │                  │              │
 │         └──────────────────┼──────────────────┘              │
 │                            │ OTLP/gRPC                       │
+│                            │                                 │
+│  Infrastructure Services (optional OTLP):                    │
+│  ┌──────────────┐  ┌──────────────┐                        │
+│  │  OpenSearch  │  │   Docling    │                        │
+│  └──────────────┘  └──────────────┘                        │
 └────────────────────────────┼─────────────────────────────────┘
                              │
                     ┌────────▼────────┐
@@ -249,6 +254,12 @@ env:
 - Additional env: `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true`
 - Traces component execution
 - Emits metrics for component performance
+
+**Docling** (`k8s/stepflow/docling/deployment.yaml`):
+- Service name: `docling-serve`
+- Infrastructure service for document processing
+- Configured with standard OTEL_* environment variables
+- **Note**: OpenTelemetry support in docling-serve may vary. The deployment includes standard OTEL configuration which will be used if the service supports it. Verify docling-serve documentation for current OTLP support status.
 
 ## Accessing the Observability Stack
 
