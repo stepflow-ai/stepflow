@@ -49,7 +49,6 @@ from stepflow_api.models import (
     StoreFlowRequest,
     StoreFlowResponse,
     WorkflowOverrides,
-    WorkflowOverridesSteps,
 )
 from stepflow_core import (
     ComponentInfo,
@@ -409,10 +408,10 @@ class StepflowClient:
         # Create the run
         workflow_overrides = None
         if overrides:
-            steps_obj = WorkflowOverridesSteps()
+            steps_dict: dict[str, StepOverride] = {}
             for step_id, step_override_dict in overrides.items():
-                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
-            workflow_overrides = WorkflowOverrides(steps=steps_obj)
+                steps_dict[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_dict)
 
         run_response = await self.create_run(
             flow_id=store_response.flow_id,
@@ -452,10 +451,10 @@ class StepflowClient:
         # Create the run
         workflow_overrides = None
         if overrides:
-            steps_obj = WorkflowOverridesSteps()
+            steps_dict: dict[str, StepOverride] = {}
             for step_id, step_override_dict in overrides.items():
-                steps_obj[step_id] = StepOverride.from_dict(step_override_dict)
-            workflow_overrides = WorkflowOverrides(steps=steps_obj)
+                steps_dict[step_id] = StepOverride.from_dict(step_override_dict)
+            workflow_overrides = WorkflowOverrides(steps=steps_dict)
 
         run_response = await self.create_run(
             flow_id=store_response.flow_id,

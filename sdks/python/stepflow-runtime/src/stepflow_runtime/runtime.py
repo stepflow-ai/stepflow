@@ -36,7 +36,7 @@ from stepflow_api.models import (
     FlowResultFailed,
     FlowResultSuccess,
 )
-from stepflow_api.types import UNSET, Unset
+# Note: OpenAPI Generator client uses None for optional fields, not UNSET
 from stepflow_client import StepflowClient
 from stepflow_core import (
     ComponentInfo,
@@ -134,8 +134,8 @@ def _get_flow_result_from_response(
 ) -> FlowResult:
     """Extract FlowResult from a CreateRunResponse or RunDetails."""
     # Check if result is available
-    result = getattr(response, "result", UNSET)
-    if isinstance(result, Unset) or result is None:
+    result = getattr(response, "result", None)
+    if result is None:
         # If no result, infer from status
         status = response.status
         if status == ExecutionStatus.COMPLETED:
@@ -612,8 +612,8 @@ class StepflowRuntime:
             if items_response.items and len(items_response.items) > 0:
                 # For single-item runs, return the first item's result
                 first_item = items_response.items[0]
-                result = getattr(first_item, "result", UNSET)
-                if not isinstance(result, Unset) and result is not None:
+                result = getattr(first_item, "result", None)
+                if result is not None:
                     converted = _convert_api_result_to_flow_result(result)
                     if converted is not None:
                         return converted
