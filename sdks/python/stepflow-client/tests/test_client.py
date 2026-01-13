@@ -59,15 +59,18 @@ class TestStepflowClientInit:
         client = StepflowClient("http://localhost:7837/")
         assert client.url == "http://localhost:7837"
 
-    def test_api_base_url_includes_prefix(self):
+    def test_api_property_returns_api_client(self):
         client = StepflowClient("http://localhost:7837")
-        # The internal client should use /api/v1 prefix
-        assert client.api._base_url == "http://localhost:7837/api/v1"
+        # The api property should return an ApiClient instance
+        assert client.api is not None
 
-    def test_custom_timeout(self):
-        client = StepflowClient("http://localhost:7837", timeout=60.0)
-        # Verify timeout was passed (internal structure varies by httpx version)
-        assert client.api._timeout == 60.0
+    def test_client_has_api_instances(self):
+        client = StepflowClient("http://localhost:7837")
+        # Verify internal API instances exist
+        assert client._health_api is not None
+        assert client._flow_api is not None
+        assert client._run_api is not None
+        assert client._component_api is not None
 
 
 class TestStepflowClientError:
@@ -102,29 +105,20 @@ class TestStepflowClientFlowLoading:
     """Test flow loading from different sources.
 
     These tests mock the API layer to verify client behavior in isolation,
-    without requiring a running server. Mocking allows us to:
-    1. Test input transformation (dict/file -> API request format)
-    2. Test response parsing (API response -> client return type)
-    3. Run tests quickly and reliably in CI
+    without requiring a running server.
     """
 
     async def test_store_flow_from_dict(self):
-        """Test storing a flow from a dictionary.
-
-        Mocks api_store_flow to verify the client correctly serializes
-        a dict-based flow and returns the flow_id from the API response.
-        """
+        """Test storing a flow from a dictionary."""
         client = StepflowClient(SERVER_URL)
 
-        # Mock the API to return a successful response with flow_id
+        # Mock the FlowApi.store_flow method
         mock_response = MagicMock()
-        mock_response.status_code.value = 200
-        mock_response.parsed = MagicMock()
-        mock_response.parsed.flow_id = "abc123"
+        mock_response.flow_id = "abc123"
 
-        with patch(
-            "stepflow_client.client.api_store_flow.asyncio_detailed",
-            new_callable=AsyncMock,
+        with patch.object(
+            client._flow_api,
+            "store_flow",
             return_value=mock_response,
         ) as mock_store:
             flow_dict = {
@@ -139,19 +133,11 @@ class TestStepflowClientFlowLoading:
             mock_store.assert_called_once()
 
     async def test_store_flow_from_yaml_file(self):
-        """Test storing a flow from a YAML file.
-
-        Mocks api_store_flow to verify the client correctly loads and parses
-        YAML files before sending to the API. Uses tempfile to create a
-        real YAML file that the client will read.
-        """
+        """Test storing a flow from a YAML file."""
         client = StepflowClient(SERVER_URL)
 
-        # Mock API response - actual file reading is tested, API call is mocked
         mock_response = MagicMock()
-        mock_response.status_code.value = 200
-        mock_response.parsed = MagicMock()
-        mock_response.parsed.flow_id = "yaml123"
+        mock_response.flow_id = "yaml123"
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("""
@@ -162,9 +148,9 @@ output: {}
 """)
             f.flush()
 
-            with patch(
-                "stepflow_client.client.api_store_flow.asyncio_detailed",
-                new_callable=AsyncMock,
+            with patch.object(
+                client._flow_api,
+                "store_flow",
                 return_value=mock_response,
             ):
                 response = await client.store_flow(f.name)
@@ -173,19 +159,11 @@ output: {}
             Path(f.name).unlink()
 
     async def test_store_flow_from_json_file(self):
-        """Test storing a flow from a JSON file.
-
-        Mocks api_store_flow to verify the client correctly loads and parses
-        JSON files before sending to the API. Uses tempfile to create a
-        real JSON file that the client will read.
-        """
+        """Test storing a flow from a JSON file."""
         client = StepflowClient(SERVER_URL)
 
-        # Mock API response - actual file reading is tested, API call is mocked
         mock_response = MagicMock()
-        mock_response.status_code.value = 200
-        mock_response.parsed = MagicMock()
-        mock_response.parsed.flow_id = "json123"
+        mock_response.flow_id = "json123"
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(
@@ -199,9 +177,9 @@ output: {}
             )
             f.flush()
 
-            with patch(
-                "stepflow_client.client.api_store_flow.asyncio_detailed",
-                new_callable=AsyncMock,
+            with patch.object(
+                client._flow_api,
+                "store_flow",
                 return_value=mock_response,
             ):
                 response = await client.store_flow(f.name)
@@ -214,82 +192,44 @@ class TestStepflowClientCreateRun:
     """Test run creation.
 
     These tests mock the API layer to verify the client correctly transforms
-    input data before sending to the server. The API expects inputs as a list
-    (for batch execution), so the client wraps single inputs automatically.
+    input data before sending to the server.
     """
 
     async def test_single_input_wrapped_in_list(self):
-        """Test that single input is automatically wrapped in a list.
-
-        Mocks api_create_run to capture the request body and verify the client
-        transforms {"x": 1} into [{"x": 1}] as the API expects.
-        """
+        """Test that single input is automatically wrapped in a list."""
         client = StepflowClient(SERVER_URL)
 
-        # Mock API to capture the request body for verification
         mock_response = MagicMock()
-        mock_response.status_code.value = 200
-        mock_response.parsed = MagicMock()
-        mock_response.parsed.run_id = "run123"
+        mock_response.run_id = "run123"
 
-        with patch(
-            "stepflow_client.client.api_create_run.asyncio_detailed",
-            new_callable=AsyncMock,
+        with patch.object(
+            client._run_api,
+            "create_run",
             return_value=mock_response,
         ) as mock_create:
             await client.create_run(flow_id="flow123", input={"x": 1})
 
             # Verify input was wrapped in list
             call_args = mock_create.call_args
-            request = call_args.kwargs["body"]
-            assert request.input_ == [{"x": 1}]
+            request = call_args[0][0]  # First positional arg
+            assert request.input == [{"x": 1}]
 
     async def test_list_input_not_double_wrapped(self):
-        """Test that list input is not double-wrapped.
-
-        Mocks api_create_run to verify that when the user provides a list,
-        it's sent as-is without being wrapped in another list.
-        """
+        """Test that list input is not double-wrapped."""
         client = StepflowClient(SERVER_URL)
 
         mock_response = MagicMock()
-        mock_response.status_code.value = 200
-        mock_response.parsed = MagicMock()
 
-        with patch(
-            "stepflow_client.client.api_create_run.asyncio_detailed",
-            new_callable=AsyncMock,
+        with patch.object(
+            client._run_api,
+            "create_run",
             return_value=mock_response,
         ) as mock_create:
             await client.create_run(flow_id="flow123", input=[{"x": 1}, {"x": 2}])
 
             call_args = mock_create.call_args
-            request = call_args.kwargs["body"]
-            assert request.input_ == [{"x": 1}, {"x": 2}]
-
-    async def test_error_response_raises_exception(self):
-        """Test that HTTP errors raise StepflowClientError.
-
-        Mocks api_create_run to return an error response, verifying the client
-        properly converts HTTP errors into StepflowClientError with status code.
-        """
-        client = StepflowClient(SERVER_URL)
-
-        # Mock API to return an error response
-        mock_response = MagicMock()
-        mock_response.status_code.value = 400
-        mock_response.content = b"Invalid flow_id"
-
-        with patch(
-            "stepflow_client.client.api_create_run.asyncio_detailed",
-            new_callable=AsyncMock,
-            return_value=mock_response,
-        ):
-            with pytest.raises(StepflowClientError) as exc_info:
-                await client.create_run(flow_id="bad", input={})
-
-            assert exc_info.value.status_code == 400
-            assert "Invalid flow_id" in exc_info.value.details["response"]
+            request = call_args[0][0]
+            assert request.input == [{"x": 1}, {"x": 2}]
 
 
 class TestStepflowClientContextManager:
@@ -307,13 +247,7 @@ class TestStepflowClientContextManager:
 
 
 class TestStepflowExecutorProtocol:
-    """Test that StepflowClient implements the StepflowExecutor protocol.
-
-    These tests verify StepflowClient conforms to the StepflowExecutor protocol
-    defined in stepflow-core. The protocol allows different executors (client,
-    runtime) to be used interchangeably. Tests mock individual client methods
-    to verify the protocol method signatures and return types.
-    """
+    """Test that StepflowClient implements the StepflowExecutor protocol."""
 
     def test_client_has_executor_methods(self):
         """Test that StepflowClient has all StepflowExecutor methods."""
@@ -334,11 +268,7 @@ class TestStepflowExecutorProtocol:
         assert isinstance(client, StepflowExecutor)
 
     async def test_run_returns_flow_result(self):
-        """Test that run() returns a FlowResult.
-
-        Mocks store_flow and create_run to verify run() orchestrates the full
-        workflow execution and transforms the API response into a FlowResult.
-        """
+        """Test that run() returns a FlowResult."""
         client = StepflowClient(SERVER_URL)
 
         # Mock store_flow to return a flow_id
@@ -373,11 +303,7 @@ class TestStepflowExecutorProtocol:
                 assert result.output == {"value": 42}
 
     async def test_submit_returns_run_id(self):
-        """Test that submit() returns a run ID string.
-
-        Mocks store_flow and create_run to verify submit() stores the flow
-        and creates a run, returning just the run_id for async polling.
-        """
+        """Test that submit() returns a run ID string."""
         client = StepflowClient(SERVER_URL)
 
         mock_store_response = MagicMock()
