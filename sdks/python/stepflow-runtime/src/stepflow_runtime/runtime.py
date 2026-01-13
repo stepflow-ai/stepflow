@@ -36,6 +36,7 @@ from stepflow_api.models import (
     FlowResultFailed,
     FlowResultSuccess,
 )
+
 # Note: OpenAPI Generator client uses None for optional fields, not UNSET
 from stepflow_client import StepflowClient
 from stepflow_core import (
@@ -502,7 +503,7 @@ class StepflowRuntime:
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flow_id is None:
             # Check diagnostics for errors
             from stepflow_api.models import DiagnosticLevel
 
@@ -570,7 +571,7 @@ class StepflowRuntime:
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flow_id is None:
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics
@@ -642,7 +643,7 @@ class StepflowRuntime:
             )
             # Path is a list of PathPartType0 (String) or PathPartType1 (Index)
             location = None
-            if item.path and not isinstance(item.path, Unset):
+            if item.path:
                 path_parts = []
                 for part in item.path:
                     if hasattr(part, "string"):
@@ -661,9 +662,7 @@ class StepflowRuntime:
             )
 
         # Valid if we got a flow_id
-        valid = store_response.flow_id is not None and not isinstance(
-            store_response.flow_id, Unset
-        )
+        valid = store_response.flow_id is not None
 
         return ValidationResult(valid=valid, diagnostics=diagnostics)
 
@@ -679,17 +678,13 @@ class StepflowRuntime:
         for comp in response.components:
             input_schema = None
             output_schema = None
-            if hasattr(comp, "input_schema") and not isinstance(
-                comp.input_schema, Unset
-            ):
+            if hasattr(comp, "input_schema") and comp.input_schema is not None:
                 input_schema = (
                     comp.input_schema.to_dict()
                     if hasattr(comp.input_schema, "to_dict")
                     else comp.input_schema
                 )
-            if hasattr(comp, "output_schema") and not isinstance(
-                comp.output_schema, Unset
-            ):
+            if hasattr(comp, "output_schema") and comp.output_schema is not None:
                 output_schema = (
                     comp.output_schema.to_dict()
                     if hasattr(comp.output_schema, "to_dict")
@@ -697,7 +692,7 @@ class StepflowRuntime:
                 )
 
             description = None
-            if hasattr(comp, "description") and not isinstance(comp.description, Unset):
+            if hasattr(comp, "description") and comp.description is not None:
                 description = comp.description
 
             # Extract the component path string from the Component RootModel
@@ -757,7 +752,7 @@ class StepflowRuntime:
 
         # Store the flow
         store_response = await self.client.store_flow(flow)
-        if store_response.flow_id is None or isinstance(store_response.flow_id, Unset):
+        if store_response.flow_id is None:
             errors = [
                 d
                 for d in store_response.diagnostics.diagnostics

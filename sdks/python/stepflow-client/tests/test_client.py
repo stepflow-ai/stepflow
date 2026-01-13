@@ -125,7 +125,7 @@ class TestStepflowClientFlowLoading:
                 "schema": "https://stepflow.org/schemas/v1/flow.json",
                 "name": "test-flow",
                 "steps": [],
-                "output": {},
+                "output": "result",
             }
             response = await client.store_flow(flow_dict)
 
@@ -144,7 +144,7 @@ class TestStepflowClientFlowLoading:
 schema: https://stepflow.org/schemas/v1/flow.json
 name: yaml-test
 steps: []
-output: {}
+output: result
 """)
             f.flush()
 
@@ -171,7 +171,7 @@ output: {}
                     "schema": "https://stepflow.org/schemas/v1/flow.json",
                     "name": "json-test",
                     "steps": [],
-                    "output": {},
+                    "output": "result",
                 },
                 f,
             )
