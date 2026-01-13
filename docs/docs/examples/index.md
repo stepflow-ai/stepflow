@@ -10,7 +10,6 @@ This section provides comprehensive examples of Stepflow workflows, from simple 
 
 ### 🤖 **AI and Machine Learning Examples**
 - **[OpenAI Workflows](./openai-workflows.mdx)** - OpenAI integration and prompt engineering
-- **[LangChain Integration](./langchain-integration.mdx)** - Comprehensive LangChain integration patterns
 - **[Production Model Serving](./production-model-serving.mdx)** - Production-ready AI infrastructure patterns
 
 ### 🔧 **Advanced Examples**
