@@ -29,6 +29,23 @@ Test categories:
 import pytest
 from stepflow_runtime import StepflowRuntime
 from stepflow_runtime.logging import LogConfig
+from stepflow_runtime.utils import get_binary_path
+
+
+def binary_available() -> bool:
+    """Check if the stepflow-server binary is available."""
+    try:
+        path = get_binary_path()
+        return path.exists()
+    except FileNotFoundError:
+        return False
+
+
+requires_binary = pytest.mark.skipif(
+    not binary_available(),
+    reason="Requires bundled stepflow-server binary",
+)
+
 
 # Simple workflow for testing - stores data and returns blob_id
 STORE_DATA_WORKFLOW = {
@@ -61,6 +78,7 @@ STORE_DATA_WORKFLOW = {
 }
 
 
+@requires_binary
 class TestRuntimeLifecycle:
     """Tests for runtime startup, shutdown, and lifecycle management."""
 
@@ -105,6 +123,7 @@ class TestRuntimeLifecycle:
             assert "status" in health
 
 
+@requires_binary
 class TestWorkflowExecution:
     """Tests for workflow execution interactions."""
 
@@ -202,6 +221,7 @@ class TestWorkflowExecution:
         assert result.error is not None
 
 
+@requires_binary
 class TestValidation:
     """Tests for workflow validation."""
 
@@ -242,6 +262,7 @@ class TestValidation:
         assert len(validation.diagnostics) > 0
 
 
+@requires_binary
 class TestBatchOperations:
     """Tests for batch workflow operations."""
 
@@ -289,6 +310,7 @@ class TestBatchOperations:
         assert results is None
 
 
+@requires_binary
 class TestComponentDiscovery:
     """Tests for component listing and discovery."""
 
@@ -313,6 +335,7 @@ class TestComponentDiscovery:
         assert "/get_blob" in paths
 
 
+@requires_binary
 class TestSmokeTests:
     """Minimal smoke tests that exercise actual workflow execution.
 

@@ -27,8 +27,25 @@ import httpx
 import pytest
 from stepflow_runtime import StepflowRuntime
 from stepflow_runtime.logging import LogConfig
+from stepflow_runtime.utils import get_binary_path
 
 
+def binary_available() -> bool:
+    """Check if the stepflow-server binary is available."""
+    try:
+        path = get_binary_path()
+        return path.exists()
+    except FileNotFoundError:
+        return False
+
+
+requires_binary = pytest.mark.skipif(
+    not binary_available(),
+    reason="Requires bundled stepflow-server binary",
+)
+
+
+@requires_binary
 class TestApiContract:
     """Validate Python client against server OpenAPI spec."""
 
@@ -138,6 +155,7 @@ class TestApiContract:
         assert "200" in responses, "Health endpoint should have 200 response"
 
 
+@requires_binary
 class TestApiVersioning:
     """Tests for API versioning and compatibility."""
 
