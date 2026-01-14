@@ -256,6 +256,16 @@ impl ItemState {
         self.needed.is_subset(&self.completed)
     }
 
+    /// Check if the item execution has failed.
+    ///
+    /// An item is considered failed if any of its completed steps have a Failed result.
+    pub fn is_failed(&self) -> bool {
+        self.results
+            .iter()
+            .flatten()
+            .any(|r| matches!(r, FlowResult::Failed(_)))
+    }
+
     /// Check if a step has been marked as needed.
     pub fn is_needed(&self, step: usize) -> bool {
         self.needed.contains(step)

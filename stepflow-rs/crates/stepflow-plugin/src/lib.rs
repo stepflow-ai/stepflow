@@ -11,10 +11,16 @@
 // the License.
 
 mod context;
+mod environment;
 mod error;
 mod plugin;
 pub mod routing;
+mod subflow;
 
-pub use context::{Context, ExecutionContext, RunContext};
+pub use context::{ExecutionContext, RunContext};
+pub use environment::StepflowEnvironment;
 pub use error::{PluginError, Result};
 pub use plugin::{DynPlugin, Plugin, PluginConfig};
+pub use subflow::{
+    SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,
+};

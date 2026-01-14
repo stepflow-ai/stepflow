@@ -15,26 +15,40 @@ use std::sync::Arc;
 use crate::{MainError, Result};
 use error_stack::ResultExt as _;
 use stepflow_core::{BlobId, FlowResult, workflow::Flow};
-use stepflow_execution::StepflowExecutor;
-use stepflow_plugin::Context as _;
+use stepflow_plugin::StepflowEnvironment;
 
 pub async fn run(
-    executor: Arc<StepflowExecutor>,
+    env: Arc<StepflowEnvironment>,
     flow: Arc<Flow>,
     flow_id: BlobId,
     input: stepflow_core::workflow::ValueRef,
     overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
 ) -> Result<(uuid::Uuid, FlowResult)> {
-    let mut submit_params = stepflow_core::SubmitRunParams::new(flow, flow_id, vec![input]);
-    submit_params = submit_params.with_wait(true);
-    if let Some(overrides) = overrides {
-        submit_params = submit_params.with_overrides(overrides);
-    }
+    let params = stepflow_core::SubmitRunParams {
+        overrides: overrides.unwrap_or_default(),
+        ..Default::default()
+    };
 
-    let run_status = executor
-        .submit_run(submit_params)
+    let run_status = stepflow_execution::submit_run(&env, flow, flow_id, vec![input], params)
         .await
         .change_context(MainError::FlowExecution)?;
+
+    let run_id = run_status.run_id;
+
+    // Wait for completion and fetch results
+    stepflow_execution::wait_for_completion(&env, run_id)
+        .await
+        .change_context(MainError::FlowExecution)?;
+    let run_status = stepflow_execution::get_run(
+        &env,
+        run_id,
+        stepflow_core::GetRunParams {
+            include_results: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .change_context(MainError::FlowExecution)?;
 
     // Extract result from run status
     let output = run_status
@@ -45,5 +59,5 @@ pub async fn run(
             error_stack::report!(MainError::FlowExecution).attach_printable("No result available")
         })?;
 
-    Ok((run_status.run_id, output))
+    Ok((run_id, output))
 }

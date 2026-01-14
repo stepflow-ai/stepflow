@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use stepflow_execution::StepflowExecutor;
+use stepflow_plugin::StepflowEnvironment;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
@@ -67,8 +67,8 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         runs::ListRunsQuery,
         runs::ItemResult,
         runs::ListItemsResponse,
-        stepflow_state::RunSummary,
-        stepflow_state::RunDetails,
+        stepflow_dtos::RunSummary,
+        stepflow_dtos::RunDetails,
         runs::StepRunResponse,
         runs::ListStepRunsResponse,
         runs::RunFlowResponse,
@@ -86,7 +86,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
 )]
 struct StepflowApi;
 
-pub fn create_api_router() -> OpenApiRouter<Arc<StepflowExecutor>> {
+pub fn create_api_router() -> OpenApiRouter<Arc<StepflowEnvironment>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
         .routes(routes!(health::health_check))
         .routes(routes!(components::list_components))

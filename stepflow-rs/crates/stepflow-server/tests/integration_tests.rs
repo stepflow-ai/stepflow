@@ -19,13 +19,13 @@ use stepflow_core::{
     FlowResult, ValueExpr,
     workflow::{Flow, FlowBuilder, StepBuilder},
 };
-use stepflow_execution::StepflowExecutor;
 use stepflow_mock::MockPlugin;
 use stepflow_observability::{
     BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
     init_observability,
 };
 use stepflow_plugin::DynPlugin;
+use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::InMemoryStateStore;
 use tower::{Service as _, ServiceExt};
 
@@ -59,7 +59,7 @@ pub fn init_test_logging() {
 }
 
 /// Helper to create a test server with in-memory state and optional mock plugins
-async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowExecutor>) {
+async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnvironment>) {
     use stepflow_core::FlowError;
     use stepflow_mock::MockComponentBehavior;
 
@@ -150,8 +150,10 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowExecuto
     plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
     let plugin_router = plugin_router_builder.build().unwrap();
-    let executor = StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router);
-    executor.initialize_plugins().await.unwrap();
+    let executor =
+        StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+            .await
+            .unwrap();
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::AppConfig;
@@ -166,12 +168,12 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowExecuto
 }
 
 /// Helper to create a test server with only builtin components
-async fn create_basic_test_server() -> (Router, Arc<StepflowExecutor>) {
+async fn create_basic_test_server() -> (Router, Arc<StepflowEnvironment>) {
     create_test_server(false).await
 }
 
 /// Helper to create a test server with both builtin and mock components
-async fn create_test_server_with_mocks() -> (Router, Arc<StepflowExecutor>) {
+async fn create_test_server_with_mocks() -> (Router, Arc<StepflowEnvironment>) {
     create_test_server(true).await
 }
 

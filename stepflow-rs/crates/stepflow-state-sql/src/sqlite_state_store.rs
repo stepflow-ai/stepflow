@@ -21,10 +21,11 @@ use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
     workflow::{Component, Flow, ValueRef},
 };
-use stepflow_state::{
-    ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StateError,
-    StateStore, StateWriteOperation, StepInfo, StepResult,
+use stepflow_dtos::{
+    ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo,
+    StepResult,
 };
+use stepflow_state::{RunCompletionNotifier, StateError, StateStore, StateWriteOperation};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -73,6 +74,8 @@ pub struct SqliteStateStore {
     pool: SqlitePool,
     write_queue: mpsc::UnboundedSender<StateWriteOperation>,
     _background_task: JoinHandle<()>,
+    /// Notifier for run completion events
+    completion_notifier: RunCompletionNotifier,
 }
 
 impl SqliteStateStore {
@@ -98,6 +101,7 @@ impl SqliteStateStore {
             pool,
             write_queue,
             _background_task: background_task,
+            completion_notifier: RunCompletionNotifier::new(),
         })
     }
 
@@ -118,6 +122,11 @@ impl SqliteStateStore {
     ) {
         while let Some(operation) = receiver.recv().await {
             match operation {
+                StateWriteOperation::CreateRun { params } => {
+                    if let Err(e) = Self::create_run_sync(&pool, params).await {
+                        log::error!("Failed to create run: {:?}", e);
+                    }
+                }
                 StateWriteOperation::RecordStepResult {
                     run_id,
                     step_result,
@@ -165,13 +174,15 @@ impl SqliteStateStore {
 
         // Insert run metadata (items stored separately in run_items)
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json) VALUES (?, ?, ?, 'running', ?)";
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id) VALUES (?, ?, ?, 'running', ?, ?, ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
             .bind(params.flow_id.to_string())
             .bind(&params.workflow_name)
             .bind(&overrides_json)
+            .bind(params.root_run_id.to_string())
+            .bind(params.parent_run_id.map(|id| id.to_string()))
             .execute(pool)
             .await
             .change_context(StateError::Internal)?;
@@ -484,13 +495,15 @@ impl StateStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = match status {
-                ExecutionStatus::Completed
-                | ExecutionStatus::Failed
-                | ExecutionStatus::Cancelled => {
-                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
-                }
-                _ => "UPDATE runs SET status = ? WHERE id = ?",
+            let is_terminal = matches!(
+                status,
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+            );
+
+            let sql = if is_terminal {
+                "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
+            } else {
+                "UPDATE runs SET status = ? WHERE id = ?"
             };
 
             sqlx::query(sql)
@@ -499,6 +512,11 @@ impl StateStore for SqliteStateStore {
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
+
+            // Notify waiters if the run reached a terminal status
+            if is_terminal {
+                self.completion_notifier.notify_completion(run_id);
+            }
 
             Ok(())
         }
@@ -564,7 +582,7 @@ impl StateStore for SqliteStateStore {
             let done: i64 = counts.get("done");
             let failed: i64 = counts.get("failed");
 
-            // If all items are done, update the run status
+            // If all items are done, update the run status and notify
             if done >= total {
                 let run_status = if failed > 0 { "failed" } else { "completed" };
                 let update_sql =
@@ -575,6 +593,9 @@ impl StateStore for SqliteStateStore {
                     .execute(&pool)
                     .await
                     .change_context(StateError::Internal)?;
+
+                // Notify waiters that the run completed
+                self.completion_notifier.notify_completion(run_id);
             }
 
             Ok(())
@@ -590,7 +611,7 @@ impl StateStore for SqliteStateStore {
 
         async move {
             // First get run metadata
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -662,6 +683,18 @@ impl StateStore for SqliteStateStore {
                         cancelled,
                     };
 
+                    // Parse hierarchy fields
+                    let root_run_id_str: Option<String> = row.get("root_run_id");
+                    let root_run_id = root_run_id_str
+                        .as_ref()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .unwrap_or(run_id); // Default to run_id for backwards compatibility
+
+                    let parent_run_id_str: Option<String> = row.get("parent_run_id");
+                    let parent_run_id = parent_run_id_str
+                        .as_ref()
+                        .and_then(|s| Uuid::parse_str(s).ok());
+
                     let details = RunDetails {
                         summary: RunSummary {
                             run_id,
@@ -671,6 +704,8 @@ impl StateStore for SqliteStateStore {
                             items,
                             created_at,
                             completed_at,
+                            root_run_id,
+                            parent_run_id,
                         },
                         inputs,
                         overrides: None, // TODO: Store and retrieve overrides from database
@@ -707,6 +742,7 @@ impl StateStore for SqliteStateStore {
                 SELECT
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
+                    r.root_run_id, r.parent_run_id,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
                     COALESCE(i.completed, 0) as item_completed,
@@ -744,6 +780,16 @@ impl StateStore for SqliteStateStore {
             if let Some(ref flow_name) = filters.flow_name {
                 conditions.push("r.flow_name = ?".to_string());
                 bind_values.push(flow_name.clone());
+            }
+
+            if let Some(root_run_id) = filters.root_run_id {
+                conditions.push("r.root_run_id = ?".to_string());
+                bind_values.push(root_run_id.to_string());
+            }
+
+            if let Some(parent_run_id) = filters.parent_run_id {
+                conditions.push("r.parent_run_id = ?".to_string());
+                bind_values.push(parent_run_id.to_string());
             }
 
             if !conditions.is_empty() {
@@ -806,6 +852,18 @@ impl StateStore for SqliteStateStore {
                     .get::<Option<String>, _>("completed_at")
                     .and_then(|s| parse_sqlite_datetime(&s));
 
+                // Parse hierarchy fields
+                let root_run_id_str: Option<String> = row.get("root_run_id");
+                let root_run_id = root_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or(run_id); // Default to run_id for backwards compatibility
+
+                let parent_run_id_str: Option<String> = row.get("parent_run_id");
+                let parent_run_id = parent_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+
                 let summary = RunSummary {
                     run_id,
                     flow_name,
@@ -814,6 +872,8 @@ impl StateStore for SqliteStateStore {
                     items,
                     created_at,
                     completed_at,
+                    root_run_id,
+                    parent_run_id,
                 };
 
                 summaries.push(summary);
@@ -1036,6 +1096,72 @@ impl StateStore for SqliteStateStore {
             }
 
             Ok(items)
+        }
+        .boxed()
+    }
+
+    fn wait_for_completion(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT status FROM runs WHERE id = ?";
+
+            // Subscribe BEFORE checking status to avoid race condition where
+            // completion happens between status check and subscribe
+            let receiver = self.completion_notifier.subscribe();
+
+            // Now check if already complete
+            let row = sqlx::query(sql)
+                .bind(run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => {
+                    let status_str: String = row.get("status");
+                    if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                        return Ok(());
+                    }
+                }
+                None => {
+                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                }
+            }
+
+            // Wait for notification using the receiver we subscribed before status check
+            self.completion_notifier
+                .wait_for_completion_with_receiver(run_id, receiver)
+                .await;
+
+            // After receiving our notification, poll until we see the terminal status.
+            // We should only receive our run_id's notification once, so if the status
+            // isn't terminal yet (due to timing), just poll rather than waiting again.
+            loop {
+                let row = sqlx::query(sql)
+                    .bind(run_id.to_string())
+                    .fetch_optional(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+
+                match row {
+                    Some(row) => {
+                        let status_str: String = row.get("status");
+                        if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                            return Ok(());
+                        }
+                    }
+                    None => {
+                        return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                    }
+                }
+
+                // Brief yield to allow the status update to propagate
+                tokio::task::yield_now().await;
+            }
         }
         .boxed()
     }

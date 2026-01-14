@@ -17,8 +17,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::component::ComponentInfo;
-use stepflow_execution::StepflowExecutor;
 use stepflow_plugin::Plugin as _;
+use stepflow_plugin::StepflowEnvironment;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorResponse;
@@ -56,7 +56,7 @@ fn default_include_schemas() -> bool {
     tag = crate::api::COMPONENT_TAG,
 )]
 pub async fn list_components(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Query(query): Query<ListComponentsQuery>,
 ) -> Result<Json<ListComponentsResponse>, ErrorResponse> {
     let include_schemas = query.include_schemas;
@@ -65,9 +65,10 @@ pub async fn list_components(
     let mut all_components = Vec::new();
 
     // Get the list of plugins from the executor
-    for plugin in executor.list_plugins().await {
+    for plugin in executor.plugins() {
         // List components available from this plugin
-        let mut components = plugin.list_components().await?;
+        let mut components: Vec<stepflow_core::component::ComponentInfo> =
+            plugin.list_components().await?;
         if !include_schemas {
             for component in components.iter_mut() {
                 component.input_schema = None;

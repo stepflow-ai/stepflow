@@ -21,7 +21,7 @@ use stepflow_core::{
     BlobId, BlobType,
     workflow::{Flow, ValueRef},
 };
-use stepflow_execution::StepflowExecutor;
+use stepflow_plugin::StepflowEnvironment;
 use utoipa::ToSchema;
 
 use crate::error::ErrorResponse;
@@ -70,7 +70,7 @@ pub struct FlowResponse {
     tag = crate::api::FLOW_TAG,
 )]
 pub async fn store_flow(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<StoreFlowRequest>,
 ) -> Result<Json<StoreFlowResponse>, ErrorResponse> {
     let flow = req.flow;
@@ -117,7 +117,7 @@ pub async fn store_flow(
     tag = crate::api::FLOW_TAG,
 )]
 pub async fn get_flow(
-    State(executor): State<Arc<StepflowExecutor>>,
+    State(executor): State<Arc<StepflowEnvironment>>,
     Path(flow_id): Path<BlobId>,
 ) -> Result<Json<FlowResponse>, ErrorResponse> {
     let state_store = executor.state_store();
@@ -174,7 +174,7 @@ pub async fn get_flow(
     tag = crate::api::FLOW_TAG,
 )]
 pub async fn delete_flow(
-    State(_executor): State<Arc<StepflowExecutor>>,
+    State(_executor): State<Arc<StepflowEnvironment>>,
     Path(_flow_id): Path<BlobId>,
 ) -> Result<(), ErrorResponse> {
     // TODO: Implement proper flow deletion with run checks

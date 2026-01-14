@@ -15,7 +15,7 @@
 //! This crate provides the core execution infrastructure:
 //!
 //! - [`FlowExecutor`] - batch/single workflow execution with scheduler
-//! - [`StepflowExecutor`] - main entry point for workflow execution
+//! - [`StepflowEnvironment`] - environment carrier for workflow execution
 //!
 //! ## Execution State
 //!
@@ -31,6 +31,7 @@
 mod error;
 mod executor;
 mod flow_executor;
+mod run_state;
 mod scheduler;
 mod state;
 mod step_runner;
@@ -41,16 +42,15 @@ pub(crate) mod testing;
 
 // Main exports
 pub use error::{ExecutionError, Result};
-pub use executor::StepflowExecutor;
+pub use executor::{get_run, submit_run, wait_for_completion};
 pub use flow_executor::{FlowExecutor, FlowExecutorBuilder};
 
 // State types
+pub use run_state::RunState;
 pub use state::{ItemState, ItemsState, StepIndex};
 
 // Scheduling
-pub use scheduler::{
-    BreadthFirstScheduler, DepthFirstScheduler, NonEmpty, Scheduler, SchedulerDecision,
-};
+pub use scheduler::{BreadthFirstScheduler, DepthFirstScheduler, Scheduler, SchedulerDecision};
 
 // Task types
 pub use task::{Task, TaskResult};

@@ -17,11 +17,11 @@
 //! - Receive either direct JSON responses or SSE streams
 //! - Handle bidirectional communication through SSE when needed
 
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use futures::stream::StreamExt as _;
-use stepflow_plugin::{Context, RunContext};
+use stepflow_plugin::{RunContext, StepflowEnvironment};
 use tokio::sync::mpsc;
 
 use super::bidirectional_driver::BidirectionalDriver;
@@ -37,7 +37,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// Create a new HTTP client for streamable HTTP transport
-    pub async fn try_new(url: String, context: Weak<dyn Context>) -> Result<Self> {
+    pub async fn try_new(url: String) -> Result<Self> {
         let client = reqwest::Client::new();
 
         // Pre-build static headers to avoid recreating them for each request
@@ -54,7 +54,6 @@ impl HttpClient {
         let handle = HttpClientHandle {
             client,
             url,
-            context,
             request_headers,
         };
 
@@ -70,7 +69,6 @@ impl HttpClient {
 pub struct HttpClientHandle {
     client: reqwest::Client,
     url: String,
-    context: Weak<dyn Context>,
     request_headers: reqwest::header::HeaderMap,
 }
 
@@ -84,11 +82,14 @@ impl HttpClientHandle {
     ///
     /// # Arguments
     /// * `params` - The method parameters
+    /// * `env` - Optional environment for bidirectional communication handlers.
+    ///   Required if the call may result in SSE streaming (bidirectional).
     /// * `run_context` - Optional run context for bidirectional communication.
     ///   Required if the call may result in SSE streaming (bidirectional).
     pub async fn method<I>(
         &self,
         params: &I,
+        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<I::Response>
     where
@@ -96,7 +97,12 @@ impl HttpClientHandle {
         I::Response: DeserializeOwned + Send + Sync + 'static,
     {
         let response = self
-            .method_dyn(I::METHOD_NAME, LazyValue::write_ref(params), run_context)
+            .method_dyn(
+                I::METHOD_NAME,
+                LazyValue::write_ref(params),
+                env,
+                run_context,
+            )
             .await?;
 
         response
@@ -109,6 +115,7 @@ impl HttpClientHandle {
         &self,
         method: Method,
         params: LazyValue<'_>,
+        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<OwnedJson<LazyValue<'static>>> {
         let id = RequestId::new_uuid();
@@ -123,7 +130,7 @@ impl HttpClientHandle {
             .change_context(TransportError::SerializeRequest(method))?;
 
         let response = self
-            .send_method_request(id.clone(), request_str, run_context)
+            .send_method_request(method, id.clone(), request_str, env, run_context)
             .await?
             .owned_response()?;
 
@@ -173,14 +180,19 @@ impl HttpClientHandle {
     /// Handles both direct JSON responses and SSE streams automatically
     ///
     /// # Arguments
+    /// * `method` - The method name (for error messages)
     /// * `id` - The request ID
     /// * `message` - The serialized JSON-RPC request
+    /// * `env` - Environment for bidirectional communication handlers. Required if
+    ///   the response may be an SSE stream (bidirectional mode).
     /// * `run_context` - Run context for bidirectional communication. Required if
     ///   the response may be an SSE stream (bidirectional mode).
     async fn send_method_request(
         &self,
+        method: Method,
         id: RequestId,
         message: String,
+        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<OwnedJson> {
         // Send the HTTP POST request using pre-built headers
@@ -223,10 +235,24 @@ impl HttpClientHandle {
                 id
             );
 
-            // SSE mode requires run_context for bidirectional handlers
+            // SSE mode requires env and run_context for bidirectional handlers.
+            // If these are None, it means the server returned SSE for a call that
+            // wasn't expected to need bidirectional communication (e.g., initialize,
+            // list_components, component_info).
             let run_context = run_context.ok_or_else(|| {
                 error_stack::report!(TransportError::Recv)
-                    .attach_printable("SSE response received but no RunContext provided")
+                    .attach_printable(format!(
+                        "Unexpected SSE response for '{}': server initiated bidirectional session for a call that doesn't support it",
+                        method
+                    ))
+            })?;
+
+            let env = env.ok_or_else(|| {
+                error_stack::report!(TransportError::Recv)
+                    .attach_printable(format!(
+                        "Unexpected SSE response for '{}': server initiated bidirectional session for a call that doesn't support it",
+                        method
+                    ))
             })?;
 
             // Extract instance ID from response headers for routing bidirectional requests
@@ -247,7 +273,7 @@ impl HttpClientHandle {
             }
 
             // Create a bidirectional driver to handle the SSE stream
-            let driver = BidirectionalDriver::new(self.clone(), instance_id, run_context);
+            let driver = BidirectionalDriver::new(self.clone(), instance_id, env, run_context);
             let messages = self.sse_messages(response);
             driver.drive_to_completion(id, messages).await
         } else {
@@ -341,6 +367,7 @@ impl HttpClientHandle {
         incoming_id: RequestId,
         owned_message: OwnedJson<Message<'static>>,
         instance_id: Option<&str>,
+        env: Arc<StepflowEnvironment>,
         run_context: &Arc<RunContext>,
     ) -> Result<()> {
         log::debug!(
@@ -367,13 +394,6 @@ impl HttpClientHandle {
         };
 
         // Handle the request asynchronously with concurrent outgoing message processing
-        let context = match self.context.upgrade() {
-            Some(ctx) => ctx,
-            None => {
-                log::warn!("Context no longer available for bidirectional request");
-                return Ok(());
-            }
-        };
         let client_handle = self.clone();
         let instance_id = instance_id.map(|s| s.to_string());
         let run_context = run_context.clone();
@@ -395,8 +415,7 @@ impl HttpClientHandle {
             };
 
             // Start the handler and the message sender concurrently
-            let handler_future =
-                handler.handle_message(request, outgoing_tx, context, Some(&run_context));
+            let handler_future = handler.handle_message(request, outgoing_tx, env, &run_context);
             let sender_future = async {
                 while let Some(outgoing_message) = outgoing_rx.recv().await {
                     if let Err(e) = client_handle
@@ -517,119 +536,13 @@ impl HttpClientHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono;
-    use futures::future::{BoxFuture, FutureExt as _};
-    use std::path::Path;
-    use std::sync::Arc;
-    use stepflow_core::{FlowResult, GetRunOptions, SubmitRunParams, workflow::ValueRef};
-    use stepflow_plugin::{Context, Result as PluginResult};
-    use stepflow_state::{InMemoryStateStore, ItemResult, ItemStatistics, RunStatus, StateStore};
-    use uuid::Uuid;
-
-    // Mock context for testing
-    struct MockContext {
-        state_store: Arc<dyn StateStore>,
-    }
-
-    impl MockContext {
-        fn new() -> Self {
-            Self {
-                state_store: Arc::new(InMemoryStateStore::new()),
-            }
-        }
-    }
-
-    impl Context for MockContext {
-        fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, PluginResult<RunStatus>> {
-            let input_count = params.inputs.len();
-            async move {
-                let flow_id = stepflow_core::BlobId::new(
-                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                )
-                .expect("mock blob id");
-                let now = chrono::Utc::now();
-
-                Ok(RunStatus {
-                    run_id: Uuid::now_v7(),
-                    flow_id,
-                    flow_name: None,
-                    status: stepflow_core::status::ExecutionStatus::Running,
-                    items: ItemStatistics {
-                        total: input_count,
-                        completed: 0,
-                        running: input_count,
-                        failed: 0,
-                        cancelled: 0,
-                    },
-                    created_at: now,
-                    completed_at: None,
-                    results: None,
-                })
-            }
-            .boxed()
-        }
-
-        fn get_run(
-            &self,
-            run_id: Uuid,
-            options: GetRunOptions,
-        ) -> BoxFuture<'_, PluginResult<RunStatus>> {
-            async move {
-                let flow_id = stepflow_core::BlobId::new(
-                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-                )
-                .expect("mock blob id");
-                let now = chrono::Utc::now();
-
-                let results = if options.include_results {
-                    Some(vec![ItemResult {
-                        item_index: 0,
-                        status: stepflow_core::status::ExecutionStatus::Completed,
-                        result: Some(FlowResult::Success(ValueRef::new(
-                            serde_json::json!({"message": "Hello from mock"}),
-                        ))),
-                        completed_at: Some(now),
-                    }])
-                } else {
-                    None
-                };
-
-                Ok(RunStatus {
-                    run_id,
-                    flow_id,
-                    flow_name: None,
-                    status: stepflow_core::status::ExecutionStatus::Completed,
-                    items: ItemStatistics {
-                        total: 1,
-                        completed: 1,
-                        running: 0,
-                        failed: 0,
-                        cancelled: 0,
-                    },
-                    created_at: now,
-                    completed_at: Some(now),
-                    results,
-                })
-            }
-            .boxed()
-        }
-
-        fn state_store(&self) -> &Arc<dyn StateStore> {
-            &self.state_store
-        }
-
-        fn working_directory(&self) -> &Path {
-            Path::new("/tmp")
-        }
-    }
 
     #[tokio::test]
     async fn test_http_client_creation() {
-        let context = Arc::new(MockContext::new()) as Arc<dyn Context>;
         let url = "http://localhost:8080".to_string();
 
         // Test that we can create a client without errors
-        let result = HttpClient::try_new(url, Arc::downgrade(&context)).await;
+        let result = HttpClient::try_new(url).await;
         assert!(result.is_ok());
 
         let client = result.unwrap();

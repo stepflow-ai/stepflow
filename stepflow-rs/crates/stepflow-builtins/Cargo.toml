@@ -16,7 +16,6 @@ workspace = true
 doctest = false
 
 [dependencies]
-chrono.workspace = true
 dynosaur.workspace = true
 error-stack.workspace = true
 openai-api-rs.workspace = true

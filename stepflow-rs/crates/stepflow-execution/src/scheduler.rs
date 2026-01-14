@@ -42,9 +42,6 @@ pub use breadth_first::BreadthFirstScheduler;
 pub use decision::SchedulerDecision;
 pub use depth_first::DepthFirstScheduler;
 
-// Re-export NonEmpty for convenience
-pub use nonempty::NonEmpty;
-
 use crate::task::Task;
 
 /// Trait for task scheduling strategies.

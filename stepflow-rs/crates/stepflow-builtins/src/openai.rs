@@ -170,7 +170,7 @@ mod tests {
         };
 
         let input = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
         let output = component
             .execute(mock.execution_context(), input.into())
             .await

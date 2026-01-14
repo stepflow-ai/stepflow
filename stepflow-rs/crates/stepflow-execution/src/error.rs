@@ -55,6 +55,10 @@ pub enum ExecutionError {
     StepNotRunnable { step: String },
     #[error("error accessing state store")]
     StateError,
+    #[error("state store error")]
+    StateStoreError,
+    #[error("run not found")]
+    RunNotFound,
     #[error("error analyzing workflow")]
     AnalysisError,
     #[error("execution '{0}' not found")]

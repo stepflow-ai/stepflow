@@ -21,8 +21,16 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    Context, DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result,
+    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
 };
+use tokio::sync::Mutex;
+
+/// Type alias for a wait signal receiver.
+/// The receiver will complete when the sender is dropped or sends a value.
+pub type WaitSignal = tokio::sync::oneshot::Receiver<()>;
+
+/// Type alias for the sender side of a wait signal.
+pub type SignalSender = tokio::sync::oneshot::Sender<()>;
 
 impl PluginConfig for MockPlugin {
     type Error = PluginError;
@@ -35,10 +43,26 @@ impl PluginConfig for MockPlugin {
     }
 }
 
+/// Key for looking up a wait signal: (component, input).
+type WaitSignalKey = (Component, ValueRef);
+
 /// A mock plugin that can be used to test various things in the plugin protocol.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct MockPlugin {
     components: HashMap<Component, MockComponent>,
+    /// Runtime-only wait signals that block execution until signaled.
+    /// Each signal can only be used once (oneshot).
+    #[serde(skip)]
+    wait_signals: Arc<Mutex<HashMap<WaitSignalKey, WaitSignal>>>,
+}
+
+// Manual Debug impl to skip the wait_signals field which contains non-Debug types
+impl std::fmt::Debug for MockPlugin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MockPlugin")
+            .field("components", &self.components)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Enumeration of behaviors for the mock components.
@@ -113,10 +137,57 @@ impl MockPlugin {
         let component = Component::from_string(path);
         self.components.entry(component).or_default()
     }
+
+    /// Register a wait signal for a specific component and input.
+    ///
+    /// When the component is executed with the given input, it will wait
+    /// for the returned sender to be signaled (or dropped) before returning.
+    ///
+    /// NOTE: This function must be called OUTSIDE of an async context (before
+    /// starting the tokio runtime or from a non-async test setup function).
+    /// If you need to set up wait signals from within an async context, use
+    /// `wait_for_async` instead.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut plugin = MockPlugin::new();
+    /// plugin.mock_component("/test").behavior(json!({"x": 1}), MockComponentBehavior::result(json!({"y": 2})));
+    /// let signal = plugin.wait_for("/test", json!({"x": 1}));
+    ///
+    /// // Execution will block until signal is dropped or sent
+    /// let handle = tokio::spawn(async move {
+    ///     // ... execute the component ...
+    /// });
+    ///
+    /// // Signal completion
+    /// drop(signal);
+    /// handle.await.unwrap();
+    /// ```
+    pub fn wait_for(&mut self, component_path: &str, input: impl Into<ValueRef>) -> SignalSender {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let component = Component::from_string(component_path);
+        let key = (component, input.into());
+
+        // Use try_lock first (fast path), fall back to blocking with spawn_blocking
+        if let Ok(mut signals) = self.wait_signals.try_lock() {
+            signals.insert(key, rx);
+        } else {
+            // If we're in an async context, use block_in_place to safely block
+            let wait_signals = self.wait_signals.clone();
+            tokio::task::block_in_place(|| {
+                let mut signals = wait_signals.blocking_lock();
+                signals.insert(key, rx);
+            });
+        }
+
+        tx
+    }
 }
 
 impl Plugin for MockPlugin {
-    async fn init(&self, _context: &Arc<dyn Context>) -> Result<()> {
+    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
+        // MockPlugin requires no initialization - always ready
         Ok(())
     }
 
@@ -160,6 +231,29 @@ impl Plugin for MockPlugin {
         // Debug logging for tests only - not included in production builds
         #[cfg(test)]
         log::debug!("Mock plugin executing component: {}", component);
+
+        // Check for a wait signal for this component/input combination
+        let key = (component.clone(), input.clone());
+        let wait_signal = {
+            let mut signals = self.wait_signals.lock().await;
+            signals.remove(&key)
+        };
+
+        // If there's a wait signal, await it before returning
+        if let Some(rx) = wait_signal {
+            log::debug!(
+                "Mock plugin waiting for signal: component={}, input={}",
+                component,
+                input.value()
+            );
+            // Wait for the signal (ignore result - we just care that it was signaled)
+            let _ = rx.await;
+            log::debug!(
+                "Mock plugin received signal: component={}, input={}",
+                component,
+                input.value()
+            );
+        }
 
         let input_value = input.value();
         let output = mock_component

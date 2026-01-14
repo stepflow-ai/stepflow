@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use stepflow_core::workflow::Component;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
-use stepflow_plugin::{Context as _, ExecutionContext};
+use stepflow_plugin::ExecutionContext;
 use tokio::fs;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
@@ -167,7 +167,7 @@ mod tests {
         };
 
         let input_value = serde_json::to_value(input).unwrap();
-        let mock = MockContext::new();
+        let mock = MockContext::new().await;
         let result = component
             .execute(mock.execution_context(), input_value.into())
             .await

@@ -26,6 +26,7 @@ serde.workspace = true
 stepflow-analysis.workspace = true
 stepflow-config.workspace = true
 stepflow-core.workspace = true
+stepflow-dtos.workspace = true
 stepflow-execution.workspace = true
 stepflow-plugin.workspace = true
 stepflow-state.workspace = true

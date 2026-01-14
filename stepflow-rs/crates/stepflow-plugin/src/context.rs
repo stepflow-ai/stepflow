@@ -10,22 +10,30 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use futures::future::{BoxFuture, FutureExt as _};
+//! Execution context types for workflow runs.
+
+use crate::StepflowEnvironment;
+use crate::subflow::SubflowSubmitter;
 use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
-    BlobId, FlowResult, GetRunOptions, SubmitRunParams,
+    BlobId, FlowResult,
     workflow::{Flow, StepId, ValueRef, WorkflowOverrides},
 };
-use stepflow_state::{RunStatus, StateStore};
+use stepflow_dtos::ResultOrder;
+use stepflow_state::StateStore;
 use uuid::Uuid;
 
 /// Run hierarchy context for execution.
 ///
 /// This captures the run tree context for a component execution,
 /// allowing bidirectional message handlers to know which run tree
-/// they're serving.
-#[derive(Debug, Clone)]
+/// they're serving. It optionally includes a submitter for in-process
+/// sub-flow submission.
+///
+/// `RunContext` is cheap to clone - it contains two UUIDs and an optional
+/// `SubflowSubmitter` (which itself is just an mpsc::Sender + two UUIDs).
+#[derive(Clone, Debug)]
 pub struct RunContext {
     /// The current run ID.
     pub run_id: Uuid,
@@ -34,6 +42,11 @@ pub struct RunContext {
     /// For top-level runs, this equals `run_id`.
     /// For sub-flows, this is the original run that started the tree.
     pub root_run_id: Uuid,
+    /// Optional submitter for in-process sub-flow submission.
+    ///
+    /// When present, sub-flows can be submitted directly to the parent
+    /// executor without going through the external API.
+    pub subflow_submitter: Option<SubflowSubmitter>,
 }
 
 impl RunContext {
@@ -44,6 +57,7 @@ impl RunContext {
         Self {
             run_id,
             root_run_id: run_id,
+            subflow_submitter: None,
         }
     }
 
@@ -54,177 +68,60 @@ impl RunContext {
         Self {
             run_id,
             root_run_id: self.root_run_id,
+            subflow_submitter: self.subflow_submitter.clone(),
         }
+    }
+
+    /// Create a new RunContext with a subflow submitter.
+    pub fn with_submitter(mut self, submitter: SubflowSubmitter) -> Self {
+        self.subflow_submitter = Some(submitter);
+        self
     }
 }
 
-/// Trait for interacting with the workflow runtime.
-pub trait Context: Send + Sync {
-    /// Submit a run with 1 or N items.
-    ///
-    /// If `params.wait` is false, returns immediately with status=Running.
-    /// If `params.wait` is true, blocks until completion and returns final status.
-    fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, crate::Result<RunStatus>>;
-
-    /// Get run status and optionally results.
-    ///
-    /// If `options.wait` is true, blocks until all items complete.
-    /// If `options.include_results` is true, includes item results in the response.
-    fn get_run(
-        &self,
-        run_id: Uuid,
-        options: GetRunOptions,
-    ) -> BoxFuture<'_, crate::Result<RunStatus>>;
-
-    /// Get the state store for this executor.
-    fn state_store(&self) -> &Arc<dyn StateStore>;
-
-    /// Working directory of the Stepflow Config.
-    fn working_directory(&self) -> &Path;
-
-    // ========================================================================
-    // Convenience methods (using unified API)
-    // ========================================================================
-
-    /// Executes a nested workflow and waits for its completion.
-    fn execute_flow(
-        &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        input: ValueRef,
-        overrides: Option<WorkflowOverrides>,
-    ) -> BoxFuture<'_, crate::Result<FlowResult>> {
-        async move {
-            let mut params = SubmitRunParams::new(flow, flow_id, vec![input]).with_wait(true);
-            if let Some(overrides) = overrides {
-                params = params.with_overrides(overrides);
-            }
-            let run_status = self.submit_run(params).await?;
-
-            // Extract the single result
-            let results = run_status.results.ok_or_else(|| {
-                error_stack::report!(crate::PluginError::Execution)
-                    .attach_printable("Expected results in response when wait=true")
-            })?;
-            let item_result = results.into_iter().next().ok_or_else(|| {
-                error_stack::report!(crate::PluginError::Execution)
-                    .attach_printable("Expected at least one result")
-            })?;
-            item_result.result.ok_or_else(|| {
-                error_stack::report!(crate::PluginError::Execution).attach_printable(format!(
-                    "Item has no result (status: {:?})",
-                    item_result.status
-                ))
-            })
-        }
-        .boxed()
-    }
-
-    /// Executes a flow by blob ID - combines blob retrieval, deserialization, and execution.
-    ///
-    /// This is a convenience method that handles the common pattern of:
-    /// 1. Retrieving a flow blob by ID from the state store
-    /// 2. Deserializing the flow from blob data
-    /// 3. Executing the flow with given input and optional overrides
-    fn execute_flow_by_id(
-        &self,
-        flow_id: &BlobId,
-        input: ValueRef,
-        overrides: Option<WorkflowOverrides>,
-    ) -> BoxFuture<'_, crate::Result<FlowResult>> {
-        let flow_id = flow_id.clone();
-        async move {
-            use error_stack::ResultExt as _;
-
-            // Retrieve the flow from the blob store
-            let blob_data = self
-                .state_store()
-                .get_blob(&flow_id)
-                .await
-                .change_context(crate::PluginError::Execution)?;
-
-            // Deserialize the flow from blob data
-            let flow = blob_data
-                .as_flow()
-                .ok_or_else(|| error_stack::report!(crate::PluginError::Execution))?
-                .clone();
-
-            // Execute the flow
-            self.execute_flow(flow, flow_id, input, overrides).await
-        }
-        .boxed()
-    }
-
-    /// Convenience method: submit batch, wait for completion, and return results.
-    fn execute_batch(
-        &self,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        inputs: Vec<ValueRef>,
-        max_concurrency: Option<usize>,
-        overrides: Option<WorkflowOverrides>,
-    ) -> BoxFuture<'_, crate::Result<Vec<FlowResult>>> {
-        async move {
-            let mut params = SubmitRunParams::new(flow, flow_id, inputs).with_wait(true);
-            if let Some(max_concurrency) = max_concurrency {
-                params = params.with_max_concurrency(max_concurrency);
-            }
-            if let Some(overrides) = overrides {
-                params = params.with_overrides(overrides);
-            }
-            let run_status = self.submit_run(params).await?;
-
-            // Extract FlowResult from each result
-            let results = run_status.results.ok_or_else(|| {
-                error_stack::report!(crate::PluginError::Execution)
-                    .attach_printable("Expected results in response when wait=true")
-            })?;
-
-            results
-                .into_iter()
-                .enumerate()
-                .map(|(idx, item_result)| {
-                    item_result.result.ok_or_else(|| {
-                        error_stack::report!(crate::PluginError::Execution).attach_printable(
-                            format!(
-                                "Item at index {} has no result (status: {:?})",
-                                idx, item_result.status
-                            ),
-                        )
-                    })
-                })
-                .collect()
-        }
-        .boxed()
-    }
-}
-
-/// Execution context that combines a Context with an execution ID.
+/// Execution context for workflow runs.
+///
+/// This struct provides access to:
+/// - The shared environment (state store, working directory, plugin router)
+/// - Run-specific information (run ID, step, flow)
+/// - Subflow submission for nested flow execution
+///
+/// `ExecutionContext` is passed to plugins during step execution and provides
+/// everything needed to execute a component, including the ability to submit
+/// nested sub-flows.
+///
+/// Every `ExecutionContext` has a `RunContext` because execution always happens
+/// within the context of a run. The `RunContext` provides run hierarchy information
+/// and optionally a subflow submitter for nested execution.
 #[derive(Clone)]
 pub struct ExecutionContext {
-    context: Arc<dyn Context>,
-    run_id: Uuid,
+    /// The shared environment.
+    env: Arc<StepflowEnvironment>,
     /// The current step being executed (contains flow reference and step index).
     step: Option<StepId>,
     /// Flow reference for workflow-level contexts (when step is None).
     flow: Option<Arc<Flow>>,
+    /// Flow ID (content hash) for the current flow.
     flow_id: Option<BlobId>,
+    /// Run context for bidirectional communication (run hierarchy, subflow submission).
+    /// Always present - execution always happens within a run.
+    run_context: Arc<RunContext>,
 }
 
 impl ExecutionContext {
     /// Create a new ExecutionContext for a specific step.
     pub fn for_step(
-        context: Arc<dyn Context>,
-        run_id: Uuid,
+        env: Arc<StepflowEnvironment>,
         step: StepId,
         flow_id: BlobId,
+        run_context: Arc<RunContext>,
     ) -> Self {
         Self {
-            context,
-            run_id,
+            env,
             step: Some(step),
             flow: None,
             flow_id: Some(flow_id),
+            run_context,
         }
     }
 
@@ -232,57 +129,62 @@ impl ExecutionContext {
     ///
     /// This is only for unit tests where a full Flow is not available.
     /// In production code, use `for_step()` or `for_workflow_with_flow()`.
-    pub fn for_testing(context: Arc<dyn Context>, run_id: Uuid) -> Self {
+    pub fn for_testing(env: Arc<StepflowEnvironment>, run_context: Arc<RunContext>) -> Self {
         Self {
-            context,
-            run_id,
+            env,
             step: None,
             flow: None,
             flow_id: None,
+            run_context,
         }
     }
 
     /// Create a new ExecutionContext for workflow-level operations (no specific step).
-    pub fn for_workflow(context: Arc<dyn Context>, run_id: Uuid) -> Self {
+    pub fn for_workflow(env: Arc<StepflowEnvironment>, run_context: Arc<RunContext>) -> Self {
         Self {
-            context,
-            run_id,
+            env,
             step: None,
             flow: None,
             flow_id: None,
+            run_context,
         }
     }
 
     /// Create a new ExecutionContext for workflow-level operations with flow metadata access.
     pub fn for_workflow_with_flow(
-        context: Arc<dyn Context>,
-        run_id: Uuid,
+        env: Arc<StepflowEnvironment>,
         flow: Arc<Flow>,
         flow_id: BlobId,
+        run_context: Arc<RunContext>,
     ) -> Self {
         Self {
-            context,
-            run_id,
+            env,
             step: None,
             flow: Some(flow),
             flow_id: Some(flow_id),
+            run_context,
         }
     }
 
-    /// Create a new ExecutionContext with a step, reusing the same context and run_id.
+    /// Create a new ExecutionContext with a step, reusing the same environment and run context.
     pub fn with_step(&self, step: StepId) -> Self {
         Self {
-            context: self.context.clone(),
-            run_id: self.run_id,
+            env: self.env.clone(),
             step: Some(step),
             flow: None, // Flow is accessible via step.flow
             flow_id: self.flow_id.clone(),
+            run_context: self.run_context.clone(),
         }
+    }
+
+    /// Get the run context.
+    pub fn run_context(&self) -> &Arc<RunContext> {
+        &self.run_context
     }
 
     /// Get the execution ID for this context.
     pub fn run_id(&self) -> Uuid {
-        self.run_id
+        self.run_context.run_id
     }
 
     /// Get the step for this context, if available.
@@ -305,35 +207,161 @@ impl ExecutionContext {
         self.flow_id.as_ref()
     }
 
+    /// Get the shared environment.
+    pub fn env(&self) -> &Arc<StepflowEnvironment> {
+        &self.env
+    }
+
     /// Get a reference to the state store.
     pub fn state_store(&self) -> &Arc<dyn StateStore> {
-        self.context.state_store()
+        self.env.state_store()
     }
 
-    /// Get the underlying context.
-    pub fn context(&self) -> &Arc<dyn Context> {
-        &self.context
-    }
-}
-
-impl Context for ExecutionContext {
-    fn submit_run(&self, params: SubmitRunParams) -> BoxFuture<'_, crate::Result<RunStatus>> {
-        self.context.submit_run(params)
+    /// Get the working directory.
+    pub fn working_directory(&self) -> &Path {
+        self.env.working_directory()
     }
 
-    fn get_run(
+    /// Get the subflow submitter if available.
+    ///
+    /// When present, this can be used for direct in-process subflow submission
+    /// to the parent executor's loop. This is more efficient than going through
+    /// the external API.
+    ///
+    /// Note: The `execute_flow` and `execute_batch` methods automatically use
+    /// the subflow submitter when available, so most code doesn't need to
+    /// access this directly.
+    pub fn subflow_submitter(&self) -> Option<&SubflowSubmitter> {
+        self.run_context.subflow_submitter.as_ref()
+    }
+
+    // ========================================================================
+    // Flow execution methods
+    // ========================================================================
+
+    /// Executes a nested workflow and waits for its completion.
+    ///
+    /// This requires a subflow submitter to be available in the run context.
+    pub async fn execute_flow(
         &self,
-        run_id: Uuid,
-        options: GetRunOptions,
-    ) -> BoxFuture<'_, crate::Result<RunStatus>> {
-        self.context.get_run(run_id, options)
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        input: ValueRef,
+        overrides: Option<WorkflowOverrides>,
+    ) -> crate::Result<FlowResult> {
+        let submitter = self.subflow_submitter().ok_or_else(|| {
+            error_stack::report!(crate::PluginError::Execution)
+                .attach_printable("No subflow submitter available")
+        })?;
+
+        let mut results = self
+            .execute_via_channel(submitter, flow, flow_id, vec![input], overrides)
+            .await?;
+        Ok(results.pop().unwrap())
     }
 
-    fn state_store(&self) -> &Arc<dyn StateStore> {
-        self.context.state_store()
+    /// Executes a flow by blob ID - combines blob retrieval, deserialization, and execution.
+    ///
+    /// This is a convenience method that handles the common pattern of:
+    /// 1. Retrieving a flow blob by ID from the state store
+    /// 2. Deserializing the flow from blob data
+    /// 3. Executing the flow with given input and optional overrides
+    pub async fn execute_flow_by_id(
+        &self,
+        flow_id: &BlobId,
+        input: ValueRef,
+        overrides: Option<WorkflowOverrides>,
+    ) -> crate::Result<FlowResult> {
+        use error_stack::ResultExt as _;
+
+        // Retrieve the flow from the blob store
+        let blob_data = self
+            .state_store()
+            .get_blob(flow_id)
+            .await
+            .change_context(crate::PluginError::Execution)?;
+
+        // Deserialize the flow from blob data
+        let flow = blob_data
+            .as_flow()
+            .ok_or_else(|| error_stack::report!(crate::PluginError::Execution))?
+            .clone();
+
+        // Execute the flow
+        self.execute_flow(flow, flow_id.clone(), input, overrides)
+            .await
     }
 
-    fn working_directory(&self) -> &Path {
-        self.context.working_directory()
+    /// Execute a batch of workflows.
+    ///
+    /// This requires a subflow submitter to be available in the run context.
+    pub async fn execute_batch(
+        &self,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        _max_concurrency: Option<usize>,
+        overrides: Option<WorkflowOverrides>,
+    ) -> crate::Result<Vec<FlowResult>> {
+        let submitter = self.subflow_submitter().ok_or_else(|| {
+            error_stack::report!(crate::PluginError::Execution)
+                .attach_printable("No subflow submitter available")
+        })?;
+
+        // TODO: Pass max_concurrency to subflow submission
+        self.execute_via_channel(submitter, flow, flow_id, inputs, overrides)
+            .await
+    }
+
+    /// Internal helper to execute subflow via channel-based submission.
+    async fn execute_via_channel(
+        &self,
+        submitter: &SubflowSubmitter,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        overrides: Option<WorkflowOverrides>,
+    ) -> crate::Result<Vec<FlowResult>> {
+        use error_stack::ResultExt as _;
+
+        // Submit the subflow
+        let run_id = submitter
+            .submit(
+                flow,
+                flow_id,
+                inputs,
+                std::collections::HashMap::new(), // TODO: support variables
+                overrides,
+                None, // TODO: support max_concurrency
+            )
+            .await
+            .change_context(crate::PluginError::Execution)?;
+
+        // Wait for completion using the unified state store notification
+        self.state_store()
+            .wait_for_completion(run_id)
+            .await
+            .change_context(crate::PluginError::Execution)?;
+
+        // Get results from state store
+        let items = self
+            .state_store()
+            .get_item_results(run_id, ResultOrder::ByIndex)
+            .await
+            .change_context(crate::PluginError::Execution)?;
+
+        // Extract FlowResults
+        items
+            .into_iter()
+            .enumerate()
+            .map(|(idx, item)| {
+                item.result.ok_or_else(|| {
+                    error_stack::report!(crate::PluginError::Execution).attach_printable(format!(
+                        "Subflow item at index {} has no result (status: {:?})",
+                        idx, item.status
+                    ))
+                })
+            })
+            .collect()
     }
 }

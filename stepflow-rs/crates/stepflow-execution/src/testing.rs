@@ -25,9 +25,9 @@ use stepflow_core::{FlowResult, ValueExpr};
 use stepflow_mock::{MockComponentBehavior, MockPlugin};
 use stepflow_state::InMemoryStateStore;
 
-use crate::StepflowExecutor;
+use stepflow_plugin::StepflowEnvironment;
 
-/// Builder for creating a mock [`StepflowExecutor`] for testing.
+/// Builder for creating a mock [`StepflowEnvironment`] for testing.
 ///
 /// This provides a convenient way to set up a test executor with mock plugins
 /// that return predictable results.
@@ -74,8 +74,8 @@ impl MockExecutorBuilder {
         self
     }
 
-    /// Build the mock executor.
-    pub async fn build(self) -> Arc<StepflowExecutor> {
+    /// Build the mock environment.
+    pub async fn build(self) -> Arc<StepflowEnvironment> {
         // Create mock plugin that returns success for any component
         let mut mock_plugin = MockPlugin::new();
         let behavior = MockComponentBehavior::result(FlowResult::Success(ValueRef::new(
@@ -119,7 +119,9 @@ impl MockExecutorBuilder {
             .unwrap();
 
         let state_store = Arc::new(InMemoryStateStore::new());
-        StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router)
+        StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+            .await
+            .expect("MockPlugin should always initialize successfully")
     }
 }
 
@@ -309,7 +311,7 @@ pub fn create_diamond_flow() -> Flow {
 /// ```
 pub async fn create_executor_with_behaviors(
     behaviors: Vec<(serde_json::Value, FlowResult)>,
-) -> Arc<crate::StepflowExecutor> {
+) -> Arc<StepflowEnvironment> {
     let mut mock_plugin = MockPlugin::new();
 
     for (input, result) in &behaviors {
@@ -337,7 +339,80 @@ pub async fn create_executor_with_behaviors(
         .unwrap();
 
     let state_store = Arc::new(InMemoryStateStore::new());
-    crate::StepflowExecutor::new(state_store, std::path::PathBuf::from("."), plugin_router)
+    StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+        .await
+        .expect("MockPlugin should always initialize successfully")
+}
+
+/// Create a test environment with a wait signal for a specific input.
+///
+/// Returns both the executor and the signal sender. Dropping or sending to the
+/// signal sender will unblock the component execution for that input.
+///
+/// # Example
+///
+/// ```ignore
+/// let (executor, signal) = create_executor_with_wait_signal(json!({"x": 1})).await;
+///
+/// // Start execution (will block on the wait signal)
+/// let handle = tokio::spawn(async move {
+///     items_executor.execute_to_completion().await
+/// });
+///
+/// // Do something while execution is blocked...
+///
+/// // Signal completion
+/// drop(signal);
+/// handle.await.unwrap();
+/// ```
+pub async fn create_env_with_wait_signal(
+    wait_input: serde_json::Value,
+) -> (Arc<StepflowEnvironment>, stepflow_mock::SignalSender) {
+    let mut mock_plugin = MockPlugin::new();
+
+    // Register the wait signal for the specific input
+    let signal = mock_plugin.wait_for("/mock/test", ValueRef::new(wait_input.clone()));
+
+    // Register behavior for the input (will be returned after signal)
+    mock_plugin.mock_component("/mock/test").behavior(
+        ValueRef::new(wait_input),
+        MockComponentBehavior::result(FlowResult::Success(ValueRef::new(json!({"result": "ok"})))),
+    );
+
+    // Also register common inputs that tests typically use
+    let common_inputs = vec![json!({}), json!({"x": 1}), json!({"x": 2}), json!({"x": 3})];
+    for input in common_inputs {
+        mock_plugin.mock_component("/mock/test").behavior(
+            ValueRef::new(input),
+            MockComponentBehavior::result(FlowResult::Success(ValueRef::new(
+                json!({"result": "ok"}),
+            ))),
+        );
+    }
+
+    let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+
+    use stepflow_plugin::routing::RouteRule;
+    let rules = vec![RouteRule {
+        conditions: vec![],
+        component_allow: None,
+        component_deny: None,
+        plugin: "mock".into(),
+        component: None,
+    }];
+
+    let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+        .with_routing_path("/{*component}".to_string(), rules)
+        .register_plugin("mock".to_string(), dyn_plugin)
+        .build()
+        .unwrap();
+
+    let state_store = Arc::new(InMemoryStateStore::new());
+    let env = StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+        .await
+        .expect("MockPlugin should always initialize successfully");
+
+    (env, signal)
 }
 
 #[cfg(test)]

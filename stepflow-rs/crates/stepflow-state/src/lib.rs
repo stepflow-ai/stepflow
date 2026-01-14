@@ -10,13 +10,12 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod completion_notifier;
 mod error;
 mod in_memory;
 mod state_store;
 
+pub use completion_notifier::RunCompletionNotifier;
 pub use error::{Result, StateError};
 pub use in_memory::InMemoryStateStore;
-pub use state_store::{
-    CreateRunParams, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunStatus,
-    RunSummary, StateStore, StateWriteOperation, StepInfo, StepResult,
-};
+pub use state_store::{CreateRunParams, StateStore, StateWriteOperation};

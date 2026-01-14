@@ -12,8 +12,8 @@
 
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
-use stepflow_core::GetRunOptions;
-use stepflow_plugin::{Context, RunContext};
+use stepflow_core::GetRunParams;
+use stepflow_plugin::{RunContext, StepflowEnvironment};
 use tokio::sync::mpsc;
 
 use crate::error::TransportError;
@@ -32,8 +32,8 @@ impl MethodHandler for SubmitRunHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        context: Arc<dyn Context>,
-        _run_context: Option<&'a Arc<RunContext>>,
+        env: Arc<StepflowEnvironment>,
+        _run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,
@@ -41,7 +41,7 @@ impl MethodHandler for SubmitRunHandler {
             async move |request: crate::protocol::SubmitRunProtocolParams| {
                 // Fetch the flow from the state store
                 let flow_id = &request.flow_id;
-                let blob_data = context.state_store().get_blob(flow_id).await.map_err(|e| {
+                let blob_data = env.state_store().get_blob(flow_id).await.map_err(|e| {
                     log::error!("Failed to get flow blob: {e}");
                     Error::not_found("flow", flow_id.as_str())
                 })?;
@@ -51,21 +51,53 @@ impl MethodHandler for SubmitRunHandler {
                     .clone();
 
                 // Build submit params
-                let mut params =
-                    stepflow_core::SubmitRunParams::new(flow, request.flow_id, request.inputs);
-                params = params.with_wait(request.wait);
-                if let Some(max_concurrency) = request.max_concurrency {
-                    params = params.with_max_concurrency(max_concurrency);
-                }
-                if let Some(overrides) = request.overrides {
-                    params = params.with_overrides(overrides);
-                }
+                let params = stepflow_core::SubmitRunParams {
+                    max_concurrency: request.max_concurrency,
+                    overrides: request.overrides.unwrap_or_default(),
+                    ..Default::default()
+                };
 
-                // Submit the run
-                let run_status = context.submit_run(params).await.map_err(|e| {
+                // Submit the run using stepflow_execution
+                let run_status = stepflow_execution::submit_run(
+                    &env,
+                    flow,
+                    request.flow_id,
+                    request.inputs,
+                    params,
+                )
+                .await
+                .map_err(|e| {
                     log::error!("Failed to submit run: {e}");
                     Error::internal("Failed to submit run")
                 })?;
+
+                // If wait=true, wait for completion and fetch results
+                let run_status = if request.wait {
+                    stepflow_execution::wait_for_completion(&env, run_status.run_id)
+                        .await
+                        .map_err(|e| {
+                            log::error!("Failed to wait for run completion: {e}");
+                            Error::internal("Failed to wait for run completion")
+                        })?;
+
+                    // Fetch final status with results
+
+                    stepflow_execution::get_run(
+                        &env,
+                        run_status.run_id,
+                        GetRunParams {
+                            include_results: true,
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .map_err(|e| {
+                        log::error!("Failed to get run after completion: {e}");
+                        Error::internal("Failed to get run after completion")
+                    })?
+                } else {
+                    run_status
+                };
 
                 Ok(crate::protocol::RunStatusProtocol::from(run_status))
             },
@@ -79,8 +111,8 @@ impl MethodHandler for GetRunHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        context: Arc<dyn Context>,
-        _run_context: Option<&'a Arc<RunContext>>,
+        env: Arc<StepflowEnvironment>,
+        _run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         handle_method_call(
             request,
@@ -91,19 +123,27 @@ impl MethodHandler for GetRunHandler {
                     Error::invalid_value("run_id", "valid UUID")
                 })?;
 
-                let options = GetRunOptions::new()
-                    .with_wait(request.wait)
-                    .with_result_order(request.result_order);
-                let options = if request.include_results {
-                    options.with_results()
-                } else {
-                    options
+                // If wait=true, wait for completion first
+                if request.wait {
+                    stepflow_execution::wait_for_completion(&env, run_id)
+                        .await
+                        .map_err(|e| {
+                            log::error!("Failed to wait for run completion: {e}");
+                            Error::internal("Failed to wait for run completion")
+                        })?;
+                }
+
+                let params = GetRunParams {
+                    include_results: request.include_results,
+                    result_order: request.result_order,
                 };
 
-                let run_status = context.get_run(run_id, options).await.map_err(|e| {
-                    log::error!("Failed to get run: {e}");
-                    Error::internal("Failed to get run")
-                })?;
+                let run_status = stepflow_execution::get_run(&env, run_id, params)
+                    .await
+                    .map_err(|e| {
+                        log::error!("Failed to get run: {e}");
+                        Error::internal("Failed to get run")
+                    })?;
 
                 Ok(crate::protocol::RunStatusProtocol::from(run_status))
             },
