@@ -21,17 +21,13 @@ success: true
 exit_code: 0
 ----- stdout -----
 ----------
-Running Test Case test complex data structure
-----------
-Running Test Case test nested object structure
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/builtins/blob_test.yaml: 2/2 passed
 ----------
-Running Test Case test map with three prompts
-----------
-Running Test Case test map with empty list
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/builtins/map_test.yaml: 2/2 passed
 ----------
-Running Test Case test nested flow execution
+Running 1 test cases in batch mode (max_concurrency=10)
 tests/builtins/nested_eval.yaml: 1/1 passed
 tests/builtins/stepflow-config.yml: Skipped (invalid or non-flow file)
 tests/builtins/blob_test.yaml: 2/2 passed

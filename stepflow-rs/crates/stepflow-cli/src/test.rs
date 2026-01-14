@@ -23,8 +23,9 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use stepflow_config::StepflowConfig;
-use stepflow_core::workflow::Flow;
-use stepflow_core::{BlobId, FlowError, FlowResult};
+use stepflow_core::workflow::{Flow, TestCase, ValueRef};
+use stepflow_core::{BlobId, FlowError, FlowResult, GetRunParams, SubmitRunParams};
+use stepflow_plugin::StepflowEnvironment;
 use walkdir::WalkDir;
 
 /// Normalize run_id fields in FlowResult for consistent testing
@@ -187,6 +188,15 @@ pub struct TestOptions {
     /// Show diff when tests fail.
     #[arg(long)]
     pub diff: bool,
+
+    /// Maximum concurrency for batch test execution within each file.
+    ///
+    /// Test cases within a file are executed in a single batch run for efficiency.
+    /// This option controls how many test cases can execute concurrently.
+    ///
+    /// Default is 10.
+    #[arg(long = "max-concurrency", value_name = "N", default_value = "10")]
+    pub max_concurrency: usize,
 }
 
 /// Load stepflow config for tests using hierarchical resolution.
@@ -312,6 +322,121 @@ struct WorkflowTestResult {
     failed_cases: usize,
     execution_errors: usize,
     updates: HashMap<String, FlowResult>,
+}
+
+/// Run multiple test inputs as a single batch.
+///
+/// Returns results in the same order as inputs, with each result being either
+/// a successful FlowResult or an error message.
+async fn run_batch(
+    env: Arc<StepflowEnvironment>,
+    flow: Arc<Flow>,
+    flow_id: BlobId,
+    inputs: Vec<ValueRef>,
+    max_concurrency: usize,
+) -> Vec<std::result::Result<FlowResult, String>> {
+    let params = SubmitRunParams {
+        max_concurrency: Some(max_concurrency),
+        ..Default::default()
+    };
+
+    // Submit the batch run
+    let run_status =
+        match stepflow_execution::submit_run(&env, flow, flow_id, inputs.clone(), params).await {
+            Ok(status) => status,
+            Err(e) => {
+                // If submission fails, return error for all inputs
+                let error_msg = format!("Batch submission failed: {e:#}");
+                return inputs.iter().map(|_| Err(error_msg.clone())).collect();
+            }
+        };
+
+    let run_id = run_status.run_id;
+
+    // Wait for completion
+    if let Err(e) = stepflow_execution::wait_for_completion(&env, run_id).await {
+        let error_msg = format!("Batch execution failed: {e:#}");
+        return inputs.iter().map(|_| Err(error_msg.clone())).collect();
+    }
+
+    // Get results
+    let run_status = match stepflow_execution::get_run(
+        &env,
+        run_id,
+        GetRunParams {
+            include_results: true,
+            ..Default::default()
+        },
+    )
+    .await
+    {
+        Ok(status) => status,
+        Err(e) => {
+            let error_msg = format!("Failed to get batch results: {e:#}");
+            return inputs.iter().map(|_| Err(error_msg.clone())).collect();
+        }
+    };
+
+    // Map results to outputs, preserving order
+    let results = run_status.results.unwrap_or_default();
+    inputs
+        .iter()
+        .enumerate()
+        .map(|(idx, _)| {
+            results
+                .get(idx)
+                .and_then(|item| item.result.clone())
+                .ok_or_else(|| format!("No result for item {idx}"))
+        })
+        .collect()
+}
+
+/// Process a single test result, comparing against expected output.
+///
+/// Returns 1 if there was an execution error, 0 otherwise.
+/// Updates the `updates` map if the test failed or has no expected output.
+fn process_test_result<E: std::fmt::Display>(
+    test_case: &TestCase,
+    result: std::result::Result<FlowResult, E>,
+    options: &TestOptions,
+    updates: &mut HashMap<String, FlowResult>,
+) -> usize {
+    match result {
+        Ok(actual_output) => {
+            let normalized_output = normalize_flow_result(actual_output);
+            match &test_case.output {
+                Some(expected_output) => {
+                    let normalized_expected = normalize_flow_result(expected_output.clone());
+                    // Use partial matching - expected fields must match, extra fields in actual are OK
+                    if !partial_match(&normalized_expected, &normalized_output) {
+                        if options.diff {
+                            show_diff(&normalized_expected, &normalized_output, &test_case.name);
+                        } else {
+                            println!(
+                                "Test Case {} failed. New Output:\n{}\n",
+                                test_case.name,
+                                serde_yaml_ng::to_string(&normalized_output).unwrap()
+                            );
+                        }
+                        updates.insert(test_case.name.clone(), normalized_output);
+                    }
+                }
+                None => {
+                    println!(
+                        "Test Case {} output:\n{}\n",
+                        test_case.name,
+                        serde_yaml_ng::to_string(&normalized_output).unwrap()
+                    );
+                    updates.insert(test_case.name.clone(), normalized_output);
+                }
+            }
+            0
+        }
+        Err(e) => {
+            println!("Test Case {} execution error: {e}", test_case.name);
+            1
+        }
+    }
 }
 
 /// Main entry point for running tests on files or directories.
@@ -492,55 +617,32 @@ async fn run_single_flow_test(
     let mut execution_errors = 0;
 
     let flow_id = BlobId::from_flow(&flow).change_context(MainError::Configuration)?;
-    for test_case in &cases_to_run {
-        println!("----------\nRunning Test Case {}", test_case.name);
-        let result = crate::run::run(
-            executor.clone(),
-            flow.clone(),
-            flow_id.clone(),
-            test_case.input.clone(),
-            None, // No overrides in test execution
-        )
-        .await;
 
-        match result {
-            Ok((_run_id, actual_output)) => {
-                let normalized_output = normalize_flow_result(actual_output);
-                match &test_case.output {
-                    Some(expected_output) => {
-                        let normalized_expected = normalize_flow_result(expected_output.clone());
-                        // Use partial matching - expected fields must match, extra fields in actual are OK
-                        if !partial_match(&normalized_expected, &normalized_output) {
-                            if options.diff {
-                                show_diff(
-                                    &normalized_expected,
-                                    &normalized_output,
-                                    &test_case.name,
-                                );
-                            } else {
-                                println!(
-                                    "Test Case {} failed. New Output:\n{}\n",
-                                    test_case.name,
-                                    serde_yaml_ng::to_string(&normalized_output).unwrap()
-                                );
-                            }
-                            updates.insert(test_case.name.clone(), normalized_output);
-                        }
-                    }
-                    None => {
-                        println!(
-                            "Test Case {} output:\n{}\n",
-                            test_case.name,
-                            serde_yaml_ng::to_string(&normalized_output).unwrap()
-                        );
-                        updates.insert(test_case.name.clone(), normalized_output);
-                    }
-                }
-            }
-            Err(_) => {
-                execution_errors += 1;
-            }
-        }
+    // Batch execution: collect all inputs and run as a single batch
+    let inputs: Vec<_> = cases_to_run.iter().map(|tc| tc.input.clone()).collect();
+    println!(
+        "----------\nRunning {} test cases in batch mode (max_concurrency={})",
+        inputs.len(),
+        options.max_concurrency
+    );
+
+    let results = run_batch(
+        executor.clone(),
+        flow.clone(),
+        flow_id.clone(),
+        inputs,
+        options.max_concurrency,
+    )
+    .await;
+
+    // Process results, matching them back to test cases by index
+    for (idx, test_case) in cases_to_run.iter().enumerate() {
+        let result = results
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(|| Err(format!("No result for test case {}", test_case.name)));
+
+        execution_errors += process_test_result(test_case, result, options, &mut updates);
     }
 
     let total_cases = cases_to_run.len();

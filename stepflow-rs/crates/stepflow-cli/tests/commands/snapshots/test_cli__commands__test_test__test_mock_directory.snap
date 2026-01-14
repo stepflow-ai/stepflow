@@ -20,31 +20,19 @@ success: true
 exit_code: 0
 ----- stdout -----
 ----------
-Running Test Case test with input 'a'
-----------
-Running Test Case test with input 'hello'
-----------
-Running Test Case test with input 'world'
+Running 3 test cases in batch mode (max_concurrency=10)
 tests/mock/basic.yaml: 3/3 passed
 ----------
-Running Test Case test error case that should fail
-----------
-Running Test Case test success case
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/error_fail.yaml: 2/2 passed
 ----------
-Running Test Case test error case that uses default
-----------
-Running Test Case test success case
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/error_use_default.yaml: 2/2 passed
 ----------
-Running Test Case test error case that uses default value
-----------
-Running Test Case test success case
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/error_use_default_value.yaml: 2/2 passed
 ----------
-Running Test Case lazy_evaluation_true_branch
-----------
-Running Test Case lazy_evaluation_false_branch
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/lazy_evaluation.yaml: 2/2 passed
 tests/mock/stepflow-config.yml: Skipped (invalid or non-flow file)
 tests/mock/basic.yaml: 3/3 passed

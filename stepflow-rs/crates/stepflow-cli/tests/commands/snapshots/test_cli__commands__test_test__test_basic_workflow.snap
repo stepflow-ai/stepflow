@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_test.rs
+source: crates/stepflow-cli/tests/commands/test_test.rs
 info:
   program: stepflow
   args:
@@ -7,14 +7,20 @@ info:
     - "--omit-stack-trace"
     - test
     - tests/basic.yaml
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
 ----- stdout -----
 ----------
-Running Test Case simple_echo
-----------
-Running Test Case different_message
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/basic.yaml: 2/2 passed
 tests/basic.yaml: 2/2 passed
 

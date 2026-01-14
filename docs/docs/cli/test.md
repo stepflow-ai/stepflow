@@ -60,6 +60,10 @@ stepflow test workflow.yaml --diff
 * `--case <NAME>` — Run only specific test case(s) by name. Can be repeated
 * `--update` — Update expected outputs with actual outputs from test runs
 * `--diff` — Show diff when tests fail
+* `--max-concurrency <N>` — Maximum concurrency for batch test execution within each file.
 
+   Test cases within a file are executed in a single batch run for efficiency. This option controls how many test cases can execute concurrently.
 
+   Default is 10.
 
+  Default value: `10`
