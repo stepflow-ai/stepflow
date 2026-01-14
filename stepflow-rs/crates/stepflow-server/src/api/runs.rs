@@ -25,6 +25,7 @@ use stepflow_core::{
 };
 use stepflow_dtos::{ResultOrder, RunDetails, RunFilters, RunSummary, StepResult};
 use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::StateStoreExt as _;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

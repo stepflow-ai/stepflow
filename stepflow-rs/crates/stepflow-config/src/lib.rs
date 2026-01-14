@@ -154,7 +154,7 @@ impl StepflowConfig {
 
     /// Create a StepflowEnvironment from this configuration
     pub async fn create_environment(self) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
-        use stepflow_plugin::StepflowEnvironment;
+        use stepflow_plugin::StepflowEnvironmentBuilder;
         use stepflow_plugin::routing::PluginRouter;
 
         // Create state store from configuration
@@ -183,8 +183,12 @@ impl StepflowConfig {
             .build()
             .change_context(ConfigError::Configuration)?;
 
-        // Create environment (this also initializes all plugins)
-        let env = StepflowEnvironment::new(state_store, working_directory, plugin_router)
+        // Create environment using the builder (this also initializes all plugins)
+        let env = StepflowEnvironmentBuilder::new()
+            .state_store(state_store)
+            .working_directory(working_directory)
+            .plugin_router(plugin_router)
+            .build()
             .await
             .change_context(ConfigError::Configuration)?;
 

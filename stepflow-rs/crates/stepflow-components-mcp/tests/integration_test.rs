@@ -20,12 +20,13 @@ use stepflow_core::{
 };
 use stepflow_plugin::{
     ExecutionContext, Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment,
+    StepflowEnvironmentBuilder,
 };
 use uuid::Uuid;
 
 // Helper function to create a test context
 async fn create_test_context() -> (Arc<StepflowEnvironment>, ExecutionContext) {
-    let env = StepflowEnvironment::new_in_memory().await.unwrap();
+    let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
     let run_id = Uuid::now_v7();
     let run_context = Arc::new(RunContext::for_root(run_id));
     let exec_context = ExecutionContext::for_testing(env.clone(), run_context);

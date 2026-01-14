@@ -903,6 +903,7 @@ mod tests {
     use stepflow_core::status::ExecutionStatus;
     use stepflow_core::workflow::StepBuilder;
     use stepflow_dtos::ResultOrder;
+    use stepflow_state::StateStoreExt as _;
 
     #[tokio::test]
     async fn test_single_item_execution() {

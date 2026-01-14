@@ -17,8 +17,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::component::ComponentInfo;
-use stepflow_plugin::Plugin as _;
-use stepflow_plugin::StepflowEnvironment;
+use stepflow_plugin::{Plugin as _, PluginRouterExt as _, StepflowEnvironment};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorResponse;

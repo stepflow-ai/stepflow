@@ -28,10 +28,11 @@ use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{Flow, Step, StepId, ValueRef};
 use stepflow_core::{BlobId, FlowResult};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{DynPlugin, ExecutionContext, Plugin as _, RunContext};
+use stepflow_plugin::{
+    DynPlugin, ExecutionContext, Plugin as _, PluginRouterExt as _, RunContext, StepflowEnvironment,
+};
 
 use crate::{ExecutionError, Result};
-use stepflow_plugin::StepflowEnvironment;
 
 // ============================================================================
 // Result Types

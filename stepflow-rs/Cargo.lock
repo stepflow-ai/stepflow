@@ -4851,6 +4851,7 @@ dependencies = [
  "stepflow-dtos",
  "stepflow-execution",
  "stepflow-plugin",
+ "stepflow-state",
  "strum",
  "subst",
  "thiserror 2.0.17",

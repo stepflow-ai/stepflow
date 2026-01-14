@@ -22,6 +22,7 @@ use stepflow_core::{
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::StateStoreExt as _;
 use utoipa::ToSchema;
 
 use crate::error::ErrorResponse;

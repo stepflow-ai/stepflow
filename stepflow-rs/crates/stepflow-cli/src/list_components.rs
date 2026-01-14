@@ -18,8 +18,8 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use stepflow_core::component::ComponentInfo;
-use stepflow_plugin::Plugin as _;
 use stepflow_plugin::routing::RouteMatch;
+use stepflow_plugin::{Plugin as _, PluginRouterExt as _};
 
 /// Output format for command line display
 #[derive(clap::ValueEnum, Clone, Debug)]

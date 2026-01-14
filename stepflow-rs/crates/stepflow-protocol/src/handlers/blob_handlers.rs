@@ -13,6 +13,7 @@
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
 use stepflow_plugin::{RunContext, StepflowEnvironment};
+use stepflow_state::StateStoreExt as _;
 use tokio::sync::mpsc;
 
 use super::handle_method_call;
