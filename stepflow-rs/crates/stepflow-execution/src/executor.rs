@@ -31,10 +31,9 @@ use error_stack::ResultExt as _;
 use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_core::{BlobId, GetRunParams, SubmitRunParams, status::ExecutionStatus};
 use stepflow_dtos::RunStatus;
-use stepflow_state::CreateRunParams;
-use uuid::Uuid;
-
 use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::{CreateRunParams, StateStoreExt as _};
+use uuid::Uuid;
 
 /// Submit a run for execution.
 ///
@@ -215,11 +214,12 @@ mod tests {
     use super::*;
     use serde_json::json;
     use stepflow_core::workflow::ValueRef;
+    use stepflow_plugin::StepflowEnvironmentBuilder;
 
     #[tokio::test]
     async fn test_executor_context_blob_operations() {
         // Create executor with default state store
-        let executor = StepflowEnvironment::new_in_memory().await.unwrap();
+        let executor = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
 
         // Test data
         let test_data = json!({"message": "Hello from executor!", "count": 123});
@@ -246,12 +246,15 @@ mod tests {
         use stepflow_state::{InMemoryStateStore, StateStore};
 
         // Create executor with custom state store
-        let state_store = Arc::new(InMemoryStateStore::new());
+        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
         let plugin_router = PluginRouter::builder().build().unwrap();
-        let executor =
-            StepflowEnvironment::new(state_store.clone(), PathBuf::from("."), plugin_router)
-                .await
-                .unwrap();
+        let executor = StepflowEnvironmentBuilder::new()
+            .state_store(state_store.clone())
+            .working_directory(PathBuf::from("."))
+            .plugin_router(plugin_router)
+            .build()
+            .await
+            .unwrap();
 
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});

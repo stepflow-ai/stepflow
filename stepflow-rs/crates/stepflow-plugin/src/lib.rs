@@ -11,16 +11,21 @@
 // the License.
 
 mod context;
-mod environment;
+mod environment_builder;
+mod environment_ext;
 mod error;
 mod plugin;
 pub mod routing;
 mod subflow;
 
 pub use context::{ExecutionContext, RunContext};
-pub use environment::StepflowEnvironment;
+pub use environment_builder::StepflowEnvironmentBuilder;
+pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
 pub use plugin::{DynPlugin, Plugin, PluginConfig};
 pub use subflow::{
     SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,
 };
+
+// Re-export StepflowEnvironment from core for convenience
+pub use stepflow_core::StepflowEnvironment;

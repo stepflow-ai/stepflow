@@ -12,6 +12,7 @@
 
 pub mod blob;
 pub mod component;
+pub mod environment;
 pub mod error_stack;
 pub mod json_schema;
 pub mod run_params;
@@ -25,6 +26,7 @@ pub use flow_result::*;
 
 // Re-export commonly used types
 pub use blob::{BlobData, BlobId, BlobType};
+pub use environment::StepflowEnvironment;
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use run_params::{GetRunParams, ResultOrder, SubmitRunParams};
 pub use values::ValueExpr;

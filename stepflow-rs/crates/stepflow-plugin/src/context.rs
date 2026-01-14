@@ -12,16 +12,15 @@
 
 //! Execution context types for workflow runs.
 
-use crate::StepflowEnvironment;
 use crate::subflow::SubflowSubmitter;
 use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
-    BlobId, FlowResult,
+    BlobId, FlowResult, StepflowEnvironment,
     workflow::{Flow, StepId, ValueRef, WorkflowOverrides},
 };
 use stepflow_dtos::ResultOrder;
-use stepflow_state::StateStore;
+use stepflow_state::{StateStore, StateStoreExt as _};
 use uuid::Uuid;
 
 /// Run hierarchy context for execution.

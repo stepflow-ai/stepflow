@@ -25,6 +25,7 @@ stepflow-core.workspace = true
 stepflow-dtos.workspace = true
 stepflow-execution.workspace = true
 stepflow-plugin.workspace = true
+stepflow-state.workspace = true
 subst.workspace = true
 utoipa.workspace = true
 strum.workspace = true

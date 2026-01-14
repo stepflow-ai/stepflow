@@ -11,11 +11,13 @@
 // the License.
 
 mod completion_notifier;
+mod environment_ext;
 mod error;
 mod in_memory;
 mod state_store;
 
 pub use completion_notifier::RunCompletionNotifier;
+pub use environment_ext::StateStoreExt;
 pub use error::{Result, StateError};
 pub use in_memory::InMemoryStateStore;
 pub use state_store::{CreateRunParams, StateStore, StateWriteOperation};

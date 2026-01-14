@@ -21,11 +21,10 @@ use std::sync::Arc;
 use serde_json::json;
 use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::{Flow, FlowBuilder, StepBuilder};
-use stepflow_core::{FlowResult, ValueExpr};
+use stepflow_core::{FlowResult, StepflowEnvironment, ValueExpr};
 use stepflow_mock::{MockComponentBehavior, MockPlugin};
-use stepflow_state::InMemoryStateStore;
-
-use stepflow_plugin::StepflowEnvironment;
+use stepflow_plugin::StepflowEnvironmentBuilder;
+use stepflow_state::{InMemoryStateStore, StateStore, StateStoreExt as _};
 
 /// Builder for creating a mock [`StepflowEnvironment`] for testing.
 ///
@@ -118,8 +117,12 @@ impl MockExecutorBuilder {
             .build()
             .unwrap();
 
-        let state_store = Arc::new(InMemoryStateStore::new());
-        StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+        StepflowEnvironmentBuilder::new()
+            .state_store(state_store)
+            .working_directory(std::path::PathBuf::from("."))
+            .plugin_router(plugin_router)
+            .build()
             .await
             .expect("MockPlugin should always initialize successfully")
     }
@@ -338,8 +341,12 @@ pub async fn create_executor_with_behaviors(
         .build()
         .unwrap();
 
-    let state_store = Arc::new(InMemoryStateStore::new());
-    StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+    let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+    StepflowEnvironmentBuilder::new()
+        .state_store(state_store)
+        .working_directory(std::path::PathBuf::from("."))
+        .plugin_router(plugin_router)
+        .build()
         .await
         .expect("MockPlugin should always initialize successfully")
 }
@@ -407,8 +414,12 @@ pub async fn create_env_with_wait_signal(
         .build()
         .unwrap();
 
-    let state_store = Arc::new(InMemoryStateStore::new());
-    let env = StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
+    let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+    let env = StepflowEnvironmentBuilder::new()
+        .state_store(state_store)
+        .working_directory(std::path::PathBuf::from("."))
+        .plugin_router(plugin_router)
+        .build()
         .await
         .expect("MockPlugin should always initialize successfully");
 

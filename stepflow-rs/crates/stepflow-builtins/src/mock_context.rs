@@ -12,8 +12,10 @@
 
 use std::sync::Arc;
 use stepflow_core::{FlowResult, status::ExecutionStatus, workflow::ValueRef};
-use stepflow_plugin::{ExecutionContext, RunContext, StepflowEnvironment, subflow_channel};
-use stepflow_state::CreateRunParams;
+use stepflow_plugin::{
+    ExecutionContext, RunContext, StepflowEnvironment, StepflowEnvironmentBuilder, subflow_channel,
+};
+use stepflow_state::{CreateRunParams, StateStoreExt as _};
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
@@ -28,7 +30,7 @@ pub struct MockContext {
 impl MockContext {
     /// Create a new mock context with subflow support.
     pub async fn new() -> Self {
-        let env = StepflowEnvironment::new_in_memory()
+        let env = StepflowEnvironmentBuilder::build_in_memory()
             .await
             .expect("In-memory environment should always initialize successfully");
         Self { env }

@@ -23,6 +23,7 @@ use serde_yaml_ng as serde_yaml;
 use std::path::Path;
 use stepflow_analysis::type_check_to_diagnostics;
 use stepflow_core::workflow::Flow;
+use stepflow_plugin::PluginRouterExt as _;
 use stepflow_typecheck::{
     ComponentSchemaProvider as _, TypeCheckConfig, TypeEnvironment, build_input_schema,
     collect_input_constraints, find_constraint_conflicts, synthesize_type, type_check_flow,

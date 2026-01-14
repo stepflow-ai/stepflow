@@ -20,7 +20,7 @@ use stepflow_core::{
     BlobId,
     workflow::{Flow, ValueRef},
 };
-use stepflow_plugin::StepflowEnvironment;
+use stepflow_plugin::{PluginRouterExt as _, StepflowEnvironment};
 
 use crate::{
     MainError, Result,

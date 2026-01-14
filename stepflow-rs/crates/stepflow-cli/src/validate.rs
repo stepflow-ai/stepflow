@@ -16,6 +16,7 @@ use crate::{MainError, Result, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
 use std::path::Path;
 use stepflow_analysis::{type_check_to_diagnostics, validate_with_config};
+use stepflow_plugin::PluginRouterExt as _;
 use stepflow_typecheck::{TypeCheckConfig, type_check_flow};
 
 /// Validate workflow files and configuration

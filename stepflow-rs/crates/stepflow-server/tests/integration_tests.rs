@@ -24,9 +24,8 @@ use stepflow_observability::{
     BinaryObservabilityConfig, LogDestinationType, LogFormat, ObservabilityConfig,
     init_observability,
 };
-use stepflow_plugin::DynPlugin;
-use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::InMemoryStateStore;
+use stepflow_plugin::{DynPlugin, StepflowEnvironment, StepflowEnvironmentBuilder};
+use stepflow_state::{InMemoryStateStore, StateStore};
 use tower::{Service as _, ServiceExt};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
@@ -150,10 +149,14 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
     let plugin_router = plugin_router_builder.build().unwrap();
-    let executor =
-        StepflowEnvironment::new(state_store, std::path::PathBuf::from("."), plugin_router)
-            .await
-            .unwrap();
+    let state_store: Arc<dyn StateStore> = state_store;
+    let executor = StepflowEnvironmentBuilder::new()
+        .state_store(state_store)
+        .working_directory(std::path::PathBuf::from("."))
+        .plugin_router(plugin_router)
+        .build()
+        .await
+        .unwrap();
 
     // Use the real startup logic but without swagger UI for tests
     use stepflow_server::AppConfig;
