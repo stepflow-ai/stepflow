@@ -25,7 +25,7 @@ use error_stack::ResultExt as _;
 use futures::stream::{FuturesUnordered, StreamExt as _};
 use stepflow_core::status::StepStatus;
 use stepflow_core::values::ValueRef;
-use stepflow_core::workflow::{Flow, WorkflowOverrides, apply_overrides};
+use stepflow_core::workflow::{Flow, StepId, WorkflowOverrides, apply_overrides};
 use stepflow_core::{BlobId, FlowResult};
 use stepflow_dtos::{StepInfo, StepResult};
 use stepflow_observability::RunInfoGuard;
@@ -441,8 +441,7 @@ impl FlowExecutor {
 
                     StepInfo {
                         run_id,
-                        step_index: idx,
-                        step_id: step.id.clone(),
+                        step_id: StepId::for_step(flow.clone(), idx),
                         component: step.component.clone(),
                         status: initial_status,
                         created_at: now,
@@ -551,10 +550,8 @@ impl FlowExecutor {
         let step = flow.step(task.step_index);
         let step_input = step.input.resolve(item);
 
-        // Capture step metadata for error handling
-        let step = flow.step(task.step_index);
-        let step_index = task.step_index;
-        let step_id = step.id.clone();
+        // Create StepId for error handling (before moving flow into runner)
+        let step_id = StepId::for_step(flow.clone(), task.step_index);
         let component = step.component.to_string();
 
         // Get the flow_id for this run
@@ -586,12 +583,7 @@ impl FlowExecutor {
                         stepflow_core::FlowError::from_error_stack(error.attach_printable(
                             format!("Internal error executing step '{}'", step_id),
                         ));
-                    StepRunResult::new(
-                        step_index,
-                        step_id,
-                        component,
-                        FlowResult::Failed(flow_error),
-                    )
+                    StepRunResult::new(step_id, component, FlowResult::Failed(flow_error))
                 }
             };
             TaskResult::new(task, step_result)
@@ -637,8 +629,7 @@ impl FlowExecutor {
         }
 
         // Record result to state store using metadata from StepRunResult
-        let step_result =
-            StepResult::new(task_result.step_index(), task_result.step.step_id(), result);
+        let step_result = StepResult::new(task_result.step.step_id().clone(), result);
         if let Err(e) = self
             .state_store
             .queue_write(StateWriteOperation::RecordStepResult {

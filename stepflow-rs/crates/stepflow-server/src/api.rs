@@ -65,7 +65,7 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         runs::CreateRunResponse,
         runs::ListRunsResponse,
         runs::ListRunsQuery,
-        runs::ItemResult,
+        stepflow_dtos::ItemResult,
         runs::ListItemsResponse,
         stepflow_dtos::RunSummary,
         stepflow_dtos::RunDetails,
