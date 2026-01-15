@@ -620,7 +620,7 @@ fn test_subflow_with_validation_errors() {
     let error = error.unwrap();
     assert_eq!(
         error.path,
-        make_path!("steps", 0, "data", "$literal", "steps", 0, "input")
+        make_path!("steps", 0, "input", "data", "$literal", "steps", 0, "input")
     );
     assert_eq!(error.text, "Step 'step1' references undefined step 'step2'");
 }

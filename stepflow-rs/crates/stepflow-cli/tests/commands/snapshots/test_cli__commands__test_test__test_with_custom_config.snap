@@ -29,13 +29,15 @@ tests/builtins/map_test.yaml: 2/2 passed
 ----------
 Running 1 test cases in batch mode (max_concurrency=10)
 tests/builtins/nested_eval.yaml: 1/1 passed
-tests/builtins/stepflow-config.yml: Skipped (invalid or non-flow file)
+tests/builtins/stepflow-config.yml: 0/0 passed
 tests/builtins/blob_test.yaml: 2/2 passed
 tests/builtins/map_test.yaml: 2/2 passed
 tests/builtins/nested_eval.yaml: 1/1 passed
+tests/builtins/stepflow-config.yml: Skipped (no test cases)
 
 === Test Summary ===
-Files tested: 3
+Files tested: 4
+Files skipped: 1
 Total test cases: 5
 Passed: 5
 Failed: 0

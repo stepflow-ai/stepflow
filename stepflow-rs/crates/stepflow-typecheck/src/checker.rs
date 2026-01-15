@@ -106,14 +106,12 @@ pub fn type_check_flow(
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
-    let flow_v1 = flow.latest();
-
     // Process steps in order (they're already topologically sorted)
-    for (step_index, step) in flow_v1.steps.iter().enumerate() {
+    for (step_index, step) in flow.steps.iter().enumerate() {
         let step_path = format!("$.steps[{}]", step_index);
 
         // Get declared output schema for this step if it exists
-        let declared_output_schema = flow_v1.schemas.steps.get(&step.id);
+        let declared_output_schema = flow.schemas.steps.get(&step.id);
 
         let (output_type, step_errors, step_warnings) = type_check_step(
             step,
@@ -132,12 +130,12 @@ pub fn type_check_flow(
 
     // Synthesize the output type
     let output_path = "$.output";
-    let output_result = synthesize_type(&flow_v1.output, &env, output_path);
+    let output_result = synthesize_type(&flow.output, &env, output_path);
     errors.extend(output_result.errors);
     let output_type = output_result.ty;
 
     // Check flow output against declared output_schema (if provided)
-    if let Some(output_schema) = &flow_v1.schemas.output {
+    if let Some(output_schema) = &flow.schemas.output {
         let declared_type = Type::Schema(output_schema.clone());
         match is_subtype(&output_type, &declared_type) {
             SubtypeResult::No(reasons) => {
@@ -293,9 +291,9 @@ mod tests {
     }
 
     fn make_flow(input_schema: Option<Value>, steps: Vec<Step>, output: ValueExpr) -> Flow {
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
-        Flow::V1(FlowV1 {
+        Flow {
             name: Some("test_flow".to_string()),
             description: None,
             version: None,
@@ -311,7 +309,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        })
+        }
     }
 
     // === Basic Flow Tests ===
@@ -545,7 +543,7 @@ mod tests {
     #[test]
     fn test_step_output_schema_override() {
         use indexmap::IndexMap;
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let mut provider = MockSchemaProvider::new();
         provider.add_component("/test/any", None, None);
@@ -559,7 +557,7 @@ mod tests {
             SchemaRef::from(json!({"type": "number"})),
         );
 
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("test_flow".to_string()),
             description: None,
             version: None,
@@ -575,7 +573,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         let config = TypeCheckConfig::default();
         let result = type_check_flow(&flow, &provider, config);
@@ -710,7 +708,7 @@ mod tests {
     #[test]
     fn test_flow_types_with_defs() {
         use std::collections::HashMap;
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let mut provider = MockSchemaProvider::new();
         provider.add_component(
@@ -752,7 +750,7 @@ mod tests {
         );
 
         // Flow with $defs and input schema using a reference
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("test_flow_with_defs".to_string()),
             description: None,
             version: None,
@@ -768,7 +766,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         let config = TypeCheckConfig::default();
         let result = type_check_flow(&flow, &provider, config);
@@ -781,7 +779,7 @@ mod tests {
     #[test]
     fn test_per_flow_step_output_schemas() {
         use indexmap::IndexMap;
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let provider = MockSchemaProvider::new(); // No component schemas
 
@@ -808,7 +806,7 @@ mod tests {
             SchemaRef::from(json!({"type": "number"})),
         );
 
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("test_step_schemas".to_string()),
             description: None,
             version: None,
@@ -824,7 +822,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         let config = TypeCheckConfig::default();
         let result = type_check_flow(&flow, &provider, config);
@@ -843,7 +841,7 @@ mod tests {
 
     #[test]
     fn test_flow_output_schema_check() {
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let mut provider = MockSchemaProvider::new();
         provider.add_component(
@@ -855,7 +853,7 @@ mod tests {
         let step = make_step("echo", "/echo", ValueExpr::literal(json!("hello")));
 
         // Flow declares output schema that matches step output
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("test_output_check".to_string()),
             description: None,
             version: None,
@@ -871,7 +869,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         let config = TypeCheckConfig::default();
         let result = type_check_flow(&flow, &provider, config);
@@ -881,7 +879,7 @@ mod tests {
 
     #[test]
     fn test_flow_output_schema_mismatch() {
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let mut provider = MockSchemaProvider::new();
         provider.add_component(
@@ -893,7 +891,7 @@ mod tests {
         let step = make_step("echo", "/echo", ValueExpr::literal(json!("hello")));
 
         // Flow declares output schema that doesn't match step output
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("test_output_mismatch".to_string()),
             description: None,
             version: None,
@@ -909,7 +907,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         let config = TypeCheckConfig::default();
         let result = type_check_flow(&flow, &provider, config);
@@ -926,7 +924,7 @@ mod tests {
     #[test]
     fn test_nested_flow_self_contained_types() {
         use std::collections::HashMap;
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         // This test demonstrates that nested flows have their own self-contained types.
         // In a real scenario, a nested flow stored in a blob would have its own
@@ -952,7 +950,7 @@ mod tests {
             ValueExpr::literal(json!({})),
         );
 
-        let parent_flow = Flow::V1(FlowV1 {
+        let parent_flow = Flow {
             name: Some("parent_flow".to_string()),
             description: None,
             version: None,
@@ -970,7 +968,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         // Nested flow would have its own separate types (stored in blob)
         let mut nested_defs = HashMap::new();
@@ -986,7 +984,7 @@ mod tests {
 
         let nested_step = make_step("inner", "/some/component", ValueExpr::literal(json!(42)));
 
-        let nested_flow = Flow::V1(FlowV1 {
+        let nested_flow = Flow {
             name: Some("nested_flow".to_string()),
             description: None,
             version: None,
@@ -1004,7 +1002,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         // Verify each flow has its own independent type definitions
         assert!(parent_flow.schemas().defs.contains_key("ParentType"));
@@ -1023,7 +1021,7 @@ mod tests {
     fn test_flow_types_serialization() {
         use indexmap::IndexMap;
         use std::collections::HashMap;
-        use stepflow_core::workflow::{FlowSchema, FlowV1};
+        use stepflow_core::workflow::FlowSchema;
 
         let mut defs = HashMap::new();
         defs.insert(
@@ -1044,7 +1042,7 @@ mod tests {
             SchemaRef::from(json!({"type": "string"})),
         );
 
-        let flow = Flow::V1(FlowV1 {
+        let flow = Flow {
             name: Some("serialization_test".to_string()),
             description: None,
             version: None,
@@ -1060,7 +1058,7 @@ mod tests {
             test: None,
             examples: None,
             metadata: Default::default(),
-        });
+        };
 
         // Serialize to JSON
         let json_str = serde_json::to_string(&flow).expect("Serialization failed");

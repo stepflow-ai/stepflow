@@ -34,6 +34,7 @@ class ModelIf(BaseModel):
     var_if: ValueExpr = Field(alias="$if")
     then: ValueExpr
     var_else: ValueExpr | None = Field(default=None, alias="else")
+    additional_properties: dict[str, Any] = {}
     __properties: ClassVar[list[str]] = ["$if", "then", "else"]
 
     model_config = ConfigDict(
@@ -65,8 +66,13 @@ class ModelIf(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
-        excluded_fields: set[str] = set([])
+        excluded_fields: set[str] = set(
+            [
+                "additional_properties",
+            ]
+        )
 
         _dict = self.model_dump(
             by_alias=True,
@@ -82,6 +88,11 @@ class ModelIf(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of var_else
         if self.var_else:
             _dict["else"] = self.var_else.to_dict()
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -106,6 +117,11 @@ class ModelIf(BaseModel):
                 else None,
             }
         )
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj
 
 

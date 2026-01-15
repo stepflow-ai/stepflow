@@ -391,7 +391,6 @@ class FlowBuilder:
             )
 
         return Flow(
-            schema_="https://stepflow.org/schemas/v1/flow.json",
             name=self.name,
             description=self.description,
             version=self.version,

@@ -16,8 +16,12 @@
 """Generate stepflow-api from the OpenAPI spec.
 
 Generates the full API client including models/ and api/ directories using
-openapi-generator (https://github.com/OpenAPITools/openapi-generator),
+openapi-generator-cli via uvx (https://github.com/OpenAPITools/openapi-generator),
 then post-processes to add generated file headers.
+
+Requirements:
+    - Java Runtime Environment (JRE) 11+ must be installed
+    - uv (for uvx command)
 
 Usage:
     python scripts/generate_api_client.py              # Regenerate from stored spec
@@ -123,63 +127,51 @@ def fetch_spec_from_server(output_path: Path) -> None:
     _server_process = None
 
 
-def find_container_runtime() -> str | None:
-    """Find an available container runtime (docker or podman)."""
-    for runtime in ["docker", "podman"]:
-        try:
-            result = subprocess.run(
-                [runtime, "--version"],
-                capture_output=True,
-                check=False,
-            )
-            if result.returncode == 0:
-                return runtime
-        except FileNotFoundError:
-            continue
-    return None
+def check_java_installed() -> bool:
+    """Check if Java is installed and available."""
+    try:
+        result = subprocess.run(
+            ["java", "-version"],
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
 
 
 def run_openapi_generator(spec_file: Path, output_dir: Path) -> Path:
     """Run openapi-generator to generate the client.
 
-    Uses docker or podman to run the openapi-generator-cli container.
+    Uses uvx to run openapi-generator-cli from PyPI, which requires Java.
     """
     print(">>> Running openapi-generator...")
 
-    container_runtime = find_container_runtime()
-    if container_runtime is None:
-        print("ERROR: docker or podman is required but neither was found.")
-        print("Install docker: https://docs.docker.com/get-docker/")
-        print("Or install podman: https://podman.io/getting-started/installation")
+    if not check_java_installed():
+        print("ERROR: Java Runtime Environment (JRE) is required but not found.")
+        print("Install Java 11+ from: https://adoptium.net/")
+        print("  macOS: brew install openjdk@11")
+        print("  Ubuntu: sudo apt install openjdk-11-jre")
         sys.exit(1)
-
-    print(f"    Using container runtime: {container_runtime}")
 
     # Remove existing output if present
     generated_dir = output_dir / "stepflow-api"
     if generated_dir.exists():
         shutil.rmtree(generated_dir)
 
-    # Run openapi-generator via container runtime
-    # Mount the spec file's parent directory and output directory
-    spec_parent = spec_file.parent.resolve()
-    spec_name = spec_file.name
-
+    # Run openapi-generator via uvx (uses the PyPI package)
+    # Pin to a stable version for reproducible builds
     result = subprocess.run(
         [
-            container_runtime,
-            "run",
-            "--rm",
-            f"--volume={spec_parent}:/spec:ro",
-            f"--volume={output_dir}:/out",
-            "openapitools/openapi-generator-cli",
+            "uvx",
+            "openapi-generator-cli@7.10.0",
             "generate",
             "-i",
-            f"/spec/{spec_name}",
+            str(spec_file.resolve()),
             "-g",
             "python",
             "-o",
-            "/out/stepflow-api",
+            str(generated_dir),
             "--additional-properties=packageName=stepflow_api",
         ],
         capture_output=True,

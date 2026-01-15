@@ -34,7 +34,10 @@ class RunFlowResponse(BaseModel):
     """  # noqa: E501
 
     flow: Flow = Field(description="The flow definition")
-    flow_id: StrictStr = Field(description="The flow hash", alias="flowId")
+    flow_id: StrictStr = Field(
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+        alias="flowId",
+    )
     __properties: ClassVar[list[str]] = ["flow", "flowId"]
 
     model_config = ConfigDict(

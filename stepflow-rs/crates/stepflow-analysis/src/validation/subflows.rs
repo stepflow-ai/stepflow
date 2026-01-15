@@ -10,29 +10,53 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use serde_json::Value;
 use stepflow_core::ValueExpr;
-use stepflow_core::values::ValueRef;
-use stepflow_core::workflow::Flow;
+use stepflow_core::workflow::{Flow, Step};
 
 use crate::Diagnostics;
 use crate::Path;
 use crate::Result;
 
 /// Validate subflows appearing as literals within the flow.
+///
+/// Currently, subflows can appear as the `data` field of `put_blob` steps
+/// when `blob_type` is set to `"flow"`.
 pub fn validate_literal_subflows(flow: &Flow, diagnostics: &mut Diagnostics) -> Result<()> {
-    // For now, we validate literal subflows appearing in `put_blob` requests.
-    // Since we can't detect the `put_blob` component without looking at the
-    // plugins, we just use the `schema: "https://stepflow.org/schemas/v1.flow.json"`
-    // as the signal that we should validate something as a schema.
-    //
-    // We only look inside the inputs to steps for now.
     let mut path = Path::new();
     path.push("steps");
     for (step_index, step) in flow.steps().iter().enumerate() {
         path.push(step_index);
-        validate_value_expr(&step.input, &mut path, diagnostics)?;
+        validate_step_for_subflows(step, &mut path, diagnostics)?;
         path.pop();
+    }
+    Ok(())
+}
+
+/// Check if a step is a put_blob step with blob_type: flow
+fn validate_step_for_subflows(
+    step: &Step,
+    path: &mut Path,
+    diagnostics: &mut Diagnostics,
+) -> Result<()> {
+    // Only check put_blob steps
+    let component_path = step.component.path();
+    if component_path != "/builtin/put_blob" && component_path != "/put_blob" {
+        return Ok(());
+    }
+
+    // Check if blob_type is "flow" and validate the data field
+    if let ValueExpr::Object(fields) = &step.input {
+        let is_flow_blob = fields.iter().find(|(k, _)| k == "blob_type").is_some_and(
+            |(_, bt)| matches!(bt, ValueExpr::Literal(v) if v.as_str() == Some("flow")),
+        );
+
+        if is_flow_blob && let Some((_, data_expr)) = fields.iter().find(|(k, _)| k == "data") {
+            path.push("input");
+            path.push("data");
+            validate_flow_literal(data_expr, path, diagnostics)?;
+            path.pop();
+            path.pop();
+        }
     }
     Ok(())
 }
@@ -50,25 +74,16 @@ fn validate_subflow(path: &Path, flow: &Flow, diagnostics: &mut Diagnostics) -> 
     Ok(())
 }
 
-const FLOW_SCHEMA_URL: &str = "https://stepflow.org/schemas/v1/flow.json";
-
-fn object_has_flow_schema(fields: &serde_json::Map<String, Value>) -> bool {
-    if let Some(schema) = fields.get("schema") {
-        schema.as_str() == Some(FLOW_SCHEMA_URL)
-    } else {
-        false
-    }
-}
-
-fn validate_value_ref(
-    value_ref: &ValueRef,
+/// Validate a value expression that should contain a flow literal
+fn validate_flow_literal(
+    value_expr: &ValueExpr,
     path: &mut Path,
     diagnostics: &mut Diagnostics,
 ) -> Result<()> {
-    match value_ref.value() {
-        Value::Object(o) if object_has_flow_schema(o) => {
-            // Parse the subflow.
-            let flow: Flow = match serde_json::from_value(value_ref.clone_value()) {
+    match value_expr {
+        ValueExpr::Literal(literal) => {
+            // Parse the literal as a flow
+            let flow: Flow = match serde_json::from_value(literal.clone()) {
                 Ok(flow) => flow,
                 Err(e) => {
                     diagnostics.add(
@@ -82,68 +97,27 @@ fn validate_value_ref(
             };
             validate_subflow(path, &flow, diagnostics)?;
         }
-        Value::Object(o) => {
-            for (key, item) in o.iter() {
-                path.push(key.to_string());
-                validate_value_ref(&ValueRef::new(item.clone()), path, diagnostics)?;
-                path.pop();
-            }
-        }
-        Value::Array(arr) => {
-            for (index, item) in arr.iter().enumerate() {
-                path.push(index);
-                validate_value_ref(&ValueRef::new(item.clone()), path, diagnostics)?;
-                path.pop();
-            }
-        }
-        _ => {}
-    };
-    Ok(())
-}
-
-fn validate_value_expr(
-    value_expr: &ValueExpr,
-    path: &mut Path,
-    diagnostics: &mut Diagnostics,
-) -> Result<()> {
-    use stepflow_core::ValueExpr;
-
-    match value_expr {
-        ValueExpr::Literal(literal) => {
-            validate_value_ref_from_json(literal, path, diagnostics)?;
-        }
         ValueExpr::EscapedLiteral { literal } => {
             path.push("$literal");
-            validate_value_ref_from_json(literal, path, diagnostics)?;
+            // Parse the escaped literal as a flow
+            let flow: Flow = match serde_json::from_value(literal.clone()) {
+                Ok(flow) => flow,
+                Err(e) => {
+                    diagnostics.add(
+                        crate::DiagnosticMessage::InvalidSubflowLiteral {
+                            error: format!("Failed to parse subflow: {}", e),
+                        },
+                        path.clone(),
+                    );
+                    path.pop();
+                    return Ok(());
+                }
+            };
+            validate_subflow(path, &flow, diagnostics)?;
             path.pop();
         }
-        ValueExpr::Array(items) => {
-            for (index, item) in items.iter().enumerate() {
-                path.push(index);
-                validate_value_expr(item, path, diagnostics)?;
-                path.pop();
-            }
-        }
-        ValueExpr::Object(fields) => {
-            // We only want to validate the sub-flow if it is a literal, in which case
-            // it would be parsed as a literal or escaped literal.
-            for (key, item) in fields.iter() {
-                path.push(key.to_string());
-                validate_value_expr(item, path, diagnostics)?;
-                path.pop();
-            }
-        }
-        // References don't need validation for subflows
+        // References and other expressions can't be validated statically
         _ => {}
     }
     Ok(())
-}
-
-fn validate_value_ref_from_json(
-    json: &serde_json::Value,
-    path: &mut Path,
-    diagnostics: &mut Diagnostics,
-) -> Result<()> {
-    let value_ref = ValueRef::new(json.clone());
-    validate_value_ref(&value_ref, path, diagnostics)
 }

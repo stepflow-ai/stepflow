@@ -97,7 +97,7 @@ impl BuiltinComponent for EvalComponent {
 #[cfg(test)]
 mod tests {
     use stepflow_core::ValueExpr;
-    use stepflow_core::workflow::{Flow, FlowV1};
+    use stepflow_core::workflow::Flow;
 
     use super::*;
     use crate::mock_context::MockContext;
@@ -108,14 +108,14 @@ mod tests {
         let mock = MockContext::new().await;
 
         // Create a simple test workflow
-        let test_flow = Flow::V1(FlowV1 {
+        let test_flow = Flow {
             name: Some("test-nested".to_string()),
             steps: vec![],
             output: ValueExpr::Literal(serde_json::json!({
                 "result": "Hello from nested flow"
             })),
             ..Default::default()
-        });
+        };
 
         // Store the flow as a blob first
         let flow_data = ValueRef::new(serde_json::to_value(&test_flow).unwrap());

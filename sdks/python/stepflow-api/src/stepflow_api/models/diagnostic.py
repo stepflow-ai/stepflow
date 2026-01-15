@@ -40,9 +40,7 @@ class Diagnostic(BaseModel):
     )
     level: DiagnosticLevel = Field(description="The severity level")
     text: StrictStr = Field(description="Human-readable message text")
-    path: list[PathPart] | None = Field(
-        default=None, description="JSON path to the field with the issue"
-    )
+    path: list[PathPart] | None = None
     ignore: StrictBool = Field(
         description="Whether this diagnostic should be ignored by default"
     )

@@ -35,7 +35,7 @@ class StoreFlowResponse(BaseModel):
 
     flow_id: StrictStr | None = Field(
         default=None,
-        description="The ID of the stored flow (only present if no fatal diagnostics)",
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         alias="flowId",
     )
     diagnostics: Diagnostics = Field(description="Validation diagnostics")
@@ -81,11 +81,6 @@ class StoreFlowResponse(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of diagnostics
         if self.diagnostics:
             _dict["diagnostics"] = self.diagnostics.to_dict()
-        # set to None if flow_id (nullable) is None
-        # and model_fields_set contains the field
-        if self.flow_id is None and "flow_id" in self.model_fields_set:
-            _dict["flowId"] = None
-
         return _dict
 
     @classmethod

@@ -22,14 +22,7 @@ import logging
 import multiprocessing
 import sys
 from logging import FileHandler
-from typing import (
-    Any,
-    ClassVar,
-    Literal,
-    NotRequired,
-    Self,
-    TypedDict,
-)
+from typing import Any, ClassVar, Literal, NotRequired, Self, TypedDict
 
 import urllib3
 
@@ -172,10 +165,6 @@ class Configuration:
     :param ssl_ca_cert: str - the path to a file of concatenated CA certificates
       in PEM format.
     :param retries: Number of retries for API requests.
-    :param ca_cert_data: verify the peer using concatenated CA certificate data
-      in PEM (str) or DER (bytes) format.
-    :param cert_file: the path to a client certificate file, for mTLS.
-    :param key_file: the path to a client key file, for mTLS.
 
     """
 
@@ -196,14 +185,11 @@ class Configuration:
         ignore_operation_servers: bool = False,
         ssl_ca_cert: str | None = None,
         retries: int | None = None,
-        ca_cert_data: str | bytes | None = None,
-        cert_file: str | None = None,
-        key_file: str | None = None,
         *,
         debug: bool | None = None,
     ) -> None:
         """Constructor"""
-        self._base_path = "http://localhost:17838/api/v1" if host is None else host
+        self._base_path = "http://localhost:17837/api/v1" if host is None else host
         """Default Base url
         """
         self.server_index = 0 if server_index is None and host is None else server_index
@@ -275,14 +261,10 @@ class Configuration:
         self.ssl_ca_cert = ssl_ca_cert
         """Set this to customize the certificate file to verify the peer.
         """
-        self.ca_cert_data = ca_cert_data
-        """Set this to verify the peer using PEM (str) or DER (bytes)
-           certificate data.
-        """
-        self.cert_file = cert_file
+        self.cert_file = None
         """client certificate file
         """
-        self.key_file = key_file
+        self.key_file = None
         """client key file
         """
         self.assert_hostname = None
@@ -499,7 +481,6 @@ class Configuration:
         password = ""
         if self.password is not None:
             password = self.password
-
         return urllib3.util.make_headers(basic_auth=username + ":" + password).get(
             "authorization"
         )
@@ -532,7 +513,7 @@ class Configuration:
         """
         return [
             {
-                "url": "http://localhost:17838/api/v1",
+                "url": "http://localhost:17837/api/v1",
                 "description": "Localhost development server",
             }
         ]
@@ -569,11 +550,7 @@ class Configuration:
         for variable_name, variable in server.get("variables", {}).items():
             used_value = variables.get(variable_name, variable["default_value"])
 
-            if (
-                "enum_values" in variable
-                and variable["enum_values"]
-                and used_value not in variable["enum_values"]
-            ):
+            if "enum_values" in variable and used_value not in variable["enum_values"]:
                 raise ValueError(
                     "The variable `{0}` in the host URL has invalid value "
                     "{1}. Must be {2}.".format(

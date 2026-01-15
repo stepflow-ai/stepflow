@@ -23,7 +23,6 @@ import pprint
 import re  # noqa: F401
 from datetime import datetime
 from typing import Any, ClassVar, Self
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
@@ -36,7 +35,7 @@ class RunSummary(BaseModel):
     Summary information about a flow run.
     """  # noqa: E501
 
-    run_id: UUID = Field(alias="runId")
+    run_id: StrictStr = Field(alias="runId")
     flow_id: StrictStr = Field(
         description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         alias="flowId",
@@ -48,6 +47,15 @@ class RunSummary(BaseModel):
     )
     created_at: datetime = Field(alias="createdAt")
     completed_at: datetime | None = Field(default=None, alias="completedAt")
+    root_run_id: StrictStr = Field(
+        description="Root run ID for this execution tree.  For top-level runs, this equals `run_id`. For sub-flows, this is the original run that started the tree.",
+        alias="rootRunId",
+    )
+    parent_run_id: StrictStr | None = Field(
+        default=None,
+        description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
+        alias="parentRunId",
+    )
     __properties: ClassVar[list[str]] = [
         "runId",
         "flowId",
@@ -56,6 +64,8 @@ class RunSummary(BaseModel):
         "items",
         "createdAt",
         "completedAt",
+        "rootRunId",
+        "parentRunId",
     ]
 
     model_config = ConfigDict(
@@ -108,6 +118,11 @@ class RunSummary(BaseModel):
         if self.completed_at is None and "completed_at" in self.model_fields_set:
             _dict["completedAt"] = None
 
+        # set to None if parent_run_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.parent_run_id is None and "parent_run_id" in self.model_fields_set:
+            _dict["parentRunId"] = None
+
         return _dict
 
     @classmethod
@@ -130,6 +145,8 @@ class RunSummary(BaseModel):
                 else None,
                 "createdAt": obj.get("createdAt"),
                 "completedAt": obj.get("completedAt"),
+                "rootRunId": obj.get("rootRunId"),
+                "parentRunId": obj.get("parentRunId"),
             }
         )
         return _obj

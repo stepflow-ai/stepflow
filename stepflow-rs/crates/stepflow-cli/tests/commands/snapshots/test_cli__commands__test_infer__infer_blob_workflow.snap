@@ -21,7 +21,6 @@ success: true
 exit_code: 0
 ----- stdout -----
 ✅ Validation passed with no errors
-schema: https://stepflow.org/schemas/v1/flow.json
 name: Blob Storage Test
 description: Test workflow for blob storage operations
 schemas:

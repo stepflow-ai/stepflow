@@ -33,6 +33,7 @@ class StepRef(BaseModel):
 
     step: StrictStr = Field(alias="$step")
     path: StrictStr | None = Field(default=None, description="JSONPath expression")
+    additional_properties: dict[str, Any] = {}
     __properties: ClassVar[list[str]] = ["$step", "path"]
 
     model_config = ConfigDict(
@@ -64,14 +65,24 @@ class StepRef(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
-        excluded_fields: set[str] = set([])
+        excluded_fields: set[str] = set(
+            [
+                "additional_properties",
+            ]
+        )
 
         _dict = self.model_dump(
             by_alias=True,
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         return _dict
 
     @classmethod
@@ -84,4 +95,9 @@ class StepRef(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({"$step": obj.get("$step"), "path": obj.get("path")})
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj

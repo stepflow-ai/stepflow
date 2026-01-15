@@ -62,7 +62,6 @@ from stepflow_api.models.flow_result import FlowResult
 from stepflow_api.models.flow_result_failed import FlowResultFailed
 from stepflow_api.models.flow_result_success import FlowResultSuccess
 from stepflow_api.models.flow_schema import FlowSchema
-from stepflow_api.models.flow_v1 import FlowV1
 from stepflow_api.models.health_query import HealthQuery
 from stepflow_api.models.health_response import HealthResponse
 from stepflow_api.models.input_ref import InputRef

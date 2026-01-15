@@ -46,11 +46,9 @@ impl TypeEnvironment {
     ///
     /// Extracts the input schema and variable schemas from the flow definition.
     pub fn from_flow(flow: &Flow) -> Self {
-        let flow_v1 = flow.latest();
+        let input_type = Type::from_option(flow.schemas.input.clone());
 
-        let input_type = Type::from_option(flow_v1.schemas.input.clone());
-
-        let variable_types = flow_v1
+        let variable_types = flow
             .schemas
             .variables
             .as_ref()

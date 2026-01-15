@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 
 use super::{
-    Component, ErrorAction, ExampleInput, Flow, FlowSchema, FlowV1, JsonPath, Step, TestConfig,
+    Component, ErrorAction, ExampleInput, Flow, FlowSchema, JsonPath, Step, TestConfig,
     VariableSchema,
 };
 use crate::{ValueExpr, schema::SchemaRef};
@@ -128,7 +128,7 @@ impl FlowBuilder {
 
     /// Build the final Flow instance.
     pub fn build(self) -> Flow {
-        Flow::V1(FlowV1 {
+        Flow {
             name: self.name,
             description: self.description,
             version: self.version,
@@ -144,7 +144,7 @@ impl FlowBuilder {
             test: self.test,
             examples: self.examples,
             metadata: self.metadata,
-        })
+        }
     }
 }
 
@@ -298,13 +298,9 @@ mod tests {
             .description("A test flow")
             .build();
 
-        match flow {
-            Flow::V1(flow_v1) => {
-                assert_eq!(flow_v1.name, Some("test".to_string()));
-                assert_eq!(flow_v1.description, Some("A test flow".to_string()));
-                assert!(flow_v1.steps.is_empty());
-            }
-        }
+        assert_eq!(flow.name, Some("test".to_string()));
+        assert_eq!(flow.description, Some("A test flow".to_string()));
+        assert!(flow.steps.is_empty());
     }
 
     #[test]
@@ -322,14 +318,10 @@ mod tests {
             .output(ValueExpr::step_output("step2"))
             .build();
 
-        match flow {
-            Flow::V1(flow_v1) => {
-                assert_eq!(flow_v1.name, Some("test_workflow".to_string()));
-                assert_eq!(flow_v1.steps.len(), 2);
-                assert_eq!(flow_v1.steps[0].id, "step1");
-                assert_eq!(flow_v1.steps[1].id, "step2");
-            }
-        }
+        assert_eq!(flow.name, Some("test_workflow".to_string()));
+        assert_eq!(flow.steps.len(), 2);
+        assert_eq!(flow.steps[0].id, "step1");
+        assert_eq!(flow.steps[1].id, "step2");
     }
 
     #[test]
@@ -364,11 +356,7 @@ mod tests {
     fn test_convenience_functions() {
         let flow = mock_flow().step(mock_step("step1").build()).build();
 
-        match flow {
-            Flow::V1(flow_v1) => {
-                assert_eq!(flow_v1.name, Some("mock_flow".to_string()));
-                assert_eq!(flow_v1.steps.len(), 1);
-            }
-        }
+        assert_eq!(flow.name, Some("mock_flow".to_string()));
+        assert_eq!(flow.steps.len(), 1);
     }
 }
