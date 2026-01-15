@@ -21,6 +21,9 @@ use stepflow_core::workflow::Component;
 use stepflow_core::{BlobId, FlowResult};
 use uuid::Uuid;
 
+// Re-export StepId for convenience
+pub use stepflow_core::workflow::StepId;
+
 /// Statistics about items in a run.
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
@@ -220,40 +223,32 @@ impl RunStatus {
 /// The step result.
 #[derive(PartialEq, Debug, Clone)]
 pub struct StepResult {
-    step_idx: usize,
-    step_id: String,
+    step_id: StepId,
     result: FlowResult,
 }
 
 impl StepResult {
-    /// Create a new step result.
-    pub fn new(step_idx: usize, step_id: impl Into<String>, result: FlowResult) -> Self {
-        Self {
-            step_idx,
-            step_id: step_id.into(),
-            result,
-        }
-    }
-
-    /// Create a step result from a StepId.
+    /// Create a new step result with a StepId.
     ///
-    /// This extracts the step index and name from the StepId, avoiding
-    /// the need to pass them separately.
-    pub fn from_step_id(step_id: stepflow_core::workflow::StepId, result: FlowResult) -> Self {
-        Self {
-            step_idx: step_id.index,
-            step_id: step_id.step_name().to_string(),
-            result,
-        }
+    /// This is the primary constructor. The StepId can be created via:
+    /// - `StepId::for_step(flow, index)` when you have the flow (preferred, no allocation)
+    /// - `StepId::new(name, index)` when you only have the name and index
+    pub fn new(step_id: StepId, result: FlowResult) -> Self {
+        Self { step_id, result }
     }
 
     /// Get the step index.
-    pub fn step_idx(&self) -> usize {
-        self.step_idx
+    pub fn step_index(&self) -> usize {
+        self.step_id.index()
     }
 
-    /// Get the step ID.
-    pub fn step_id(&self) -> &str {
+    /// Get the step name.
+    pub fn step_name(&self) -> &str {
+        self.step_id.name()
+    }
+
+    /// Get the StepId.
+    pub fn step_id(&self) -> &StepId {
         &self.step_id
     }
 
@@ -270,7 +265,7 @@ impl StepResult {
 
 impl PartialOrd for StepResult {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.step_idx.partial_cmp(&other.step_idx)
+        self.step_id.partial_cmp(&other.step_id)
     }
 }
 
@@ -279,10 +274,8 @@ impl PartialOrd for StepResult {
 pub struct StepInfo {
     /// Run ID this step belongs to
     pub run_id: Uuid,
-    /// Index of the step in the workflow
-    pub step_index: usize,
-    /// Step ID
-    pub step_id: String,
+    /// Step identifier (index + name)
+    pub step_id: StepId,
     /// Component name/URL
     pub component: Component,
     /// Current status of the step
@@ -291,6 +284,18 @@ pub struct StepInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the step was last updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl StepInfo {
+    /// Get the step index.
+    pub fn step_index(&self) -> usize {
+        self.step_id.index()
+    }
+
+    /// Get the step name.
+    pub fn step_name(&self) -> &str {
+        self.step_id.name()
+    }
 }
 
 #[cfg(test)]

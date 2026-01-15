@@ -161,7 +161,7 @@ impl InMemoryStateStore {
     ///
     /// This operation is executed synchronously since it's in-memory with no I/O cost.
     fn record_step_result(&self, run_id: Uuid, step_result: StepResult) {
-        let step_idx = step_result.step_idx();
+        let step_idx = step_result.step_index();
 
         // Get or create the run state and modify it
         let mut entry = self.runs.entry(run_id).or_insert_with(|| {
@@ -553,7 +553,7 @@ impl StateStore for InMemoryStateStore {
             // Create a map from step_index to StepInfo for this run
             let mut run_steps = HashMap::new();
             for step in steps {
-                run_steps.insert(step.step_index, step);
+                run_steps.insert(step.step_index(), step);
             }
 
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
@@ -634,7 +634,7 @@ impl StateStore for InMemoryStateStore {
                 .map(|run_state| {
                     let mut steps: Vec<StepInfo> = run_state.steps.values().cloned().collect();
                     // Sort by step_index for consistent ordering
-                    steps.sort_by_key(|step| step.step_index);
+                    steps.sort_by_key(|step| step.step_index());
                     steps
                 })
                 .unwrap_or_default();
@@ -824,7 +824,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_storage() {
-        use stepflow_core::workflow::ValueRef;
+        use stepflow_core::workflow::{StepId, ValueRef};
 
         let store = InMemoryStateStore::new();
         let run_id = Uuid::now_v7();
@@ -834,9 +834,15 @@ mod tests {
             FlowResult::Success(ValueRef::new(serde_json::json!({"output":"hello"})));
         let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
 
-        // Record step results with both index and ID
-        store.record_step_result(run_id, StepResult::new(0, "step1", step1_result.clone()));
-        store.record_step_result(run_id, StepResult::new(1, "step2", step2_result.clone()));
+        // Record step results with StepId
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step1".to_string(), 0), step1_result.clone()),
+        );
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step2".to_string(), 1), step2_result.clone()),
+        );
 
         // Retrieve by index
         let retrieved_by_idx_0 = store.get_step_result(run_id, 0).await.unwrap();
@@ -847,8 +853,14 @@ mod tests {
         // List all step results (should be ordered by index)
         let all_results = store.list_step_results(run_id).await.unwrap();
         assert_eq!(all_results.len(), 2);
-        assert_eq!(all_results[0], StepResult::new(0, "step1", step1_result));
-        assert_eq!(all_results[1], StepResult::new(1, "step2", step2_result));
+        assert_eq!(
+            all_results[0],
+            StepResult::new(StepId::new("step1".to_string(), 0), step1_result)
+        );
+        assert_eq!(
+            all_results[1],
+            StepResult::new(StepId::new("step2".to_string(), 1), step2_result)
+        );
 
         // Non-existent step should return error
         let result_by_idx = store.get_step_result(run_id, 99).await;
@@ -862,20 +874,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_step_result_overwrite() {
-        use stepflow_core::workflow::ValueRef;
+        use stepflow_core::workflow::{StepId, ValueRef};
 
         let store = InMemoryStateStore::new();
         let run_id = Uuid::now_v7();
 
         // Record initial result
         let initial_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":1})));
-        store.record_step_result(run_id, StepResult::new(0, "step1", initial_result));
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step1".to_string(), 0), initial_result),
+        );
 
         // Overwrite with new result
         let new_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":2})));
-        store.record_step_result(run_id, StepResult::new(0, "step1", new_result.clone()));
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step1".to_string(), 0), new_result.clone()),
+        );
 
-        // Should retrieve the new result by both index and ID
+        // Should retrieve the new result by index
         let retrieved_by_idx = store.get_step_result(run_id, 0).await.unwrap();
 
         assert_eq!(retrieved_by_idx, new_result);
@@ -883,11 +901,16 @@ mod tests {
         // Should still only have one entry for this step
         let all_results = store.list_step_results(run_id).await.unwrap();
         assert_eq!(all_results.len(), 1);
-        assert_eq!(all_results[0], StepResult::new(0, "step1", new_result));
+        assert_eq!(
+            all_results[0],
+            StepResult::new(StepId::new("step1".to_string(), 0), new_result)
+        );
     }
 
     #[tokio::test]
     async fn test_step_result_ordering() {
+        use stepflow_core::workflow::StepId;
+
         let store = InMemoryStateStore::new();
         let run_id = Uuid::now_v7();
 
@@ -897,26 +920,49 @@ mod tests {
         let step1_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
 
         // Record in non-sequential order
-        store.record_step_result(run_id, StepResult::new(2, "step2", step2_result.clone()));
-        store.record_step_result(run_id, StepResult::new(0, "step0", step0_result.clone()));
-        store.record_step_result(run_id, StepResult::new(1, "step1", step1_result.clone()));
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step2".to_string(), 2), step2_result.clone()),
+        );
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step0".to_string(), 0), step0_result.clone()),
+        );
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step1".to_string(), 1), step1_result.clone()),
+        );
 
         // List should return results ordered by step index
         let all_results = store.list_step_results(run_id).await.unwrap();
         assert_eq!(all_results.len(), 3);
-        assert_eq!(all_results[0], StepResult::new(0, "step0", step0_result));
-        assert_eq!(all_results[1], StepResult::new(1, "step1", step1_result));
-        assert_eq!(all_results[2], StepResult::new(2, "step2", step2_result));
+        assert_eq!(
+            all_results[0],
+            StepResult::new(StepId::new("step0".to_string(), 0), step0_result)
+        );
+        assert_eq!(
+            all_results[1],
+            StepResult::new(StepId::new("step1".to_string(), 1), step1_result)
+        );
+        assert_eq!(
+            all_results[2],
+            StepResult::new(StepId::new("step2".to_string(), 2), step2_result)
+        );
     }
 
     #[tokio::test]
     async fn test_execution_eviction() {
+        use stepflow_core::workflow::StepId;
+
         let store = InMemoryStateStore::new();
         let run_id = Uuid::now_v7();
 
         // Store some step results
         let step_result = FlowResult::Success(ValueRef::new(serde_json::json!({"output":"test"})));
-        store.record_step_result(run_id, StepResult::new(0, "step1", step_result.clone()));
+        store.record_step_result(
+            run_id,
+            StepResult::new(StepId::new("step1".to_string(), 0), step_result.clone()),
+        );
 
         // Verify the result exists
         let retrieved = store.get_step_result(run_id, 0).await.unwrap();

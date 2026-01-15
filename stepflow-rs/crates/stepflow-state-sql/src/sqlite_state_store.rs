@@ -19,7 +19,7 @@ use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
-    workflow::{Component, Flow, ValueRef},
+    workflow::{Component, Flow, StepId, ValueRef},
 };
 use stepflow_dtos::{
     ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo,
@@ -225,8 +225,8 @@ impl SqliteStateStore {
 
         sqlx::query(sql)
             .bind(run_id.to_string())
-            .bind(step_result.step_idx() as i64)
-            .bind(step_result.step_id())
+            .bind(step_result.step_index() as i64)
+            .bind(step_result.step_name())
             .bind(&result_json)
             .execute(pool)
             .await
@@ -431,8 +431,10 @@ impl StateStore for SqliteStateStore {
                     serde_json::from_str(&result_json).change_context(StateError::Serialization)?;
 
                 let step_result = StepResult::new(
-                    step_index as usize,
-                    step_id.unwrap_or_else(|| format!("step_{step_index}")),
+                    StepId::new(
+                        step_id.unwrap_or_else(|| format!("step_{step_index}")),
+                        step_index as usize,
+                    ),
                     flow_result,
                 );
 
@@ -919,8 +921,8 @@ impl StateStore for SqliteStateStore {
 
                     sqlx::query(insert_sql)
                         .bind(run_id.to_string())
-                        .bind(step.step_index as i64)
-                        .bind(&step.step_id)
+                        .bind(step.step_index() as i64)
+                        .bind(step.step_name())
                         .bind(step.component.to_string())
                         .bind(status_str)
                         .execute(&pool)
@@ -1015,10 +1017,11 @@ impl StateStore for SqliteStateStore {
                 let component_str: String = row.get("component");
                 let component = Component::from_string(&component_str);
 
+                let step_index = row.get::<i64, _>("step_index") as usize;
+                let step_name: String = row.get("step_id");
                 let step_info = StepInfo {
                     run_id,
-                    step_index: row.get::<i64, _>("step_index") as usize,
-                    step_id: row.get("step_id"),
+                    step_id: StepId::new(step_name, step_index),
                     component,
                     status,
                     created_at: parse_sqlite_datetime(&row.get::<String, _>("created_at"))

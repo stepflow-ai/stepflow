@@ -193,12 +193,15 @@ impl ExecutionContext {
 
     /// Get the step name for this context, if available.
     pub fn step_id(&self) -> Option<&str> {
-        self.step.as_ref().map(|s| s.step_name())
+        self.step.as_ref().map(|s| s.name())
     }
 
     /// Get the flow for this context, if available.
     pub fn flow(&self) -> Option<&Arc<Flow>> {
-        self.step.as_ref().map(|s| &s.flow).or(self.flow.as_ref())
+        self.step
+            .as_ref()
+            .and_then(|s| s.flow())
+            .or(self.flow.as_ref())
     }
 
     /// Get the flow ID for this context, if available.
