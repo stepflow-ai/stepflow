@@ -15,128 +15,62 @@
 
 # CI check script for documentation - mirrors .github/actions/docs-checks behavior
 # This script runs all documentation-related checks that are performed in CI
+#
+# Usage: ./scripts/check-docs.sh [-v|--verbose]
+#   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
 
 set -e
-
-# Parse command line arguments
-QUIET=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --quiet|-q)
-            QUIET=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--quiet|-q]"
-            exit 1
-            ;;
-    esac
-done
-
-# Output function that respects quiet mode
-output() {
-    if [ "$QUIET" = false ]; then
-        echo "$@"
-    fi
-}
-
-# Always show this header
-echo "📚 Running documentation CI checks..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source shared helpers
+source "$SCRIPT_DIR/_lib.sh"
+
+# Parse command line arguments
+parse_flags "$@"
+
+echo "📚 Docs"
+
 cd "$PROJECT_ROOT/docs"
 
-# Track results of all checks
-FAILED_CHECKS=()
+# Check for required tool
+require_tool "pnpm" "npm install -g pnpm"
 
 # =============================================================================
-# DOCUMENTATION CHECKS (docs-checks action)
+# DOCUMENTATION CHECKS
 # =============================================================================
 
-output "🔧 Setting up Node.js environment..."
-if ! command -v pnpm &> /dev/null; then
-    echo "❌ pnpm not found. Please install pnpm first:"
-    echo "   npm install -g pnpm"
-    exit 1
-fi
+run_check "Dependencies" pnpm install --frozen-lockfile
 
-output "📦 Installing documentation dependencies..."
-if [ "$QUIET" = true ]; then
-    if ! pnpm install --frozen-lockfile >/dev/null 2>&1; then
-        echo "❌ Failed to install dependencies"
-        FAILED_CHECKS+=("dependencies")
-    fi
-else
-    if ! pnpm install --frozen-lockfile; then
-        echo "❌ Failed to install dependencies"
-        FAILED_CHECKS+=("dependencies")
-    fi
-fi
-
-output "🏗️  Building documentation..."
-if [ "$QUIET" = true ]; then
-    if ! pnpm build >/dev/null 2>&1; then
-        echo "❌ Documentation build failed"
-        FAILED_CHECKS+=("build")
-    fi
-else
-    if ! pnpm build; then
-        echo "❌ Documentation build failed"
-        FAILED_CHECKS+=("build")
-    fi
+run_check "Build" pnpm build
+if [ $? -ne 0 ]; then
+    print_fix "Fix build errors"
+    print_rerun "cd docs && pnpm build"
 fi
 
 # =============================================================================
-# ADDITIONAL CHECKS (not in CI but useful for local development)
+# OPTIONAL CHECKS (warn but don't fail)
 # =============================================================================
 
-output "🔍 Checking documentation linting..."
-if [ "$QUIET" = true ]; then
-    pnpm lint >/dev/null 2>&1 || true
+# These are optional and may not be configured in all docs setups
+print_step "Lint"
+if pnpm lint >/dev/null 2>&1; then
+    print_pass
 else
-    if ! pnpm lint 2>/dev/null; then
-        echo "⚠️  Documentation linting not available or failed"
-        echo "   This is optional and may not be configured"
-    fi
+    print_skip "not configured"
 fi
 
-output "🔗 Checking for broken links..."
-if [ "$QUIET" = true ]; then
-    pnpm check-links >/dev/null 2>&1 || true
+print_step "Link check"
+if pnpm check-links >/dev/null 2>&1; then
+    print_pass
 else
-    if ! pnpm check-links 2>/dev/null; then
-        echo "⚠️  Link checking not available or failed"
-        echo "   This is optional and may not be configured"
-    fi
+    print_skip "not configured"
 fi
 
 # =============================================================================
 # RESULTS SUMMARY
 # =============================================================================
 
-echo ""
-echo "=== Documentation CI Check Results ==="
-
-if [ ${#FAILED_CHECKS[@]} -eq 0 ]; then
-    echo "✅ All documentation checks passed!"
-    exit 0
-else
-    echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
-    echo ""
-    echo "To fix these issues:"
-    for check in "${FAILED_CHECKS[@]}"; do
-        case "$check" in
-            "dependencies")
-                echo "  - Run: pnpm install --frozen-lockfile"
-                ;;
-            "build")
-                echo "  - Fix build errors and run: pnpm build"
-                ;;
-        esac
-    done
-    exit 1
-fi
+print_summary "Docs" "./scripts/check-docs.sh"

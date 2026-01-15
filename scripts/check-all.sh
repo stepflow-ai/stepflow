@@ -13,186 +13,60 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+# Complete CI check suite - runs all checks (Rust, Python, Docs, Licenses, Langflow, Integration)
+#
+# Usage: ./scripts/check-all.sh [-v|--verbose]
+#   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
+
 set -e
-
-# Parse command line arguments
-VERBOSE=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --verbose|-v)
-            VERBOSE=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--verbose|-v]"
-            echo "  --verbose, -v: Show detailed output from individual checks"
-            exit 1
-            ;;
-    esac
-done
-
-echo "🚀 Running complete CI check suite..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source shared helpers
+source "$SCRIPT_DIR/_lib.sh"
+
+# Parse command line arguments
+parse_flags "$@"
+
+echo "🚀 Running CI checks..."
 
 cd "$PROJECT_ROOT"
 
 # Track results of all check categories
 FAILED_CATEGORIES=()
 
-# =============================================================================
-# RUST CHECKS
-# =============================================================================
-
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "🦀 RUST CHECKS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-
+# Build verbose flag to pass to sub-scripts
+VERBOSE_FLAG=""
 if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/check-rust.sh"; then
-        echo "❌ Rust checks failed"
-        FAILED_CATEGORIES+=("rust")
-    else
-        echo "✅ Rust checks passed"
-    fi
-else
-    if ! "$SCRIPT_DIR/check-rust.sh" --quiet; then
-        echo "❌ Rust checks failed"
-        FAILED_CATEGORIES+=("rust")
-    else
-        echo "✅ Rust checks passed"
-    fi
+    VERBOSE_FLAG="-v"
 fi
 
 # =============================================================================
-# PYTHON CHECKS
+# RUN ALL CHECKS
 # =============================================================================
 
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "🐍 PYTHON CHECKS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
+run_category() {
+    local name="$1"
+    local script="$2"
 
-if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/check-python.sh"; then
-        echo "❌ Python checks failed"
-        FAILED_CATEGORIES+=("python")
+    echo ""
+    if "$SCRIPT_DIR/$script" $VERBOSE_FLAG; then
+        return 0
     else
-        echo "✅ Python checks passed"
+        FAILED_CATEGORIES+=("$name")
+        return 1
     fi
-else
-    if ! "$SCRIPT_DIR/check-python.sh" --quiet; then
-        echo "❌ Python checks failed"
-        FAILED_CATEGORIES+=("python")
-    else
-        echo "✅ Python checks passed"
-    fi
-fi
+}
 
-# =============================================================================
-# DOCUMENTATION CHECKS
-# =============================================================================
-
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "📚 DOCUMENTATION CHECKS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-
-if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/check-docs.sh"; then
-        echo "❌ Documentation checks failed"
-        FAILED_CATEGORIES+=("docs")
-    else
-        echo "✅ Documentation checks passed"
-    fi
-else
-    if ! "$SCRIPT_DIR/check-docs.sh" --quiet; then
-        echo "❌ Documentation checks failed"
-        FAILED_CATEGORIES+=("docs")
-    else
-        echo "✅ Documentation checks passed"
-    fi
-fi
-
-# =============================================================================
-# LICENSE CHECKS
-# =============================================================================
-
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "🔒 LICENSE CHECKS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-
-if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/check-licenses.sh"; then
-        echo "❌ License checks failed"
-        FAILED_CATEGORIES+=("licenses")
-    else
-        echo "✅ License checks passed"
-    fi
-else
-    if ! "$SCRIPT_DIR/check-licenses.sh" --quiet; then
-        echo "❌ License checks failed"
-        FAILED_CATEGORIES+=("licenses")
-    else
-        echo "✅ License checks passed"
-    fi
-fi
-
-# =============================================================================
-# LANGFLOW INTEGRATION CHECKS
-# =============================================================================
-
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "⚡ LANGFLOW INTEGRATION CHECKS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-
-if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/check-langflow.sh"; then
-        echo "❌ Langflow integration checks failed"
-        FAILED_CATEGORIES+=("langflow")
-    else
-        echo "✅ Langflow integration checks passed"
-    fi
-else
-    if ! "$SCRIPT_DIR/check-langflow.sh" >/dev/null 2>&1; then
-        echo "❌ Langflow integration checks failed"
-        FAILED_CATEGORIES+=("langflow")
-    else
-        echo "✅ Langflow integration checks passed"
-    fi
-fi
-
-# =============================================================================
-# INTEGRATION TESTS
-# =============================================================================
-
-echo ""
-echo "═══════════════════════════════════════════════════════════════════════════════"
-echo "🔗 INTEGRATION TESTS"
-echo "═══════════════════════════════════════════════════════════════════════════════"
-
-if [ "$VERBOSE" = true ]; then
-    if ! "$SCRIPT_DIR/test-integration.sh"; then
-        echo "❌ Integration tests failed"
-        FAILED_CATEGORIES+=("integration")
-    else
-        echo "✅ Integration tests passed"
-    fi
-else
-    # Note: test-integration.sh may not support --quiet flag yet
-    if ! "$SCRIPT_DIR/test-integration.sh" >/dev/null 2>&1; then
-        echo "❌ Integration tests failed"
-        FAILED_CATEGORIES+=("integration")
-    else
-        echo "✅ Integration tests passed"
-    fi
-fi
+# Run each category - continue even if one fails
+run_category "rust" "check-rust.sh" || true
+run_category "python" "check-python.sh" || true
+run_category "docs" "check-docs.sh" || true
+run_category "licenses" "check-licenses.sh" || true
+run_category "langflow" "check-langflow.sh" || true
+run_category "integration" "test-integration.sh" || true
 
 # =============================================================================
 # OVERALL RESULTS SUMMARY
@@ -204,74 +78,31 @@ echo "📊 OVERALL CI CHECK RESULTS"
 echo "═══════════════════════════════════════════════════════════════════════════════"
 
 if [ ${#FAILED_CATEGORIES[@]} -eq 0 ]; then
-    echo "🎉 All CI checks passed!"
-    echo ""
-    echo "✅ Rust checks: PASSED"
-    echo "✅ Python checks: PASSED"  
-    echo "✅ Documentation checks: PASSED"
-    echo "✅ License checks: PASSED"
-    echo "✅ Langflow integration checks: PASSED"
-    echo "✅ Integration tests: PASSED"
-    echo ""
-    echo "🚀 Ready for CI and deployment!"
+    echo "✅ All CI checks passed!"
     exit 0
 else
-    echo "❌ Some CI checks failed!"
+    echo "❌ ${#FAILED_CATEGORIES[@]} check(s) failed: ${FAILED_CATEGORIES[*]}"
     echo ""
-    echo "Failed categories: ${FAILED_CATEGORIES[*]}"
-    echo ""
-    echo "Status summary:"
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " rust " ]]; then
-        echo "❌ Rust checks: FAILED"
-    else
-        echo "✅ Rust checks: PASSED"
-    fi
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " python " ]]; then
-        echo "❌ Python checks: FAILED"
-    else
-        echo "✅ Python checks: PASSED"
-    fi
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " docs " ]]; then
-        echo "❌ Documentation checks: FAILED"
-    else
-        echo "✅ Documentation checks: PASSED"
-    fi
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " licenses " ]]; then
-        echo "❌ License checks: FAILED"
-    else
-        echo "✅ License checks: PASSED"
-    fi
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " langflow " ]]; then
-        echo "❌ Langflow integration checks: FAILED"
-    else
-        echo "✅ Langflow integration checks: PASSED"
-    fi
-    if [[ " ${FAILED_CATEGORIES[*]} " =~ " integration " ]]; then
-        echo "❌ Integration tests: FAILED"
-    else
-        echo "✅ Integration tests: PASSED"
-    fi
-    echo ""
-    echo "🔧 Run individual check scripts to see detailed error information:"
+    echo "To debug failures, run with verbose flag:"
     for category in "${FAILED_CATEGORIES[@]}"; do
         case "$category" in
             "rust")
-                echo "  - ./scripts/check-rust.sh"
+                echo "  ./scripts/check-rust.sh -v"
                 ;;
             "python")
-                echo "  - ./scripts/check-python.sh"
+                echo "  ./scripts/check-python.sh -v"
                 ;;
             "docs")
-                echo "  - ./scripts/check-docs.sh"
+                echo "  ./scripts/check-docs.sh -v"
                 ;;
             "licenses")
-                echo "  - ./scripts/check-licenses.sh"
+                echo "  ./scripts/check-licenses.sh -v"
                 ;;
             "langflow")
-                echo "  - ./scripts/check-langflow.sh"
+                echo "  ./scripts/check-langflow.sh -v"
                 ;;
             "integration")
-                echo "  - ./scripts/test-integration.sh"
+                echo "  ./scripts/test-integration.sh -v"
                 ;;
         esac
     done

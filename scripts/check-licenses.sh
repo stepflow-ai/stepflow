@@ -15,87 +15,40 @@
 
 # CI check script for license headers - mirrors CI license check behavior
 # This script runs license header validation that is performed in CI
+#
+# Usage: ./scripts/check-licenses.sh [-v|--verbose]
+#   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
 
 set -e
-
-# Parse command line arguments
-QUIET=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --quiet|-q)
-            QUIET=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--quiet|-q]"
-            exit 1
-            ;;
-    esac
-done
-
-# Output function that respects quiet mode
-output() {
-    if [ "$QUIET" = false ]; then
-        echo "$@"
-    fi
-}
-
-# Always show this header
-echo "🔒 Running license header checks..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source shared helpers
+source "$SCRIPT_DIR/_lib.sh"
+
+# Parse command line arguments
+parse_flags "$@"
+
+echo "🔒 Licenses"
+
 cd "$PROJECT_ROOT"
 
-# Track results of all checks
-FAILED_CHECKS=()
+# Check for required tool
+require_tool "licensure" "cargo install licensure"
 
 # =============================================================================
-# LICENSE HEADER CHECKS (licensure)
+# LICENSE HEADER CHECKS
 # =============================================================================
 
-output "🔍 Checking license headers..."
-if ! command -v licensure &> /dev/null; then
-    echo "❌ licensure not found. Please install licensure first:"
-    echo "   cargo install licensure"
-    exit 1
-fi
-
-if [ "$QUIET" = true ]; then
-    if ! licensure -c -p >/dev/null 2>&1; then
-        echo "❌ License header check failed. Run 'licensure -p --in-place' to fix."
-        FAILED_CHECKS+=("license-headers")
-    fi
-else
-    if ! licensure -c -p; then
-        echo "❌ License header check failed. Run 'licensure -p --in-place' to fix."
-        FAILED_CHECKS+=("license-headers")
-    fi
+run_check "License headers" licensure -c -p
+if [ $? -ne 0 ]; then
+    print_fix "licensure -p --in-place"
 fi
 
 # =============================================================================
 # RESULTS SUMMARY
 # =============================================================================
 
-echo ""
-echo "=== License Header Check Results ==="
-
-if [ ${#FAILED_CHECKS[@]} -eq 0 ]; then
-    echo "✅ All license header checks passed!"
-    exit 0
-else
-    echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
-    echo ""
-    echo "To fix these issues:"
-    for check in "${FAILED_CHECKS[@]}"; do
-        case "$check" in
-            "license-headers")
-                echo "  - Run: licensure -p --in-place"
-                ;;
-        esac
-    done
-    exit 1
-fi
+print_summary "License" "./scripts/check-licenses.sh"

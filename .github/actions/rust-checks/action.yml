@@ -86,4 +86,4 @@ runs:
     # Run Rust build and test checks using the shared script
     - name: Run Rust build and test checks
       shell: bash
-      run: ./scripts/check-rust.sh
+      run: ./scripts/check-rust.sh -v

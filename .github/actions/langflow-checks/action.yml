@@ -47,6 +47,6 @@ runs:
     # Note: The script handles its own dependency installation
     - name: Run Langflow integration checks
       shell: bash
-      run: ./scripts/check-langflow.sh
+      run: ./scripts/check-langflow.sh -v
       env:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}

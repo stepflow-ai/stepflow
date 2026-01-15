@@ -29,4 +29,4 @@ runs:
     # Run documentation checks using the shared script
     - name: Run documentation checks
       shell: bash
-      run: ./scripts/check-docs.sh
+      run: ./scripts/check-docs.sh -v

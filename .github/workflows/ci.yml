@@ -144,7 +144,7 @@ jobs:
           tool: licensure
       - name: Check license headers
         shell: bash
-        run: ./scripts/check-licenses.sh
+        run: ./scripts/check-licenses.sh -v
 
   # Integration tests (runs workflow execution tests with external dependencies)
   integration-checks:
@@ -179,7 +179,7 @@ jobs:
         working-directory: sdks/python
       - name: Run integration tests
         shell: bash
-        run: ./scripts/test-integration.sh
+        run: ./scripts/test-integration.sh -v
 
   # Final aggregation job - ensures all required checks pass
   # This job is required by branch protection rules
