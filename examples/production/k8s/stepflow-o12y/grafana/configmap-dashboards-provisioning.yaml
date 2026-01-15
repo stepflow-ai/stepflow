@@ -59,3 +59,14 @@ data:
         allowUiUpdates: true
         options:
           path: /etc/grafana/provisioning/dashboards/loadbalancer
+
+      # Docling document processing dashboards
+      - name: 'Docling'
+        orgId: 1
+        folder: 'Infrastructure'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/provisioning/dashboards/docling

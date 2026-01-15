@@ -114,6 +114,9 @@ spec:
           - name: dashboard-loadbalancer
             mountPath: /etc/grafana/provisioning/dashboards/loadbalancer
             readOnly: true
+          - name: dashboard-docling
+            mountPath: /etc/grafana/provisioning/dashboards/docling
+            readOnly: true
           - name: data
             mountPath: /var/lib/grafana
         resources:
@@ -151,6 +154,9 @@ spec:
         - name: dashboard-loadbalancer
           configMap:
             name: grafana-dashboard-loadbalancer
+        - name: dashboard-docling
+          configMap:
+            name: grafana-dashboard-docling
         - name: data
           persistentVolumeClaim:
             claimName: grafana-data
