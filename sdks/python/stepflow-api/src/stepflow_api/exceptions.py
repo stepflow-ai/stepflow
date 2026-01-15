@@ -133,7 +133,7 @@ class ApiException(OpenApiException):
                     self.body = http_resp.data.decode("utf-8")
                 except Exception:
                     pass
-            self.headers = http_resp.headers
+            self.headers = http_resp.getheaders()
 
     @classmethod
     def from_response(
@@ -155,15 +155,6 @@ class ApiException(OpenApiException):
         if http_resp.status == 404:
             raise NotFoundException(http_resp=http_resp, body=body, data=data)
 
-        # Added new conditions for 409 and 422
-        if http_resp.status == 409:
-            raise ConflictException(http_resp=http_resp, body=body, data=data)
-
-        if http_resp.status == 422:
-            raise UnprocessableEntityException(
-                http_resp=http_resp, body=body, data=data
-            )
-
         if 500 <= http_resp.status <= 599:
             raise ServiceException(http_resp=http_resp, body=body, data=data)
         raise ApiException(http_resp=http_resp, body=body, data=data)
@@ -174,11 +165,8 @@ class ApiException(OpenApiException):
         if self.headers:
             error_message += f"HTTP response headers: {self.headers}\n"
 
-        if self.body:
-            error_message += f"HTTP response body: {self.body}\n"
-
-        if self.data:
-            error_message += f"HTTP response data: {self.data}\n"
+        if self.data or self.body:
+            error_message += f"HTTP response body: {self.data or self.body}\n"
 
         return error_message
 
@@ -200,18 +188,6 @@ class ForbiddenException(ApiException):
 
 
 class ServiceException(ApiException):
-    pass
-
-
-class ConflictException(ApiException):
-    """Exception for HTTP 409 Conflict."""
-
-    pass
-
-
-class UnprocessableEntityException(ApiException):
-    """Exception for HTTP 422 Unprocessable Entity."""
-
     pass
 
 

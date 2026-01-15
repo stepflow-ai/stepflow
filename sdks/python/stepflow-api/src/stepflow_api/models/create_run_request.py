@@ -33,7 +33,10 @@ class CreateRunRequest(BaseModel):
     Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
     """  # noqa: E501
 
-    flow_id: StrictStr = Field(description="The flow hash to execute", alias="flowId")
+    flow_id: StrictStr = Field(
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+        alias="flowId",
+    )
     input: list[Any] = Field(
         description="Input data for the flow - always an array (one element per run)"
     )

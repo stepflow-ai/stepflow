@@ -23,7 +23,7 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_api.models.example_input import ExampleInput
 from stepflow_api.models.flow_schema import FlowSchema
@@ -34,7 +34,7 @@ from stepflow_api.models.value_expr import ValueExpr
 
 class Flow(BaseModel):
     """
-    Flow
+    A workflow consisting of a sequence of steps and their outputs.  A flow represents a complete workflow that can be executed. It contains: - A sequence of steps to execute - Named outputs that can reference step outputs  Flows should not be cloned. They should generally be stored and passed as a reference or inside an `Arc`.
     """  # noqa: E501
 
     name: StrictStr | None = Field(default=None, description="The name of the flow.")
@@ -66,7 +66,6 @@ class Flow(BaseModel):
         default=None,
         description="Extensible metadata for the flow that can be used by tools and frameworks.",
     )
-    var_schema: StrictStr = Field(alias="schema")
     __properties: ClassVar[list[str]] = [
         "name",
         "description",
@@ -77,17 +76,7 @@ class Flow(BaseModel):
         "test",
         "examples",
         "metadata",
-        "schema",
     ]
-
-    @field_validator("var_schema")
-    def var_schema_validate_enum(cls, value):
-        """Validates the enum"""
-        if value not in set(["https://stepflow.org/schemas/v1/flow.json"]):
-            raise ValueError(
-                "must be one of enum values ('https://stepflow.org/schemas/v1/flow.json')"
-            )
-        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -149,6 +138,31 @@ class Flow(BaseModel):
                 if _item_examples:
                     _items.append(_item_examples.to_dict())
             _dict["examples"] = _items
+        # set to None if name (nullable) is None
+        # and model_fields_set contains the field
+        if self.name is None and "name" in self.model_fields_set:
+            _dict["name"] = None
+
+        # set to None if description (nullable) is None
+        # and model_fields_set contains the field
+        if self.description is None and "description" in self.model_fields_set:
+            _dict["description"] = None
+
+        # set to None if version (nullable) is None
+        # and model_fields_set contains the field
+        if self.version is None and "version" in self.model_fields_set:
+            _dict["version"] = None
+
+        # set to None if test (nullable) is None
+        # and model_fields_set contains the field
+        if self.test is None and "test" in self.model_fields_set:
+            _dict["test"] = None
+
+        # set to None if examples (nullable) is None
+        # and model_fields_set contains the field
+        if self.examples is None and "examples" in self.model_fields_set:
+            _dict["examples"] = None
+
         return _dict
 
     @classmethod
@@ -181,7 +195,6 @@ class Flow(BaseModel):
                 if obj.get("examples") is not None
                 else None,
                 "metadata": obj.get("metadata"),
-                "schema": obj.get("schema"),
             }
         )
         return _obj

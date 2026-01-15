@@ -73,6 +73,9 @@ class FlowError(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of data
+        if self.data:
+            _dict["data"] = self.data.to_dict()
         # set to None if data (nullable) is None
         # and model_fields_set contains the field
         if self.data is None and "data" in self.model_fields_set:
@@ -93,7 +96,9 @@ class FlowError(BaseModel):
             {
                 "code": obj.get("code"),
                 "message": obj.get("message"),
-                "data": obj.get("data"),
+                "data": OneOf.from_dict(obj["data"])
+                if obj.get("data") is not None
+                else None,
             }
         )
         return _obj

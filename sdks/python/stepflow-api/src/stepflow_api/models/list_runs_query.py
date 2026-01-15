@@ -22,7 +22,6 @@ import json
 import pprint
 import re  # noqa: F401
 from typing import Annotated, Any, ClassVar, Self
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
@@ -40,12 +39,12 @@ class ListRunsQuery(BaseModel):
     flow_name: StrictStr | None = Field(
         default=None, description="Filter by flow name", alias="flowName"
     )
-    root_run_id: UUID | None = Field(
+    root_run_id: StrictStr | None = Field(
         default=None,
         description="Filter to runs under this root (includes the root itself)",
         alias="rootRunId",
     )
-    parent_run_id: UUID | None = Field(
+    parent_run_id: StrictStr | None = Field(
         default=None,
         description="Filter to direct children of this parent run",
         alias="parentRunId",

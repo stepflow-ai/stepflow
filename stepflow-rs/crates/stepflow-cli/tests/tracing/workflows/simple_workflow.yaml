@@ -1,4 +1,3 @@
-schema: https://stepflow.org/schemas/v1/flow.json
 name: "Simple Workflow for Tracing Tests"
 description: "Multi-step workflow using only builtin components"
 

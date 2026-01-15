@@ -22,9 +22,8 @@ import json
 import pprint
 import re  # noqa: F401
 from typing import Annotated, Any, ClassVar, Self
-from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_api.models.execution_status import ExecutionStatus
 from stepflow_api.models.flow_result import FlowResult
@@ -35,7 +34,7 @@ class CreateRunResponse(BaseModel):
     Response for create run operations
     """  # noqa: E501
 
-    run_id: UUID = Field(
+    run_id: StrictStr = Field(
         description="The run ID (for single runs) or batch ID (for batch runs)",
         alias="runId",
     )

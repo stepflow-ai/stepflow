@@ -160,19 +160,18 @@ mod tests {
     use super::*;
     use crate::mock_context::MockContext;
     use stepflow_core::ValueExpr;
-    use stepflow_core::workflow::FlowV1;
 
     #[tokio::test]
     async fn test_iterate_component_with_result() {
         let component = IterateComponent::new();
 
         // Create a simple workflow - the mock will return {"message": "Hello from nested flow"}
-        let test_flow = Flow::V1(FlowV1 {
+        let test_flow = Flow {
             name: Some("test-result".to_string()),
             steps: vec![],
             output: ValueExpr::Literal(serde_json::json!({"result": "test"})),
             ..Default::default()
-        });
+        };
 
         let input = IterateInput {
             flow: test_flow,
@@ -202,12 +201,12 @@ mod tests {
         let component = IterateComponent::new();
 
         // Create a workflow that returns "next" - the mock will return {"message": "Hello from nested flow"}
-        let test_flow = Flow::V1(FlowV1 {
+        let test_flow = Flow {
             name: Some("test-next".to_string()),
             steps: vec![],
             output: ValueExpr::Literal(serde_json::json!({"next": "continued_value"})),
             ..Default::default()
-        });
+        };
 
         let input = IterateInput {
             flow: test_flow,
@@ -237,12 +236,12 @@ mod tests {
         let component = IterateComponent::new();
 
         // Create a workflow that always returns "next" (infinite loop)
-        let test_flow = Flow::V1(FlowV1 {
+        let test_flow = Flow {
             name: Some("test-infinite".to_string()),
             steps: vec![],
             output: ValueExpr::Literal(serde_json::json!({"next": "forever"})),
             ..Default::default()
-        });
+        };
 
         let input = IterateInput {
             flow: test_flow,

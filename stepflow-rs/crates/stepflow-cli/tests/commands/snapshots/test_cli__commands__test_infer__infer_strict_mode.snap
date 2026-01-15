@@ -21,7 +21,6 @@ success: true
 exit_code: 0
 ----- stdout -----
 ✅ Validation passed with no errors
-schema: https://stepflow.org/schemas/v1/flow.json
 name: Basic Test Workflow
 description: Simple workflow to test the new test command
 schemas:

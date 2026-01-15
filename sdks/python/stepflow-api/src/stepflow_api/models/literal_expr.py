@@ -32,6 +32,7 @@ class LiteralExpr(BaseModel):
     """  # noqa: E501
 
     literal: Any | None = Field(alias="$literal")
+    additional_properties: dict[str, Any] = {}
     __properties: ClassVar[list[str]] = ["$literal"]
 
     model_config = ConfigDict(
@@ -63,14 +64,24 @@ class LiteralExpr(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
+        * Fields in `self.additional_properties` are added to the output dict.
         """
-        excluded_fields: set[str] = set([])
+        excluded_fields: set[str] = set(
+            [
+                "additional_properties",
+            ]
+        )
 
         _dict = self.model_dump(
             by_alias=True,
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # puts key-value pairs in additional_properties in the top level
+        if self.additional_properties is not None:
+            for _key, _value in self.additional_properties.items():
+                _dict[_key] = _value
+
         # set to None if literal (nullable) is None
         # and model_fields_set contains the field
         if self.literal is None and "literal" in self.model_fields_set:
@@ -88,4 +99,9 @@ class LiteralExpr(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({"$literal": obj.get("$literal")})
+        # store additional fields in additional_properties
+        for _key in obj.keys():
+            if _key not in cls.__properties:
+                _obj.additional_properties[_key] = obj.get(_key)
+
         return _obj

@@ -9012,7 +9012,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "stepflow-py" },
+    { name = "stepflow-worker" },
 ]
 
 [package.optional-dependencies]
@@ -9058,7 +9058,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
-    { name = "stepflow-py", editable = "../../sdks/python" },
+    { name = "stepflow-worker", editable = "../../sdks/python/stepflow-worker" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["http"]
@@ -9082,9 +9082,9 @@ dev = [
 ]
 
 [[package]]
-name = "stepflow-py"
+name = "stepflow-worker"
 version = "0.8.0"
-source = { editable = "../../sdks/python" }
+source = { editable = "../../sdks/python/stepflow-worker" }
 dependencies = [
     { name = "jsonschema" },
     { name = "msgspec" },

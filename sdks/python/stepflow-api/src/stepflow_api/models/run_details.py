@@ -23,7 +23,6 @@ import pprint
 import re  # noqa: F401
 from datetime import datetime
 from typing import Any, ClassVar, Self
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
@@ -37,7 +36,7 @@ class RunDetails(BaseModel):
     Detailed flow run information including inputs.  Note: Item results are not included here. Use `get_item_results()` to fetch item results separately. This design reflects that items are stored in a separate table and avoids loading all results when just querying run metadata.
     """  # noqa: E501
 
-    run_id: UUID = Field(alias="runId")
+    run_id: StrictStr = Field(alias="runId")
     flow_id: StrictStr = Field(
         description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         alias="flowId",
@@ -49,6 +48,15 @@ class RunDetails(BaseModel):
     )
     created_at: datetime = Field(alias="createdAt")
     completed_at: datetime | None = Field(default=None, alias="completedAt")
+    root_run_id: StrictStr = Field(
+        description="Root run ID for this execution tree.  For top-level runs, this equals `run_id`. For sub-flows, this is the original run that started the tree.",
+        alias="rootRunId",
+    )
+    parent_run_id: StrictStr | None = Field(
+        default=None,
+        description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
+        alias="parentRunId",
+    )
     inputs: list[Any] = Field(description="Input values for each item in this run.")
     overrides: WorkflowOverrides | None = Field(
         default=None,
@@ -62,6 +70,8 @@ class RunDetails(BaseModel):
         "items",
         "createdAt",
         "completedAt",
+        "rootRunId",
+        "parentRunId",
         "inputs",
         "overrides",
     ]
@@ -136,6 +146,8 @@ class RunDetails(BaseModel):
                 else None,
                 "createdAt": obj.get("createdAt"),
                 "completedAt": obj.get("completedAt"),
+                "rootRunId": obj.get("rootRunId"),
+                "parentRunId": obj.get("parentRunId"),
                 "inputs": obj.get("inputs"),
                 "overrides": WorkflowOverrides.from_dict(obj["overrides"])
                 if obj.get("overrides") is not None

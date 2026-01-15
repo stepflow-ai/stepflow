@@ -17,7 +17,6 @@ Do not edit the class manually.
 """  # noqa: E501
 
 from typing import Annotated, Any
-from uuid import UUID
 
 from pydantic import Field, StrictFloat, StrictInt, StrictStr, validate_call
 
@@ -25,6 +24,7 @@ from stepflow_api.api_client import ApiClient, RequestSerialized
 from stepflow_api.api_response import ApiResponse
 from stepflow_api.models.create_run_request import CreateRunRequest
 from stepflow_api.models.create_run_response import CreateRunResponse
+from stepflow_api.models.execution_status import ExecutionStatus
 from stepflow_api.models.list_items_response import ListItemsResponse
 from stepflow_api.models.list_runs_response import ListRunsResponse
 from stepflow_api.models.list_step_runs_response import ListStepRunsResponse
@@ -49,7 +49,7 @@ class RunApi:
     @validate_call
     def cancel_run(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -60,7 +60,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -110,7 +110,7 @@ class RunApi:
     @validate_call
     def cancel_run_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -121,7 +121,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -171,7 +171,7 @@ class RunApi:
     @validate_call
     def cancel_run_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -182,7 +182,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -523,7 +523,7 @@ class RunApi:
     @validate_call
     def delete_run(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -534,7 +534,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -584,7 +584,7 @@ class RunApi:
     @validate_call
     def delete_run_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -595,7 +595,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -645,7 +645,7 @@ class RunApi:
     @validate_call
     def delete_run_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -656,7 +656,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -749,7 +749,7 @@ class RunApi:
     @validate_call
     def get_run(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -760,7 +760,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -809,7 +809,7 @@ class RunApi:
     @validate_call
     def get_run_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -820,7 +820,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -869,7 +869,7 @@ class RunApi:
     @validate_call
     def get_run_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -880,7 +880,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -978,7 +978,7 @@ class RunApi:
     @validate_call
     def get_run_flow(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -989,7 +989,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1038,7 +1038,7 @@ class RunApi:
     @validate_call
     def get_run_flow_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1049,7 +1049,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1098,7 +1098,7 @@ class RunApi:
     @validate_call
     def get_run_flow_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1109,7 +1109,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1207,7 +1207,7 @@ class RunApi:
     @validate_call
     def get_run_items(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1219,7 +1219,7 @@ class RunApi:
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1268,7 +1268,7 @@ class RunApi:
     @validate_call
     def get_run_items_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1280,7 +1280,7 @@ class RunApi:
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1329,7 +1329,7 @@ class RunApi:
     @validate_call
     def get_run_items_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1341,7 +1341,7 @@ class RunApi:
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1439,7 +1439,7 @@ class RunApi:
     @validate_call
     def get_run_steps(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1450,7 +1450,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1499,7 +1499,7 @@ class RunApi:
     @validate_call
     def get_run_steps_with_http_info(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1510,7 +1510,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1559,7 +1559,7 @@ class RunApi:
     @validate_call
     def get_run_steps_without_preload_content(
         self,
-        run_id: Annotated[UUID, Field(description="Run ID (UUID)")],
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None | Annotated[StrictFloat, Field(gt=0)] | tuple[Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]] = None,
         _request_auth: dict[StrictStr, Any] | None = None,
         _content_type: StrictStr | None = None,
@@ -1570,7 +1570,7 @@ class RunApi:
 
 
         :param run_id: Run ID (UUID) (required)
-        :type run_id: UUID
+        :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1669,19 +1669,19 @@ class RunApi:
     def list_runs(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
         ] = None,
         root_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(
                 description="Filter to runs under this root (includes the root itself)"
             ),
         ] = None,
         parent_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
         max_depth: Annotated[
@@ -1710,9 +1710,9 @@ class RunApi:
         :param flow_name: Filter by flow name
         :type flow_name: str
         :param root_run_id: Filter to runs under this root (includes the root itself)
-        :type root_run_id: UUID
+        :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
-        :type parent_run_id: UUID
+        :type parent_run_id: str
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return
@@ -1772,19 +1772,19 @@ class RunApi:
     def list_runs_with_http_info(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
         ] = None,
         root_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(
                 description="Filter to runs under this root (includes the root itself)"
             ),
         ] = None,
         parent_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
         max_depth: Annotated[
@@ -1813,9 +1813,9 @@ class RunApi:
         :param flow_name: Filter by flow name
         :type flow_name: str
         :param root_run_id: Filter to runs under this root (includes the root itself)
-        :type root_run_id: UUID
+        :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
-        :type parent_run_id: UUID
+        :type parent_run_id: str
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return
@@ -1875,19 +1875,19 @@ class RunApi:
     def list_runs_without_preload_content(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
         ] = None,
         root_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(
                 description="Filter to runs under this root (includes the root itself)"
             ),
         ] = None,
         parent_run_id: Annotated[
-            UUID | None,
+            StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
         max_depth: Annotated[
@@ -1916,9 +1916,9 @@ class RunApi:
         :param flow_name: Filter by flow name
         :type flow_name: str
         :param root_run_id: Filter to runs under this root (includes the root itself)
-        :type root_run_id: UUID
+        :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
-        :type parent_run_id: UUID
+        :type parent_run_id: str
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return

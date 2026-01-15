@@ -253,68 +253,7 @@ class TestConfig(Struct, kw_only=True):
     ) = None
 
 
-class FlowV1(Struct, kw_only=True):
-    schema_: Literal['https://stepflow.org/schemas/v1/flow.json'] = field(name='schema')
-    name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
-    description: (
-        Annotated[str | None, Meta(description='The description of the flow.')] | None
-    ) = None
-    version: (
-        Annotated[str | None, Meta(description='The version of the flow.')] | None
-    ) = None
-    schemas: (
-        Annotated[
-            FlowSchema,
-            Meta(
-                description='Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`.'
-            ),
-        ]
-        | None
-    ) = None
-    steps: (
-        Annotated[List[Step], Meta(description='The steps to execute for the flow.')]
-        | None
-    ) = None
-    output: (
-        Annotated[
-            ValueExpr,
-            Meta(
-                description='The outputs of the flow, mapping output names to their values.'
-            ),
-        ]
-        | None
-    ) = None
-    test: TestConfig | None = None
-    examples: (
-        Annotated[
-            List[ExampleInput],
-            Meta(
-                description='Example inputs for the workflow that can be used for testing and UI dropdowns.'
-            ),
-        ]
-        | None
-    ) = None
-    metadata: (
-        Annotated[
-            Dict[str, Any],
-            Meta(
-                description='Extensible metadata for the flow that can be used by tools and frameworks.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-Flow = Annotated[
-    FlowV1,
-    Meta(
-        description='A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.',
-        title='Flow',
-    ),
-]
-
-
-class FlowV11(Struct, kw_only=True):
+class Flow(Struct, kw_only=True):
     name: Annotated[str | None, Meta(description='The name of the flow.')] | None = None
     description: (
         Annotated[str | None, Meta(description='The description of the flow.')] | None

@@ -25,219 +25,12 @@ use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 ///
 /// Flows should not be cloned. They should generally be stored and passed as a
 /// reference or inside an `Arc`.
-#[derive(Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
-#[serde(tag = "schema")]
-pub enum Flow {
-    #[serde(rename = "https://stepflow.org/schemas/v1/flow.json")]
-    V1(FlowV1),
-}
-
-impl Default for Flow {
-    fn default() -> Self {
-        Flow::V1(FlowV1::default())
-    }
-}
-
-impl Flow {
-    pub fn supported_schema(schema: &str) -> bool {
-        schema == "https://stepflow.org/schemas/v1/flow.json"
-    }
-
-    /// Upgrade the flow to the latest version.
-    pub fn upgrade(self) -> Self {
-        match self {
-            Flow::V1(flow_v1) => Flow::V1(flow_v1),
-        }
-    }
-
-    /// Create a clone of this flow.
-    ///
-    /// **Warning**: This method performs a deep clone of the entire workflow structure,
-    /// including all steps, metadata, and configurations. This can be expensive for
-    /// large workflows.
-    ///
-    /// # Performance
-    /// - Cloning large workflows with many steps can be slow
-    /// - Consider using `Arc<Flow>` for shared ownership instead
-    /// - Only use this when you need to modify the workflow structure
-    ///
-    /// # Example
-    /// ```rust
-    /// use stepflow_core::workflow::Flow;
-    ///
-    /// let original_flow = Flow::default();
-    /// let cloned_flow = original_flow.slow_clone();
-    /// ```
-    pub fn slow_clone(&self) -> Self {
-        match self {
-            Flow::V1(flow_v1) => Flow::V1(flow_v1.clone()),
-        }
-    }
-
-    pub fn latest(&self) -> &FlowV1 {
-        match self {
-            Flow::V1(flow_v1) => flow_v1,
-        }
-    }
-
-    pub fn name(&self) -> Option<&str> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.name.as_deref(),
-        }
-    }
-
-    pub fn description(&self) -> Option<&str> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.description.as_deref(),
-        }
-    }
-
-    pub fn version(&self) -> Option<&str> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.version.as_deref(),
-        }
-    }
-
-    pub fn metadata(&self) -> &HashMap<String, serde_json::Value> {
-        match self {
-            Flow::V1(flow_v1) => &flow_v1.metadata,
-        }
-    }
-
-    /// Returns a reference to all steps in the flow.
-    pub fn steps(&self) -> &[Step] {
-        &self.latest().steps
-    }
-
-    pub fn examples(&self) -> &[ExampleInput] {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.examples.as_deref().unwrap_or(&[]),
-        }
-    }
-
-    /// Get the variable schema for the flow.
-    ///
-    /// This constructs a `VariableSchema` from the schema definition, extracting
-    /// runtime metadata like defaults, secrets, and required variables.
-    pub fn variables(&self) -> Option<VariableSchema> {
-        self.schemas().variables.clone().map(VariableSchema::from)
-    }
-
-    /// Get a reference to the variable schema (raw SchemaRef).
-    pub fn variable_schema(&self) -> Option<&SchemaRef> {
-        self.schemas().variables.as_ref()
-    }
-
-    /// Returns a reference to the step at the given index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub fn step(&self, index: usize) -> &Step {
-        &self.latest().steps[index]
-    }
-
-    /// Returns a mutable reference to the step at the given index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the index is out of bounds.
-    pub fn step_mut(&mut self, index: usize) -> &mut Step {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.steps.get_mut(index).expect("Index out of bounds"),
-        }
-    }
-
-    /// Returns a reference to the flow's output value.
-    pub fn output(&self) -> &ValueExpr {
-        &self.latest().output
-    }
-
-    pub fn test(&self) -> Option<&TestConfig> {
-        self.latest().test.as_ref()
-    }
-
-    pub fn test_mut(&mut self) -> Option<&mut TestConfig> {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.test.as_mut(),
-        }
-    }
-
-    /// Get the flow's schema information.
-    pub fn schemas(&self) -> &FlowSchema {
-        &self.latest().schemas
-    }
-
-    /// Get a mutable reference to the flow's schema information.
-    pub fn schemas_mut(&mut self) -> &mut FlowSchema {
-        match self {
-            Flow::V1(flow_v1) => &mut flow_v1.schemas,
-        }
-    }
-
-    /// Get the flow's input schema.
-    pub fn input_schema(&self) -> Option<&SchemaRef> {
-        self.latest().schemas.input.as_ref()
-    }
-
-    /// Set the flow's input schema.
-    pub fn set_input_schema(&mut self, input_schema: Option<SchemaRef>) {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.schemas.input = input_schema,
-        }
-    }
-
-    /// Get the flow's output schema.
-    pub fn output_schema(&self) -> Option<&SchemaRef> {
-        self.latest().schemas.output.as_ref()
-    }
-
-    /// Set the flow's output schema.
-    pub fn set_output_schema(&mut self, output_schema: Option<SchemaRef>) {
-        match self {
-            Flow::V1(flow_v1) => flow_v1.schemas.output = output_schema,
-        }
-    }
-
-    /// Get the output schema for a specific step.
-    pub fn step_output_schema(&self, step_id: &str) -> Option<&SchemaRef> {
-        self.latest().schemas.steps.get(step_id)
-    }
-
-    /// Set the output schema for a specific step.
-    pub fn set_step_output_schema(&mut self, step_id: String, step_schema: SchemaRef) {
-        match self {
-            Flow::V1(flow_v1) => {
-                flow_v1.schemas.steps.insert(step_id, step_schema);
-            }
-        }
-    }
-
-    /// Get all example inputs, including those derived from test cases.
-    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
-        let mut examples = self.examples().to_vec();
-
-        // Add examples from test cases if they exist
-        if let Some(test_config) = &self.latest().test {
-            for test_case in &test_config.cases {
-                // Only add if there isn't already an example with the same name
-                if !examples.iter().any(|ex| ex.name == test_case.name) {
-                    examples.push(ExampleInput::from(test_case));
-                }
-            }
-        }
-
-        examples
-    }
-}
-
-/// # FlowV1
 #[serde_as]
 #[derive(
     Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, utoipa::ToSchema,
 )]
 #[serde(rename_all = "camelCase")]
-pub struct FlowV1 {
+pub struct Flow {
     /// The name of the flow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -275,6 +68,156 @@ pub struct FlowV1 {
     /// Extensible metadata for the flow that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
+}
+
+impl Flow {
+    /// Create a clone of this flow.
+    ///
+    /// **Warning**: This method performs a deep clone of the entire workflow structure,
+    /// including all steps, metadata, and configurations. This can be expensive for
+    /// large workflows.
+    ///
+    /// # Performance
+    /// - Cloning large workflows with many steps can be slow
+    /// - Consider using `Arc<Flow>` for shared ownership instead
+    /// - Only use this when you need to modify the workflow structure
+    ///
+    /// # Example
+    /// ```rust
+    /// use stepflow_core::workflow::Flow;
+    ///
+    /// let original_flow = Flow::default();
+    /// let cloned_flow = original_flow.slow_clone();
+    /// ```
+    pub fn slow_clone(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    pub fn metadata(&self) -> &HashMap<String, serde_json::Value> {
+        &self.metadata
+    }
+
+    /// Returns a reference to all steps in the flow.
+    pub fn steps(&self) -> &[Step] {
+        &self.steps
+    }
+
+    pub fn examples(&self) -> &[ExampleInput] {
+        self.examples.as_deref().unwrap_or(&[])
+    }
+
+    /// Get the variable schema for the flow.
+    ///
+    /// This constructs a `VariableSchema` from the schema definition, extracting
+    /// runtime metadata like defaults, secrets, and required variables.
+    pub fn variables(&self) -> Option<VariableSchema> {
+        self.schemas().variables.clone().map(VariableSchema::from)
+    }
+
+    /// Get a reference to the variable schema (raw SchemaRef).
+    pub fn variable_schema(&self) -> Option<&SchemaRef> {
+        self.schemas().variables.as_ref()
+    }
+
+    /// Returns a reference to the step at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub fn step(&self, index: usize) -> &Step {
+        &self.steps[index]
+    }
+
+    /// Returns a mutable reference to the step at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds.
+    pub fn step_mut(&mut self, index: usize) -> &mut Step {
+        self.steps.get_mut(index).expect("Index out of bounds")
+    }
+
+    /// Returns a reference to the flow's output value.
+    pub fn output(&self) -> &ValueExpr {
+        &self.output
+    }
+
+    pub fn test(&self) -> Option<&TestConfig> {
+        self.test.as_ref()
+    }
+
+    pub fn test_mut(&mut self) -> Option<&mut TestConfig> {
+        self.test.as_mut()
+    }
+
+    /// Get the flow's schema information.
+    pub fn schemas(&self) -> &FlowSchema {
+        &self.schemas
+    }
+
+    /// Get a mutable reference to the flow's schema information.
+    pub fn schemas_mut(&mut self) -> &mut FlowSchema {
+        &mut self.schemas
+    }
+
+    /// Get the flow's input schema.
+    pub fn input_schema(&self) -> Option<&SchemaRef> {
+        self.schemas.input.as_ref()
+    }
+
+    /// Set the flow's input schema.
+    pub fn set_input_schema(&mut self, input_schema: Option<SchemaRef>) {
+        self.schemas.input = input_schema;
+    }
+
+    /// Get the flow's output schema.
+    pub fn output_schema(&self) -> Option<&SchemaRef> {
+        self.schemas.output.as_ref()
+    }
+
+    /// Set the flow's output schema.
+    pub fn set_output_schema(&mut self, output_schema: Option<SchemaRef>) {
+        self.schemas.output = output_schema;
+    }
+
+    /// Get the output schema for a specific step.
+    pub fn step_output_schema(&self, step_id: &str) -> Option<&SchemaRef> {
+        self.schemas.steps.get(step_id)
+    }
+
+    /// Set the output schema for a specific step.
+    pub fn set_step_output_schema(&mut self, step_id: String, step_schema: SchemaRef) {
+        self.schemas.steps.insert(step_id, step_schema);
+    }
+
+    /// Get all example inputs, including those derived from test cases.
+    pub fn get_all_examples(&self) -> Vec<ExampleInput> {
+        let mut examples = self.examples().to_vec();
+
+        // Add examples from test cases if they exist
+        if let Some(test_config) = &self.test {
+            for test_case in &test_config.cases {
+                // Only add if there isn't already an example with the same name
+                if !examples.iter().any(|ex| ex.name == test_case.name) {
+                    examples.push(ExampleInput::from(test_case));
+                }
+            }
+        }
+
+        examples
+    }
 }
 
 /// A wrapper around `Arc<Flow>` to support poem-openapi traits.
@@ -505,7 +448,6 @@ mod tests {
     #[test]
     fn test_flow_from_yaml() {
         let yaml = r#"
-        schema: https://stepflow.org/schemas/v1/flow.json
         name: test
         description: test
         version: 1.0.0
@@ -547,33 +489,32 @@ mod tests {
         )
         .unwrap();
         // Verify basic flow properties
-        let latest = flow.latest();
-        assert_eq!(latest.name, Some("test".to_owned()));
-        assert_eq!(latest.description, Some("test".to_owned()));
-        assert_eq!(latest.version, Some("1.0.0".to_owned()));
-        assert_eq!(latest.schemas.input, Some(input_schema.clone()));
-        assert_eq!(latest.schemas.output, Some(output_schema.clone()));
-        assert_eq!(latest.steps.len(), 2);
+        assert_eq!(flow.name, Some("test".to_owned()));
+        assert_eq!(flow.description, Some("test".to_owned()));
+        assert_eq!(flow.version, Some("1.0.0".to_owned()));
+        assert_eq!(flow.schemas.input, Some(input_schema.clone()));
+        assert_eq!(flow.schemas.output, Some(output_schema.clone()));
+        assert_eq!(flow.steps.len(), 2);
 
         // Verify step details
-        assert_eq!(latest.steps[0].id, "s1");
-        assert_eq!(latest.steps[0].component.path(), "/langflow/echo");
-        assert_eq!(latest.steps[1].id, "s2");
-        assert_eq!(latest.steps[1].component.path(), "/mcp/foo/bar");
+        assert_eq!(flow.steps[0].id, "s1");
+        assert_eq!(flow.steps[0].component.path(), "/langflow/echo");
+        assert_eq!(flow.steps[1].id, "s2");
+        assert_eq!(flow.steps[1].component.path(), "/mcp/foo/bar");
 
         // Test round-trip serialization to ensure expressions are preserved
         let serialized = serde_json::to_string(&flow).unwrap();
         let deserialized: Flow = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(latest.name, deserialized.latest().name);
-        assert_eq!(latest.steps.len(), deserialized.latest().steps.len());
-        assert_eq!(latest.output, deserialized.latest().output);
+        assert_eq!(flow.name, deserialized.name);
+        assert_eq!(flow.steps.len(), deserialized.steps.len());
+        assert_eq!(flow.output, deserialized.output);
 
         // Verify that the output contains proper expression structures
         // The output should be parsed as an Object expression containing step references
-        assert!(matches!(latest.output, ValueExpr::Object(_)));
+        assert!(matches!(flow.output, ValueExpr::Object(_)));
 
         // Test full structural equality
-        let expected_flow_built = FlowBuilder::new()
+        let expected_flow = FlowBuilder::new()
             .name("test")
             .description("test")
             .version("1.0.0")
@@ -602,9 +543,7 @@ mod tests {
             )
             .build();
 
-        let Flow::V1(expected_flow) = expected_flow_built;
-
-        similar_asserts::assert_serde_eq!(latest, &expected_flow);
+        similar_asserts::assert_serde_eq!(&flow, &expected_flow);
     }
 
     #[test]

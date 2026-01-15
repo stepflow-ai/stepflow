@@ -38,7 +38,7 @@ class ExampleInput(BaseModel):
         default=None,
         description="Optional description of what this example demonstrates.",
     )
-    input: Any | None = Field(description="The input data for this example.")
+    input: Any | None
     __properties: ClassVar[list[str]] = ["name", "description", "input"]
 
     model_config = ConfigDict(

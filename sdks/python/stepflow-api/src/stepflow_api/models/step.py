@@ -35,7 +35,9 @@ class Step(BaseModel):
     """  # noqa: E501
 
     id: StrictStr = Field(description="Identifier for the step")
-    component: StrictStr = Field(description="The component to execute in this step")
+    component: StrictStr = Field(
+        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."
+    )
     on_error: ErrorAction | None = Field(default=None, alias="onError")
     input: ValueExpr | None = Field(
         default=None, description="Arguments to pass to the component for this step"

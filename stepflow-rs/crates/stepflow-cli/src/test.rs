@@ -519,31 +519,16 @@ pub async fn run_tests(
 fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
     let rdr = File::open(path).change_context_lazy(|| MainError::MissingFile(path.to_owned()))?;
 
-    // Try to parse as YAML, but if it fails, treat it as a non-flow file
-    let value: serde_yaml_ng::Value = match serde_yaml_ng::from_reader(rdr) {
-        Ok(v) => v,
+    // Try to parse as a Flow directly - if it fails, treat as non-flow file
+    let flow: Flow = match serde_yaml_ng::from_reader(rdr) {
+        Ok(f) => f,
         Err(_) => {
-            // Invalid YAML or parsing error - skip this file
+            // Not a valid flow - skip this file
             return Ok(None);
         }
     };
 
-    let Some(object) = value.as_mapping() else {
-        return Ok(None);
-    };
-
-    match object.get("schema").and_then(|s| s.as_str()) {
-        Some(schema) if Flow::supported_schema(schema) => {
-            // Try to deserialize as Flow, but if it fails with the right schema, that's an error
-            let flow: Flow = serde_yaml_ng::from_value(value)
-                .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
-            Ok(Some(Arc::new(flow)))
-        }
-        _ => {
-            // No schema field or unsupported schema - skip this file
-            Ok(None)
-        }
-    }
+    Ok(Some(Arc::new(flow)))
 }
 
 /// Run tests on a single workflow file.

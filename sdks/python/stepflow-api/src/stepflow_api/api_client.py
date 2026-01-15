@@ -23,7 +23,6 @@ import mimetypes
 import os
 import re
 import tempfile
-import uuid
 from enum import Enum
 from urllib.parse import quote
 
@@ -304,7 +303,7 @@ class ApiClient:
                 return_data = self.__deserialize_file(response_data)
             elif response_type is not None:
                 match = None
-                content_type = response_data.headers.get("content-type")
+                content_type = response_data.getheader("content-type")
                 if content_type is not None:
                     match = re.search(r"charset=([a-zA-Z\-\d]+)[\s;]?", content_type)
                 encoding = match.group(1) if match else "utf-8"
@@ -323,7 +322,7 @@ class ApiClient:
         return ApiResponse(
             status_code=response_data.status,
             data=return_data,
-            headers=response_data.headers,
+            headers=response_data.getheaders(),
             raw_data=response_data.data,
         )
 
@@ -351,8 +350,6 @@ class ApiClient:
             return obj.get_secret_value()
         elif isinstance(obj, self.PRIMITIVE_TYPES):
             return obj
-        elif isinstance(obj, uuid.UUID):
-            return str(obj)
         elif isinstance(obj, list):
             return [self.sanitize_for_serialization(sub_obj) for sub_obj in obj]
         elif isinstance(obj, tuple):
@@ -374,10 +371,6 @@ class ApiClient:
                 obj_dict = obj.to_dict()
             else:
                 obj_dict = obj.__dict__
-
-        if isinstance(obj_dict, list):
-            # here we handle instances that can either be a list or something else, and only became a real list by calling to_dict()
-            return self.sanitize_for_serialization(obj_dict)
 
         return {
             key: self.sanitize_for_serialization(val) for key, val in obj_dict.items()
@@ -403,7 +396,7 @@ class ApiClient:
             except ValueError:
                 data = response_text
         elif re.match(
-            r"^application/(json|[\w!#$&.+\-^_]+\+json)\s*(;|$)",
+            r"^application/(json|[\w!#$&.+-^_]+\+json)\s*(;|$)",
             content_type,
             re.IGNORECASE,
         ):
@@ -452,13 +445,13 @@ class ApiClient:
 
         if klass in self.PRIMITIVE_TYPES:
             return self.__deserialize_primitive(data, klass)
-        elif klass is object:
+        elif klass == object:
             return self.__deserialize_object(data)
-        elif klass is datetime.date:
+        elif klass == datetime.date:
             return self.__deserialize_date(data)
-        elif klass is datetime.datetime:
+        elif klass == datetime.datetime:
             return self.__deserialize_datetime(data)
-        elif klass is decimal.Decimal:
+        elif klass == decimal.Decimal:
             return decimal.Decimal(data)
         elif issubclass(klass, Enum):
             return self.__deserialize_enum(data, klass)
@@ -515,7 +508,7 @@ class ApiClient:
             if k in collection_formats:
                 collection_format = collection_formats[k]
                 if collection_format == "multi":
-                    new_params.extend((k, quote(str(value))) for value in v)
+                    new_params.extend((k, str(value)) for value in v)
                 else:
                     if collection_format == "ssv":
                         delimiter = " "
@@ -669,7 +662,7 @@ class ApiClient:
         os.close(fd)
         os.remove(path)
 
-        content_disposition = response.headers.get("Content-Disposition")
+        content_disposition = response.getheader("Content-Disposition")
         if content_disposition:
             m = re.search(r'filename=[\'"]?([^\'"\s]+)[\'"]?', content_disposition)
             assert m is not None, "Unexpected 'content-disposition' header value"
