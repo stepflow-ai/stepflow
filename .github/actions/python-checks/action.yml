@@ -33,4 +33,4 @@ runs:
     # Run Python SDK checks using the shared script
     - name: Run Python SDK checks
       shell: bash
-      run: ./scripts/check-python.sh
+      run: ./scripts/check-python.sh -v

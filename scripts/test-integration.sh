@@ -13,32 +13,106 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-set -e
+# Integration test script - builds stepflow and runs workflow tests
+#
+# Usage: ./scripts/test-integration.sh [-v|--verbose]
+#   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
 
-echo "🧪 Running integration tests..."
+set -e
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source shared helpers
+source "$SCRIPT_DIR/_lib.sh"
+
+# Parse command line arguments
+parse_flags "$@"
+
+echo "🔗 Integration"
+
 cd "$PROJECT_ROOT"
 
-# Setup Python environment
-echo "🐍 Setting up Python environment..."
-cd sdks/python
-uv sync --all-extras --group dev
-cd ../..
+# =============================================================================
+# SETUP
+# =============================================================================
 
-# Build stepflow binary
-echo "🔨 Building stepflow binary..."
-cd stepflow-rs
-cargo build
+# Initialize temp directory
+_lib_init
 
-# Test workflows using stepflow test command
-echo "🔗 Testing workflows..."
+# Setup Python environment and build stepflow in parallel
+if [ "$VERBOSE" = true ]; then
+    # In verbose mode, run sequentially to show output
+    print_step "Python deps"
+    echo ""
+    echo "    Running: cd sdks/python && uv sync --all-extras --group dev"
+    if (cd "$PROJECT_ROOT/sdks/python" && uv sync --all-extras --group dev); then
+        print_step "Python deps"
+        print_pass
+    else
+        print_step "Python deps"
+        print_fail
+        FAILED_CHECKS+=("Python deps")
+    fi
 
-# Test both tests and examples directories together
-echo "  Testing both tests and examples directories..."
-./target/debug/stepflow test ../tests ../examples
+    print_step "Build stepflow"
+    echo ""
+    echo "    Running: cd stepflow-rs && cargo build"
+    if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build); then
+        print_step "Build stepflow"
+        print_pass
+    else
+        print_step "Build stepflow"
+        print_fail
+        FAILED_CHECKS+=("Build stepflow")
+        print_fix "Fix build errors"
+        print_rerun "cd stepflow-rs && cargo build"
+    fi
+else
+    # In quiet mode, run in parallel with output capture
+    (cd "$PROJECT_ROOT/sdks/python" && uv sync --all-extras --group dev) > "$_LIB_TMPDIR/python.txt" 2>&1 &
+    PYTHON_PID=$!
 
-echo "✅ Integration tests completed successfully"
+    (cd "$PROJECT_ROOT/stepflow-rs" && cargo build) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
+    CARGO_PID=$!
+
+    # Wait for both to complete
+    print_step "Python deps"
+    if wait $PYTHON_PID; then
+        print_pass
+    else
+        print_fail
+        FAILED_CHECKS+=("Python deps")
+        echo "    Output:"
+        sed 's/^/      /' "$_LIB_TMPDIR/python.txt" | head -50
+    fi
+
+    print_step "Build stepflow"
+    if wait $CARGO_PID; then
+        print_pass
+    else
+        print_fail
+        FAILED_CHECKS+=("Build stepflow")
+        echo "    Output:"
+        sed 's/^/      /' "$_LIB_TMPDIR/cargo.txt" | head -50
+        print_fix "Fix build errors"
+        print_rerun "cd stepflow-rs && cargo build"
+    fi
+fi
+
+# =============================================================================
+# RUN WORKFLOW TESTS
+# =============================================================================
+
+run_check "Workflow tests" "$PROJECT_ROOT/stepflow-rs/target/debug/stepflow" test "$PROJECT_ROOT/tests" "$PROJECT_ROOT/examples"
+if [ $? -ne 0 ]; then
+    print_fix "Fix failing workflow tests"
+    print_rerun "./stepflow-rs/target/debug/stepflow test tests examples"
+fi
+
+# =============================================================================
+# RESULTS SUMMARY
+# =============================================================================
+
+print_summary "Integration" "./scripts/test-integration.sh"

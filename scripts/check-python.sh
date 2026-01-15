@@ -15,219 +15,80 @@
 
 # CI check script for Python SDK - mirrors .github/actions/python-checks behavior
 # This script runs all Python-related checks that are performed in CI
+#
+# Usage: ./scripts/check-python.sh [-v|--verbose]
+#   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
 
 set -e
-
-# Parse command line arguments
-QUIET=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --quiet|-q)
-            QUIET=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--quiet|-q]"
-            exit 1
-            ;;
-    esac
-done
-
-# Output function that respects quiet mode
-output() {
-    if [ "$QUIET" = false ]; then
-        echo "$@"
-    fi
-}
-
-# Always show this header
-echo "🐍 Running Python SDK CI checks..."
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source shared helpers
+source "$SCRIPT_DIR/_lib.sh"
+
+# Parse command line arguments
+parse_flags "$@"
+
+echo "🐍 Python"
+
 cd "$PROJECT_ROOT/sdks/python"
 
-# Track results of all checks
-FAILED_CHECKS=()
+# Check for required tool
+require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
 # =============================================================================
-# PYTHON SDK CHECKS (python-checks action)
+# PYTHON SDK SETUP
 # =============================================================================
 
-output "🔧 Setting up Python environment..."
-if ! command -v uv &> /dev/null; then
-    echo "❌ uv not found. Please install uv first:"
-    echo "   curl -LsSf https://astral.sh/uv/install.sh | sh"
-    exit 1
+run_check "Python install" uv python install
+run_check "Dependencies" uv sync --all-extras --group dev
+
+# =============================================================================
+# PYTHON SDK CHECKS
+# =============================================================================
+
+run_check "Codegen" uv run poe codegen-fix
+
+run_check "Formatting" uv run poe fmt-check
+if [ $? -ne 0 ]; then
+    print_fix "uv run poe fmt-fix"
 fi
 
-output "🐍 Installing Python and dependencies..."
-if [ "$QUIET" = true ]; then
-    if ! uv python install >/dev/null 2>&1; then
-        echo "❌ Failed to install Python"
-        FAILED_CHECKS+=("python-install")
-    fi
-else
-    if ! uv python install; then
-        echo "❌ Failed to install Python"
-        FAILED_CHECKS+=("python-install")
-    fi
+run_check "Linting" uv run poe lint-check
+if [ $? -ne 0 ]; then
+    print_fix "uv run poe lint-fix"
 fi
 
-if [ "$QUIET" = true ]; then
-    if ! uv sync --all-extras --group dev >/dev/null 2>&1; then
-        echo "❌ Failed to install dependencies"
-        FAILED_CHECKS+=("dependencies")
-    fi
-else
-    if ! uv sync --all-extras --group dev; then
-        echo "❌ Failed to install dependencies"
-        FAILED_CHECKS+=("dependencies")
-    fi
+run_check "Type checking" uv run poe type-check
+if [ $? -ne 0 ]; then
+    print_fix "Fix type errors"
+    print_rerun "uv run poe type-check"
 fi
 
-output "🔄 Regenerating Python types (ensure up-to-date)..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe codegen-fix >/dev/null 2>&1; then
-        echo "❌ Code generation failed"
-        FAILED_CHECKS+=("codegen")
-    fi
-else
-    if ! uv run poe codegen-fix; then
-        echo "❌ Code generation failed"
-        FAILED_CHECKS+=("codegen")
-    fi
+run_check "Dep check" uv run poe dep-check
+if [ $? -ne 0 ]; then
+    print_fix "Fix dependency issues"
 fi
 
-output "🎨 Checking Python formatting..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe fmt-check >/dev/null 2>&1; then
-        echo "❌ Formatting check failed. Run 'uv run poe fmt-fix' to fix."
-        FAILED_CHECKS+=("formatting")
-    fi
-else
-    if ! uv run poe fmt-check; then
-        echo "❌ Formatting check failed. Run 'uv run poe fmt-fix' to fix."
-        FAILED_CHECKS+=("formatting")
-    fi
-fi
-
-output "📝 Running Python linting..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe lint-check >/dev/null 2>&1; then
-        echo "❌ Linting check failed. Run 'uv run poe lint-fix' to fix."
-        FAILED_CHECKS+=("linting")
-    fi
-else
-    if ! uv run poe lint-check; then
-        echo "❌ Linting check failed. Run 'uv run poe lint-fix' to fix."
-        FAILED_CHECKS+=("linting")
-    fi
-fi
-
-output "🔍 Running Python type checking..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe type-check >/dev/null 2>&1; then
-        echo "❌ Type checking failed"
-        FAILED_CHECKS+=("type-check")
-    fi
-else
-    if ! uv run poe type-check; then
-        echo "❌ Type checking failed"
-        FAILED_CHECKS+=("type-check")
-    fi
-fi
-
-output "📦 Checking Python dependencies..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe dep-check >/dev/null 2>&1; then
-        echo "❌ Dependency check failed"
-        FAILED_CHECKS+=("dep-check")
-    fi
-else
-    if ! uv run poe dep-check; then
-        echo "❌ Dependency check failed"
-        FAILED_CHECKS+=("dep-check")
-    fi
-fi
-
-output "🧪 Running Python tests..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe test >/dev/null 2>&1; then
-        echo "❌ Tests failed"
-        FAILED_CHECKS+=("tests")
-    fi
-else
-    if ! uv run poe test; then
-        echo "❌ Tests failed"
-        FAILED_CHECKS+=("tests")
-    fi
+run_check "Tests" uv run poe test
+if [ $? -ne 0 ]; then
+    print_fix "Fix failing tests"
+    print_rerun "uv run poe test"
 fi
 
 # =============================================================================
-# ADDITIONAL CHECKS (not in CI but useful for local development)
+# ADDITIONAL CHECKS
 # =============================================================================
 
-output "✅ Verifying generated types are up-to-date..."
-if [ "$QUIET" = true ]; then
-    if ! uv run poe codegen-check >/dev/null 2>&1; then
-        echo "❌ Generated types are out of date. Run 'uv run poe codegen-fix' to fix."
-        FAILED_CHECKS+=("codegen-check")
-    fi
-else
-    if ! uv run poe codegen-check; then
-        echo "❌ Generated types are out of date. Run 'uv run poe codegen-fix' to fix."
-        FAILED_CHECKS+=("codegen-check")
-    fi
+run_check "Codegen check" uv run poe codegen-check
+if [ $? -ne 0 ]; then
+    print_fix "uv run poe codegen-fix"
 fi
 
 # =============================================================================
 # RESULTS SUMMARY
 # =============================================================================
 
-echo ""
-echo "=== Python SDK CI Check Results ==="
-
-if [ ${#FAILED_CHECKS[@]} -eq 0 ]; then
-    echo "✅ All Python checks passed!"
-    exit 0
-else
-    echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
-    echo ""
-    echo "To fix these issues:"
-    for check in "${FAILED_CHECKS[@]}"; do
-        case "$check" in
-            "python-install")
-                echo "  - Ensure uv is installed and working"
-                ;;
-            "dependencies")
-                echo "  - Run: uv sync --all-extras"
-                ;;
-            "codegen")
-                echo "  - Run: uv run poe codegen-fix"
-                ;;
-            "formatting")
-                echo "  - Run: uv run poe fmt-fix"
-                ;;
-            "linting")
-                echo "  - Run: uv run poe lint-fix"
-                ;;
-            "type-check")
-                echo "  - Fix type errors and run: uv run poe type-check"
-                ;;
-            "dep-check")
-                echo "  - Fix dependency issues and run: uv run poe dep-check"
-                ;;
-            "tests")
-                echo "  - Fix failing tests and run: uv run poe test"
-                ;;
-            "codegen-check")
-                echo "  - Run: uv run poe codegen-fix"
-                ;;
-        esac
-    done
-    exit 1
-fi
+print_summary "Python" "./scripts/check-python.sh"
