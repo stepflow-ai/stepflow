@@ -2,10 +2,22 @@
 # The main package is in stepflow-worker/
 
 [tool.uv.workspace]
-members = ["stepflow-worker"]
+members = [
+    "stepflow-worker",
+    "stepflow-api",
+    "stepflow-client",
+    "stepflow-core",
+    "stepflow-py",
+    "stepflow-runtime",
+]
 
 [tool.uv.sources]
 stepflow-worker = { workspace = true }
+stepflow-api = { workspace = true }
+stepflow-client = { workspace = true }
+stepflow-core = { workspace = true }
+stepflow-py = { workspace = true }
+stepflow-runtime = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -146,3 +158,4 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "auto"
