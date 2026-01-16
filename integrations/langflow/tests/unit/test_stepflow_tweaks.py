@@ -14,6 +14,8 @@
 
 """Tests for Stepflow-level tweaks functionality."""
 
+from typing import Any
+
 import pytest
 
 from stepflow_langflow_integration.converter.stepflow_tweaks import (
@@ -22,6 +24,19 @@ from stepflow_langflow_integration.converter.stepflow_tweaks import (
 )
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 from tests.helpers.tweaks_builder import TweaksBuilder
+
+
+def unwrap_value_expr(value: Any) -> Any:
+    """Recursively unwrap ValueExpr and PrimitiveValue to get raw values."""
+    if value is None:
+        return None
+    if hasattr(value, "actual_instance"):
+        return unwrap_value_expr(value.actual_instance)
+    if isinstance(value, dict):
+        return {k: unwrap_value_expr(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [unwrap_value_expr(v) for v in value]
+    return value
 
 
 class TestStepflowTweaks:
@@ -129,15 +144,16 @@ class TestStepflowTweaksIntegration:
             "LanguageModelComponent UDF executor step not found"
         )
 
-        # Verify tweaks were applied
-        step_input = langflow_step.input["input"]
-        assert step_input["api_key"] == "integration_test_key"
-        assert step_input["temperature"] == 0.7
-        assert step_input["model_name"] == "gpt-4"
+        # Verify tweaks were applied - need to unwrap ValueExpr
+        step_input = unwrap_value_expr(langflow_step.input)
+        input_section = step_input.get("input", {})
+        assert input_section.get("api_key") == "integration_test_key"
+        assert input_section.get("temperature") == 0.7
+        assert input_section.get("model_name") == "gpt-4"
 
         # Verify original inputs are still present
-        assert "input_value" in step_input  # From workflow input
-        assert "system_message" in step_input  # From prompt step
+        assert "input_value" in input_section  # From workflow input
+        assert "system_message" in input_section  # From prompt step
 
 
 class TestTweaksBuilder:

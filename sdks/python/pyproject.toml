@@ -1,11 +1,14 @@
 # Python SDK workspace configuration
-# The main package is in stepflow-worker/
+# Main packages:
+#   - stepflow-py: SDK with API client and worker modules
+#   - stepflow-orchestrator: Platform-specific wheels with stepflow-server binary
 
 [tool.uv.workspace]
-members = ["stepflow-worker"]
+members = ["stepflow-py", "stepflow-orchestrator"]
 
 [tool.uv.sources]
-stepflow-worker = { workspace = true }
+stepflow-py = { workspace = true }
+stepflow-orchestrator = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -50,13 +53,21 @@ help = "Runs `ruff check --fix` to fix lint issues"
 cmd = "uvx ${RUFF} check --fix ."
 
 [tool.poe.tasks.type-check]
-help = "Runs `mypy` to check for static type issues"
-cmd = "uv run --project stepflow-worker mypy stepflow-worker/src stepflow-worker/tests"
+help = "Runs `mypy` to check for static type issues on all packages"
+sequence = [
+    {cmd = "uv run --project stepflow-py mypy stepflow-py/src"},
+    {cmd = "uv run --project stepflow-orchestrator mypy stepflow-orchestrator/src"},
+]
 
 [tool.poe.tasks.dep-check]
-help = "Runs `deptry` to check for dependency issues"
-cwd = "stepflow-worker"
+help = "Runs `deptry` to check for dependency issues on stepflow-py"
+cwd = "stepflow-py"
 cmd = "uvx ${DEPTRY} src tests"
+
+[tool.poe.tasks.dep-check-orchestrator]
+help = "Runs `deptry` to check for dependency issues on stepflow-orchestrator"
+cwd = "stepflow-orchestrator"
+cmd = "uvx ${DEPTRY} src"
 
 [tool.poe.tasks.codegen-check]
 help = "Check that generated types are up-to-date"
@@ -70,7 +81,10 @@ sequence = [
 
 [tool.poe.tasks.test]
 help = "Run tests for all packages"
-cmd = "uv run --project stepflow-worker pytest stepflow-worker/tests"
+sequence = [
+    {cmd = "uv run --project stepflow-py pytest stepflow-py/tests"},
+    # Note: stepflow-orchestrator doesn't have tests yet
+]
 
 [tool.poe.tasks.fmt]
 help = "Alias for fmt-fix"
@@ -119,6 +133,9 @@ opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 
 [tool.mypy]
 python_version = "3.11"
+# Enable pydantic plugin for proper handling of populate_by_name=True
+# This allows using Python field names instead of aliases in constructors
+plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
@@ -132,16 +149,22 @@ disallow_untyped_decorators = false
 no_implicit_optional = false
 strict_equality = false
 
+[tool.pydantic-mypy]
+# Allow using field names (not just aliases) when populate_by_name=True
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_worker.generated_flow"
+module = "stepflow_py.worker.generated_protocol"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = "stepflow_worker.generated_protocol"
+module = "stepflow_py.api.*"
 ignore_errors = true
 
 [tool.pytest.ini_options]

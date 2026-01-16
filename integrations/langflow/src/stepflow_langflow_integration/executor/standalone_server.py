@@ -26,14 +26,14 @@ from typing import Any
 package_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(package_root))
 
-from stepflow_worker import StepflowContext, StepflowServer
+from stepflow_py.worker import StepflowContext, StepflowServer
 
 from stepflow_langflow_integration.components.component_tool import (
     component_tool_executor,
 )
 from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
 
-# Create server instance (following the exact pattern from stepflow_worker/main.py)
+# Create server instance (following the exact pattern from stepflow_py.worker/main.py)
 server = StepflowServer()
 
 # Create UDF executor

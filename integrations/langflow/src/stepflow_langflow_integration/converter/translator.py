@@ -19,9 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import msgspec
 import yaml
-from stepflow_worker import Flow, FlowBuilder, Value
+from stepflow_py.worker import Flow, FlowBuilder, Value
 
 from ..exceptions import ConversionError
 from .dependency_analyzer import DependencyAnalyzer
@@ -188,14 +187,16 @@ class LangflowConverter:
         """Convert Flow to YAML string.
 
         Args:
-            workflow: Flow object (official stepflow_worker type)
+            workflow: Flow object (Pydantic model from stepflow_py.api.models)
 
         Returns:
             YAML string
         """
         try:
-            # Convert Flow to dict using msgspec serialization
-            workflow_dict = msgspec.to_builtins(workflow)
+            # Convert Flow to dict using Pydantic's model_dump
+            # Use by_alias=True to get the JSON field names (camelCase)
+            # Use exclude_none=True to remove None values
+            workflow_dict = workflow.to_dict()
 
             # Generate clean YAML
             return yaml.dump(

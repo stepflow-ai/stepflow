@@ -198,9 +198,15 @@ pub async fn create_run(
     let item_count = req.input.len() as u32;
 
     // Execute the run
+    let variables = if req.variables.is_empty() {
+        None
+    } else {
+        Some(req.variables)
+    };
     let params = stepflow_core::SubmitRunParams {
         max_concurrency: req.max_concurrency,
         overrides: req.overrides,
+        variables,
         ..Default::default()
     };
 

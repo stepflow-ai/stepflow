@@ -4,13 +4,23 @@ This guide covers Python SDK-specific development for the Stepflow project.
 
 See the root `/CLAUDE.md` for project overview, configuration, and workflow syntax.
 
+## Package Structure
+
+The Python SDK is organized into two packages:
+
+- **stepflow-py**: Main SDK with API client and worker modules
+  - `stepflow_py.api`: API client (Pydantic models generated from OpenAPI spec)
+  - `stepflow_py.worker`: Component server for Python components
+- **stepflow-orchestrator**: Platform-specific wheels bundling the stepflow-server binary
+
 ## Development Commands
 
 ### Testing
 
 ```bash
 # Test Python SDK with current Python version
-uv run --project sdks/python pytest
+cd sdks/python
+uv run poe test
 
 # Test across all supported versions (3.11, 3.12, 3.13)
 ./scripts/test-python-versions.sh
@@ -20,25 +30,27 @@ uv run --project sdks/python pytest
 
 ```bash
 # Run in stdio mode (default)
-uv run --project sdks/python stepflow_worker
+uv run --project sdks/python/stepflow-py stepflow_py
 
 # Run in HTTP mode
-uv run --project sdks/python --extra http stepflow_worker --http --port 8080
+uv run --project sdks/python/stepflow-py --extra http stepflow_py --http --port 8080
 
 # Run with custom host and port
-uv run --project sdks/python --extra http stepflow_worker --http --host 0.0.0.0 --port 8080
+uv run --project sdks/python/stepflow-py --extra http stepflow_py --http --host 0.0.0.0 --port 8080
 ```
 
 ### Type Generation
 
 ```bash
-# Regenerate Python types from updated schemas
+# Regenerate Python protocol types from updated schemas
 cd sdks/python
 uv run python generate.py
 
 # Check if Python types are up to date without regenerating
 uv run python generate.py --check
 ```
+
+**Note**: Only protocol types (msgspec-based) are generated from schemas. Flow types are provided by Pydantic API models generated from the OpenAPI spec.
 
 **Important**: Run type generation after Rust schema updates (see `stepflow-rs/CLAUDE.md` for schema generation commands).
 
@@ -58,7 +70,7 @@ uv python install 3.11  # or 3.12, 3.13
 uv python pin 3.11
 
 # Install dependencies and run tests
-uv sync --extra http
+uv sync --extra http --project stepflow-py
 uv run poe test
 uv run poe typecheck
 ```
@@ -74,7 +86,7 @@ JSON-RPC over stdio communication with the parent process.
 **Usage**:
 ```bash
 # Run in stdio mode
-uv run --project sdks/python stepflow_worker
+uv run --project sdks/python/stepflow-py stepflow_py
 
 # No additional dependencies required
 ```
@@ -85,7 +97,7 @@ plugins:
   python_stdio:
     type: stepflow
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_worker"]
+    args: ["--project", "../sdks/python/stepflow-py", "run", "stepflow_py"]
 
 routes:
   "/python/{*component}":
@@ -105,19 +117,19 @@ JSON-RPC over HTTP with Server-Sent Events (SSE) for bidirectional communication
 **Installation**:
 ```bash
 # Install with HTTP support
-pip install stepflow-worker[http]
+pip install stepflow-py[http]
 
 # Or with uv
-uv add stepflow-worker[http]
+uv add stepflow-py[http]
 ```
 
 **Usage**:
 ```bash
 # Basic HTTP mode
-stepflow_worker --http
+stepflow_py --http
 
 # Custom host and port
-stepflow_worker --http --host 0.0.0.0 --port 8080
+stepflow_py --http --host 0.0.0.0 --port 8080
 ```
 
 **Configuration** (in stepflow-config.yml):
@@ -182,7 +194,7 @@ The HTTP transport implements MCP-style session negotiation for proper connectio
 ### Basic Component Registration
 
 ```python
-from stepflow_worker import StepflowStdioServer
+from stepflow_py import StepflowServer
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -192,14 +204,15 @@ class MyInput(msgspec.Struct):
 class MyOutput(msgspec.Struct):
     result: str
 
-server = StepflowStdioServer()
+server = StepflowServer()
 
 @server.component
 def my_component(input: MyInput) -> MyOutput:
     result = input.message * input.count
     return MyOutput(result=result)
 
-server.run()
+import asyncio
+asyncio.run(server.run())
 ```
 
 ### Using StepflowContext for Bidirectional Communication
@@ -207,7 +220,7 @@ server.run()
 Components can receive a `StepflowContext` parameter to access runtime operations:
 
 ```python
-from stepflow_worker import StepflowStdioServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -216,7 +229,7 @@ class MyInput(msgspec.Struct):
 class MyOutput(msgspec.Struct):
     blob_id: str
 
-server = StepflowStdioServer()
+server = StepflowServer()
 
 @server.component
 async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
@@ -228,7 +241,8 @@ async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
 
     return MyOutput(blob_id=blob_id)
 
-server.run()
+import asyncio
+asyncio.run(server.run())
 ```
 
 **Available Context Methods**:
@@ -240,7 +254,7 @@ server.run()
 The Python SDK uses HTTP transport by default:
 
 ```python
-from stepflow_worker import StepflowServer, StepflowContext
+from stepflow_py import StepflowServer, StepflowContext
 import msgspec
 
 class MyInput(msgspec.Struct):
@@ -269,6 +283,51 @@ if __name__ == "__main__":
     asyncio.run(server.run(host=args.host, port=args.port))
 ```
 
+## Using the API Client
+
+The `stepflow_py.api` module provides a Pydantic-based API client for interacting with the Stepflow server:
+
+```python
+from stepflow_py.api import ApiClient, Configuration
+from stepflow_py.api.api import FlowApi, RunApi
+from stepflow_py.api.models import Flow, Step, ValueExpr
+
+# Connect to Stepflow server
+config = Configuration(host="http://localhost:8080")
+client = ApiClient(configuration=config)
+
+# Create API instances
+flow_api = FlowApi(client)
+run_api = RunApi(client)
+
+# List flows
+flows = flow_api.list_flows()
+```
+
+## Using the FlowBuilder
+
+The `stepflow_py.worker` module provides a `FlowBuilder` for programmatically creating flows:
+
+```python
+from stepflow_py.worker import FlowBuilder, Value
+
+# Create a flow programmatically
+builder = FlowBuilder(name="my_flow")
+
+# Add steps
+builder.add_step(
+    id="greet",
+    component="/builtin/eval",
+    input_data={"code": Value.literal("return f'Hello, {input.name}!'")}
+)
+
+# Set output
+builder.set_output(Value.step("greet"))
+
+# Build the flow
+flow = builder.build()
+```
+
 ## Architecture Notes
 
 The Python SDK has undergone significant architectural improvements:
@@ -277,6 +336,8 @@ The Python SDK has undergone significant architectural improvements:
 2. **Context Inheritance**: `StepflowStreamingContext` inherits from `StepflowContext`
 3. **MessageDecoder Consolidation**: Single request/response correlation system
 4. **Clean Test Separation**: Core functionality vs transport layer testing
+5. **Pydantic API Models**: Flow types use Pydantic models from OpenAPI spec for better type safety
+6. **Unified Package**: API client and worker functionality in single `stepflow-py` package
 
 This architecture ensures consistent behavior across transport modes while maintaining clean separation of concerns.
 

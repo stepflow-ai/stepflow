@@ -31,7 +31,7 @@ tests/helpers/tweaks_builder.py to keep this production code lean.
 import copy
 from typing import Any
 
-from stepflow_worker import Flow
+from stepflow_py.worker import Flow
 
 
 class StepflowTweaks:
@@ -156,19 +156,45 @@ class StepflowTweaks:
         """Apply tweaks to a specific Stepflow UDF executor step.
 
         Args:
-            step: Stepflow step to modify
+            step: Stepflow step to modify (Pydantic Step model)
             step_tweaks: Dict of field_name -> new_value for this step
         """
-        # Ensure step.input exists and has an 'input' section
-        if not hasattr(step, "input") or step.input is None:
-            step.input = {}
+        from stepflow_py.api.models import PrimitiveValue, ValueExpr
 
-        if "input" not in step.input:
-            step.input["input"] = {}
+        # Get the actual dict from the ValueExpr wrapper
+        if step.input is None:
+            return
+
+        # ValueExpr wraps the actual dict in actual_instance
+        if not hasattr(step.input, "actual_instance"):
+            return
+
+        input_dict = step.input.actual_instance
+        if not isinstance(input_dict, dict):
+            return
+
+        # Get the 'input' sub-dict (also wrapped in ValueExpr)
+        input_section = input_dict.get("input")
+        if input_section is None:
+            return
+
+        # Unwrap the input section if it's a ValueExpr
+        if hasattr(input_section, "actual_instance"):
+            input_section = input_section.actual_instance
+
+        if not isinstance(input_section, dict):
+            return
 
         # Apply each tweak as a direct field override
         for field_name, new_value in step_tweaks.items():
-            step.input["input"][field_name] = new_value
+            # Wrap the new value in PrimitiveValue and ValueExpr
+            if isinstance(new_value, str | int | float | bool):
+                wrapped_value = ValueExpr(
+                    actual_instance=PrimitiveValue(actual_instance=new_value)
+                )
+            else:
+                wrapped_value = ValueExpr(actual_instance=new_value)
+            input_section[field_name] = wrapped_value
 
 
 def apply_stepflow_tweaks(

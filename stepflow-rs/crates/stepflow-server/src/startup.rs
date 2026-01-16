@@ -85,19 +85,31 @@ pub async fn start_server(
     port: u16,
     env: Arc<StepflowEnvironment>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Create the app with default configuration (includes swagger and CORS)
-    let app = AppConfig::default().create_app_router(env, port);
-
+    // Bind first to get the actual port (important when port=0 for auto-assign)
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
+    let actual_port = listener.local_addr()?.port();
 
-    log::info!("🚀 Stepflow server starting on http://localhost:{}", port);
+    // Create the app with the actual port
+    let app = AppConfig::default().create_app_router(env, actual_port);
+
+    // Emit JSON port announcement to stdout for orchestrator/subprocess management
+    // This MUST be the first line of stdout output
+    #[allow(clippy::print_stdout)]
+    {
+        println!("{{\"port\":{actual_port}}}");
+    }
+
+    log::info!(
+        "🚀 Stepflow server starting on http://localhost:{}",
+        actual_port
+    );
     log::info!(
         "📖 Swagger UI available at http://localhost:{}/swagger-ui",
-        port
+        actual_port
     );
     log::info!(
         "📄 OpenAPI spec available at http://localhost:{}/api/v1/openapi.json",
-        port
+        actual_port
     );
 
     // Use graceful shutdown to allow proper cleanup when SIGTERM/SIGINT is received
