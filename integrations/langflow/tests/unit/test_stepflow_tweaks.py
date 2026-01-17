@@ -155,6 +155,89 @@ class TestStepflowTweaksIntegration:
         assert "input_value" in input_section  # From workflow input
         assert "system_message" in input_section  # From prompt step
 
+    def test_tweaks_serialize_correctly(self, basic_prompting_flow):
+        """Test that tweaked workflow serializes to JSON-compatible dict.
+
+        This verifies that after applying tweaks, the flow can be serialized
+        using model_dump() and the tweaked values appear correctly in the output.
+        """
+        tweaks = {
+            "LanguageModelComponent-kBOja": {
+                "api_key": "serialization_test_key",
+                "temperature": 0.9,
+            }
+        }
+
+        modified_flow = apply_stepflow_tweaks(basic_prompting_flow, tweaks)
+
+        # Serialize the entire flow to a dict
+        flow_dict = modified_flow.model_dump(by_alias=True, exclude_unset=True)
+
+        # Find the tweaked step in the serialized output
+        langflow_step_dict = None
+        for step_dict in flow_dict["steps"]:
+            if step_dict["id"] == "langflow_LanguageModelComponent-kBOja":
+                langflow_step_dict = step_dict
+                break
+
+        assert langflow_step_dict is not None
+
+        # Verify the tweaks appear in the serialized dict
+        step_input = langflow_step_dict["input"]
+        input_section = step_input["input"]
+        assert input_section["api_key"] == "serialization_test_key"
+        assert input_section["temperature"] == 0.9
+
+    def test_tweaks_dict_approach_matches_pydantic_approach(self, basic_prompting_flow):
+        """Test that apply_stepflow_tweaks and apply_stepflow_tweaks_to_dict produce same result.
+
+        The dict-based approach should be simpler and produce the same serialized output
+        as the Pydantic-based approach.
+        """
+        from stepflow_langflow_integration.converter.stepflow_tweaks import (
+            apply_stepflow_tweaks_to_dict,
+        )
+
+        tweaks = {
+            "LanguageModelComponent-kBOja": {
+                "api_key": "consistency_test_key",
+                "temperature": 0.5,
+                "model_name": "test-model",
+            }
+        }
+
+        # Approach 1: Apply tweaks to Flow object, then serialize
+        modified_flow = apply_stepflow_tweaks(basic_prompting_flow, tweaks)
+        result_from_pydantic = modified_flow.model_dump(
+            by_alias=True, exclude_unset=True
+        )
+
+        # Approach 2: Serialize first, then apply tweaks to dict
+        original_dict = basic_prompting_flow.model_dump(
+            by_alias=True, exclude_unset=True
+        )
+        result_from_dict = apply_stepflow_tweaks_to_dict(original_dict, tweaks)
+
+        # Find the tweaked step in both results
+        def get_step_input(flow_dict, step_id):
+            for step in flow_dict["steps"]:
+                if step["id"] == step_id:
+                    return step.get("input", {}).get("input", {})
+            return None
+
+        step_id = "langflow_LanguageModelComponent-kBOja"
+        pydantic_input = get_step_input(result_from_pydantic, step_id)
+        dict_input = get_step_input(result_from_dict, step_id)
+
+        # Both approaches should have the tweaked values
+        assert pydantic_input["api_key"] == "consistency_test_key"
+        assert pydantic_input["temperature"] == 0.5
+        assert pydantic_input["model_name"] == "test-model"
+
+        assert dict_input["api_key"] == "consistency_test_key"
+        assert dict_input["temperature"] == 0.5
+        assert dict_input["model_name"] == "test-model"
+
 
 class TestTweaksBuilder:
     """Test the TweaksBuilder utility for creating tweaks."""

@@ -63,9 +63,11 @@ if [ $? -ne 0 ]; then
     print_fix "uv run poe lint-fix"
 fi
 
-# Clear mypy cache before type checking to avoid cross-project cache corruption
+# Clear mypy cache before type checking to avoid cross-project cache corruption.
 # This is needed because langflow imports stepflow_py via editable install, and
-# the mypy caches can become inconsistent when both projects are checked together
+# the mypy caches can become inconsistent when both projects are checked together.
+# Note: Switching to non-editable installs would eliminate this issue, but would
+# require reinstalling packages after every change to stepflow_py or stepflow_orchestrator.
 rm -rf .mypy_cache
 
 run_check "Type checking" uv run poe type-check
