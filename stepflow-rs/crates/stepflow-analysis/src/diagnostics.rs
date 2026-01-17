@@ -20,11 +20,18 @@ pub use message::DiagnosticMessage;
 
 use crate::Path;
 
+/// Default message used when deserializing (clients don't need the message variant)
+fn default_message() -> Box<DiagnosticMessage> {
+    Box::new(DiagnosticMessage::EmptyStepId)
+}
+
 /// A single diagnostic with its context
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
     /// The diagnostic message and type (boxed to handle varying sizes)
+    /// Note: Skipped during deserialization since clients only need text/level/path
+    #[serde(skip_deserializing, default = "default_message")]
     message: Box<DiagnosticMessage>,
     /// The severity level
     pub level: DiagnosticLevel,
