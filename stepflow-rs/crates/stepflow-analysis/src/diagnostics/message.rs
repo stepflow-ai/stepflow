@@ -12,27 +12,32 @@
 
 use std::borrow::Cow;
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Serializer};
+use strum::IntoStaticStr;
 
 use crate::DiagnosticLevel;
 
-/// Specific diagnostic message with context
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase", tag = "type")]
+/// Specific diagnostic message with context.
+///
+/// Serializes to a stable format with three fields:
+/// - `formatted`: Human-readable message text
+/// - `kind`: The diagnostic variant name in camelCase (e.g., "duplicateStepId")
+/// - `data`: Structured data fields for this diagnostic (camelCase keys)
+#[derive(Debug, Clone, PartialEq, Eq, IntoStaticStr)]
+#[strum(serialize_all = "camelCase")]
 pub enum DiagnosticMessage {
     // Fatal diagnostics (prevent analysis)
-    #[serde(rename_all = "camelCase")]
-    DuplicateStepId { step_id: String },
-    #[serde(rename_all = "camelCase")]
+    DuplicateStepId {
+        step_id: String,
+    },
     EmptyStepId,
-    #[serde(rename_all = "camelCase")]
-    SelfReference { step_id: String },
-    #[serde(rename_all = "camelCase")]
+    SelfReference {
+        step_id: String,
+    },
     UndefinedStepReference {
         from_step: Option<String>,
         referenced_step: String,
     },
-    #[serde(rename_all = "camelCase")]
     InvalidReferenceExpression {
         step_id: Option<String>,
         field: Option<String>,
@@ -40,39 +45,37 @@ pub enum DiagnosticMessage {
     },
 
     // Error diagnostics (will fail during execution)
-    #[serde(rename_all = "camelCase")]
     InvalidFieldAccess {
         step_id: String,
         field: String,
         reason: String,
     },
-    #[serde(rename_all = "camelCase")]
     InvalidComponent {
         step_id: String,
         component: String,
         error: Cow<'static, str>,
     },
-    #[serde(rename_all = "camelCase")]
-    EmptyComponentName { step_id: String },
-    #[serde(rename_all = "camelCase")]
+    EmptyComponentName {
+        step_id: String,
+    },
     SchemaViolation {
         step_id: String,
         field: String,
         violation: String,
     },
-    #[serde(rename_all = "camelCase")]
-    InvalidSubflowLiteral { error: String },
+    InvalidSubflowLiteral {
+        error: String,
+    },
 
     // Warning diagnostics (potential issues)
-    #[serde(rename_all = "camelCase")]
-    MockComponent { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    UnreachableStep { step_id: String },
-    #[serde(rename_all = "camelCase")]
+    MockComponent {
+        step_id: String,
+    },
+    UnreachableStep {
+        step_id: String,
+    },
     MissingFlowName,
-    #[serde(rename_all = "camelCase")]
     MissingFlowDescription,
-    #[serde(rename_all = "camelCase")]
     UnvalidatedFieldAccess {
         step_id: String,
         field: String,
@@ -80,50 +83,207 @@ pub enum DiagnosticMessage {
     },
 
     // Variable validation diagnostics (Error level)
-    #[serde(rename_all = "camelCase")]
-    UndefinedVariable { variable: String, context: String },
-    #[serde(rename_all = "camelCase")]
-    UndefinedRequiredVariable { variable: String, context: String },
+    UndefinedVariable {
+        variable: String,
+        context: String,
+    },
+    UndefinedRequiredVariable {
+        variable: String,
+        context: String,
+    },
 
     // Schema availability warnings (Warning level)
-    #[serde(rename_all = "camelCase")]
     MissingVariableSchema,
 
     // Type checking diagnostics
-    #[serde(rename_all = "camelCase")]
     TypeMismatch {
         step_id: String,
         expected: String,
         actual: String,
         detail: String,
     },
-    #[serde(rename_all = "camelCase")]
-    UntypedComponentOutput { step_id: String, component: String },
-    #[serde(rename_all = "camelCase")]
+    UntypedComponentOutput {
+        step_id: String,
+        component: String,
+    },
     UnknownPropertyInPath {
         step_id: Option<String>,
         path: String,
         property: String,
     },
-    #[serde(rename_all = "camelCase")]
     TypeCheckIndeterminate {
         step_id: Option<String>,
         reason: String,
     },
 
     // Configuration validation diagnostics
-    #[serde(rename_all = "camelCase")]
     NoPluginsConfigured,
-    #[serde(rename_all = "camelCase")]
     NoRoutingRulesConfigured,
-    #[serde(rename_all = "camelCase")]
     InvalidRouteReference {
         route_path: String,
         rule_index: usize,
         plugin: String,
     },
-    #[serde(rename_all = "camelCase")]
-    UnusedPlugin { plugin: String },
+    UnusedPlugin {
+        plugin: String,
+    },
+}
+
+impl DiagnosticMessage {
+    /// Get the kind (variant name) in camelCase
+    fn kind(&self) -> &'static str {
+        self.into()
+    }
+
+    /// Get the data fields as a JSON object with camelCase keys.
+    /// Returns None for unit variants.
+    fn data(&self) -> Option<serde_json::Value> {
+        use serde_json::json;
+
+        match self {
+            DiagnosticMessage::DuplicateStepId { step_id } => Some(json!({ "stepId": step_id })),
+            DiagnosticMessage::EmptyStepId => None,
+            DiagnosticMessage::SelfReference { step_id } => Some(json!({ "stepId": step_id })),
+            DiagnosticMessage::UndefinedStepReference {
+                from_step,
+                referenced_step,
+            } => Some(json!({ "fromStep": from_step, "referencedStep": referenced_step })),
+            DiagnosticMessage::InvalidReferenceExpression {
+                step_id,
+                field,
+                error,
+            } => Some(json!({ "stepId": step_id, "field": field, "error": error })),
+            DiagnosticMessage::InvalidFieldAccess {
+                step_id,
+                field,
+                reason,
+            } => Some(json!({ "stepId": step_id, "field": field, "reason": reason })),
+            DiagnosticMessage::InvalidComponent {
+                step_id,
+                component,
+                error,
+            } => {
+                Some(json!({ "stepId": step_id, "component": component, "error": error.as_ref() }))
+            }
+            DiagnosticMessage::EmptyComponentName { step_id } => Some(json!({ "stepId": step_id })),
+            DiagnosticMessage::SchemaViolation {
+                step_id,
+                field,
+                violation,
+            } => Some(json!({ "stepId": step_id, "field": field, "violation": violation })),
+            DiagnosticMessage::InvalidSubflowLiteral { error } => Some(json!({ "error": error })),
+            DiagnosticMessage::MockComponent { step_id } => Some(json!({ "stepId": step_id })),
+            DiagnosticMessage::UnreachableStep { step_id } => Some(json!({ "stepId": step_id })),
+            DiagnosticMessage::MissingFlowName => None,
+            DiagnosticMessage::MissingFlowDescription => None,
+            DiagnosticMessage::UnvalidatedFieldAccess {
+                step_id,
+                field,
+                reason,
+            } => Some(json!({ "stepId": step_id, "field": field, "reason": reason })),
+            DiagnosticMessage::UndefinedVariable { variable, context } => {
+                Some(json!({ "variable": variable, "context": context }))
+            }
+            DiagnosticMessage::UndefinedRequiredVariable { variable, context } => {
+                Some(json!({ "variable": variable, "context": context }))
+            }
+            DiagnosticMessage::MissingVariableSchema => None,
+            DiagnosticMessage::TypeMismatch {
+                step_id,
+                expected,
+                actual,
+                detail,
+            } => Some(
+                json!({ "stepId": step_id, "expected": expected, "actual": actual, "detail": detail }),
+            ),
+            DiagnosticMessage::UntypedComponentOutput { step_id, component } => {
+                Some(json!({ "stepId": step_id, "component": component }))
+            }
+            DiagnosticMessage::UnknownPropertyInPath {
+                step_id,
+                path,
+                property,
+            } => Some(json!({ "stepId": step_id, "path": path, "property": property })),
+            DiagnosticMessage::TypeCheckIndeterminate { step_id, reason } => {
+                Some(json!({ "stepId": step_id, "reason": reason }))
+            }
+            DiagnosticMessage::NoPluginsConfigured => None,
+            DiagnosticMessage::NoRoutingRulesConfigured => None,
+            DiagnosticMessage::InvalidRouteReference {
+                route_path,
+                rule_index,
+                plugin,
+            } => {
+                Some(json!({ "routePath": route_path, "ruleIndex": rule_index, "plugin": plugin }))
+            }
+            DiagnosticMessage::UnusedPlugin { plugin } => Some(json!({ "plugin": plugin })),
+        }
+    }
+}
+
+impl Serialize for DiagnosticMessage {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap as _;
+
+        let data = self.data();
+        let map_len = if data.is_some() { 3 } else { 2 };
+        let mut map = serializer.serialize_map(Some(map_len))?;
+
+        map.serialize_entry("formatted", &self.message())?;
+        map.serialize_entry("kind", self.kind())?;
+        if let Some(data) = data {
+            map.serialize_entry("data", &data)?;
+        }
+
+        map.end()
+    }
+}
+
+// Custom OpenAPI schema: simple object with formatted, kind, and data
+impl utoipa::PartialSchema for DiagnosticMessage {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::schema::AdditionalProperties;
+        use utoipa::openapi::*;
+
+        RefOr::T(Schema::Object(
+            ObjectBuilder::new()
+                .schema_type(schema::SchemaType::Type(schema::Type::Object))
+                .description(Some(
+                    "A diagnostic message with human-readable text and structured data",
+                ))
+                .property(
+                    "formatted",
+                    ObjectBuilder::new()
+                        .schema_type(schema::SchemaType::Type(schema::Type::String))
+                        .description(Some("Human-readable formatted message")),
+                )
+                .property(
+                    "kind",
+                    ObjectBuilder::new()
+                        .schema_type(schema::SchemaType::Type(schema::Type::String))
+                        .description(Some("The diagnostic kind/variant name")),
+                )
+                .property(
+                    "data",
+                    ObjectBuilder::new()
+                        .schema_type(schema::SchemaType::Type(schema::Type::Object))
+                        .description(Some("Structured data fields for this diagnostic"))
+                        .additional_properties(Some(AdditionalProperties::FreeForm(true))),
+                )
+                .required("formatted")
+                .required("kind")
+                .build(),
+        ))
+    }
+}
+
+impl utoipa::ToSchema for DiagnosticMessage {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("DiagnosticMessage")
+    }
 }
 
 impl DiagnosticMessage {
@@ -305,5 +465,54 @@ impl DiagnosticMessage {
                 format!("Plugin '{plugin}' is not referenced by any routing rule")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diagnostic_message_serialization() {
+        let msg = DiagnosticMessage::DuplicateStepId {
+            step_id: "foo".to_string(),
+        };
+
+        let json = serde_json::to_value(&msg).unwrap();
+
+        assert_eq!(json.get("formatted").unwrap(), "Duplicate step ID: 'foo'");
+        assert_eq!(json.get("kind").unwrap(), "duplicateStepId");
+        assert_eq!(json.get("data").unwrap().get("stepId").unwrap(), "foo");
+    }
+
+    #[test]
+    fn test_diagnostic_message_unit_variant_serialization() {
+        let msg = DiagnosticMessage::EmptyStepId;
+
+        let json = serde_json::to_value(&msg).unwrap();
+
+        assert_eq!(json.get("formatted").unwrap(), "Step ID cannot be empty");
+        assert_eq!(json.get("kind").unwrap(), "emptyStepId");
+        // Unit variants have no data field
+        assert!(json.get("data").is_none());
+    }
+
+    #[test]
+    fn test_strum_kind() {
+        // Verify strum gives us camelCase variant names
+        let msg = DiagnosticMessage::DuplicateStepId {
+            step_id: "foo".to_string(),
+        };
+        assert_eq!(msg.kind(), "duplicateStepId");
+
+        let msg = DiagnosticMessage::EmptyStepId;
+        assert_eq!(msg.kind(), "emptyStepId");
+
+        let msg = DiagnosticMessage::InvalidRouteReference {
+            route_path: "/foo".to_string(),
+            rule_index: 0,
+            plugin: "bar".to_string(),
+        };
+        assert_eq!(msg.kind(), "invalidRouteReference");
     }
 }
