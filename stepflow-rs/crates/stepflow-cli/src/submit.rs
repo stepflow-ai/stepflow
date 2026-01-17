@@ -90,6 +90,7 @@ pub async fn submit(
     // Step 1: Store the flow to get its hash
     let store_request = StoreFlowRequest {
         flow: Arc::new(flow),
+        dry_run: false,
     };
 
     let store_url = service_url

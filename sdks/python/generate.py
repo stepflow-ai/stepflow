@@ -15,7 +15,8 @@
 
 """Type generation script for Stepflow Python SDK.
 
-This script generates the protocol and flow types from the JSON schemas.
+This script generates the protocol types from the JSON schema.
+Flow types are now provided by the Pydantic API models in stepflow_py.api.models.
 """
 
 import argparse
@@ -152,7 +153,7 @@ def generate_types_from_schema(
     # Get paths
     script_dir = Path(__file__).parent
     output_path = (
-        script_dir / "stepflow-worker" / "src" / "stepflow_worker" / output_filename
+        script_dir / "stepflow-py" / "src" / "stepflow_py" / "worker" / output_filename
     )
 
     try:
@@ -186,7 +187,11 @@ def generate_types_from_schema(
 
 
 def main():
-    """Generate protocol and flow types from JSON schemas."""
+    """Generate protocol types from JSON schema.
+
+    Note: Flow types are now provided by the Pydantic API models in stepflow_py.api.models,
+    which are generated from the OpenAPI spec using openapi-generator-cli.
+    """
     parser = argparse.ArgumentParser(
         description="Generate Stepflow Python SDK types from JSON schemas"
     )
@@ -196,19 +201,15 @@ def main():
 
     args = parser.parse_args()
 
-    # Generate protocol types
+    # Generate protocol types (msgspec-based, for component server communication)
     result = generate_types_from_schema(
         "protocol", "generated_protocol.py", check_only=args.check
     )
     if result != 0:
         return result
 
-    # Generate flow types
-    result = generate_types_from_schema(
-        "flow", "generated_flow.py", check_only=args.check
-    )
-    if result != 0:
-        return result
+    # Note: Flow types are no longer generated here.
+    # They are provided by stepflow_py.api.models (Pydantic models from OpenAPI spec)
 
     return 0
 

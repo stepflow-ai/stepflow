@@ -85,6 +85,7 @@ pub async fn submit_run(
     let flow_clone = flow.clone();
     let flow_id_clone = flow_id.clone();
     let overrides_clone = params.overrides.clone();
+    let variables_clone = params.variables.clone();
     let inputs_clone = inputs.clone();
     let state_store_clone = state_store.clone();
 
@@ -116,6 +117,13 @@ pub async fn submit_run(
             // Apply overrides if not empty
             let flow_executor_result = if !overrides_clone.is_empty() {
                 flow_executor_result.overrides(overrides_clone)
+            } else {
+                flow_executor_result
+            };
+
+            // Apply variables if provided
+            let flow_executor_result = if let Some(variables) = variables_clone {
+                flow_executor_result.variables(variables)
             } else {
                 flow_executor_result
             };

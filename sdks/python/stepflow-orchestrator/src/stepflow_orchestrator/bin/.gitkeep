@@ -1,0 +1,2 @@
+# Binary files are added at build time for releases.
+# For local development, set STEPFLOW_DEV_BINARY or STEPFLOW_WORKSPACE_ROOT.

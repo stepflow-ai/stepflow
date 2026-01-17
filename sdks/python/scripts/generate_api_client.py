@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import hashlib
+import re
 import shutil
 import signal
 import subprocess
@@ -49,8 +50,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PYTHON_SDK_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = PYTHON_SDK_DIR.parent.parent
-API_CLIENT_DIR = PYTHON_SDK_DIR / "stepflow-api"
-SRC_DIR = API_CLIENT_DIR / "src" / "stepflow_api"
+API_CLIENT_DIR = PYTHON_SDK_DIR / "stepflow-py"
+SRC_DIR = API_CLIENT_DIR / "src" / "stepflow_py" / "api"
 STORED_SPEC = PROJECT_ROOT / "schemas" / "openapi.json"
 PORT = 17837
 
@@ -161,6 +162,8 @@ def run_openapi_generator(spec_file: Path, output_dir: Path) -> Path:
 
     # Run openapi-generator via uvx (uses the PyPI package)
     # Pin to a stable version for reproducible builds
+    # Use library=asyncio for native async support with aiohttp
+    # Use packageName=stepflow_py.api to generate with correct import paths directly
     result = subprocess.run(
         [
             "uvx",
@@ -172,7 +175,7 @@ def run_openapi_generator(spec_file: Path, output_dir: Path) -> Path:
             "python",
             "-o",
             str(generated_dir),
-            "--additional-properties=packageName=stepflow_api",
+            "--additional-properties=packageName=stepflow_py.api,library=asyncio",
         ],
         capture_output=True,
         text=True,
@@ -233,14 +236,126 @@ def format_files(directory: Path) -> None:
     )
 
 
+# Serializer code to add to oneOf models for proper JSON serialization.
+# OpenAPI Generator's Python client creates wrapper classes for oneOf types with
+# internal validation fields (oneof_schema_N_validator, actual_instance, etc.).
+# Pydantic's default model_dump() serializes ALL fields, but the API expects only
+# the unwrapped actual_instance value.
+#
+# This is a known issue in OpenAPI Generator:
+# https://github.com/OpenAPITools/openapi-generator/issues/21892
+#
+# When the upstream issue is fixed, this workaround can be removed.
+ONEOF_SERIALIZER_CODE = '''
+    @model_serializer(mode='plain')
+    def _serialize(self) -> Any:
+        """Serialize by returning only the actual_instance, ignoring wrapper fields."""
+        return self.actual_instance
+'''
+
+# Models that need the custom serializer (oneOf wrapper types)
+ONEOF_MODELS = [
+    "value_expr.py",
+    "primitive_value.py",
+    "error_action.py",
+    "flow_result.py",
+    "diagnostic_message.py",
+    "path_part.py",
+]
+
+
+def add_oneof_serializers(directory: Path) -> None:
+    """Add custom serializers to oneOf wrapper models for proper JSON output."""
+    print(">>> Adding oneOf serializers...")
+    models_dir = directory / "models"
+    count = 0
+
+    for model_file in ONEOF_MODELS:
+        filepath = models_dir / model_file
+        if not filepath.exists():
+            continue
+
+        content = filepath.read_text()
+
+        # Skip if already patched
+        if "@model_serializer" in content:
+            continue
+
+        # Add model_serializer import - handle both single-line and multi-line imports
+        # Multi-line: from pydantic import (\n    BaseModel,\n    ...
+        # Single-line: from pydantic import BaseModel, ConfigDict
+        if "from pydantic import (" in content:
+            # Multi-line import - add before closing paren
+            content = re.sub(
+                r"(from pydantic import \([^)]*)(field_validator,)(\s*\))",
+                r"\1\2\n    model_serializer,\3",
+                content,
+            )
+        elif "from pydantic import" in content:
+            # Single-line import
+            content = content.replace(
+                "from pydantic import",
+                "from pydantic import model_serializer,",
+            )
+
+        # Find the class definition and add the serializer after model_config
+        # The ConfigDict block spans multiple lines and may contain nested parens,
+        # so we match "model_config = ConfigDict(\n...)\n" ending with ")\n"
+        pattern = r"(model_config = ConfigDict\([\s\S]*?\n    \),?\n)"
+        match = re.search(pattern, content)
+        if match:
+            # Insert serializer after model_config
+            insert_pos = match.end()
+            content = (
+                content[:insert_pos] + ONEOF_SERIALIZER_CODE + content[insert_pos:]
+            )
+            filepath.write_text(content)
+            count += 1
+
+    print(f"    Added serializers to {count} models")
+
+
+def exclude_additional_properties(directory: Path) -> None:
+    """Mark additional_properties fields as excluded from serialization.
+
+    OpenAPI Generator creates an additional_properties field to capture extra
+    JSON fields, but it shouldn't be included when serializing back to JSON.
+    Adding exclude=True to the Field() ensures model_dump() and model_dump_json()
+    won't include it.
+    """
+    print(">>> Excluding additional_properties from serialization...")
+    models_dir = directory / "models"
+    count = 0
+
+    for filepath in models_dir.glob("*.py"):
+        content = filepath.read_text()
+
+        # Pattern: additional_properties: dict[str, Any] = {}
+        # Replace with: Field(default={}, exclude=True)
+        old_pattern = r"additional_properties: dict\[str, Any\] = \{\}"
+        new_value = (
+            "additional_properties: dict[str, Any] = Field(default={}, exclude=True)"
+        )
+
+        if re.search(old_pattern, content):
+            content = re.sub(old_pattern, new_value, content)
+            filepath.write_text(content)
+            count += 1
+
+    print(f"    Fixed {count} model files")
+
+
 def copy_generated_files(src: Path, dest: Path) -> None:
     """Copy generated files to destination, preserving non-generated files."""
     print(f">>> Updating {dest}...")
 
-    # openapi-generator generates to stepflow_api/ (flat structure)
-    # Our project uses src/stepflow_api/ layout
-    src_pkg = src / "stepflow_api"
-    dest_pkg = dest / "src" / "stepflow_api"
+    # openapi-generator generates to stepflow_py/api/ (nested, matching package name)
+    # We copy to stepflow-py/src/stepflow_py/api/
+    src_pkg = src / "stepflow_py" / "api"
+    dest_pkg = dest / "src" / "stepflow_py" / "api"
+
+    # Ensure destination exists
+    dest_pkg.mkdir(parents=True, exist_ok=True)
 
     # Directories to fully replace (generated content)
     generated_dirs = ["api", "models"]
@@ -306,9 +421,8 @@ def do_generate(spec_file: Path) -> None:
     # Generate to temp directory
     generated = run_openapi_generator(spec_file, _temp_dir)
 
-    # openapi-generator generates to stepflow_api/ (flat structure)
-    # We need to map this to our src/stepflow_api/ layout
-    generated_pkg = generated / "stepflow_api"
+    # openapi-generator generates to stepflow_py/api/ (nested, matching package name)
+    generated_pkg = generated / "stepflow_py" / "api"
 
     # Add headers
     add_generated_headers(generated_pkg, spec_name)
@@ -318,6 +432,15 @@ def do_generate(spec_file: Path) -> None:
 
     # Copy to destination
     copy_generated_files(generated, API_CLIENT_DIR)
+
+    # Add custom serializers to oneOf wrapper models
+    add_oneof_serializers(SRC_DIR)
+
+    # Exclude additional_properties from serialization
+    exclude_additional_properties(SRC_DIR)
+
+    # Format again after patches
+    format_files(SRC_DIR)
 
     print(f">>> Updated: {API_CLIENT_DIR}")
 
@@ -353,7 +476,7 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     # Generate fresh
     generated = run_openapi_generator(STORED_SPEC, _temp_dir)
-    generated_pkg = generated / "stepflow_api"
+    generated_pkg = generated / "stepflow_py" / "api"
     add_generated_headers(generated_pkg, STORED_SPEC.name)
     format_files(generated)
 
