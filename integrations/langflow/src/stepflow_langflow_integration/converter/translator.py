@@ -195,8 +195,8 @@ class LangflowConverter:
         try:
             # Convert Flow to dict using Pydantic's model_dump
             # Use by_alias=True to get the JSON field names (camelCase)
-            # Use exclude_none=True to remove None values
-            workflow_dict = workflow.to_dict()
+            # Use exclude_unset=True to remove unset values
+            workflow_dict = workflow.model_dump(by_alias=True, exclude_unset=True)
 
             # Generate clean YAML
             return yaml.dump(

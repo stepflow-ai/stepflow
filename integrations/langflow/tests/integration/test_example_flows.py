@@ -244,7 +244,8 @@ class TestExecutor:
         # Check for validation errors
         if store_response.diagnostics.num_fatal > 0:
             diagnostics_list = [
-                d.to_dict() for d in store_response.diagnostics.diagnostics
+                d.model_dump(by_alias=True, exclude_unset=True)
+                for d in store_response.diagnostics.diagnostics
             ]
             num_fatal = store_response.diagnostics.num_fatal
             raise AssertionError(
@@ -253,7 +254,9 @@ class TestExecutor:
             )
 
         if not store_response.flow_id:
-            diag_dict = store_response.diagnostics.to_dict()
+            diag_dict = store_response.diagnostics.model_dump(
+                by_alias=True, exclude_unset=True
+            )
             raise AssertionError(f"Failed to store workflow. Diagnostics: {diag_dict}")
 
         flow_id = store_response.flow_id
@@ -284,7 +287,7 @@ class TestExecutor:
             timeout=timeout,
         )
 
-        result = response.to_dict()
+        result = response.model_dump(by_alias=True, exclude_unset=True)
 
         # Check if execution succeeded
         if result.get("status") != "completed":

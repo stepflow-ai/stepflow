@@ -315,18 +315,6 @@ class ValueExpr(BaseModel):
             self.actual_instance.to_dict
         ):
             return self.actual_instance.to_dict()
-        elif isinstance(self.actual_instance, dict):
-            # Recursively convert dict values
-            return {
-                k: v.to_dict() if hasattr(v, "to_dict") else v
-                for k, v in self.actual_instance.items()
-            }
-        elif isinstance(self.actual_instance, list):
-            # Recursively convert list items
-            return [
-                item.to_dict() if hasattr(item, "to_dict") else item
-                for item in self.actual_instance
-            ]
         else:
             # primitive type
             return self.actual_instance

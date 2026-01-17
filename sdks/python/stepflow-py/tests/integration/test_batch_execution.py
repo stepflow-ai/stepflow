@@ -124,7 +124,7 @@ def get_result_items(response: CreateRunResponse) -> list[dict]:
     """
     if response.result is None:
         return []
-    result_dict = response.result.to_dict()
+    result_dict = response.result.model_dump(by_alias=True, exclude_unset=True)
     if isinstance(result_dict, dict):
         return result_dict.get("items", [])
     return []

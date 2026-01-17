@@ -177,4 +177,7 @@ class StepflowClient:
             List of item results as dictionaries
         """
         response = await self._run_api.get_run_items(run_id, _request_timeout=timeout)
-        return [item.to_dict() for item in response.items]
+        return [
+            item.model_dump(by_alias=True, exclude_unset=True)
+            for item in response.items
+        ]

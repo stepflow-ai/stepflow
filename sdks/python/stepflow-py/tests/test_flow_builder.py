@@ -236,8 +236,8 @@ def test_build_requires_output():
     flow = builder.build()
     # Verify the output serializes correctly to JSON
     assert flow.output is not None
-    # Use to_dict() to get the serialized form
-    output_dict = flow.output.to_dict()
+    # Use model_dump() to get the serialized form
+    output_dict = flow.output.model_dump(by_alias=True, exclude_unset=True)
     assert output_dict == {"result": "success"}
 
 
@@ -536,7 +536,7 @@ def test_flow_json_serialization():
     flow = builder.build()
 
     # Serialize the flow to dict (which would go to JSON)
-    flow_dict = flow.to_dict()
+    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
 
     # Verify structure
     assert flow_dict["name"] == "json_test"
@@ -582,7 +582,7 @@ def test_flow_json_round_trip():
     flow = builder.build()
 
     # Serialize to JSON string
-    flow_dict = flow.to_dict()
+    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
     json_str = json.dumps(flow_dict)
 
     # Parse back
@@ -637,62 +637,6 @@ def test_valueexpr_model_dump_handles_nested_lists():
     assert result == [1, 2, "three"]
 
 
-def test_valueexpr_to_dict_handles_nested_dicts():
-    """Test that ValueExpr.to_dict() properly handles nested dict/list recursion.
-
-    This test demonstrates why we patch ValueExpr.to_dict() in generate_api_client.py.
-    The generated to_dict() only handles cases where actual_instance has a to_dict()
-    method or is a primitive. It doesn't recursively process dict[str, ValueExpr]
-    or list[ValueExpr] types.
-
-    Without the patch, nested structures like:
-        {"key": ValueExpr(PrimitiveValue("value"))}
-
-    Would serialize incorrectly, returning the raw ValueExpr objects instead of
-    their dict representations.
-
-    Note: model_dump() handles this correctly (see test_valueexpr_model_dump_handles_nested_dicts),
-    but to_dict() is used by to_json() and other generated code paths, so we still need the patch.
-    """
-    from stepflow_py.api.models import InputRef, PrimitiveValue, ValueExpr
-
-    # Create a ValueExpr containing a dict of other ValueExprs
-    nested_dict = {
-        "literal": ValueExpr(PrimitiveValue("hello")),
-        "input_ref": ValueExpr(InputRef(input="$.data")),
-    }
-    value_expr = ValueExpr(nested_dict)
-
-    # to_dict() should recursively convert nested ValueExprs
-    result = value_expr.to_dict()
-
-    # Should get primitive values, not ValueExpr wrappers
-    assert result == {"literal": "hello", "input_ref": {"$input": "$.data"}}
-
-
-def test_valueexpr_to_dict_handles_nested_lists():
-    """Test that ValueExpr.to_dict() properly handles list[ValueExpr].
-
-    Similar to test_valueexpr_to_dict_handles_nested_dicts, this verifies
-    that list values are also recursively converted.
-    """
-    from stepflow_py.api.models import PrimitiveValue, ValueExpr
-
-    # Create a ValueExpr containing a list of other ValueExprs
-    nested_list = [
-        ValueExpr(PrimitiveValue(1)),
-        ValueExpr(PrimitiveValue(2)),
-        ValueExpr(PrimitiveValue("three")),
-    ]
-    value_expr = ValueExpr(nested_list)
-
-    # to_dict() should recursively convert list items
-    result = value_expr.to_dict()
-
-    # Should get primitive values
-    assert result == [1, 2, "three"]
-
-
 def test_flow_serialization_uses_model_dump():
     """Test that Flow serialization correctly uses model_dump with our customizations.
 
@@ -728,8 +672,8 @@ def test_flow_serialization_uses_model_dump():
 
     flow = builder.build()
 
-    # Convert to dict (this uses to_dict which relies on our patches)
-    flow_dict = flow.to_dict()
+    # Convert to dict using model_dump with proper options
+    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
 
     # Verify it's JSON-serializable (would fail if we had Pydantic objects)
     json_str = json.dumps(flow_dict)

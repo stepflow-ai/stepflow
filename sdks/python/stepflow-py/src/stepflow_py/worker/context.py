@@ -400,7 +400,7 @@ class StepflowContext:
             StepflowFailed: If any of the runs failed
         """
         # Convert Flow object to dict for blob storage
-        flow_dict = flow.to_dict()
+        flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
 
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BlobType.flow)

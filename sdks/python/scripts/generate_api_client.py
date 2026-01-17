@@ -315,62 +315,6 @@ def add_oneof_serializers(directory: Path) -> None:
     print(f"    Added serializers to {count} models")
 
 
-def fix_valueexpr_to_dict(directory: Path) -> None:
-    """Fix ValueExpr.to_dict() to properly handle dict/list recursion."""
-    print(">>> Fixing ValueExpr.to_dict()...")
-    filepath = directory / "models" / "value_expr.py"
-
-    if not filepath.exists():
-        print("    WARNING: value_expr.py not found")
-        return
-
-    content = filepath.read_text()
-
-    # The generated to_dict method doesn't handle dict/list recursion properly.
-    # We replace the body to add dict/list handling while preserving the signature.
-    # Match: if hasattr(...to_dict) -> return to_dict() else return actual_instance
-    old_body = (
-        'if hasattr(self.actual_instance, "to_dict") and callable(\n'
-        "            self.actual_instance.to_dict\n"
-        "        ):\n"
-        "            return self.actual_instance.to_dict()\n"
-        "        else:\n"
-        "            # primitive type\n"
-        "            return self.actual_instance"
-    )
-
-    new_body = (
-        'if hasattr(self.actual_instance, "to_dict") and callable(\n'
-        "            self.actual_instance.to_dict\n"
-        "        ):\n"
-        "            return self.actual_instance.to_dict()\n"
-        "        elif isinstance(self.actual_instance, dict):\n"
-        "            # Recursively convert dict values\n"
-        "            return {\n"
-        '                k: v.to_dict() if hasattr(v, "to_dict") else v\n'
-        "                for k, v in self.actual_instance.items()\n"
-        "            }\n"
-        "        elif isinstance(self.actual_instance, list):\n"
-        "            # Recursively convert list items\n"
-        "            return [\n"
-        '                item.to_dict() if hasattr(item, "to_dict") else item\n'
-        "                for item in self.actual_instance\n"
-        "            ]\n"
-        "        else:\n"
-        "            # primitive type\n"
-        "            return self.actual_instance"
-    )
-
-    if old_body in content:
-        content = content.replace(old_body, new_body)
-        filepath.write_text(content)
-        print("    Fixed ValueExpr.to_dict()")
-    elif new_body in content:
-        print("    ValueExpr.to_dict() already fixed")
-    else:
-        print("    WARNING: Could not find to_dict pattern to replace")
-
-
 def exclude_additional_properties(directory: Path) -> None:
     """Mark additional_properties fields as excluded from serialization.
 
@@ -491,9 +435,6 @@ def do_generate(spec_file: Path) -> None:
 
     # Add custom serializers to oneOf wrapper models
     add_oneof_serializers(SRC_DIR)
-
-    # Fix ValueExpr.to_dict() to handle dict/list recursion
-    fix_valueexpr_to_dict(SRC_DIR)
 
     # Exclude additional_properties from serialization
     exclude_additional_properties(SRC_DIR)
