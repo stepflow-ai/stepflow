@@ -26,7 +26,7 @@ mod tests {
     use serde_json::json;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
     use stepflow_core::{BlobType, FlowResult, ValueExpr, workflow::ValueRef};
-    use stepflow_dtos::StepResult;
+    use stepflow_dtos::{StepId, StepResult};
     use stepflow_state::StateStore as _;
     use uuid::Uuid;
 
@@ -86,7 +86,8 @@ mod tests {
 
         // Create test step result
         let flow_result = FlowResult::Success(ValueRef::new(json!({"result":"success"})));
-        let step_result = StepResult::new(0, "test_step", flow_result.clone());
+        let step_result =
+            StepResult::new(StepId::new("test_step".to_string(), 0), flow_result.clone());
 
         // Store step result
         store
@@ -106,8 +107,8 @@ mod tests {
         // List all results
         let all_results = store.list_step_results(run_id).await.unwrap();
         assert_eq!(all_results.len(), 1);
-        assert_eq!(all_results[0].step_idx(), 0);
-        assert_eq!(all_results[0].step_id(), "test_step");
+        assert_eq!(all_results[0].step_index(), 0);
+        assert_eq!(all_results[0].step_name(), "test_step");
         assert_eq!(*all_results[0].result(), flow_result);
     }
 

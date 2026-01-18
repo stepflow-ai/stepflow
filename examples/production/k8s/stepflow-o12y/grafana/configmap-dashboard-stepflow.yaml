@@ -150,8 +150,169 @@ data:
           "type": "text"
         },
         {
+          "datasource": {"type": "datasource", "uid": "-- Mixed --"},
+          "gridPos": {"h": 2, "w": 24, "x": 0, "y": 12},
+          "id": 5,
+          "options": {
+            "mode": "markdown",
+            "content": "## Infrastructure Services - Docling Document Processing"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [],
+          "title": "",
+          "type": "text",
+          "transparent": true
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 5},
+                  {"color": "red", "value": 10}
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 14},
+          "id": 6,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(stepflow_http_server_active_requests{service_name=\"docling-serve\"})",
+              "refId": "A"
+            }
+          ],
+          "title": "Docling Active Requests",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 14},
+          "id": 7,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_http_server_duration_milliseconds_bucket{service_name=\"docling-serve\"}[5m])) by (le))",
+              "refId": "A"
+            }
+          ],
+          "title": "Docling p95 Latency",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 14},
+          "id": 8,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(increase(stepflow_rq_workers_success_total{service_name=\"docling-serve\"}[5m]))",
+              "refId": "A"
+            }
+          ],
+          "title": "Docling Jobs OK (5m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "red", "value": 1}
+                ]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 14},
+          "id": 9,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(increase(stepflow_rq_workers_failed_total{service_name=\"docling-serve\"}[5m]))",
+              "refId": "A"
+            }
+          ],
+          "title": "Docling Jobs Failed (5m)",
+          "type": "stat"
+        },
+        {
           "datasource": {"type": "loki", "uid": "loki"},
-          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 12},
+          "gridPos": {"h": 12, "w": 24, "x": 0, "y": 18},
           "id": 4,
           "options": {
             "showTime": true,

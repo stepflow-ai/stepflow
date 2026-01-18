@@ -21,7 +21,7 @@ import asyncio
 import logging
 from typing import Any
 
-from stepflow_worker import StepflowContext, StepflowServer
+from stepflow_py.worker import StepflowContext, StepflowServer
 
 from .udf_executor import UDFExecutor
 

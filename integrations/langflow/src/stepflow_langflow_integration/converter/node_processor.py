@@ -16,7 +16,7 @@
 
 from typing import Any
 
-from stepflow_worker import FlowBuilder, Value
+from stepflow_py.worker import FlowBuilder, Value
 
 from ..exceptions import ConversionError
 from .schema_mapper import SchemaMapper
@@ -283,7 +283,10 @@ class NodeProcessor:
                 "type": [input_type, "null"],
                 "default": None,
             }
-        return Value.variable(name)
+        # Use a literal null as default so that if the variable isn't provided at
+        # runtime, the value resolves to null and the UDF executor can fall back
+        # to reading from environment
+        return Value.variable(name, default=Value.literal(None))
 
     def _extract_runtime_inputs_for_builder(
         self,

@@ -23,7 +23,7 @@ use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_dtos::{ResultOrder, RunDetails, RunFilters, RunSummary, StepResult};
+use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepResult};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::StateStoreExt as _;
 use utoipa::ToSchema;
@@ -107,19 +107,6 @@ pub struct ListRunsQuery {
     pub offset: Option<usize>,
 }
 
-/// A single item result in a multi-item run
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ItemResult {
-    /// Item index (0-based)
-    pub item_index: usize,
-    /// The status of this item
-    pub status: ExecutionStatus,
-    /// The result of the flow execution for this item (if completed)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<FlowResult>,
-}
-
 /// Response for listing run items
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -198,9 +185,15 @@ pub async fn create_run(
     let item_count = req.input.len() as u32;
 
     // Execute the run
+    let variables = if req.variables.is_empty() {
+        None
+    } else {
+        Some(req.variables)
+    };
     let params = stepflow_core::SubmitRunParams {
         max_concurrency: req.max_concurrency,
         overrides: req.overrides,
+        variables,
         ..Default::default()
     };
 
@@ -301,19 +294,9 @@ pub async fn get_run_items(
     let item_count = run_details.summary.items.total;
 
     // Get item results from state store (ordered by item_index)
-    let state_items = state_store
+    let items = state_store
         .get_item_results(run_id, ResultOrder::ByIndex)
         .await?;
-
-    // Convert to API response type
-    let items: Vec<ItemResult> = state_items
-        .into_iter()
-        .map(|item| ItemResult {
-            item_index: item.item_index,
-            status: item.status,
-            result: item.result,
-        })
-        .collect();
 
     Ok(Json(ListItemsResponse { item_count, items }))
 }
@@ -434,7 +417,7 @@ pub async fn get_run_steps(
 
     let mut completed_steps: HashMap<usize, StepResult> = HashMap::new();
     for step_result in step_results {
-        completed_steps.insert(step_result.step_idx(), step_result);
+        completed_steps.insert(step_result.step_index(), step_result);
     }
 
     // Create unified response with both status and results
@@ -445,7 +428,7 @@ pub async fn get_run_steps(
         let step_info_list = state_store.get_step_info_for_run(run_id).await?;
         let mut status_map = HashMap::new();
         for step_info in step_info_list {
-            status_map.insert(step_info.step_index, step_info.status);
+            status_map.insert(step_info.step_index(), step_info.status);
         }
         status_map
     };

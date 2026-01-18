@@ -41,14 +41,46 @@ use crate::{ExecutionError, Result};
 /// Metadata about a step execution.
 ///
 /// This provides identifying information for a step without the result.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct StepMetadata {
-    /// Index of the step in the flow.
-    pub step_index: usize,
-    /// Name/ID of the step.
-    pub step_id: String,
+    /// Step identifier (index + name).
+    pub step: StepId,
     /// Component path (e.g., "/builtin/openai").
     pub component: String,
+}
+
+// Custom serialization to maintain backward compatibility
+impl Serialize for StepMetadata {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct as _;
+        let mut state = serializer.serialize_struct("StepMetadata", 3)?;
+        state.serialize_field("step_index", &self.step.index())?;
+        state.serialize_field("step_id", &self.step.name())?;
+        state.serialize_field("component", &self.component)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for StepMetadata {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct StepMetadataData {
+            step_index: usize,
+            step_id: String,
+            component: String,
+        }
+        let data = StepMetadataData::deserialize(deserializer)?;
+        Ok(Self {
+            step: StepId::new(data.step_id, data.step_index),
+            component: data.component,
+        })
+    }
 }
 
 /// Result of executing a step, including metadata.
@@ -65,12 +97,11 @@ pub struct StepRunResult {
 }
 
 impl StepRunResult {
-    /// Create a new step run result.
-    pub fn new(step_index: usize, step_id: String, component: String, result: FlowResult) -> Self {
+    /// Create a new step run result from a StepId.
+    pub fn new(step_id: StepId, component: String, result: FlowResult) -> Self {
         Self {
             metadata: StepMetadata {
-                step_index,
-                step_id,
+                step: step_id,
                 component,
             },
             result,
@@ -79,12 +110,17 @@ impl StepRunResult {
 
     /// Get the step index.
     pub fn step_index(&self) -> usize {
-        self.metadata.step_index
+        self.metadata.step.index()
     }
 
-    /// Get the step ID.
-    pub fn step_id(&self) -> &str {
-        &self.metadata.step_id
+    /// Get the step name.
+    pub fn step_name(&self) -> &str {
+        self.metadata.step.name()
+    }
+
+    /// Get the StepId.
+    pub fn step_id(&self) -> &StepId {
+        &self.metadata.step
     }
 
     /// Get the component path.
@@ -269,8 +305,7 @@ impl StepRunner {
     /// - Business failures (`FlowResult::Failed`) are expected and should be recorded
     /// - System errors (`Err`) indicate infrastructure issues and may warrant logging/alerting
     pub async fn run(self) -> Result<StepRunResult> {
-        let step_index = self.step_index;
-        let step_id = self.step.id.clone();
+        let step_id = StepId::for_step(self.flow.clone(), self.step_index);
         let component = self.step.component.to_string();
 
         // Handle input resolution failure (business logic failure)
@@ -278,7 +313,6 @@ impl StepRunner {
             FlowResult::Success(value) => value,
             FlowResult::Failed(error) => {
                 return Ok(StepRunResult::new(
-                    step_index,
                     step_id,
                     component,
                     FlowResult::Failed(error),
@@ -293,10 +327,9 @@ impl StepRunner {
             .change_context(ExecutionError::RouterError)?;
 
         // Create execution context with run context for bidirectional communication
-        let step_id_ref = StepId::for_step(self.flow.clone(), self.step_index);
         let context = ExecutionContext::for_step(
             self.env.clone(),
-            step_id_ref,
+            step_id.clone(),
             self.flow_id,
             self.run_context,
         );
@@ -305,6 +338,6 @@ impl StepRunner {
         let result =
             execute_step_async(plugin, &self.step, &resolved_component, input, context).await?;
 
-        Ok(StepRunResult::new(step_index, step_id, component, result))
+        Ok(StepRunResult::new(step_id, component, result))
     }
 }

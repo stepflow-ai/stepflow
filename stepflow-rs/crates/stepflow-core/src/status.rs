@@ -12,6 +12,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::workflow::StepId;
+
 /// Status of a workflow execution
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -78,12 +80,10 @@ impl std::fmt::Display for StepStatus {
 }
 
 /// Detailed step execution information combining status and context
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StepExecution {
-    /// Step index in the workflow
-    pub step_index: usize,
-    /// Step ID (if provided)
-    pub step_id: String,
+    /// Step identifier (index + name)
+    pub step_id: StepId,
     /// Component name/URL that this step executes
     pub component: String,
     /// Current status of the step
@@ -91,13 +91,59 @@ pub struct StepExecution {
 }
 
 impl StepExecution {
-    pub fn new(step_index: usize, step_id: String, component: String, status: StepStatus) -> Self {
+    pub fn new(step_id: StepId, component: String, status: StepStatus) -> Self {
         Self {
-            step_index,
             step_id,
             component,
             status,
         }
+    }
+
+    /// Get the step index.
+    pub fn step_index(&self) -> usize {
+        self.step_id.index()
+    }
+
+    /// Get the step name.
+    pub fn step_name(&self) -> &str {
+        self.step_id.name()
+    }
+}
+
+// Custom serialization to maintain backward compatibility
+impl Serialize for StepExecution {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct as _;
+        let mut state = serializer.serialize_struct("StepExecution", 4)?;
+        state.serialize_field("step_index", &self.step_id.index())?;
+        state.serialize_field("step_id", &self.step_id.name())?;
+        state.serialize_field("component", &self.component)?;
+        state.serialize_field("status", &self.status)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for StepExecution {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct StepExecutionData {
+            step_index: usize,
+            step_id: String,
+            component: String,
+            status: StepStatus,
+        }
+        let data = StepExecutionData::deserialize(deserializer)?;
+        Ok(Self {
+            step_id: StepId::new(data.step_id, data.step_index),
+            component: data.component,
+            status: data.status,
+        })
     }
 }
 
@@ -146,15 +192,12 @@ mod tests {
 
     #[test]
     fn test_step_execution_creation() {
-        let step_exec = StepExecution::new(
-            0,
-            "test_step".to_string(),
-            "test_component".to_string(),
-            StepStatus::Completed,
-        );
+        let step_id = StepId::new("test_step".to_string(), 0);
+        let step_exec =
+            StepExecution::new(step_id, "test_component".to_string(), StepStatus::Completed);
 
-        assert_eq!(step_exec.step_index, 0);
-        assert_eq!(step_exec.step_id, "test_step");
+        assert_eq!(step_exec.step_index(), 0);
+        assert_eq!(step_exec.step_name(), "test_step");
         assert_eq!(step_exec.component, "test_component");
         assert_eq!(step_exec.status, StepStatus::Completed);
     }

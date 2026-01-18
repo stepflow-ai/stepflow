@@ -18,8 +18,8 @@ import inspect
 import os
 from typing import Any
 
-from stepflow_worker import StepflowContext
-from stepflow_worker.observability import get_tracer
+from stepflow_py.worker import StepflowContext
+from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
 from .type_converter import TypeConverter

@@ -36,7 +36,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "stepflow-worker>=0.6.0",
+    "stepflow-py>=0.8.0",
+    "stepflow-orchestrator>=0.8.0",
     "pyyaml>=6.0",
     "msgspec>=0.19.0",
     "click>=8.0",
@@ -69,7 +70,7 @@ dev = [
     "pytest-mock>=3.14.1",
     "poethepoet>=0.24.0",
     "ruff>=0.9.4",
-    "mypy>=1.8.0",
+    "mypy==1.19.1",
     "deptry>=0.22.0",
     "types-PyYAML>=6.0.0",
     "pandas-stubs>=2.0.0",
@@ -95,7 +96,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-stepflow-worker = { path = "../../sdks/python/stepflow-worker", editable = true }
+stepflow-py = { path = "../../sdks/python/stepflow-py", editable = true }
+stepflow-orchestrator = { path = "../../sdks/python/stepflow-orchestrator", editable = true }
 
 [tool.poe]
 # comment this out to debug poe tasks
@@ -182,6 +184,8 @@ opensearch-py = ["opensearchpy"]
 
 [tool.mypy]
 python_version = "3.11"
+# Enable pydantic plugin for proper handling of populate_by_name=True
+plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
@@ -196,6 +200,11 @@ disallow_incomplete_defs = false
 disallow_untyped_decorators = false
 no_implicit_optional = false
 strict_equality = false
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 # Ignore errors in tests for now
 [[tool.mypy.overrides]]

@@ -22,6 +22,33 @@ from stepflow_langflow_integration.converter.translator import LangflowConverter
 from stepflow_langflow_integration.exceptions import ConversionError
 
 
+def unwrap_value(value: Any) -> Any:
+    """Recursively unwrap ValueExpr/PrimitiveValue to get the raw value."""
+    if value is None:
+        return None
+    # Unwrap ValueExpr and PrimitiveValue
+    if hasattr(value, "actual_instance"):
+        return unwrap_value(value.actual_instance)
+    # Recursively unwrap dicts
+    if isinstance(value, dict):
+        return {k: unwrap_value(v) for k, v in value.items()}
+    # Recursively unwrap lists
+    if isinstance(value, list):
+        return [unwrap_value(v) for v in value]
+    return value
+
+
+def get_step_input_dict(step) -> dict:
+    """Extract the input dict from a step's ValueExpr wrapper.
+
+    The Step.input field is a Pydantic ValueExpr oneOf wrapper. This helper
+    unwraps it to get the underlying dict for assertions.
+    """
+    if step.input is None:
+        return {}
+    return unwrap_value(step.input)
+
+
 class TestLangflowConverter:
     """Test LangflowConverter functionality."""
 
@@ -169,7 +196,11 @@ class TrivialComponent(Component):
         # Verify no forward references
         for i, step in enumerate(workflow.steps):
             if hasattr(step, "input") and step.input:
-                for _key, value in step.input.items():
+                step_input = get_step_input_dict(step)
+                for _key, value in step_input.items():
+                    # Unwrap ValueExpr if needed
+                    if hasattr(value, "actual_instance"):
+                        value = value.actual_instance
                     if isinstance(value, dict) and "$step" in str(value):
                         from_step = value.get("$step", "")
                         if from_step:
@@ -385,11 +416,11 @@ class CustomComponent(Component):
         assert len(blob_steps) > 0, "Should have at least one blob step"
 
         blob_step = blob_steps[0]
-        blob_data = blob_step.input.get("data", {})
+        blob_input = get_step_input_dict(blob_step)
+        blob_data = blob_input.get("data", {})
         assert "code" in blob_data, "Blob should contain component code"
-        assert "CustomComponent" in blob_data["code"], (
-            "Should contain custom component class"
-        )
+        code_value = blob_data["code"]
+        assert "CustomComponent" in code_value, "Should contain custom component class"
 
     def test_component_routing_strategy_rejects_incomplete_components(self):
         """Test that components without custom code are rejected (unified approach)."""

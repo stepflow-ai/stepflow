@@ -33,6 +33,9 @@ use crate::error::ErrorResponse;
 pub struct StoreFlowRequest {
     /// The flow to store
     pub flow: Arc<Flow>,
+    /// If true, only validate the flow without storing it
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 /// Response when a flow is stored
@@ -79,9 +82,9 @@ pub async fn store_flow(
     // Validate the workflow
     let diagnostics = validate(&flow)?;
 
-    // Determine if we can store the flow (no fatal diagnostics)
-    let flow_id = if diagnostics.has_fatal() {
-        // Validation failed: don't store the flow
+    // Determine if we can store the flow (no fatal diagnostics and not dry_run)
+    let flow_id = if diagnostics.has_fatal() || req.dry_run {
+        // Validation failed or dry_run: don't store the flow
         None
     } else {
         // Store the flow as a blob

@@ -154,17 +154,19 @@ mod tests {
 
     #[test]
     fn test_task_result() {
+        use stepflow_core::workflow::StepId;
+
         let run_id = test_run_id();
         let task = Task::new(run_id, 0, 1);
         let result = FlowResult::Success(ValueRef::new(serde_json::json!(42)));
-        let step_result =
-            StepRunResult::new(1, "test_step".to_string(), "/mock/test".to_string(), result);
+        let step_id = StepId::new("test_step".to_string(), 1);
+        let step_result = StepRunResult::new(step_id, "/mock/test".to_string(), result);
         let task_result = TaskResult::new(task, step_result);
 
         assert_eq!(task_result.run_id, run_id);
         assert_eq!(task_result.item_index, 0);
         assert_eq!(task_result.step_index(), 1);
-        assert_eq!(task_result.step.step_id(), "test_step");
+        assert_eq!(task_result.step.step_name(), "test_step");
         assert!(task_result.is_success());
         match task_result.result() {
             FlowResult::Success(v) => assert_eq!(v.as_ref(), &serde_json::json!(42)),

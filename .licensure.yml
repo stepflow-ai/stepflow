@@ -2,6 +2,7 @@ excludes:
   - docs/.*
   - stepflow-ui/.*
   - sdks/python/stepflow-api/.*
+  - sdks/python/stepflow-py/src/stepflow_py/api/.*
   - .*\.ya?ml
   - .*\.snap
   - .*\.toml
@@ -29,6 +30,7 @@ excludes:
   - venv/.*
   - env.*
   - \.dockerignore
+  - \.gitkeep
 
 licenses:
   - files: any

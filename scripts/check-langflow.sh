@@ -63,6 +63,13 @@ if [ $? -ne 0 ]; then
     print_fix "uv run poe lint-fix"
 fi
 
+# Clear mypy cache before type checking to avoid cross-project cache corruption.
+# This is needed because langflow imports stepflow_py via editable install, and
+# the mypy caches can become inconsistent when both projects are checked together.
+# Note: Switching to non-editable installs would eliminate this issue, but would
+# require reinstalling packages after every change to stepflow_py or stepflow_orchestrator.
+rm -rf .mypy_cache
+
 run_check "Type checking" uv run poe type-check
 if [ $? -ne 0 ]; then
     print_fix "Fix type errors"
@@ -77,21 +84,29 @@ if [ $? -ne 0 ]; then
 fi
 
 # =============================================================================
-# INTEGRATION TESTS (requires stepflow binary)
+# INTEGRATION TESTS (requires stepflow-server binary)
 # =============================================================================
 
-# Check if we have the stepflow binary available
-STEPFLOW_BINARY=""
-if [ -n "$STEPFLOW_BINARY_PATH" ] && [ -f "$STEPFLOW_BINARY_PATH" ]; then
-    STEPFLOW_BINARY="$STEPFLOW_BINARY_PATH"
-elif [ -f "$PROJECT_ROOT/stepflow-rs/target/debug/stepflow" ]; then
-    STEPFLOW_BINARY="$PROJECT_ROOT/stepflow-rs/target/debug/stepflow"
-elif [ -f "$PROJECT_ROOT/stepflow-rs/target/release/stepflow" ]; then
-    STEPFLOW_BINARY="$PROJECT_ROOT/stepflow-rs/target/release/stepflow"
+# Check if we have the stepflow-server binary available
+# If STEPFLOW_DEV_BINARY is set, use it (allows testing with custom binaries)
+# Otherwise, build the debug binary automatically to ensure we test the latest code
+if [ -n "$STEPFLOW_DEV_BINARY" ] && [ -f "$STEPFLOW_DEV_BINARY" ]; then
+    STEPFLOW_BINARY="$STEPFLOW_DEV_BINARY"
+    echo "    Using STEPFLOW_DEV_BINARY: $STEPFLOW_BINARY"
+else
+    # Build the debug binary to ensure we're testing the latest code
+    echo "    Building stepflow-server (debug)..."
+    if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --quiet); then
+        STEPFLOW_BINARY="$PROJECT_ROOT/stepflow-rs/target/debug/stepflow-server"
+        echo "    Built: $STEPFLOW_BINARY"
+    else
+        STEPFLOW_BINARY=""
+        echo "    ⚠️  Build failed"
+    fi
 fi
 
 if [ -n "$STEPFLOW_BINARY" ]; then
-    export STEPFLOW_BINARY_PATH="$STEPFLOW_BINARY"
+    export STEPFLOW_DEV_BINARY="$STEPFLOW_BINARY"
     run_check "Integration tests" uv run python -m pytest tests/integration/ -v -m "not slow" -x
     if [ $? -ne 0 ]; then
         print_fix "Fix integration test failures"
@@ -99,8 +114,8 @@ if [ -n "$STEPFLOW_BINARY" ]; then
     fi
 else
     print_step "Integration tests"
-    print_skip "stepflow binary not found"
-    echo "    Build with: cd stepflow-rs && cargo build"
+    print_skip "stepflow-server binary build failed"
+    echo "    Check cargo build errors above"
 fi
 
 # =============================================================================

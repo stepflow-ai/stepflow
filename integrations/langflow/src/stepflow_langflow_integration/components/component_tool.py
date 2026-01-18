@@ -16,7 +16,7 @@
 
 from typing import Any
 
-from stepflow_worker import StepflowContext
+from stepflow_py.worker import StepflowContext
 
 
 async def _resolve_step_references(
