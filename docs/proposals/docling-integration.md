@@ -6,7 +6,7 @@
 
 ## Summary
 
-This proposal describes adding Docling as a first-class Stepflow component namespace (`/docling/*`), enabling document processing capabilities independent of Langflow while maintaining seamless integration when Langflow flows contain Docling components.
+This proposal describes adding Docling as a routable Stepflow component, enabling document processing capabilities independent of Langflow while maintaining seamless integration when Langflow flows contain Docling components. The key design principle is to keep the docling translation layer generic and straight forward while routing layer manages the complexity. 
 
 ## Background
 
@@ -24,14 +24,14 @@ This proposal describes adding Docling as a first-class Stepflow component names
 
 ### Langflow's Docling Components
 
-Langflow provides four Docling components:
+Langflow provides four Docling components in the `lfx.components.docling` module:
 
-| Component | Purpose | Backend |
-|-----------|---------|---------|
-| Docling | Process documents | Local model (in-process) |
-| Docling Serve | Process documents | Remote API |
-| Chunk DoclingDocument | Semantic chunking | HybridChunker / HierarchicalChunker |
-| Export DoclingDocument | Format conversion | Markdown, HTML, JSON, DocTags |
+| Component Class | Purpose | Backend |
+|----------------|---------|---------|
+| `DoclingInlineComponent` | Process documents | Local model (in-process) |
+| `DoclingRemoteComponent` | Process documents | Remote API (docling-serve) |
+| `ChunkDoclingDocument` | Semantic chunking | HybridChunker / HierarchicalChunker |
+| `ExportDoclingDocument` | Format conversion | Markdown, HTML, JSON, DocTags |
 
 ### Current State in Stepflow
 
@@ -39,84 +39,73 @@ The K8s production example deploys docling-serve as an infrastructure service. L
 
 - Docling is invisible to Stepflow's routing and observability
 - No independent scaling of document processing
-- Langflow-only; other Stepflow flows cannot use Docling directly
+- Translator would need special-case logic to handle Docling differently
 
 ## Proposal
 
-### Component Namespace
+### Design Principles
 
-Introduce `/docling/*` as a first-class Stepflow component namespace:
+1. **Translator stays simple** — Maps Langflow component class paths match directly to Stepflow URL paths
+2. **1:1 name mapping** — Langflow component names correspond exactly to Stepflow path suffixes
+3. **Routing config gets smart** — Whether a component runs on langflow-worker or docling-worker is determined by route rules, not translation logic
 
-```
-/docling/convert   - Document processing (PDF → structured data)
-/docling/chunk     - Semantic chunking for RAG
-/docling/export    - Format conversion (DoclingDocument → Markdown/HTML/JSON)
-```
+### Langflow Translation (Unchanged)
 
-### Component Specifications
+The translator converts Langflow core component class paths to Stepflow paths mechanically:
 
-**`/docling/convert`**
+| Langflow Component Class | Stepflow Path |
+|-------------------------|---------------|
+| `lfx.components.docling.DoclingInlineComponent` | `/langflow/core/lfx/components/docling/DoclingInlineComponent` |
+| `lfx.components.docling.DoclingRemoteComponent` | `/langflow/core/lfx/components/docling/DoclingRemoteComponent` |
+| `lfx.components.docling.ChunkDoclingDocument` | `/langflow/core/lfx/components/docling/ChunkDoclingDocument` |
+| `lfx.components.docling.ExportDoclingDocument` | `/langflow/core/lfx/components/docling/ExportDoclingDocument` |
+
+Translation formula: `/langflow/core/` + `<component_class_path>`
+
+No translator changes are required given that the translator already emits paths based on component class names.
+
+### Routing Configuration
+
+Route rules determine where components execute, with prioritisation on finer grained routes. Without docling workers, all components run on langflow-worker:
 
 ```yaml
-input:
-  http_sources:                    # URL-based sources
-    - url: "https://example.com/doc.pdf"
-      headers: {}                  # Optional auth headers
-  file_sources:                    # Base64-encoded files
-    - base64_string: "..."
-      filename: "doc.pdf"
-  options:
-    to_formats: ["md", "json"]     # Output formats
-    do_ocr: true
-    force_ocr: false
-    ocr_engine: "easyocr"          # easyocr | tesseract | rapidocr
-    table_mode: "fast"             # fast | accurate
+routes:
+  "/langflow/core/{*component}":
+    - plugin: langflow_k8s
+```
+
+The langflow-worker uses the component path to instantiate and execute the Langflow code. With docling workers, docling components offloaded to specialized workers:
+
+```yaml
+plugins:
+  langflow_k8s:
+    type: stepflow
+    transport: http
+    url: "http://langflow-load-balancer.stepflow.svc.cluster.local:8080"
     
-output:
-  documents:
-    - format: "md"
-      content: "# Title\n\n..."
-    - format: "json"
-      content: { ... }
-  metadata:
-    pages: 12
-    processing_time_ms: 2340
+  docling_k8s:
+    type: stepflow
+    transport: http
+    url: "http://docling-load-balancer.stepflow.svc.cluster.local:8080"
+
+routes:
+  # Specific route for docling components (higher priority)
+  "/langflow/core/lfx/components/docling/{*component}":
+    - plugin: docling_k8s
+
+  # General route for other langflow components
+  "/langflow/core/{*component}":
+    - plugin: langflow_k8s
+    
+  "/builtin/{*component}":
+    - plugin: builtin
 ```
 
-**`/docling/chunk`**
+The docling-worker receives paths like `/DoclingInlineComponent` or `/DoclingRemoteComponent` (the suffix after route prefix matching).
 
-```yaml
-input:
-  document: $step.convert.documents[0]
-  chunker: "hybrid"                # hybrid | hierarchical
-  max_tokens: 512
-  tokenizer_provider: "huggingface"
-  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+### Docling Worker Implementation
 
-output:
-  chunks:
-    - text: "..."
-      metadata:
-        page: 1
-        section: "introduction"
-        headings: ["Chapter 1", "Overview"]
-```
-
-**`/docling/export`**
-
-```yaml
-input:
-  document: $step.convert.documents[0]
-  format: "markdown"               # markdown | html | text | doctags
-  image_mode: "placeholder"        # placeholder | embedded | referenced
-
-output:
-  content: "# Document Title\n\n..."
-```
-
-### Worker Implementation
-
-Create `integrations/docling/` following the established Langflow worker pattern:
+Create `integrations/docling/` following the established Langflow worker pattern in `integrations/langflow`:
 
 ```
 integrations/docling/
@@ -127,13 +116,14 @@ integrations/docling/
 │   ├── server.py              # StepflowDoclingServer
 │   ├── client.py              # DoclingServeClient
 │   └── components/
-│       ├── convert.py
-│       ├── chunk.py
-│       └── export.py
+│       ├── docling_inline.py
+│       ├── docling_remote.py
+│       ├── chunk_docling.py
+│       └── export_docling.py
 └── tests/
 ```
 
-The worker uses `stepflow_worker.StepflowServer` and delegates to docling-serve via HTTP:
+The worker registers components matching Langflow's class names exactly:
 
 ```python
 class StepflowDoclingServer:
@@ -143,60 +133,22 @@ class StepflowDoclingServer:
         self._register_components()
 
     def _register_components(self):
-        @self.server.component(name="convert")
-        async def convert(input_data: dict, context: StepflowContext) -> dict:
+        # Component names match Langflow's class names exactly
+        @self.server.component(name="DoclingInlineComponent")
+        async def docling_inline(input_data: dict, context: StepflowContext) -> dict:
             return await self.client.convert(input_data)
 
-        @self.server.component(name="chunk")
-        async def chunk(input_data: dict, context: StepflowContext) -> dict:
+        @self.server.component(name="DoclingRemoteComponent")
+        async def docling_remote(input_data: dict, context: StepflowContext) -> dict:
+            return await self.client.convert(input_data)
+
+        @self.server.component(name="ChunkDoclingDocument")
+        async def chunk_docling(input_data: dict, context: StepflowContext) -> dict:
             return await self.client.chunk(input_data)
-```
 
-### Routing Configuration
-
-```yaml
-# stepflow-config.yml
-plugins:
-  docling_k8s:
-    type: stepflow
-    transport: http
-    url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
-
-routes:
-  "/docling/{*operation}":
-    - plugin: docling_k8s
-```
-
-### Langflow Translator Integration
-
-When the translator encounters Langflow Docling components, emit corresponding Stepflow components:
-
-| Langflow Component | Stepflow Component |
-|-------------------|-------------------|
-| Docling / Docling Serve | `/docling/convert` |
-| Chunk DoclingDocument | `/docling/chunk` |
-| Export DoclingDocument | `/docling/export` |
-
-Example translation:
-
-```yaml
-# Langflow "Docling Serve" → Stepflow
-- id: process_document
-  component: /docling/convert
-  input:
-    http_sources:
-      - url: $input.document_url
-    options:
-      to_formats: ["md"]
-      do_ocr: true
-
-# Langflow "Chunk DoclingDocument" → Stepflow
-- id: chunk_document
-  component: /docling/chunk
-  input:
-    document: $step.process_document.documents[0]
-    chunker: "hybrid"
-    max_tokens: 512
+        @self.server.component(name="ExportDoclingDocument")
+        async def export_docling(input_data: dict, context: StepflowContext) -> dict:
+            return await self.client.export(input_data)
 ```
 
 ### K8s Deployment
@@ -240,36 +192,38 @@ Sidecar benefits:
 
 ## Benefits
 
-1. **First-class component** — Use `/docling/convert` directly in any Stepflow flow, not just Langflow
-2. **Unified observability** — Document processing requests traced through Stepflow's OTel stack
-3. **Independent scaling** — Scale document processing separately from LLM workloads
-4. **GPU routing** — Route to GPU-enabled workers for heavy OCR/table extraction
-5. **Langflow compatibility** — Translated flows work transparently
+1. **No translator changes** — Adding docling workers is purely a routing/deployment change
+2. **Gradual rollout** — Route specific components to docling workers while others stay on langflow-worker
+3. **Consistent paths** — Same flow definition works with or without docling workers
+4. **Unified observability** — Document processing requests traced through Stepflow's OTel stack
+5. **Independent scaling** — Scale document processing separately from LLM workloads
+6. **GPU routing** — Route to GPU-enabled workers for heavy OCR/table extraction
 
 ## Further Considerations
 
 ### Stepflow as Docling Orchestration Layer
 
-The proposed architecture positions Stepflow to serve as a scalable front for document processing. By routing `/docling/*` through the Pingora load balancer, Stepflow can orchestrate a pool of docling-serve instances as a single logical resource:
+The proposed architecture positions Stepflow to serve as a scalable front for document processing. By routing `/langflow/core/lfx/components/docling/*` through a dedicated load balancer, Stepflow can orchestrate a pool of docling workers as a single logical resource:
 
 ```
-                    ┌─────────────────────────────┐
-                    │      Stepflow Server        │
-                    │   /docling/* → docling_k8s  │
-                    └──────────────┬──────────────┘
-                                   │
-                    ┌──────────────▼──────────────┐
-                    │    Pingora Load Balancer    │
-                    │     (docling worker pool)   │
-                    └──────────────┬──────────────┘
-                                   │
-          ┌────────────────────────┼────────────────────────┐
-          ▼                        ▼                        ▼
-   ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
-   │docling-wkr-0│          │docling-wkr-1│          │docling-wkr-2│
-   │ + sidecar   │          │ + sidecar   │          │ + sidecar   │
-   │(docling-srv)│          │(docling-srv)│          │(docling-srv)│
-   └─────────────┘          └─────────────┘          └─────────────┘
+                    ┌─────────────────────────────────────┐
+                    │          Stepflow Server            │
+                    │  /langflow/core/.../docling/* →     │
+                    │           docling_k8s               │
+                    └──────────────────┬──────────────────┘
+                                       │
+                    ┌──────────────────▼──────────────────┐
+                    │       Pingora Load Balancer         │
+                    │        (docling worker pool)        │
+                    └──────────────────┬──────────────────┘
+                                       │
+          ┌────────────────────────────┼────────────────────────┐
+          ▼                            ▼                        ▼
+   ┌─────────────┐            ┌─────────────┐            ┌─────────────┐
+   │docling-wkr-0│            │docling-wkr-1│            │docling-wkr-2│
+   │  + sidecar  │            │  + sidecar  │            │  + sidecar  │
+   │(docling-srv)│            │(docling-srv)│            │(docling-srv)│
+   └─────────────┘            └─────────────┘            └─────────────┘
 ```
 
 This provides:
@@ -285,11 +239,11 @@ This pattern effectively makes Stepflow a "document processing gateway" — call
 
 ### GPU Worker Tiers
 
-Future work could introduce heterogeneous worker pools:
+Future work could introduce heterogeneous worker pools with fallback:
 
 ```yaml
 routes:
-  "/docling/convert":
+  "/langflow/core/lfx/components/docling/{*component}":
     - plugin: docling_gpu    # Prefer GPU workers
     - plugin: docling_cpu    # Fallback to CPU
 ```
@@ -309,11 +263,13 @@ Production deployments should consider:
 ## Implementation Plan
 
 1. Create `integrations/docling/` with StepflowDoclingServer
-2. Implement `/docling/convert`, `/docling/chunk`, `/docling/export` components
-3. Add K8s manifests for sidecar deployment pattern
-4. Update Langflow translator to emit `/docling/*` components
-5. Add Docling worker pool to Pingora load balancer configuration
+2. Implement component handlers matching Langflow class names (`DoclingInlineComponent`, `DoclingRemoteComponent`, `ChunkDoclingDocument`, `ExportDoclingDocument`)
+3. Add K8s manifests for sidecar deployment pattern (docling-worker + docling-serve)
+4. Add Docling worker pool to Pingora load balancer configuration
+5. Update `stepflow-config.yml` with docling-specific route rules
 6. Update observability dashboards for document processing metrics
+
+**Note:** No translator changes are required. The translator already emits paths based on component class names; routing configuration determines whether components execute on langflow-worker or docling-worker.
 
 ## References
 
