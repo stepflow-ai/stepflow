@@ -205,6 +205,41 @@ The server configuration is stored in `k8s/stepflow/server/configmap.yaml`. Key 
 
 All services are configured via environment variables in their deployment manifests. Sensitive values (API keys, passwords) are referenced from the `stepflow-secrets` secret.
 
+## Converting Langflow Flows
+
+The Stepflow Langflow integration includes a CLI for converting Langflow JSON workflows to Stepflow YAML.
+
+### Basic Conversion
+
+```bash
+cd integrations/langflow
+
+# Convert and output to stdout
+uv run stepflow-langflow convert <langflow.json>
+
+# Convert and save to file
+uv run stepflow-langflow convert <langflow.json> output.yaml
+
+# Analyze workflow structure before converting
+uv run stepflow-langflow analyze <langflow.json>
+
+# Preview converted YAML without executing
+uv run stepflow-langflow execute <langflow.json> --dry-run
+```
+
+### Applying Tweaks
+
+Tweaks modify component configurations (API keys, model parameters) at conversion time:
+
+```bash
+uv run stepflow-langflow convert <langflow.json> output.yaml
+uv run stepflow-langflow tweak output.yaml \
+  --tweaks '{"LanguageModelComponent-abc123": {"api_key": "sk-..."}}' \
+  tweaked.yaml
+```
+
+For complete documentation including execution, batch processing, and the tweaks system, see the [Langflow Integration README](../../../integrations/langflow/README.md).
+
 ## Infrastructure Services vs. Routed Components
 
 This deployment distinguishes between two types of services:
