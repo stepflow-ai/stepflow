@@ -13,13 +13,13 @@ draft: true
 
 If you havent already worked with [Langflow](https://langflow.org), stop right now, download it immediately, and marvel at your newfound AI workflow productivity! Building a Langflow workflow is intuitive. Drag components, connect edges, test in the UI. But taking that workflow to production raises questions: How do I scale it? How do I monitor it? How do I run it without the Langflow UI? These tools all exist in Langflow, but Stepflow is a robust, general purpose workflow orchestration platform, designed from the ground up for distributed execution. With Stepflow, we can take any Langflow workflow and deploy it to Kubernetes with full observability and scalability. @TODO: better transition
 
-To showcase this, we've created a real-world example using an off the shelf Langflow flow. This post walks through deploying the Langflow workflow on Kubernetes using Stepflow's example production architecture. To do this, we'll convert a real workflow from the [document ingestion pipeline](https://github.com/langflow-ai/openrag/blob/main/flows/ingestion_flow.json) currently in use in the OpenRAG project example flows, deploy it to a local Kind cluster, and trace a request through the system using Stepflow's built in telemetry stack. 
+To showcase this, we've created a real-world example using an off the shelf Langflow flow. This post walks through deploying the Langflow workflow on Kubernetes using Stepflow's example production architecture. To do this, we'll convert a real workflow from the [document ingestion pipeline](https://github.com/langflow-ai/openrag/blob/main/flows/ingestion_flow.json) currently in use in the [OpenRAG project](https://www.openr.ag/) example flows, then deploy it to a local Kind cluster, and trace a request through the system using Stepflow's built in telemetry stack. 
 
 <!-- truncate -->
 
 ## The Architecture at a Glance
 
-The Stepflow Kubernetes deployment not only servers as a reference architecture, but provides a complete execution environment for Langflow workflows:
+To get an idea of how Stepflow was designed, let's take a quick look at the Stepflow Kubernetes example production deployment. This not only serves as a reference architecture, but provides a complete execution environment for Langflow workflows. This example uses the built-in load balancer to distribute our example Langflow workflow across multiple worker instances. Docling and OpenSearch are included as two top-level infrastructure services, providing real world ingestion and search capabilities. The stack, as deployed, looks like this: 
 
 ```
 ┌──────────────┐                    ┌─────────────────────────────────────┐
@@ -51,10 +51,11 @@ The Stepflow Kubernetes deployment not only servers as a reference architecture,
 ```
 
 **Key components:**
+The example architecture deployed into the `stepflow` namespace is designed around increasing the throughput and performance of Langflow workflow. We do this by distributing the workload across multiple worker pods. The Stepflow Server orchestrates the workflow execution, while the Pingora Load Balancer ensures that requests are routed to the workers whenever `/langflow/*` is encountered in the workflow's YAML execution. The Langflow Workers are responsible for executing the actual Langflow component code, and the Infrastructure Services provide additional functionality such as vector storage and document processing. We'll walk through the routing mechanics a bit further down, but the takeaway here is that we can scale our workers and right size machine instances to specific workloads to facilitate resource efficiency and high througput. 
 
 - **Stepflow Server**: The workflow orchestration engine. Parses flows, schedules steps, manages state.
 - **Pingora Load Balancer**: Routes `/langflow/*` requests to healthy worker pods with instance affinity.
-- **Langflow Workers**: Python processes running the actual Langflow component code (3 replicas by default).
+- **Langflow Workers**: Python processes running the actual Langflow component code.
 - **Infrastructure Services**: OpenSearch for vector storage, Docling for document processing.
 
 A separate `stepflow-o12y` namespace houses a full observability stack based on familiar open source tooling: OpenTelemetry Collector, Jaeger, Prometheus, Loki, and Grafana.
@@ -76,6 +77,8 @@ This shows node count, component types, dependencies, and potential issues—use
 
 ### Convert to Stepflow YAML
 
+Once we know we have a valid workflow, we can then convert the flow into the Stepflow YAML format. This is done using the `convert` command:
+
 ```bash
 # Output to stdout
 uv run stepflow-langflow convert flow.json
@@ -85,9 +88,9 @@ uv run stepflow-langflow convert flow.json workflow.yaml
 ```
 
 ### The Blob + Executor Pattern
-TODO: better transition. 
+TODO: better transition; add details on step execution, unique IDs, tracing tie ins, etc. 
 
-During execution, each Langflow component becomes **two** Stepflow steps:
+We covered the Langflow to Stepflow conversion in detail in a [previous post](/blog/langflow-poc), but here's a quick summary. During execution, each Langflow component becomes **two** Stepflow steps:
 
 1. **Blob step**: Stores the component's Python code and configuration
 2. **Executor step**: Loads the blob and runs the component
@@ -117,22 +120,22 @@ Here's a simplified example:
       path: blob_id
 ```
 
-This pattern preserves the original Langflow component implementations while adapting them to Stepflow's execution model.
+This pattern preserves the original Langflow component implementations while adapting them to Stepflow's execution model. In addition to the blog post, we have some detailed documentation on Langflow integration in Stepflow [available here](/docs/integrations/langflow). 
 
 ### Applying Tweaks
 
-Tweaks modify component configurations at runtime—perfect for API keys and environment-specific settings:
+When submit a workflow, we make use of [tweaks](https://docs.langflow.org/concepts-publish#input-schema) to pass in environment variables and secrets as one-time overrides to component parameters. Tweaks modify component configurations at runtime in order to maintain portability of the flow. Here is a simple example passing a message string and an OpenAI API key to a simple `flow.json` workflow:
 
 ```bash
 uv run stepflow-langflow execute flow.json '{"message": "Hello"}' \
   --tweaks '{"LanguageModelComponent-xyz": {"api_key": "sk-..."}}'
 ```
 
-For more details on the conversion process and CLI options, see the [Langflow Integration README](https://github.com/stepflow-ai/stepflow/blob/main/integrations/langflow/README.md).
+TODO: reconcile/consolidate tweaks w. CLI submit below.
 
 ## Understanding the Execution Path
 
-When you submit a workflow, here's what happens:
+So we now have an understanding of how this plugs together architectural, let's look at the runtime and what specifically happens when you submit a workflow. The following diagram illustrates the execution path which we'll call out in detail below:
 
 ```
 ┌─────────┐    ┌──────────────┐    ┌──────────────┐    ┌────────────────┐
@@ -156,7 +159,7 @@ When you submit a workflow, here's what happens:
 
 ### 1. Job Submission
 
-The client submits a workflow to the Stepflow server:
+The client submits a workflow to the Stepflow server using the [stepflow CLI](docs/cli/index):
 
 ```bash
 stepflow submit \
@@ -169,6 +172,8 @@ stepflow submit \
 
 The server parses the workflow and begins executing steps. When it encounters a `/langflow/*` component, the routing configuration kicks in:
 
+TODO: link to stepflow-config.yml in prod example source
+
 ```yaml
 # stepflow-config.yml
 routes:
@@ -180,7 +185,7 @@ This routes the request to the load balancer.
 
 ### 3. Worker Selection
 
-Pingora selects a healthy langflow-worker pod. For stateful operations, it maintains instance affinity—subsequent requests for the same workflow execution go to the same worker.
+The Stepflow Load Balancer (more details below) selects a healthy langflow-worker pod and routes the step to the worker. For stateful operations, it maintains instance affinity—subsequent requests for the same workflow execution go to the same worker. 
 
 ### 4. Component Execution
 
@@ -213,7 +218,7 @@ Why use [Pingora](https://github.com/cloudflare/pingora) instead of a standard K
 
 2. **Health-Aware Routing**: Active health checks ensure requests only go to healthy workers.
 
-3. **Performance**: Written in Rust, Pingora adds minimal latency.
+3. **Performance**: Written in Rust, Pingora adds minimal latency and supports native SSE streaming. 
 
 4. **Observability**: Full OpenTelemetry integration for tracing requests through the proxy.
 
@@ -221,7 +226,7 @@ The load balancer configuration lives in `stepflow/loadbalancer/configmap.yaml` 
 
 ## Infrastructure Services
 
-Some services aren't routed through Stepflow—they're accessed directly by workers via Kubernetes DNS:
+Like most architectures, you probably need some infrastructure like databases, caches, etc. to support your business cases. As our example workflow uses Docling and OpenSearch, we include them in the reference architecture to provide real functionality. They're accessed directly by workers via Kubernetes DNS:
 
 | Service | DNS | Port | Purpose |
 |---------|-----|------|---------|
