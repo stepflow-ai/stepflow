@@ -88,9 +88,7 @@ uv run stepflow-langflow convert flow.json workflow.yaml
 ```
 
 ### The Blob + Executor Pattern
-TODO: better transition; add details on step execution, unique IDs, tracing tie ins, etc. 
-
-We covered the Langflow to Stepflow conversion in detail in a [previous post](/blog/langflow-poc), but here's a quick summary. During execution, each Langflow component becomes **two** Stepflow steps:
+ There is a fair amount happening in the conversion process above. If you would like to know more, we covered the Langflow to Stepflow conversion in detail in a [previous post](/blog/langflow-poc), but here's a quick summary. During execution, each Langflow component becomes **two** Stepflow steps:
 
 1. **Blob step**: Stores the component's Python code and configuration
 2. **Executor step**: Loads the blob and runs the component
@@ -124,7 +122,7 @@ This pattern preserves the original Langflow component implementations while ada
 
 ### Secrets vs. Tweaks
 
-A common question: how do API keys flow through the system? The answer depends on whether you're running locally or on Kubernetes.
+A common question: how do API keys flow through the system? The answer depends on whether you're running locally or in a resource managed environment such as Kubernetes. Since the scope of this blog post is productionising Langflow flows, we'll focus on the Kubernetes case.
 
 **Secrets in Kubernetes (no tweaks needed)**
 
@@ -141,7 +139,7 @@ template:
 At runtime, the UDF executor checks: "Is this field empty and marked `load_from_db`?" If so, it reads the value from the worker's environment. Kubernetes injects the actual secret:
 
 ```yaml
-# langflow-worker deployment.yaml
+# k8s langflow-worker deployment.yaml
 env:
   - name: OPENAI_API_KEY
     valueFrom:
@@ -150,11 +148,11 @@ env:
         key: openai-api-key
 ```
 
-This means secrets never appear in your workflow YAML—they flow from K8s Secret → Pod Environment → Executor lookup.
+This means secrets never appear in your workflow YAML. They flow from k8s Secret → Pod Environment → Executor lookup.
 
 **Tweaks for Local Development**
 
-When running locally (not on K8s), you can inject values directly via [tweaks](https://docs.langflow.org/concepts-publish#input-schema):
+When running locally (not on K8s), you can inject values directly via [tweaks](https://docs.langflow.org/concepts-publish#input-schema) using the `--tweaks` flag via the `stepflow-langflow` CLI command:
 
 ```bash
 uv run stepflow-langflow execute flow.json '{"message": "Hello"}' \
@@ -163,7 +161,7 @@ uv run stepflow-langflow execute flow.json '{"message": "Hello"}' \
 
 **Tweaks for Configuration Overrides**
 
-Tweaks are also useful for non-secret configuration changes:
+Tweaks are also useful for non-secret configuration changes. For example, this workflow allows for swapping out the LLM models and parameters for such at runtime:
 
 ```bash
 # Change model, temperature, or other settings
@@ -261,7 +259,7 @@ This pattern has several advantages:
 - **Flexible per-environment** - dev/staging/prod can have different values
 - **Familiar K8s pattern** - secrets flow from K8s Secret → Pod environment → tweaks
 
-To use this in K8s, mount the script as a ConfigMap and ensure the pod has access to the secrets:
+To use this in K8s, we mount the script as a ConfigMap and ensure the pod has access to the secrets:
 
 ```yaml
 env:
@@ -324,8 +322,6 @@ stepflow submit \
 
 The server parses the workflow and begins executing steps. When it encounters a `/langflow/*` component, the routing configuration kicks in:
 
-TODO: link to stepflow-config.yml in prod example source
-
 ```yaml
 # stepflow-config.yml
 routes:
@@ -333,7 +329,17 @@ routes:
     - plugin: langflow_k8s
 ```
 
-This routes the request to the load balancer.
+This routes the request to the `langflow_k8s` load balancer configured in the same file:
+
+```yaml
+# also stepflow-config.yml
+  langflow_k8s:
+    type: stepflow
+    transport: http
+    url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
+```
+
+For reference, you can see the full [stepflow configuration](https://github.com/stepflow-ai/stepflow/blob/main/examples/production/k8s/stepflow-config.yml) for this production architecture in the repository.
 
 ### 3. Worker Selection
 
@@ -360,11 +366,11 @@ Stepflow wires step outputs to inputs using `$step` references:
       path: result.content
 ```
 
-The orchestrator handles this automatically—independent steps run in parallel, dependent steps wait for their inputs.
+Like many modern workflow systems, the Stepflow orchestrator handles this automatically as a [directed acyclic graph](https://en.wikipedia.org/wiki/Directed_acyclic_graph) or DAG. Independent steps run in parallel, dependent steps wait for their inputs, facilitating work distribution and parelization.
 
 ## The Load Balancer: Instance-Aware Routing
 
-Why use [Pingora](https://github.com/cloudflare/pingora) instead of a standard Kubernetes service? Several reasons:
+The Stepflow load balancer was built using the [Pingora](https://github.com/cloudflare/pingora) crates from Cloudflare. We chose this route instead of a standard Kubernetes service for several reasons:
 
 1. **Instance Affinity**: Some Langflow components maintain state (memory, caches). Pingora routes related requests to the same worker.
 
@@ -444,19 +450,22 @@ For detailed observability documentation, see [OBSERVABILITY.md](https://github.
 
 ## Running the Example
 
+Now that we now how all this plugs together, it's time to run the example. 
+
 ### Prerequisites
 
-- **Kind**: `brew install kind`
-- **kubectl**: `brew install kubectl`
-- **Podman** (or Docker): `brew install podman`
+Since our focus here is productionising Langflow via Stepflow, we assume some knowledge of common production tooling, specifically kubectl, Kind, and Podman ( though Docker should work as well). Getting any further into this is unfortunately outside the scope of this post. 
 
 ### Quick Start
+
+The following commands will get you going, but the "quick" part of this is relative. The AI and ML python communities are fast moving enough that the SBOMs for the images are rather large. This is a good thing as they ecapsulate what is otherwise a frustrating cermony in chasing circular dependencies, but it means that the images will take a while to build. With that said, let's get started.
 
 ```bash
 # 1. Build images (from repo root)
 podman build -t stepflow-server:latest -f docker/Dockerfile.server .
 podman build -t stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
 podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
+# Maybe go get a coffee while this last one builds...
 
 # 2. Create cluster
 cd examples/production/k8s
@@ -483,11 +492,19 @@ kubectl get pods -n stepflow-o12y
 
 ### Submit a Workflow
 
+With Stepflow deployed and the observability stack ready and waiting, it's time to run a flow. We'll use the `stepflow` CLI to submit a workflow to the cluster.
+
+If you have your own flow, you can convert it to a Stepflow workflow using the `stepflow-langflow` CLI:
+
 ```bash
 # Convert a Langflow flow
 cd integrations/langflow
 uv run stepflow-langflow convert path/to/flow.json ../examples/production/k8s/workflow.yaml
+```
 
+Once the flow is ready, we can submit it to the cluster:
+
+```bash
 # Submit to the cluster
 stepflow submit \
   --url http://localhost:7840/api/v1 \
@@ -495,7 +512,11 @@ stepflow submit \
   --input-json '{"message": "Hello from K8s!"}'
 ```
 
-### Access the UIs
+TODO: screen shots of tracing request through the system.
+
+
+
+### Access the Observability Stack and Stepflow Infrastructure
 
 | Service | URL |
 |---------|-----|
