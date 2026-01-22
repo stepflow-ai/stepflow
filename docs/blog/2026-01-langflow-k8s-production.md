@@ -181,17 +181,22 @@ The OpenRAG ingestion workflow requires several environment variables. Here's wh
 | `WATSONX_API_KEY` | Secret | IBM watsonx.ai API key (if using Watson) |
 | `WATSONX_PROJECT_ID` | Config | IBM watsonx.ai project ID |
 | `OLLAMA_BASE_URL` | Config | Ollama API endpoint (if using local models) |
+| `OPENSEARCH_URL` | Config | OpenSearch cluster URL |
+| `OPENSEARCH_USERNAME` | Secret | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | Secret | OpenSearch password |
 | `CONNECTOR_TYPE` | Config | Document connector type |
 | `SELECTED_EMBEDDING_MODEL` | Config | Which embedding model to use |
 | `OWNER`, `OWNER_EMAIL`, `OWNER_NAME` | Metadata | Document ownership info |
 | `FILENAME`, `FILESIZE`, `MIMETYPE` | Metadata | Document metadata |
 
-For secrets marked with `load_from_db: true` in the Langflow export (like `OPENAI_API_KEY`), the UDF executor automatically looks them up from the worker's environment. Create a Kubernetes secret:
+For secrets marked with `load_from_db: true` in the Langflow export (like `OPENAI_API_KEY`), the UDF executor automatically looks them up from the worker's environment. Create a Kubernetes secret with all the credentials your workflow needs:
 
 ```bash
 kubectl create secret generic stepflow-secrets \
   --namespace=stepflow \
-  --from-literal=openai-api-key="$OPENAI_API_KEY"
+  --from-literal=openai-api-key="$OPENAI_API_KEY" \
+  --from-literal=opensearch-username="admin" \
+  --from-literal=opensearch-password="$OPENSEARCH_PASSWORD"
 ```
 
 The [langflow-worker deployment](https://github.com/stepflow-ai/stepflow/blob/main/examples/production/k8s/stepflow/langflow-worker/deployment.yaml) maps these to environment variables:
@@ -218,39 +223,67 @@ password:
   value: MyStrongOpenSearchPassword123!
 ```
 
-To identify which components have hardcoded values, use the `analyze` command:
+Rather than modifying the exported workflow, the cleanest approach is to use **tweaks at submission time**. This keeps the original export unchanged and injects secrets from your K8s environment.
+
+The production example includes a [submission wrapper script](https://github.com/stepflow-ai/stepflow/blob/main/examples/production/k8s/submit-workflow.sh) that reads secrets and constructs tweaks:
 
 ```bash
-uv run stepflow-langflow analyze openrag_ingestion_flow.json
+#!/bin/bash
+# submit-workflow.sh - Submit workflow with secrets injected via tweaks
+
+set -e
+
+# Build tweaks JSON from environment variables
+# These are injected into the pod by K8s secrets
+TWEAKS=$(cat <<EOF
+{
+  "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+    "opensearch_url": "${OPENSEARCH_URL:-http://opensearch.stepflow.svc.cluster.local:9200}",
+    "username": "${OPENSEARCH_USERNAME:-admin}",
+    "password": "${OPENSEARCH_PASSWORD}"
+  }
+}
+EOF
+)
+
+# Submit with tweaks
+stepflow submit \
+  --url http://stepflow-server:7840/api/v1 \
+  --flow /workflows/openrag_ingestion_flow.yaml \
+  --tweaks "$TWEAKS" \
+  --input-json "$1"
 ```
 
-Then use **tweaks** to override these values at runtime. Tweaks inject values into the executor step's input, overriding the hardcoded template defaults:
+This pattern has several advantages:
+
+- **Original export stays clean** - no manual edits to maintain when re-exporting from Langflow
+- **Secrets injected at runtime** - never stored in the workflow YAML
+- **Flexible per-environment** - dev/staging/prod can have different values
+- **Familiar K8s pattern** - secrets flow from K8s Secret → Pod environment → tweaks
+
+To use this in K8s, mount the script as a ConfigMap and ensure the pod has access to the secrets:
+
+```yaml
+env:
+  - name: OPENSEARCH_URL
+    value: "http://opensearch.stepflow.svc.cluster.local:9200"
+  - name: OPENSEARCH_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: stepflow-secrets
+        key: opensearch-username
+  - name: OPENSEARCH_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: stepflow-secrets
+        key: opensearch-password
+```
+
+Then submit workflows using the wrapper:
 
 ```bash
-# Override OpenSearch credentials at execution time
-uv run stepflow-langflow execute openrag_ingestion_flow.json '{}' \
-  --tweaks '{
-    "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
-      "opensearch_url": "https://opensearch.stepflow.svc.cluster.local:9200",
-      "username": "admin",
-      "password": "'"$OPENSEARCH_PASSWORD"'"
-    }
-  }'
+./submit-workflow.sh '{"document_url": "https://example.com/doc.pdf"}'
 ```
-
-For K8s deployments, you can apply tweaks during the conversion step and save the result:
-
-```bash
-# Convert and apply tweaks in one pass
-uv run stepflow-langflow convert flow.json workflow.yaml
-uv run stepflow-langflow tweak workflow.yaml \
-  --tweaks '{"OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {"password": "'"$OPENSEARCH_PASSWORD"'"}}' \
-  workflow-tweaked.yaml
-```
-
-:::note
-Tweaks inject literal values at conversion/execution time. For true environment variable lookup (where the worker reads from its environment at runtime), the component's template needs `load_from_db: true`. Consider modifying your Langflow flows to use `SecretInput` components for sensitive values before export.
-:::
 
 ## Understanding the Execution Path
 
