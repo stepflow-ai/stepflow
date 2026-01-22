@@ -122,20 +122,139 @@ Here's a simplified example:
 
 This pattern preserves the original Langflow component implementations while adapting them to Stepflow's execution model. In addition to the blog post, we have some detailed documentation on Langflow integration in Stepflow [available here](/docs/integrations/langflow). 
 
-### Applying Tweaks
+### Secrets vs. Tweaks
 
-When submit a workflow, we make use of [tweaks](https://docs.langflow.org/concepts-publish#input-schema) to pass in environment variables and secrets as one-time overrides to component parameters. Tweaks modify component configurations at runtime in order to maintain portability of the flow. Here is a simple example passing a message string and an OpenAI API key to a simple `flow.json` workflow:
+A common question: how do API keys flow through the system? The answer depends on whether you're running locally or on Kubernetes.
+
+**Secrets in Kubernetes (no tweaks needed)**
+
+Langflow's `SecretInput` components have a `load_from_db: true` flag. In the converted YAML, the `value` field contains the *environment variable name*, not the actual secret:
+
+```yaml
+# In the converted workflow - note this is the ENV VAR NAME, not the secret
+template:
+  api_key:
+    value: "OPENAI_API_KEY"    # Name of env var to look up
+    load_from_db: true          # Tells executor to check environment
+```
+
+At runtime, the UDF executor checks: "Is this field empty and marked `load_from_db`?" If so, it reads the value from the worker's environment. Kubernetes injects the actual secret:
+
+```yaml
+# langflow-worker deployment.yaml
+env:
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: stepflow-secrets
+        key: openai-api-key
+```
+
+This means secrets never appear in your workflow YAML—they flow from K8s Secret → Pod Environment → Executor lookup.
+
+**Tweaks for Local Development**
+
+When running locally (not on K8s), you can inject values directly via [tweaks](https://docs.langflow.org/concepts-publish#input-schema):
 
 ```bash
 uv run stepflow-langflow execute flow.json '{"message": "Hello"}' \
   --tweaks '{"LanguageModelComponent-xyz": {"api_key": "sk-..."}}'
 ```
 
-TODO: reconcile/consolidate tweaks w. CLI submit below.
+**Tweaks for Configuration Overrides**
+
+Tweaks are also useful for non-secret configuration changes:
+
+```bash
+# Change model, temperature, or other settings
+uv run stepflow-langflow execute flow.json '{}' \
+  --tweaks '{"LanguageModelComponent-xyz": {"model_name": "gpt-4-turbo", "temperature": 0.9}}'
+```
+
+### Setting Up Secrets for Kubernetes
+
+The OpenRAG ingestion workflow requires several environment variables. Here's what the workflow expects:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `OPENAI_API_KEY` | Secret | OpenAI API key for embeddings |
+| `WATSONX_API_KEY` | Secret | IBM watsonx.ai API key (if using Watson) |
+| `WATSONX_PROJECT_ID` | Config | IBM watsonx.ai project ID |
+| `OLLAMA_BASE_URL` | Config | Ollama API endpoint (if using local models) |
+| `CONNECTOR_TYPE` | Config | Document connector type |
+| `SELECTED_EMBEDDING_MODEL` | Config | Which embedding model to use |
+| `OWNER`, `OWNER_EMAIL`, `OWNER_NAME` | Metadata | Document ownership info |
+| `FILENAME`, `FILESIZE`, `MIMETYPE` | Metadata | Document metadata |
+
+For secrets marked with `load_from_db: true` in the Langflow export (like `OPENAI_API_KEY`), the UDF executor automatically looks them up from the worker's environment. Create a Kubernetes secret:
+
+```bash
+kubectl create secret generic stepflow-secrets \
+  --namespace=stepflow \
+  --from-literal=openai-api-key="$OPENAI_API_KEY"
+```
+
+The [langflow-worker deployment](https://github.com/stepflow-ai/stepflow/blob/main/examples/production/k8s/stepflow/langflow-worker/deployment.yaml) maps these to environment variables:
+
+```yaml
+env:
+  - name: OPENAI_API_KEY
+    valueFrom:
+      secretKeyRef:
+        name: stepflow-secrets
+        key: openai-api-key
+        optional: true
+```
+
+### Handling Hardcoded Credentials
+
+Some Langflow exports contain hardcoded credentials in the workflow itself. The OpenRAG flow, for example, has OpenSearch credentials baked into the component configuration:
+
+```yaml
+# Found in the exported workflow - not ideal for production!
+username:
+  value: admin
+password:
+  value: MyStrongOpenSearchPassword123!
+```
+
+To identify which components have hardcoded values, use the `analyze` command:
+
+```bash
+uv run stepflow-langflow analyze openrag_ingestion_flow.json
+```
+
+Then use **tweaks** to override these values at runtime. Tweaks inject values into the executor step's input, overriding the hardcoded template defaults:
+
+```bash
+# Override OpenSearch credentials at execution time
+uv run stepflow-langflow execute openrag_ingestion_flow.json '{}' \
+  --tweaks '{
+    "OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {
+      "opensearch_url": "https://opensearch.stepflow.svc.cluster.local:9200",
+      "username": "admin",
+      "password": "'"$OPENSEARCH_PASSWORD"'"
+    }
+  }'
+```
+
+For K8s deployments, you can apply tweaks during the conversion step and save the result:
+
+```bash
+# Convert and apply tweaks in one pass
+uv run stepflow-langflow convert flow.json workflow.yaml
+uv run stepflow-langflow tweak workflow.yaml \
+  --tweaks '{"OpenSearchVectorStoreComponentMultimodalMultiEmbedding-By9U4": {"password": "'"$OPENSEARCH_PASSWORD"'"}}' \
+  workflow-tweaked.yaml
+```
+
+:::note
+Tweaks inject literal values at conversion/execution time. For true environment variable lookup (where the worker reads from its environment at runtime), the component's template needs `load_from_db: true`. Consider modifying your Langflow flows to use `SecretInput` components for sensitive values before export.
+:::
 
 ## Understanding the Execution Path
 
-So we now have an understanding of how this plugs together architectural, let's look at the runtime and what specifically happens when you submit a workflow. The following diagram illustrates the execution path which we'll call out in detail below:
+So we now have an understanding of how this plugs together architecturally, let's look at the runtime and what specifically happens when you submit a workflow. The following diagram illustrates the execution path which we'll call out in detail below:
 
 ```
 ┌─────────┐    ┌──────────────┐    ┌──────────────┐    ┌────────────────┐
