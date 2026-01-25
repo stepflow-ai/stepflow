@@ -14,7 +14,7 @@
 
 """Stepflow-level tweaks for Langflow component configuration.
 
-This module provides core utilities for applying tweaks to Stepflow workflows
+This module provides utilities for applying tweaks to Stepflow workflows
 that were translated from Langflow. Tweaks are applied by modifying the
 input fields of Langflow UDF executor steps before execution.
 
@@ -31,247 +31,12 @@ tests/helpers/tweaks_builder.py to keep this production code lean.
 import copy
 from typing import Any
 
-from stepflow_py.worker import Flow
-
-
-class StepflowTweaks:
-    """Apply tweaks to Stepflow workflows translated from Langflow."""
-
-    def __init__(self, tweaks: dict[str, dict[str, Any]] | None = None):
-        """Initialize tweaks processor.
-
-        Args:
-            tweaks: Dict mapping langflow_node_id -> {field_name: new_value}
-                   Node IDs should match original Langflow node IDs (case-sensitive)
-        """
-        self.tweaks = tweaks or {}
-
-    def apply_tweaks(self, flow: Flow, validate: bool = True) -> Flow:
-        """Apply tweaks to a Stepflow workflow.
-
-        Args:
-            flow: Original Stepflow workflow (translated from Langflow)
-            validate: If True, validate that all tweaked components exist in the flow
-
-        Returns:
-            Modified workflow with tweaks applied
-
-        Raises:
-            ValueError: If validate=True and tweaks reference non-existent components
-
-        Note:
-            This modifies input fields for UDF executor steps that match
-            Langflow patterns.
-        """
-        if not self.tweaks:
-            return flow
-
-        # Validate tweaks if requested
-        if validate:
-            self.validate_tweaks(flow)
-
-        # Deep copy to avoid mutating original
-        modified_flow = copy.deepcopy(flow)
-
-        for step in modified_flow.steps or []:
-            # Check if this is a Langflow UDF executor step
-            if self._is_langflow_udf_step(step):
-                langflow_node_id = self._extract_langflow_node_id(step.id)
-                if langflow_node_id and langflow_node_id in self.tweaks:
-                    self._apply_step_tweaks(step, self.tweaks[langflow_node_id])
-
-        return modified_flow
-
-    def _apply_step_tweaks(self, step, step_tweaks: dict[str, Any]) -> None:
-        """Apply tweaks to a specific Stepflow UDF executor step.
-
-        Args:
-            step: Stepflow step to modify (Pydantic Step model)
-            step_tweaks: Dict of field_name -> new_value for this step
-
-        Note:
-            This method works directly with `actual_instance` on ValueExpr objects
-            rather than serializing to dict and back. This is necessary because the
-            generated Pydantic oneOf wrappers (like ValueExpr) don't properly
-            reconstruct from plain dicts - Flow.model_validate() can't determine
-            which oneOf variant to use, leaving actual_instance as None.
-
-            For dict-based workflows, use _apply_tweaks_to_dict() instead.
-        """
-        from stepflow_py.api.models import PrimitiveValue, ValueExpr
-
-        # Get the step input - it's a ValueExpr wrapping a dict
-        if step.input is None or not hasattr(step.input, "actual_instance"):
-            return
-
-        input_dict = step.input.actual_instance
-        if not isinstance(input_dict, dict):
-            return
-
-        # Get the 'input' sub-dict (also wrapped in ValueExpr)
-        input_section = input_dict.get("input")
-        if input_section is None:
-            return
-
-        # Unwrap the input section if it's a ValueExpr
-        if hasattr(input_section, "actual_instance"):
-            input_section = input_section.actual_instance
-
-        if not isinstance(input_section, dict):
-            return
-
-        # Apply each tweak - wrap primitive values appropriately
-        for field_name, new_value in step_tweaks.items():
-            if isinstance(new_value, str | int | float | bool):
-                wrapped_value = ValueExpr(PrimitiveValue(new_value))
-            else:
-                wrapped_value = ValueExpr(new_value)
-            input_section[field_name] = wrapped_value
-
-    def _apply_tweaks_to_dict(self, workflow_dict: dict[str, Any]) -> dict[str, Any]:
-        """Apply tweaks to a workflow dict.
-
-        Args:
-            workflow_dict: Stepflow workflow as dict
-
-        Returns:
-            Modified workflow dict with tweaks applied
-        """
-        # Deep copy to avoid mutating original
-        modified_dict = copy.deepcopy(workflow_dict)
-
-        for step_dict in modified_dict.get("steps", []):
-            step_id = step_dict.get("id", "")
-
-            # Check if this is a Langflow UDF executor step
-            if (
-                step_id.startswith("langflow_")
-                and not step_id.endswith("_blob")
-                and step_dict.get("component") == "/langflow/udf_executor"
-            ):
-                # Extract Langflow node ID
-                langflow_node_id = step_id[len("langflow_") :]
-
-                if langflow_node_id in self.tweaks:
-                    # Ensure step has input section
-                    if "input" not in step_dict:
-                        step_dict["input"] = {}
-                    if "input" not in step_dict["input"]:
-                        step_dict["input"]["input"] = {}
-
-                    # Apply tweaks
-                    for field_name, new_value in self.tweaks[langflow_node_id].items():
-                        step_dict["input"]["input"][field_name] = new_value
-
-        return modified_dict
-
-    def validate_tweaks(self, flow: Flow) -> None:
-        """Validate that all tweaked components exist in the workflow.
-
-        Args:
-            flow: Stepflow workflow to validate against
-
-        Raises:
-            ValueError: If any tweaked component doesn't exist in the workflow
-        """
-        if not self.tweaks:
-            return
-
-        # Collect all available Langflow component IDs from the workflow
-        available_components = set()
-        for step in flow.steps or []:
-            if self._is_langflow_udf_step(step):
-                langflow_node_id = self._extract_langflow_node_id(step.id)
-                if langflow_node_id:
-                    available_components.add(langflow_node_id)
-
-        # Check for tweaks referencing non-existent components
-        missing_components = set(self.tweaks.keys()) - available_components
-
-        if missing_components:
-            missing_list = sorted(missing_components)
-            available_list = sorted(available_components)
-            raise ValueError(
-                f"Tweaks reference components that don't exist in the workflow:\n"
-                f"  Missing components: {missing_list}\n"
-                f"  Available components: {available_list}\n\n"
-                f"This usually happens when:\n"
-                f"  1. The workflow fixture was updated with new component IDs\n"
-                f"  2. The component ID has a typo\n"
-                f"  3. The wrong workflow is being tested\n\n"
-                f"Solution: Update the component IDs in your test to match "
-                f"the workflow."
-            )
-
-    def _is_langflow_udf_step(self, step) -> bool:
-        """Check if step is a Langflow UDF executor step.
-
-        Args:
-            step: Stepflow step to check
-
-        Returns:
-            True if this is a langflow UDF executor step
-        """
-        return (
-            step.id.startswith("langflow_")
-            and not step.id.endswith("_blob")
-            and step.component == "/langflow/udf_executor"
-        )
-
-    def _extract_langflow_node_id(self, step_id: str) -> str | None:
-        """Extract original Langflow node ID from Stepflow step ID.
-
-        Args:
-            step_id: Stepflow step ID (e.g., "langflow_LanguageModelComponent-kBOja")
-
-        Returns:
-            Original Langflow node ID (e.g., "LanguageModelComponent-kBOja") or None
-        """
-        if not step_id.startswith("langflow_"):
-            return None
-
-        # Extract the part after "langflow_": langflow_X -> X
-        # Preserve original case for case-sensitive matching
-        node_id = step_id[len("langflow_") :]
-        return node_id
-
-
-def apply_stepflow_tweaks(
-    flow: Flow,
-    tweaks: dict[str, dict[str, Any]] | None = None,
-    validate: bool = True,
-) -> Flow:
-    """Apply tweaks to a Stepflow workflow (convenience function).
-
-    Args:
-        flow: Original Stepflow workflow (translated from Langflow)
-        tweaks: Dict mapping langflow_node_id -> {field_name: new_value}
-        validate: If True, validate that all tweaked components exist (default: True)
-
-    Returns:
-        Modified workflow with tweaks applied
-
-    Raises:
-        ValueError: If validate=True and tweaks reference non-existent components
-
-    Examples:
-        >>> tweaks = {
-        ...     "LanguageModelComponent-kBOja": {
-        ...         "api_key": "new_test_key",
-        ...         "temperature": 0.8,
-        ...     }
-        ... }
-        >>> modified_flow = apply_stepflow_tweaks(flow, tweaks)
-    """
-    stepflow_tweaks = StepflowTweaks(tweaks)
-    return stepflow_tweaks.apply_tweaks(flow, validate=validate)
-
 
 def apply_stepflow_tweaks_to_dict(
     workflow_dict: dict[str, Any],
     tweaks: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Apply tweaks to a Stepflow workflow dict (for YAML processing).
+    """Apply tweaks to a Stepflow workflow dict.
 
     Args:
         workflow_dict: Stepflow workflow as dict (from YAML)
@@ -292,8 +57,33 @@ def apply_stepflow_tweaks_to_dict(
     if not tweaks:
         return workflow_dict
 
-    stepflow_tweaks = StepflowTweaks(tweaks)
-    return stepflow_tweaks._apply_tweaks_to_dict(workflow_dict)
+    # Deep copy to avoid mutating original
+    modified_dict = copy.deepcopy(workflow_dict)
+
+    for step_dict in modified_dict.get("steps", []):
+        step_id = step_dict.get("id", "")
+
+        # Check if this is a Langflow UDF executor step
+        if (
+            step_id.startswith("langflow_")
+            and not step_id.endswith("_blob")
+            and step_dict.get("component") == "/langflow/udf_executor"
+        ):
+            # Extract Langflow node ID
+            langflow_node_id = step_id[len("langflow_") :]
+
+            if langflow_node_id in tweaks:
+                # Ensure step has input section
+                if "input" not in step_dict:
+                    step_dict["input"] = {}
+                if "input" not in step_dict["input"]:
+                    step_dict["input"]["input"] = {}
+
+                # Apply tweaks
+                for field_name, new_value in tweaks[langflow_node_id].items():
+                    step_dict["input"]["input"][field_name] = new_value
+
+    return modified_dict
 
 
 def convert_tweaks_to_overrides(
@@ -353,10 +143,8 @@ def convert_tweaks_to_overrides(
     return overrides
 
 
-# Export main classes and functions for easy importing
+# Export main functions for easy importing
 __all__ = [
-    "StepflowTweaks",
-    "apply_stepflow_tweaks",
     "apply_stepflow_tweaks_to_dict",
     "convert_tweaks_to_overrides",
 ]

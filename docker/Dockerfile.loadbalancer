@@ -1,0 +1,60 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+# Dockerfile for Pingora Load Balancer
+# Provides instance-aware routing for Stepflow component servers
+# Build context: repository root (stepflow/)
+
+FROM rust:1.90 AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y \
+    cmake \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace files from stepflow-rs directory
+# (load-balancer depends on stepflow-observability)
+COPY stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock ./
+COPY stepflow-rs/crates ./crates
+
+# Build release binary
+RUN cargo build --release -p stepflow-load-balancer
+
+# Runtime image
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/stepflow-load-balancer /usr/local/bin/stepflow-load-balancer
+
+# Create non-root user
+RUN useradd -m -u 1000 stepflow && \
+    chown stepflow:stepflow /usr/local/bin/stepflow-load-balancer
+
+USER stepflow
+
+# Expose load balancer and metrics ports
+EXPOSE 8080 9090
+
+# Run load balancer
+CMD ["stepflow-load-balancer"]

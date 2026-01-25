@@ -60,5 +60,5 @@ pub fn display_diagnostics(diagnostics: &Diagnostics) -> u32 {
 
 /// Print a formatted diagnostic message
 fn print_diagnostic(level: &str, diagnostic: &stepflow_analysis::Diagnostic) {
-    println!("  {} {} ({})", level, diagnostic.text, diagnostic.path);
+    println!("  {} {} ({})", level, diagnostic.formatted, diagnostic.path);
 }

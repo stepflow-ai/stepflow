@@ -10,300 +10,476 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+//! Diagnostic messages with error codes.
+//!
+//! ## Error Code Scheme
+//!
+//! Codes are assigned by severity and category:
+//!
+//! - **1xxx**: Warnings
+//!   - 10xx: Flow structure warnings
+//!   - 11xx: Type check warnings
+//!   - 12xx: Config warnings
+//!   - 15xx+: Component warnings
+//!
+//! - **2xxx**: Errors
+//!   - 20xx: Flow structure errors
+//!   - 21xx: Type check errors
+//!   - 22xx: Config errors
+//!   - 25xx+: Component errors
+//!
+//! - **3xxx**: Fatal (prevents further analysis)
+//!   - 30xx: Flow structure fatal
+
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-use crate::DiagnosticLevel;
+use crate::{DiagnosticLevel, Path};
 
-/// Specific diagnostic message with context
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase", tag = "type")]
-pub enum DiagnosticMessage {
-    // Fatal diagnostics (prevent analysis)
-    #[serde(rename_all = "camelCase")]
-    DuplicateStepId { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    EmptyStepId,
-    #[serde(rename_all = "camelCase")]
-    SelfReference { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    UndefinedStepReference {
-        from_step: Option<String>,
-        referenced_step: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    InvalidReferenceExpression {
-        step_id: Option<String>,
-        field: Option<String>,
-        error: String,
-    },
+/// Diagnostic error codes.
+///
+/// Codes are organized by severity (thousands digit) and category (hundreds digit).
+/// See module documentation for the full scheme.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::IntoStaticStr)]
+#[strum(serialize_all = "camelCase")]
+pub enum DiagnosticKind {
+    // ==========================================================================
+    // Warnings - Flow structure (10xx)
+    // ==========================================================================
+    /// Step is not reachable
+    UnreachableStep = 1000,
+    /// Workflow has no name
+    MissingFlowName = 1001,
+    /// Workflow has no description
+    MissingFlowDescription = 1002,
+    /// Field access cannot be validated
+    UnvalidatedFieldAccess = 1003,
+    /// No variable schema defined
+    MissingVariableSchema = 1004,
 
-    // Error diagnostics (will fail during execution)
-    #[serde(rename_all = "camelCase")]
-    InvalidFieldAccess {
-        step_id: String,
-        field: String,
-        reason: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    InvalidComponent {
-        step_id: String,
-        component: String,
-        error: Cow<'static, str>,
-    },
-    #[serde(rename_all = "camelCase")]
-    EmptyComponentName { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    SchemaViolation {
-        step_id: String,
-        field: String,
-        violation: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    InvalidSubflowLiteral { error: String },
+    // ==========================================================================
+    // Warnings - Type check (11xx)
+    // ==========================================================================
+    /// Component has no output schema
+    UntypedComponentOutput = 1100,
+    /// Type check result is indeterminate
+    TypeCheckIndeterminate = 1101,
 
-    // Warning diagnostics (potential issues)
-    #[serde(rename_all = "camelCase")]
-    MockComponent { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    UnreachableStep { step_id: String },
-    #[serde(rename_all = "camelCase")]
-    MissingFlowName,
-    #[serde(rename_all = "camelCase")]
-    MissingFlowDescription,
-    #[serde(rename_all = "camelCase")]
-    UnvalidatedFieldAccess {
-        step_id: String,
-        field: String,
-        reason: String,
-    },
+    // ==========================================================================
+    // Warnings - Config (12xx)
+    // ==========================================================================
+    /// No plugins configured
+    NoPluginsConfigured = 1200,
+    /// No routing rules configured
+    NoRoutingRulesConfigured = 1201,
+    /// Plugin not used by any route
+    UnusedPlugin = 1202,
 
-    // Variable validation diagnostics (Error level)
-    #[serde(rename_all = "camelCase")]
-    UndefinedVariable { variable: String, context: String },
-    #[serde(rename_all = "camelCase")]
-    UndefinedRequiredVariable { variable: String, context: String },
+    // ==========================================================================
+    // Warnings - Component (15xx)
+    // ==========================================================================
+    /// Step uses mock component
+    MockComponent = 1500,
 
-    // Schema availability warnings (Warning level)
-    #[serde(rename_all = "camelCase")]
-    MissingVariableSchema,
+    // ==========================================================================
+    // Errors - Flow structure (20xx)
+    // ==========================================================================
+    /// Invalid field access on step output
+    InvalidFieldAccess = 2000,
+    /// Empty component name in step
+    EmptyComponentName = 2001,
+    /// Schema violation in step input
+    SchemaViolation = 2002,
+    /// Invalid subflow literal
+    InvalidSubflowLiteral = 2003,
+    /// Undefined variable reference
+    UndefinedVariable = 2004,
+    /// Undefined required variable
+    UndefinedRequiredVariable = 2005,
 
-    // Type checking diagnostics
-    #[serde(rename_all = "camelCase")]
-    TypeMismatch {
-        step_id: String,
-        expected: String,
-        actual: String,
-        detail: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    UntypedComponentOutput { step_id: String, component: String },
-    #[serde(rename_all = "camelCase")]
-    UnknownPropertyInPath {
-        step_id: Option<String>,
-        path: String,
-        property: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    TypeCheckIndeterminate {
-        step_id: Option<String>,
-        reason: String,
-    },
+    // ==========================================================================
+    // Errors - Type check (21xx)
+    // ==========================================================================
+    /// Type mismatch in step input
+    TypeMismatch = 2100,
+    /// Unknown property in path
+    UnknownPropertyInPath = 2101,
 
-    // Configuration validation diagnostics
-    #[serde(rename_all = "camelCase")]
-    NoPluginsConfigured,
-    #[serde(rename_all = "camelCase")]
-    NoRoutingRulesConfigured,
-    #[serde(rename_all = "camelCase")]
-    InvalidRouteReference {
-        route_path: String,
-        rule_index: usize,
-        plugin: String,
-    },
-    #[serde(rename_all = "camelCase")]
-    UnusedPlugin { plugin: String },
+    // ==========================================================================
+    // Errors - Config (22xx)
+    // ==========================================================================
+    /// Route references unknown plugin
+    InvalidRouteReference = 2200,
+
+    // ==========================================================================
+    // Errors - Component (25xx)
+    // ==========================================================================
+    /// Invalid component
+    InvalidComponent = 2500,
+
+    // ==========================================================================
+    // Fatal - Flow structure (30xx)
+    // ==========================================================================
+    /// Duplicate step ID in workflow
+    DuplicateStepId = 3000,
+    /// Empty step ID
+    EmptyStepId = 3001,
+    /// Step references itself
+    SelfReference = 3002,
+    /// Reference to undefined step
+    UndefinedStepReference = 3003,
+    /// Invalid reference expression syntax
+    InvalidReferenceExpression = 3004,
 }
 
-impl DiagnosticMessage {
-    /// Get the severity level for this diagnostic
-    pub fn level(&self) -> DiagnosticLevel {
-        match self {
-            // Fatal diagnostics
-            DiagnosticMessage::DuplicateStepId { .. } => DiagnosticLevel::Fatal,
-            DiagnosticMessage::EmptyStepId => DiagnosticLevel::Fatal,
-            DiagnosticMessage::SelfReference { .. } => DiagnosticLevel::Fatal,
-            DiagnosticMessage::UndefinedStepReference { .. } => DiagnosticLevel::Fatal,
-            DiagnosticMessage::InvalidReferenceExpression { .. } => DiagnosticLevel::Fatal,
+impl DiagnosticKind {
+    /// Get the numeric error code
+    #[inline]
+    pub fn code(self) -> u16 {
+        self as u16
+    }
 
-            // Error diagnostics
-            DiagnosticMessage::InvalidFieldAccess { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::InvalidComponent { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::EmptyComponentName { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::SchemaViolation { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::UndefinedVariable { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::UndefinedRequiredVariable { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::InvalidSubflowLiteral { .. } => DiagnosticLevel::Error,
+    /// Get the kind name in camelCase
+    #[inline]
+    pub fn name(self) -> &'static str {
+        self.into()
+    }
 
-            // Type checking diagnostics
-            DiagnosticMessage::TypeMismatch { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::UntypedComponentOutput { .. } => DiagnosticLevel::Warning,
-            DiagnosticMessage::UnknownPropertyInPath { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::TypeCheckIndeterminate { .. } => DiagnosticLevel::Warning,
+    /// Get the severity level based on code range
+    #[inline]
+    pub fn level(self) -> DiagnosticLevel {
+        match self.code() {
+            3000..=3999 => DiagnosticLevel::Fatal,
+            2000..=2999 => DiagnosticLevel::Error,
+            _ => DiagnosticLevel::Warning,
+        }
+    }
+}
 
-            // Warning diagnostics
-            DiagnosticMessage::MissingVariableSchema => DiagnosticLevel::Warning,
-            DiagnosticMessage::MockComponent { .. } => DiagnosticLevel::Warning,
-            DiagnosticMessage::UnreachableStep { .. } => DiagnosticLevel::Warning,
-            DiagnosticMessage::MissingFlowName => DiagnosticLevel::Warning,
-            DiagnosticMessage::MissingFlowDescription => DiagnosticLevel::Warning,
-            DiagnosticMessage::UnvalidatedFieldAccess { .. } => DiagnosticLevel::Warning,
+/// A diagnostic with error code, message, path, and metadata.
+///
+/// Created via the `diagnostic!` macro with optional builder methods:
+///
+/// ```ignore
+/// diagnostic!(DiagnosticKind::DuplicateStepId, "Duplicate step ID '{step_id}'", { step_id })
+///     .at(path)
+///     .experimental()
+/// ```
+///
+/// ## JSON Format
+///
+/// ```json
+/// {
+///   "kind": "duplicateStepId",
+///   "code": 3000,
+///   "level": "fatal",
+///   "formatted": "Duplicate step ID 'foo'",
+///   "data": { "stepId": "foo" },
+///   "path": "$.steps[0]",
+///   "experimental": false
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostic {
+    /// The diagnostic kind name (camelCase)
+    pub kind: Cow<'static, str>,
+    /// Numeric error code
+    pub code: u16,
+    /// The severity level
+    pub level: DiagnosticLevel,
+    /// Human-readable formatted message
+    pub formatted: String,
+    /// Structured data with camelCase keys (null if no data)
+    #[serde(skip_serializing_if = "is_null_or_empty")]
+    #[serde(default = "serde_json::Value::default")]
+    pub data: serde_json::Value,
+    /// JSON path to the field with the issue
+    #[serde(skip_serializing_if = "Path::is_empty", default)]
+    pub path: Path,
+    /// Whether this diagnostic is experimental (may have false positives)
+    #[serde(skip_serializing_if = "is_false", default)]
+    pub experimental: bool,
+}
 
-            // Configuration diagnostics
-            DiagnosticMessage::NoPluginsConfigured => DiagnosticLevel::Warning,
-            DiagnosticMessage::NoRoutingRulesConfigured => DiagnosticLevel::Warning,
-            DiagnosticMessage::InvalidRouteReference { .. } => DiagnosticLevel::Error,
-            DiagnosticMessage::UnusedPlugin { .. } => DiagnosticLevel::Warning,
+fn is_null_or_empty(value: &serde_json::Value) -> bool {
+    value.is_null() || (value.is_object() && value.as_object().unwrap().is_empty())
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+impl Diagnostic {
+    /// Create a new diagnostic
+    pub fn new(kind: DiagnosticKind, formatted: String, data: serde_json::Value) -> Self {
+        Self {
+            kind: Cow::Borrowed(kind.name()),
+            code: kind.code(),
+            level: kind.level(),
+            formatted,
+            data,
+            path: Path::new(),
+            experimental: false,
         }
     }
 
-    /// Get a human-readable message for this diagnostic
-    pub fn message(&self) -> String {
-        match self {
-            DiagnosticMessage::DuplicateStepId { step_id } => {
-                format!("Duplicate step ID: '{step_id}'")
-            }
-            DiagnosticMessage::EmptyStepId => "Step ID cannot be empty".to_string(),
-            DiagnosticMessage::SelfReference { step_id } => {
-                format!("Step '{step_id}' cannot reference itself")
-            }
-            DiagnosticMessage::UndefinedStepReference {
-                from_step,
-                referenced_step,
-            } => match from_step {
-                Some(from) => {
-                    format!("Step '{from}' references undefined step '{referenced_step}'")
-                }
-                None => format!("Reference to undefined step '{referenced_step}'"),
-            },
-            DiagnosticMessage::InvalidReferenceExpression {
-                step_id,
-                field,
-                error,
-            } => match (step_id, field) {
-                (Some(step), Some(field)) => {
-                    format!("Invalid reference in step '{step}' field '{field}': {error}")
-                }
-                (Some(step), None) => format!("Invalid reference in step '{step}': {error}"),
-                (None, Some(field)) => format!("Invalid reference in field '{field}': {error}"),
-                (None, None) => format!("Invalid reference: {error}"),
-            },
-            DiagnosticMessage::InvalidFieldAccess {
-                step_id,
-                field,
-                reason,
-            } => {
-                format!("Invalid field access '{field}' on step '{step_id}': {reason}")
-            }
-            DiagnosticMessage::InvalidComponent {
-                step_id,
-                component,
-                error,
-            } => {
-                format!("Invalid component '{component}' in step '{step_id}': {error}")
-            }
-            DiagnosticMessage::EmptyComponentName { step_id } => {
-                format!("Empty component name in step '{step_id}'")
-            }
-            DiagnosticMessage::SchemaViolation {
-                step_id,
-                field,
-                violation,
-            } => {
-                format!("Schema violation in step '{step_id}' field '{field}': {violation}")
-            }
-            DiagnosticMessage::MockComponent { step_id } => {
-                format!(
-                    "Step '{step_id}' uses mock component - ensure this is intentional for testing"
-                )
-            }
-            DiagnosticMessage::UnreachableStep { step_id } => {
-                format!("Step '{step_id}' is not referenced by any other step or workflow output")
-            }
-            DiagnosticMessage::MissingFlowName => "Workflow has no name defined".to_string(),
-            DiagnosticMessage::MissingFlowDescription => {
-                "Workflow has no description defined".to_string()
-            }
-            DiagnosticMessage::UnvalidatedFieldAccess {
-                step_id,
-                field,
-                reason,
-            } => {
-                format!("Field access '{field}' on step '{step_id}' cannot be validated: {reason}")
-            }
-            DiagnosticMessage::UndefinedVariable { variable, context } => {
-                format!("Undefined variable '{variable}' referenced in {context}")
-            }
-            DiagnosticMessage::UndefinedRequiredVariable { variable, context } => {
-                format!("Undefined required variable '{variable}' referenced in {context}")
-            }
-            DiagnosticMessage::InvalidSubflowLiteral { error } => {
-                format!("Invalid subflow literal: {error}")
-            }
+    /// Set the path for this diagnostic (builder pattern)
+    #[must_use]
+    pub fn at(mut self, path: Path) -> Self {
+        self.path = path;
+        self
+    }
 
-            DiagnosticMessage::MissingVariableSchema => {
-                "Workflow has no variable schema defined - variable references cannot be validated"
-                    .to_string()
-            }
-            DiagnosticMessage::TypeMismatch {
-                step_id,
-                expected,
-                actual,
-                detail,
-            } => {
-                format!(
-                    "Type mismatch in step '{step_id}': expected {expected}, got {actual}. {detail}"
-                )
-            }
-            DiagnosticMessage::UntypedComponentOutput { step_id, component } => {
-                format!(
-                    "Component '{component}' in step '{step_id}' does not provide output schema"
-                )
-            }
-            DiagnosticMessage::UnknownPropertyInPath {
-                step_id,
-                path,
-                property,
-            } => match step_id {
-                Some(step) => {
-                    format!("Unknown property '{property}' in path '{path}' in step '{step}'")
-                }
-                None => format!("Unknown property '{property}' in path '{path}'"),
-            },
-            DiagnosticMessage::TypeCheckIndeterminate { step_id, reason } => match step_id {
-                Some(step) => format!("Cannot determine type in step '{step}': {reason}"),
-                None => format!("Cannot determine type: {reason}"),
-            },
-            DiagnosticMessage::NoPluginsConfigured => "No plugins configured".to_string(),
-            DiagnosticMessage::NoRoutingRulesConfigured => {
-                "No routing rules configured".to_string()
-            }
-            DiagnosticMessage::InvalidRouteReference {
-                route_path,
-                rule_index,
-                plugin,
-            } => {
-                format!(
-                    "Routing rule {} for path '{}' references unknown plugin '{}'",
-                    rule_index + 1,
-                    route_path,
-                    plugin
-                )
-            }
-            DiagnosticMessage::UnusedPlugin { plugin } => {
-                format!("Plugin '{plugin}' is not referenced by any routing rule")
-            }
-        }
+    /// Mark this diagnostic as experimental (builder pattern)
+    #[must_use]
+    pub fn experimental(mut self) -> Self {
+        self.experimental = true;
+        self
+    }
+}
+
+/// Create a diagnostic from a kind, format string, and arguments.
+///
+/// # Examples
+///
+/// ```ignore
+/// // With arguments
+/// let step_id = "foo";
+/// let diag = diagnostic!(
+///     DiagnosticKind::DuplicateStepId,
+///     "Duplicate step ID '{step_id}'",
+///     { step_id }
+/// );
+///
+/// // Without arguments
+/// let diag = diagnostic!(
+///     DiagnosticKind::MissingFlowName,
+///     "Workflow has no name defined"
+/// );
+///
+/// // With path
+/// let diag = diagnostic!(
+///     DiagnosticKind::DuplicateStepId,
+///     "Duplicate step ID '{step_id}'",
+///     { step_id }
+/// ).at(make_path!("steps", 0));
+///
+/// // Experimental diagnostic
+/// let diag = diagnostic!(
+///     DiagnosticKind::UnvalidatedFieldAccess,
+///     "Field access cannot be validated",
+/// ).experimental();
+/// ```
+#[macro_export]
+macro_rules! diagnostic {
+    // With arguments - creates formatted message and JSON data
+    ($kind:expr, $fmt:literal, { $($arg:ident),* $(,)? } $(,)?) => {{
+        $crate::Diagnostic::new(
+            $kind,
+            format!($fmt),
+            serde_json::json!({ $(stringify!($arg): $arg),* }),
+        )
+    }};
+    // Without arguments (with optional trailing comma)
+    ($kind:expr, $fmt:literal $(,)?) => {{
+        $crate::Diagnostic::new(
+            $kind,
+            $fmt.to_string(),
+            serde_json::Value::Null,
+        )
+    }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diagnostic_kind_codes() {
+        // Fatal codes are 3xxx
+        assert_eq!(DiagnosticKind::DuplicateStepId.code(), 3000);
+        assert_eq!(
+            DiagnosticKind::DuplicateStepId.level(),
+            DiagnosticLevel::Fatal
+        );
+
+        // Error codes are 2xxx
+        assert_eq!(DiagnosticKind::InvalidFieldAccess.code(), 2000);
+        assert_eq!(
+            DiagnosticKind::InvalidFieldAccess.level(),
+            DiagnosticLevel::Error
+        );
+        assert_eq!(DiagnosticKind::TypeMismatch.code(), 2100);
+        assert_eq!(DiagnosticKind::InvalidComponent.code(), 2500);
+
+        // Warning codes are 1xxx
+        assert_eq!(DiagnosticKind::UnreachableStep.code(), 1000);
+        assert_eq!(
+            DiagnosticKind::UnreachableStep.level(),
+            DiagnosticLevel::Warning
+        );
+        assert_eq!(DiagnosticKind::UntypedComponentOutput.code(), 1100);
+        assert_eq!(DiagnosticKind::MockComponent.code(), 1500);
+    }
+
+    #[test]
+    fn test_diagnostic_kind_names() {
+        assert_eq!(DiagnosticKind::DuplicateStepId.name(), "duplicateStepId");
+        assert_eq!(
+            DiagnosticKind::InvalidFieldAccess.name(),
+            "invalidFieldAccess"
+        );
+        assert_eq!(DiagnosticKind::TypeMismatch.name(), "typeMismatch");
+    }
+
+    #[test]
+    fn test_diagnostic_macro_with_args() {
+        let step_id = "foo";
+        let diag = diagnostic!(
+            DiagnosticKind::DuplicateStepId,
+            "Duplicate step ID '{step_id}'",
+            { step_id }
+        );
+
+        assert_eq!(diag.kind, "duplicateStepId");
+        assert_eq!(diag.code, 3000);
+        assert_eq!(diag.level, DiagnosticLevel::Fatal);
+        assert_eq!(diag.formatted, "Duplicate step ID 'foo'");
+        assert_eq!(diag.data.get("step_id").unwrap(), "foo");
+        assert!(diag.path.is_empty());
+        assert!(!diag.experimental);
+    }
+
+    #[test]
+    fn test_diagnostic_macro_without_args() {
+        let diag = diagnostic!(
+            DiagnosticKind::MissingFlowName,
+            "Workflow has no name defined"
+        );
+
+        assert_eq!(diag.kind, "missingFlowName");
+        assert_eq!(diag.code, 1001);
+        assert_eq!(diag.level, DiagnosticLevel::Warning);
+        assert_eq!(diag.formatted, "Workflow has no name defined");
+        assert!(diag.data.is_null());
+    }
+
+    #[test]
+    fn test_diagnostic_builder_methods() {
+        use crate::make_path;
+
+        let step_id = "foo";
+        let diag = diagnostic!(
+            DiagnosticKind::UnvalidatedFieldAccess,
+            "Field access on '{step_id}' cannot be validated",
+            { step_id }
+        )
+        .at(make_path!("steps", 0, "input"))
+        .experimental();
+
+        assert_eq!(diag.path, make_path!("steps", 0, "input"));
+        assert!(diag.experimental);
+    }
+
+    #[test]
+    fn test_diagnostic_serialization() {
+        let step_id = "foo";
+        let diag = diagnostic!(
+            DiagnosticKind::DuplicateStepId,
+            "Duplicate step ID '{step_id}'",
+            { step_id }
+        );
+
+        let json = serde_json::to_value(&diag).unwrap();
+
+        assert_eq!(json.get("kind").unwrap(), "duplicateStepId");
+        assert_eq!(json.get("code").unwrap(), 3000);
+        assert_eq!(json.get("level").unwrap(), "fatal");
+        assert_eq!(json.get("formatted").unwrap(), "Duplicate step ID 'foo'");
+        assert_eq!(json.get("data").unwrap().get("step_id").unwrap(), "foo");
+        // path and experimental are skipped when empty/false
+        assert!(json.get("path").is_none());
+        assert!(json.get("experimental").is_none());
+    }
+
+    #[test]
+    fn test_diagnostic_deserialization() {
+        let json = serde_json::json!({
+            "kind": "duplicateStepId",
+            "code": 3000,
+            "level": "fatal",
+            "formatted": "Duplicate step ID 'foo'",
+            "data": { "stepId": "foo" }
+        });
+
+        let diag: Diagnostic = serde_json::from_value(json).unwrap();
+
+        assert_eq!(diag.kind, "duplicateStepId");
+        assert_eq!(diag.code, 3000);
+        assert_eq!(diag.level, DiagnosticLevel::Fatal);
+        assert_eq!(diag.formatted, "Duplicate step ID 'foo'");
+        assert_eq!(diag.data.get("stepId").unwrap(), "foo");
+        assert!(diag.path.is_empty());
+        assert!(!diag.experimental);
+    }
+
+    #[test]
+    fn test_diagnostic_roundtrip() {
+        use crate::make_path;
+
+        let step_id = "step1";
+        let component = "/builtin/openai";
+        let error = "component not found";
+        let original = diagnostic!(
+            DiagnosticKind::InvalidComponent,
+            "Invalid component '{component}' in step '{step_id}': {error}",
+            { step_id, component, error }
+        )
+        .at(make_path!("steps", 0))
+        .experimental();
+
+        let serialized = serde_json::to_string(&original).unwrap();
+        let deserialized: Diagnostic = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_diagnostic_level_from_code() {
+        let diag = Diagnostic {
+            kind: Cow::Borrowed("test"),
+            code: 3000,
+            level: DiagnosticLevel::Fatal,
+            formatted: "test".to_string(),
+            data: serde_json::Value::Null,
+            path: Path::new(),
+            experimental: false,
+        };
+        assert_eq!(diag.level, DiagnosticLevel::Fatal);
+
+        let diag = Diagnostic {
+            kind: Cow::Borrowed("test"),
+            code: 2000,
+            level: DiagnosticLevel::Error,
+            formatted: "test".to_string(),
+            data: serde_json::Value::Null,
+            path: Path::new(),
+            experimental: false,
+        };
+        assert_eq!(diag.level, DiagnosticLevel::Error);
+
+        let diag = Diagnostic {
+            kind: Cow::Borrowed("test"),
+            code: 1000,
+            level: DiagnosticLevel::Warning,
+            formatted: "test".to_string(),
+            data: serde_json::Value::Null,
+            path: Path::new(),
+            experimental: false,
+        };
+        assert_eq!(diag.level, DiagnosticLevel::Warning);
     }
 }

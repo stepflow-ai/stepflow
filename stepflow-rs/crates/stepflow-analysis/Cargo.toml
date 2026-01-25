@@ -23,6 +23,7 @@ serde.workspace = true
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
 stepflow-typecheck.workspace = true
+strum.workspace = true
 utoipa.workspace = true
 thiserror.workspace = true
 
