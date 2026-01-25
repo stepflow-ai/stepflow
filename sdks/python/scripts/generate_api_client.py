@@ -299,18 +299,18 @@ def fix_sanitize_for_serialization(directory: Path) -> None:
     content = api_client_path.read_text()
 
     # Pattern to find the problematic block
-    old_pattern = r'''(if hasattr\(obj, "to_dict"\) and callable\(obj\.to_dict\):
+    old_pattern = r"""(if hasattr\(obj, "to_dict"\) and callable\(obj\.to_dict\):
                 obj_dict = obj\.to_dict\(\))
-            else:'''
+            else:"""
 
     # Replacement with the fix
-    new_value = r'''if hasattr(obj, "to_dict") and callable(obj.to_dict):
+    new_value = r"""if hasattr(obj, "to_dict") and callable(obj.to_dict):
                 obj_dict = obj.to_dict()
                 # Handle oneOf wrappers like ValueExpr that may return
                 # non-dict values from to_dict() (e.g., primitives)
                 if not isinstance(obj_dict, dict):
                     return self.sanitize_for_serialization(obj_dict)
-            else:'''
+            else:"""
 
     if re.search(old_pattern, content):
         content = re.sub(old_pattern, new_value, content)

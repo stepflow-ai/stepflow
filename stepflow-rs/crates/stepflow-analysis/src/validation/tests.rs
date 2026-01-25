@@ -625,5 +625,8 @@ fn test_subflow_with_validation_errors() {
         error.path,
         make_path!("steps", 0, "input", "data", "$literal", "steps", 0, "input")
     );
-    assert_eq!(error.formatted, "Step 'step1' references undefined step 'step2'");
+    assert_eq!(
+        error.formatted,
+        "Step 'step1' references undefined step 'step2'"
+    );
 }
