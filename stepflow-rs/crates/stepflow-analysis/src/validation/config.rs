@@ -52,7 +52,12 @@ pub fn validate_config(
                         "Route '{route_path}' references unknown plugin '{plugin}'",
                         { route_path, rule_index, plugin }
                     )
-                    .at(make_path!("routes", path.to_string(), rule_index, "plugin")),
+                    .at(make_path!(
+                        "routes",
+                        path.to_string(),
+                        rule_index,
+                        "plugin"
+                    )),
                 );
             }
         }
