@@ -391,7 +391,7 @@ Like most architectures, you probably need some infrastructure like databases, c
 | OpenSearch | `opensearch.stepflow.svc.cluster.local` | 9200 | Vector storage for RAG |
 | Docling | `docling-serve.stepflow.svc.cluster.local` | 5001 | Document processing |
 
-Workers discover these via environment variables:
+As with most resource-managed envrionments, workers discover these via environment variables:
 
 ```yaml
 env:
@@ -405,7 +405,7 @@ This separation keeps the routing configuration simple while allowing workers to
 
 ## Observability: Traces, Metrics, and Logs
 
-The `stepflow-o12y` namespace provides full observability:
+Given we were building a distributed workflow system from the ground up, observability (commonly abbreviated as o12y) was baked in from the start via the [Open Telemetry](https://opentelemetry.io/docs/specs/otlp/) standard. Along those lines, we've created the `stepflow-o12y` namespace with common open source telemetry servcies to provide full observability for the Stepflow runtime. The `stepflow-o12y` namespace contains the following services which are detailed below:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -454,7 +454,7 @@ Now that we now how all this plugs together, it's time to run the example.
 
 ### Prerequisites
 
-Since our focus here is productionising Langflow via Stepflow, we assume some knowledge of common production tooling, specifically kubectl, Kind, and Podman ( though Docker should work as well). Getting any further into this is unfortunately outside the scope of this post. 
+Since our focus here is productionising Langflow via Stepflow, we assume some knowledge of common production tooling, specifically kubectl, Kind, and Podman (though Docker should work as well). Getting any further into any of this architecture is unfortunately outside the scope of this post. That said, we've made every attempt to assure that we adhere to best practices and standards, so most modern LLM agents should be able to spin this up for you if this tooling is not your day to day toolbox.
 
 ### Quick Start
 
