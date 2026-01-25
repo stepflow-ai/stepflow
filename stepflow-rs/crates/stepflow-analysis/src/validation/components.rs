@@ -10,11 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
-
 use stepflow_core::workflow::{Component, Flow};
 
-use crate::{DiagnosticMessage, Diagnostics, validation::path::make_path};
+use crate::validation::path::make_path;
+use crate::{DiagnosticKind, Diagnostics, diagnostic};
 
 pub fn validate_components(flow: &Flow, diagnostics: &mut Diagnostics) {
     for (index, step) in flow.steps().iter().enumerate() {
@@ -31,15 +30,16 @@ fn validate_component(
 ) {
     let path_str = component.path();
     if !path_str.starts_with('/') {
-        let error = Cow::Borrowed("Component path must start with '/'");
+        let component = path_str.to_string();
+        let error = "Component path must start with '/'".to_string();
 
         diagnostics.add(
-            DiagnosticMessage::InvalidComponent {
-                step_id: step_id.to_owned(),
-                component: path_str.to_string(),
-                error,
-            },
-            make_path!("steps", step_index, "component"),
+            diagnostic!(
+                DiagnosticKind::InvalidComponent,
+                "Invalid component '{component}' in step '{step_id}': {error}",
+                { step_id, component, error }
+            )
+            .at(make_path!("steps", step_index, "component")),
         );
     }
 

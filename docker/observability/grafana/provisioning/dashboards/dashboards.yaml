@@ -1,0 +1,29 @@
+# Grafana dashboard provisioning for Stepflow
+#
+# This file tells Grafana where to find dashboard JSON files.
+# Dashboards will be automatically loaded and kept in sync.
+
+apiVersion: 1
+
+providers:
+  # Stepflow application dashboards
+  - name: 'Stepflow Dashboards'
+    orgId: 1
+    folder: 'Stepflow'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/stepflow
+
+  # Infrastructure/observability stack dashboards
+  - name: 'Infrastructure'
+    orgId: 1
+    folder: 'Infrastructure'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/infrastructure

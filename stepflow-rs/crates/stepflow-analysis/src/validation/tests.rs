@@ -11,7 +11,7 @@
 // the License.
 
 use super::*;
-use crate::diagnostics::DiagnosticMessage;
+use crate::DiagnosticKind;
 use serde_json::json;
 use stepflow_core::ValueExpr;
 use stepflow_core::values::JsonPath;
@@ -55,10 +55,12 @@ fn test_forward_reference_error() {
     let diagnostics = validate(&flow).unwrap();
 
     assert!(diagnostics.num_fatal > 0, "Expected fatal diagnostics");
-    assert!(diagnostics.diagnostics.iter().any(|d| matches!(
-        d.message(),
-        DiagnosticMessage::UndefinedStepReference { .. }
-    )));
+    assert!(
+        diagnostics
+            .diagnostics
+            .iter()
+            .any(|d| d.kind == DiagnosticKind::UndefinedStepReference.name())
+    );
 }
 
 #[test]
@@ -80,7 +82,7 @@ fn test_duplicate_step_ids() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::DuplicateStepId { .. }))
+            .any(|d| d.kind == DiagnosticKind::DuplicateStepId.name())
     );
 }
 
@@ -100,7 +102,7 @@ fn test_self_reference() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::SelfReference { .. }))
+            .any(|d| d.kind == DiagnosticKind::SelfReference.name())
     );
 }
 
@@ -123,7 +125,7 @@ fn test_unreachable_step() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::UnreachableStep { .. }))
+            .any(|d| d.kind == DiagnosticKind::UnreachableStep.name())
     );
 }
 
@@ -144,13 +146,13 @@ fn test_workflow_with_no_name_and_description() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::MissingFlowName))
+            .any(|d| d.kind == DiagnosticKind::MissingFlowName.name())
     );
     assert!(
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::MissingFlowDescription))
+            .any(|d| d.kind == DiagnosticKind::MissingFlowDescription.name())
     );
 }
 
@@ -178,7 +180,7 @@ fn test_empty_component_name() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::InvalidComponent { .. }))
+            .any(|d| d.kind == DiagnosticKind::InvalidComponent.name())
     );
 }
 
@@ -283,10 +285,12 @@ fn test_undefined_required_variable() {
         diagnostics.num_error > 0,
         "Expected error diagnostics for undefined required variable"
     );
-    assert!(diagnostics.diagnostics.iter().any(|d| matches!(
-        d.message(),
-        DiagnosticMessage::UndefinedRequiredVariable { .. }
-    )));
+    assert!(
+        diagnostics
+            .diagnostics
+            .iter()
+            .any(|d| d.kind == DiagnosticKind::UndefinedRequiredVariable.name())
+    );
 }
 
 #[test]
@@ -326,10 +330,12 @@ fn test_valid_variable_reference() {
 
     let diagnostics = validate(&flow).unwrap();
     // Should not have errors for valid variable reference
-    assert!(!diagnostics.diagnostics.iter().any(|d| matches!(
-        d.message(),
-        DiagnosticMessage::UndefinedRequiredVariable { .. }
-    )));
+    assert!(
+        !diagnostics
+            .diagnostics
+            .iter()
+            .any(|d| d.kind == DiagnosticKind::UndefinedRequiredVariable.name())
+    );
 }
 
 #[test]
@@ -355,7 +361,7 @@ fn test_variable_reference_without_schema() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::MissingVariableSchema))
+            .any(|d| d.kind == DiagnosticKind::MissingVariableSchema.name())
     );
 }
 
@@ -402,7 +408,7 @@ fn test_undefined_optional_variable_with_default() {
         diagnostics
             .diagnostics
             .iter()
-            .any(|d| matches!(d.message(), DiagnosticMessage::UndefinedVariable { .. }))
+            .any(|d| d.kind == DiagnosticKind::UndefinedVariable.name())
     );
 }
 
@@ -607,12 +613,9 @@ fn test_subflow_with_validation_errors() {
         "Expected errors from subflow validation"
     );
 
-    let error = diagnostics.iter().find(|d| {
-        matches!(
-            d.message(),
-            DiagnosticMessage::UndefinedStepReference { .. }
-        )
-    });
+    let error = diagnostics
+        .iter()
+        .find(|d| d.kind == DiagnosticKind::UndefinedStepReference.name());
     assert!(
         error.is_some(),
         "Expected error about invalid reference in the subflow"
@@ -622,5 +625,5 @@ fn test_subflow_with_validation_errors() {
         error.path,
         make_path!("steps", 0, "input", "data", "$literal", "steps", 0, "input")
     );
-    assert_eq!(error.text, "Step 'step1' references undefined step 'step2'");
+    assert_eq!(error.formatted, "Step 'step1' references undefined step 'step2'");
 }
