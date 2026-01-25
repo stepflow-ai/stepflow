@@ -4631,7 +4631,6 @@ dependencies = [
  "insta",
  "insta-cmd",
  "log",
- "nix 0.29.0",
  "regex",
  "reqwest",
  "rustyline",

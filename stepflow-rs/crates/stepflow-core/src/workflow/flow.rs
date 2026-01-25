@@ -293,96 +293,18 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
     }
 }
 
-/// Configuration for a test server.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TestServerConfig {
-    /// Command to start the server.
-    pub command: String,
-
-    /// Arguments for the server command.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub args: Vec<String>,
-
-    /// Environment variables for the server process.
-    /// Values can contain placeholders like {port} which will be substituted.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub env: HashMap<String, String>,
-
-    /// Working directory for the server process.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_directory: Option<String>,
-
-    /// Port range for automatic port allocation.
-    /// If not specified, a random available port will be used.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub port_range: Option<(u16, u16)>,
-
-    /// Health check configuration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub health_check: Option<TestServerHealthCheck>,
-
-    /// Maximum time to wait for server startup (in milliseconds).
-    #[serde(default = "default_startup_timeout")]
-    #[schema(default = default_startup_timeout)]
-    pub startup_timeout_ms: u64,
-
-    /// Maximum time to wait for server shutdown (in milliseconds).
-    #[serde(default = "default_shutdown_timeout")]
-    #[schema(default = default_shutdown_timeout)]
-    pub shutdown_timeout_ms: u64,
-}
-
-/// Health check configuration for test servers.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TestServerHealthCheck {
-    /// Path for health check endpoint (e.g., "/health").
-    pub path: String,
-
-    /// Timeout for health check requests (in milliseconds).
-    #[serde(default = "default_health_check_timeout")]
-    #[schema(default = default_health_check_timeout)]
-    pub timeout_ms: u64,
-
-    /// Number of retry attempts for health checks.
-    #[serde(default = "default_health_check_retries")]
-    #[schema(default = default_health_check_retries)]
-    pub retry_attempts: u32,
-
-    /// Delay between retry attempts (in milliseconds).
-    #[serde(default = "default_health_check_delay")]
-    #[schema(default = default_health_check_delay)]
-    pub retry_delay_ms: u64,
-}
-
-fn default_startup_timeout() -> u64 {
-    10000
-}
-fn default_shutdown_timeout() -> u64 {
-    5000
-}
-fn default_health_check_timeout() -> u64 {
-    5000
-}
-fn default_health_check_retries() -> u32 {
-    3
-}
-fn default_health_check_delay() -> u64 {
-    1000
-}
-
 /// Configuration for testing a workflow.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
-    /// Test servers to start before running tests.
-    /// Key is the server name, value is the server configuration.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub servers: HashMap<String, TestServerConfig>,
+    /// Path to an external stepflow config file for tests.
+    /// Relative paths are resolved from the workflow file's directory.
+    /// Mutually exclusive with `config` - validated at runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_file: Option<String>,
 
-    /// Stepflow configuration specific to tests.
-    /// Can reference server URLs using placeholders like {server_name.url}.
+    /// Inline stepflow configuration for tests.
+    /// Mutually exclusive with `config_file` - validated at runtime.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -561,8 +483,8 @@ mod tests {
                 input: ValueRef::new(json!({"input": "example"})),
             }])
             .test_config(TestConfig {
+                config_file: None,
                 config: None,
-                servers: HashMap::default(),
                 cases: vec![
                     TestCase {
                         name: "test1".to_string(),

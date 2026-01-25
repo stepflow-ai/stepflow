@@ -32,28 +32,18 @@ output:
     path: result
 
 test:
-  servers:
-    test_http:
-      command: "uv"
-      args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py", "--port", "{port}"]
-      env: {}
-      working_directory: ""
-      port_range: [18000, 19000]
-      health_check:
-        path: "/health"
-        timeout_ms: 5000
-        retry_attempts: 10
-        retry_delay_ms: 500
-      startup_timeout_ms: 10000
-      shutdown_timeout_ms: 5000
-
   config:
     plugins:
       builtin:
         type: builtin
       test_http:
         type: stepflow
-        url: "{test_http.url}"
+        command: uv
+        args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
+        healthCheck:
+          path: /health
+          timeoutMs: 10000
+          retryDelayMs: 500
 
     routes:
       "/builtin/{component}":

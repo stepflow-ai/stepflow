@@ -13,7 +13,6 @@
 #![allow(clippy::print_stdout)]
 
 use crate::args::{ConfigArgs, OutputArgs, WorkflowLoader, load};
-use crate::test_server::TestServerManager;
 use crate::{MainError, Result};
 use clap::Args;
 use error_stack::ResultExt as _;
@@ -204,26 +203,38 @@ pub fn load_test_config(
     flow_path: &Path,
     config_path: Option<PathBuf>,
     workflow: &Flow,
-    server_manager: Option<&TestServerManager>,
 ) -> Result<StepflowConfig> {
-    // If explicit config provided, use that
+    let flow_dir = flow_path.parent().expect("flow_path should have a parent");
+
+    // If explicit config provided via CLI, use that
     if let Some(config_path) = config_path {
         let config_args = ConfigArgs::with_path(Some(config_path));
         return config_args.load_config(None);
     }
 
-    // 1. Check config in test section of this workflow (with server substitution)
-    if let Some(test_config) = workflow.test()
-        && let Some(config_value) = &test_config.config
-    {
-        return parse_stepflow_config_from_value(config_value, flow_path, server_manager);
+    // Check test section of workflow
+    if let Some(test_config) = workflow.test() {
+        // Validate mutual exclusion
+        if test_config.config.is_some() && test_config.config_file.is_some() {
+            return Err(MainError::Configuration).attach_printable(
+                "test.config and test.config_file are mutually exclusive. Use one or the other.",
+            );
+        }
+
+        // 1. Check config_file reference
+        if let Some(config_file) = &test_config.config_file {
+            let config_path = flow_dir.join(config_file);
+            let config_args = ConfigArgs::with_path(Some(config_path));
+            return config_args.load_config(Some(flow_dir));
+        }
+
+        // 2. Check inline config
+        if let Some(config_value) = &test_config.config {
+            return parse_stepflow_config_from_value(config_value, flow_path);
+        }
     }
 
-    // TODO: 2. Check stepflow_config in test section of enclosing workflow (if any)
-    // This would require parsing parent flows, which is complex
-
     // 3. Look for stepflow-config.test.yml in workflow directory
-    let flow_dir = flow_path.parent().expect("flow_path should have a parent");
     let test_config_candidates = [
         "stepflow-config.test.yml",
         "stepflow-config.test.yaml",
@@ -243,23 +254,16 @@ pub fn load_test_config(
     // 5. Look for stepflow-config.yml in current directory
     // Reuse existing config resolution logic
     let config_args = ConfigArgs::with_path(None);
-    let flow_dir = flow_path.parent();
-    config_args.load_config(flow_dir)
+    config_args.load_config(Some(flow_dir))
 }
 
 fn parse_stepflow_config_from_value(
     value: &serde_json::Value,
     flow_path: &Path,
-    server_manager: Option<&TestServerManager>,
 ) -> Result<StepflowConfig> {
-    // Apply server URL substitution if server manager is available
-    let config_str = if let Some(manager) = server_manager {
-        manager.create_substituted_config(value)?
-    } else {
-        serde_json::to_string(value)
-            .change_context(MainError::Configuration)
-            .attach_printable("Failed to serialize config")?
-    };
+    let config_str = serde_json::to_string(value)
+        .change_context(MainError::Configuration)
+        .attach_printable("Failed to serialize config")?;
 
     let mut config: StepflowConfig = serde_json::from_str(&config_str)
         .change_context_lazy(|| MainError::InvalidFile(flow_path.to_owned()))?;
@@ -558,20 +562,8 @@ async fn run_single_flow_test(
         }));
     };
 
-    // Initialize server manager and start any test servers
-    let mut server_manager = TestServerManager::new();
-    if let Some(test_config) = flow.test()
-        && !test_config.servers.is_empty()
-    {
-        println!("Starting {} test servers...", test_config.servers.len());
-        let working_dir = flow_path.parent().unwrap_or_else(|| Path::new("."));
-        server_manager
-            .start_servers(&test_config.servers, working_dir)
-            .await?;
-    }
-
-    // Set up executor with server-aware config
-    let config = load_test_config(flow_path, config_path, &flow, Some(&server_manager))?;
+    // Set up executor from test config
+    let config = load_test_config(flow_path, config_path, &flow)?;
     let executor = WorkflowLoader::create_executor_from_config(config).await?;
 
     // Filter test cases if specific cases requested
@@ -633,9 +625,6 @@ async fn run_single_flow_test(
     let total_cases = cases_to_run.len();
     let failed_cases = updates.len() + execution_errors;
     let passed_cases = total_cases - failed_cases;
-
-    // Clean up test servers
-    server_manager.stop_all_servers().await?;
 
     Ok(Some(WorkflowTestResult {
         file_status: FileStatus::Run,
