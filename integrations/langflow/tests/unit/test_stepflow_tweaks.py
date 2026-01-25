@@ -88,8 +88,6 @@ class TestStepflowTweaksIntegration:
         import json
         from pathlib import Path
 
-        import yaml
-
         converter = LangflowConverter()
         fixture_path = (
             Path(__file__).parent.parent
@@ -101,9 +99,9 @@ class TestStepflowTweaksIntegration:
         if fixture_path.exists():
             with open(fixture_path) as f:
                 langflow_data = json.load(f)
-            # Convert to YAML string, then parse as dict
-            yaml_str = converter.convert(langflow_data)
-            return yaml.safe_load(yaml_str)
+            # Convert to Flow object and get dict representation
+            flow = converter.convert(langflow_data)
+            return flow.model_dump(mode="json", exclude_none=True)
         else:
             pytest.skip("basic_prompting.json fixture not found")
 
