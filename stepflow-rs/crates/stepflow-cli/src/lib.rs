@@ -21,7 +21,6 @@ mod repl;
 mod schema_provider;
 mod submit;
 pub mod test;
-mod test_server;
 mod validate;
 mod validation_display;
 mod visualize;

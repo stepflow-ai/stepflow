@@ -57,9 +57,53 @@ pub enum StepflowTransport {
         /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
         #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
         env: IndexMap<String, String>,
+        /// Health check configuration for the subprocess server.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "healthCheck"
+        )]
+        health_check: Option<HealthCheckConfig>,
     },
     /// Remote mode: connect directly to an existing HTTP endpoint.
     Remote { url: String },
+}
+
+/// Configuration for health check polling when launching subprocess servers.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthCheckConfig {
+    /// Health check endpoint path. Default: "/health"
+    #[serde(default = "default_health_path")]
+    pub path: String,
+    /// Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)
+    #[serde(default = "default_health_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Delay between health check attempts in milliseconds. Default: 100
+    #[serde(default = "default_health_retry_delay_ms")]
+    pub retry_delay_ms: u64,
+}
+
+impl Default for HealthCheckConfig {
+    fn default() -> Self {
+        Self {
+            path: default_health_path(),
+            timeout_ms: default_health_timeout_ms(),
+            retry_delay_ms: default_health_retry_delay_ms(),
+        }
+    }
+}
+
+fn default_health_path() -> String {
+    "/health".to_string()
+}
+
+fn default_health_timeout_ms() -> u64 {
+    60000
+}
+
+fn default_health_retry_delay_ms() -> u64 {
+    100
 }
 
 impl PluginConfig for StepflowPluginConfig {
@@ -70,9 +114,19 @@ impl PluginConfig for StepflowPluginConfig {
         working_directory: &std::path::Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
         match self.transport {
-            StepflowTransport::Subprocess { command, args, env } => {
-                let launcher =
-                    SubprocessLauncher::try_new(working_directory.to_owned(), command, args, env)?;
+            StepflowTransport::Subprocess {
+                command,
+                args,
+                env,
+                health_check,
+            } => {
+                let launcher = SubprocessLauncher::try_new(
+                    working_directory.to_owned(),
+                    command,
+                    args,
+                    env,
+                    health_check,
+                )?;
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedSubprocess(launcher),
