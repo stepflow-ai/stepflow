@@ -372,6 +372,10 @@ class ApiClient:
             # model definition for request.
             if hasattr(obj, "to_dict") and callable(obj.to_dict):
                 obj_dict = obj.to_dict()
+                # Handle oneOf wrappers like ValueExpr that may return
+                # non-dict values from to_dict() (e.g., primitives)
+                if not isinstance(obj_dict, dict):
+                    return self.sanitize_for_serialization(obj_dict)
             else:
                 obj_dict = obj.__dict__
 

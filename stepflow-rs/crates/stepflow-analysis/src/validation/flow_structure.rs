@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use stepflow_core::workflow::Flow;
 
 use crate::validation::path::make_path;
-use crate::{DiagnosticMessage, Diagnostics};
+use crate::{DiagnosticKind, Diagnostics, diagnostic};
 
 /// Validate basic workflow structure
 pub fn validate_flow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
@@ -23,11 +23,14 @@ pub fn validate_flow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     let mut seen_ids = HashSet::new();
     for (index, step) in flow.steps().iter().enumerate() {
         if !seen_ids.insert(&step.id) {
+            let step_id = &step.id;
             diagnostics.add(
-                DiagnosticMessage::DuplicateStepId {
-                    step_id: step.id.clone(),
-                },
-                make_path!("steps", index, "id"),
+                diagnostic!(
+                    DiagnosticKind::DuplicateStepId,
+                    "Duplicate step ID '{step_id}'",
+                    { step_id }
+                )
+                .at(make_path!("steps", index, "id")),
             );
         }
     }
@@ -36,22 +39,28 @@ pub fn validate_flow_structure(flow: &Flow, diagnostics: &mut Diagnostics) {
     for (index, step) in flow.steps().iter().enumerate() {
         if step.id.trim().is_empty() {
             diagnostics.add(
-                DiagnosticMessage::EmptyStepId,
-                make_path!("steps", index, "id"),
+                diagnostic!(DiagnosticKind::EmptyStepId, "Step has empty ID")
+                    .at(make_path!("steps", index, "id")),
             );
         }
     }
 
     // Warn if flow has no name
     if flow.name().is_none() || flow.name().unwrap().trim().is_empty() {
-        diagnostics.add(DiagnosticMessage::MissingFlowName, make_path!("name"));
+        diagnostics.add(
+            diagnostic!(DiagnosticKind::MissingFlowName, "Workflow has no name")
+                .at(make_path!("name")),
+        );
     }
 
     // Warn if flow has no description
     if flow.description().is_none() {
         diagnostics.add(
-            DiagnosticMessage::MissingFlowDescription,
-            make_path!("description"),
+            diagnostic!(
+                DiagnosticKind::MissingFlowDescription,
+                "Workflow has no description"
+            )
+            .at(make_path!("description")),
         );
     }
 }

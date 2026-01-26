@@ -16,52 +16,7 @@ mod level;
 mod message;
 
 pub use level::DiagnosticLevel;
-pub use message::DiagnosticMessage;
-
-use crate::Path;
-
-/// A single diagnostic with its context
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct Diagnostic {
-    /// The diagnostic message and type (boxed to handle varying sizes)
-    message: Box<DiagnosticMessage>,
-    /// The severity level
-    pub level: DiagnosticLevel,
-    /// Human-readable message text
-    pub text: String,
-    /// JSON path to the field with the issue
-    #[serde(skip_serializing_if = "Path::is_empty", default)]
-    pub path: Path,
-    /// Whether this diagnostic should be ignored by default
-    pub ignore: bool,
-}
-
-impl Diagnostic {
-    /// Create a new diagnostic from a message with an empty path
-    pub fn new(message: DiagnosticMessage) -> Self {
-        Self::new_with_path(message, Path::new())
-    }
-
-    pub fn message(&self) -> &DiagnosticMessage {
-        &self.message
-    }
-
-    /// Create a new diagnostic from a message with a specific path
-    pub fn new_with_path(message: DiagnosticMessage, path: Path) -> Self {
-        let level = message.level();
-        let text = message.message();
-        let ignore = matches!(message, DiagnosticMessage::UnvalidatedFieldAccess { .. });
-
-        Self {
-            message: Box::new(message),
-            level,
-            text,
-            path,
-            ignore,
-        }
-    }
-}
+pub use message::{Diagnostic, DiagnosticKind};
 
 /// Collection of diagnostics with utility methods
 #[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
@@ -85,16 +40,14 @@ impl Diagnostics {
         }
     }
 
-    /// Add a diagnostic with a specific path
-    pub fn add(&mut self, message: DiagnosticMessage, path: Path) {
-        match message.level() {
+    /// Add a diagnostic
+    pub fn add(&mut self, diagnostic: Diagnostic) {
+        match diagnostic.level {
             DiagnosticLevel::Fatal => self.num_fatal += 1,
             DiagnosticLevel::Error => self.num_error += 1,
             DiagnosticLevel::Warning => self.num_warning += 1,
         }
-
-        self.diagnostics
-            .push(Diagnostic::new_with_path(message, path));
+        self.diagnostics.push(diagnostic);
     }
 
     pub fn extend(&mut self, mut other: Diagnostics) {
@@ -122,9 +75,9 @@ impl Diagnostics {
         self.diagnostics.iter().filter(move |d| d.level == level)
     }
 
-    /// Get all diagnostics that should be shown by default (excludes ignored)
+    /// Get all diagnostics that should be shown by default (excludes experimental)
     pub fn shown_by_default(&self) -> impl Iterator<Item = &Diagnostic> + '_ {
-        self.diagnostics.iter().filter(|d| !d.ignore)
+        self.diagnostics.iter().filter(|d| !d.experimental)
     }
 
     /// Check if diagnostics are empty
@@ -141,24 +94,32 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Path, diagnostic};
 
     #[test]
     fn test_diagnostic_levels() {
-        let fatal = Diagnostic::new(DiagnosticMessage::DuplicateStepId {
-            step_id: "test".to_string(),
-        });
+        let step_id = "test";
+        let fatal = diagnostic!(
+            DiagnosticKind::DuplicateStepId,
+            "Duplicate step ID '{step_id}'",
+            { step_id }
+        );
         assert_eq!(fatal.level, DiagnosticLevel::Fatal);
 
-        let error = Diagnostic::new(DiagnosticMessage::InvalidFieldAccess {
-            step_id: "test".to_string(),
-            field: "field".to_string(),
-            reason: "missing".to_string(),
-        });
+        let field = "field";
+        let reason = "missing";
+        let error = diagnostic!(
+            DiagnosticKind::InvalidFieldAccess,
+            "Invalid field access '{field}' in step '{step_id}': {reason}",
+            { step_id, field, reason }
+        );
         assert_eq!(error.level, DiagnosticLevel::Error);
 
-        let warning = Diagnostic::new(DiagnosticMessage::MockComponent {
-            step_id: "test".to_string(),
-        });
+        let warning = diagnostic!(
+            DiagnosticKind::MockComponent,
+            "Step '{step_id}' uses mock component",
+            { step_id }
+        );
         assert_eq!(warning.level, DiagnosticLevel::Warning);
     }
 
@@ -166,17 +127,22 @@ mod tests {
     fn test_diagnostics_collection() {
         let mut diagnostics = Diagnostics::new();
 
+        let step_id = "test";
         diagnostics.add(
-            DiagnosticMessage::DuplicateStepId {
-                step_id: "test".to_string(),
-            },
-            Path::new(),
+            diagnostic!(
+                DiagnosticKind::DuplicateStepId,
+                "Duplicate step ID '{step_id}'",
+                { step_id }
+            )
+            .at(Path::new()),
         );
         diagnostics.add(
-            DiagnosticMessage::MockComponent {
-                step_id: "test".to_string(),
-            },
-            Path::new(),
+            diagnostic!(
+                DiagnosticKind::MockComponent,
+                "Step '{step_id}' uses mock component",
+                { step_id }
+            )
+            .at(Path::new()),
         );
 
         assert_eq!(diagnostics.len(), 2);
@@ -185,5 +151,27 @@ mod tests {
         assert_eq!(diagnostics.num_fatal, 1);
         assert_eq!(diagnostics.num_error, 0);
         assert_eq!(diagnostics.num_warning, 1);
+    }
+
+    #[test]
+    fn test_experimental_filtering() {
+        let mut diagnostics = Diagnostics::new();
+
+        let step_id = "test";
+        diagnostics.add(diagnostic!(
+            DiagnosticKind::DuplicateStepId,
+            "Duplicate step ID '{step_id}'",
+            { step_id }
+        ));
+        diagnostics.add(
+            diagnostic!(
+                DiagnosticKind::UnvalidatedFieldAccess,
+                "Field access cannot be validated"
+            )
+            .experimental(),
+        );
+
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics.shown_by_default().count(), 1);
     }
 }

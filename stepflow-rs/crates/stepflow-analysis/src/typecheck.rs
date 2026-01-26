@@ -14,7 +14,7 @@
 //!
 //! This module provides conversion from type checking errors to diagnostics.
 
-use crate::{DiagnosticMessage, Diagnostics, Path};
+use crate::{Diagnostic, DiagnosticKind, Diagnostics, diagnostic};
 use stepflow_typecheck::{LocatedTypeError, TypeCheckResult, TypeError};
 
 /// Convert a `TypeCheckResult` into diagnostics.
@@ -25,87 +25,126 @@ pub fn type_check_to_diagnostics(result: &TypeCheckResult) -> Diagnostics {
 
     // Convert errors
     for error in &result.errors {
-        let message = type_error_to_diagnostic(error);
-        // Use empty path - the step_id and path are already in the message
-        diagnostics.add(message, Path::new());
+        let diag = type_error_to_diagnostic(error);
+        diagnostics.add(diag);
     }
 
     // Convert warnings
     for warning in &result.warnings {
-        let message = type_error_to_diagnostic(warning);
-        diagnostics.add(message, Path::new());
+        let diag = type_error_to_diagnostic(warning);
+        diagnostics.add(diag);
     }
 
     diagnostics
 }
 
-/// Convert a single `LocatedTypeError` to a `DiagnosticMessage`.
-fn type_error_to_diagnostic(error: &LocatedTypeError) -> DiagnosticMessage {
-    let step_id = error.location.step_id.clone();
+/// Convert a single `LocatedTypeError` to a `Diagnostic`.
+fn type_error_to_diagnostic(error: &LocatedTypeError) -> Diagnostic {
+    let step_id = error
+        .location
+        .step_id
+        .clone()
+        .unwrap_or_else(|| "<flow>".to_string());
 
     match &error.error {
         TypeError::Mismatch {
             expected,
             actual,
             detail,
-        } => DiagnosticMessage::TypeMismatch {
-            step_id: step_id.unwrap_or_else(|| "<flow>".to_string()),
-            expected: expected.to_string(),
-            actual: actual.to_string(),
-            detail: detail.clone(),
-        },
-
-        TypeError::PropertyNotFound { path, property } => {
-            DiagnosticMessage::UnknownPropertyInPath {
-                step_id,
-                path: path.clone(),
-                property: property.clone(),
-            }
+        } => {
+            let expected = expected.to_string();
+            let actual = actual.to_string();
+            let detail = detail.clone();
+            diagnostic!(
+                DiagnosticKind::TypeMismatch,
+                "Type mismatch in step '{step_id}': expected {expected}, got {actual}. {detail}",
+                { step_id, expected, actual, detail }
+            )
         }
 
-        TypeError::NotAnArray { path } => DiagnosticMessage::UnknownPropertyInPath {
-            step_id,
-            path: path.clone(),
-            property: "<array index>".to_string(),
-        },
+        TypeError::PropertyNotFound { path, property } => {
+            let path = path.clone();
+            let property = property.clone();
+            diagnostic!(
+                DiagnosticKind::UnknownPropertyInPath,
+                "Unknown property '{property}' at path '{path}' in step '{step_id}'",
+                { step_id, path, property }
+            )
+        }
 
-        TypeError::UnknownStep { step_id: ref_step } => DiagnosticMessage::UndefinedStepReference {
-            from_step: step_id,
-            referenced_step: ref_step.clone(),
-        },
+        TypeError::NotAnArray { path } => {
+            let path = path.clone();
+            let property = "<array index>".to_string();
+            diagnostic!(
+                DiagnosticKind::UnknownPropertyInPath,
+                "Cannot index non-array at path '{path}' in step '{step_id}'",
+                { step_id, path, property }
+            )
+        }
 
-        TypeError::UnknownVariable { variable } => DiagnosticMessage::UndefinedVariable {
-            variable: variable.clone(),
-            context: step_id.unwrap_or_else(|| "flow".to_string()),
-        },
+        TypeError::UnknownStep { step_id: ref_step } => {
+            let from_step = step_id;
+            let referenced_step = ref_step.clone();
+            diagnostic!(
+                DiagnosticKind::UndefinedStepReference,
+                "Step '{from_step}' references undefined step '{referenced_step}'",
+                { from_step, referenced_step }
+            )
+        }
 
-        TypeError::Indeterminate { reason } => DiagnosticMessage::TypeCheckIndeterminate {
-            step_id,
-            reason: reason.clone(),
-        },
+        TypeError::UnknownVariable { variable } => {
+            let variable = variable.clone();
+            let context = step_id;
+            diagnostic!(
+                DiagnosticKind::UndefinedVariable,
+                "Variable '{variable}' is not defined in {context}",
+                { variable, context }
+            )
+        }
 
-        TypeError::MissingRequired { property, .. } => DiagnosticMessage::TypeMismatch {
-            step_id: step_id.unwrap_or_else(|| "<flow>".to_string()),
-            expected: format!("required property '{property}'"),
-            actual: "missing".to_string(),
-            detail: "Required property is not present in the input".to_string(),
-        },
+        TypeError::Indeterminate { reason } => {
+            let reason = reason.clone();
+            diagnostic!(
+                DiagnosticKind::TypeCheckIndeterminate,
+                "Type check indeterminate for step '{step_id}': {reason}",
+                { step_id, reason }
+            )
+        }
+
+        TypeError::MissingRequired { property, .. } => {
+            let expected = format!("required property '{property}'");
+            let actual = "missing".to_string();
+            let detail = "Required property is not present in the input".to_string();
+            diagnostic!(
+                DiagnosticKind::TypeMismatch,
+                "Type mismatch in step '{step_id}': expected {expected}, got {actual}. {detail}",
+                { step_id, expected, actual, detail }
+            )
+        }
 
         TypeError::UnexpectedProperty {
             property,
             allowed,
             path,
-        } => DiagnosticMessage::TypeMismatch {
-            step_id: step_id.unwrap_or_else(|| "<flow>".to_string()),
-            expected: format!("one of {:?}", allowed),
-            actual: format!("property '{property}'"),
-            detail: format!("Unexpected property at path '{path}'"),
-        },
+        } => {
+            let expected = format!("one of {:?}", allowed);
+            let actual = format!("property '{property}'");
+            let detail = format!("Unexpected property at path '{path}'");
+            diagnostic!(
+                DiagnosticKind::TypeMismatch,
+                "Type mismatch in step '{step_id}': expected {expected}, got {actual}. {detail}",
+                { step_id, expected, actual, detail }
+            )
+        }
 
-        TypeError::UntypedOutput { component } => DiagnosticMessage::UntypedComponentOutput {
-            step_id: step_id.unwrap_or_else(|| "<flow>".to_string()),
-            component: component.clone(),
-        },
+        TypeError::UntypedOutput { component } => {
+            let component = component.clone();
+            diagnostic!(
+                DiagnosticKind::UntypedComponentOutput,
+                "Component '{component}' in step '{step_id}' has no output schema",
+                { step_id, component }
+            )
+        }
     }
 }
 
@@ -129,20 +168,12 @@ mod tests {
             },
         };
 
-        let message = type_error_to_diagnostic(&error);
-        match message {
-            DiagnosticMessage::TypeMismatch {
-                step_id,
-                expected,
-                actual,
-                ..
-            } => {
-                assert_eq!(step_id, "step1");
-                assert_eq!(expected, "string");
-                assert_eq!(actual, "number");
-            }
-            _ => panic!("Expected TypeMismatch diagnostic"),
-        }
+        let diag = type_error_to_diagnostic(&error);
+        assert_eq!(diag.kind, DiagnosticKind::TypeMismatch.name());
+        assert_eq!(diag.code, DiagnosticKind::TypeMismatch.code());
+        assert!(diag.formatted.contains("step1"));
+        assert!(diag.formatted.contains("string"));
+        assert!(diag.formatted.contains("number"));
     }
 
     #[test]
@@ -158,19 +189,11 @@ mod tests {
             },
         };
 
-        let message = type_error_to_diagnostic(&error);
-        match message {
-            DiagnosticMessage::UnknownPropertyInPath {
-                step_id,
-                path,
-                property,
-            } => {
-                assert_eq!(step_id, Some("step2".to_string()));
-                assert_eq!(path, "$.data");
-                assert_eq!(property, "missing_field");
-            }
-            _ => panic!("Expected UnknownPropertyInPath diagnostic"),
-        }
+        let diag = type_error_to_diagnostic(&error);
+        assert_eq!(diag.kind, DiagnosticKind::UnknownPropertyInPath.name());
+        assert!(diag.formatted.contains("missing_field"));
+        assert!(diag.formatted.contains("$.data"));
+        assert!(diag.formatted.contains("step2"));
     }
 
     #[test]
@@ -185,16 +208,9 @@ mod tests {
             },
         };
 
-        let message = type_error_to_diagnostic(&error);
-        match message {
-            DiagnosticMessage::UndefinedStepReference {
-                from_step,
-                referenced_step,
-            } => {
-                assert_eq!(from_step, Some("step1".to_string()));
-                assert_eq!(referenced_step, "nonexistent");
-            }
-            _ => panic!("Expected UndefinedStepReference diagnostic"),
-        }
+        let diag = type_error_to_diagnostic(&error);
+        assert_eq!(diag.kind, DiagnosticKind::UndefinedStepReference.name());
+        assert!(diag.formatted.contains("step1"));
+        assert!(diag.formatted.contains("nonexistent"));
     }
 }

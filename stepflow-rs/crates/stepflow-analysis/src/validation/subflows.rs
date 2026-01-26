@@ -16,6 +16,7 @@ use stepflow_core::workflow::{Flow, Step};
 use crate::Diagnostics;
 use crate::Path;
 use crate::Result;
+use crate::{DiagnosticKind, diagnostic};
 
 /// Validate subflows appearing as literals within the flow.
 ///
@@ -86,11 +87,14 @@ fn validate_flow_literal(
             let flow: Flow = match serde_json::from_value(literal.clone()) {
                 Ok(flow) => flow,
                 Err(e) => {
+                    let error = format!("Failed to parse subflow: {}", e);
                     diagnostics.add(
-                        crate::DiagnosticMessage::InvalidSubflowLiteral {
-                            error: format!("Failed to parse subflow: {}", e),
-                        },
-                        path.clone(),
+                        diagnostic!(
+                            DiagnosticKind::InvalidSubflowLiteral,
+                            "Invalid subflow literal: {error}",
+                            { error }
+                        )
+                        .at(path.clone()),
                     );
                     return Ok(());
                 }
@@ -103,11 +107,14 @@ fn validate_flow_literal(
             let flow: Flow = match serde_json::from_value(literal.clone()) {
                 Ok(flow) => flow,
                 Err(e) => {
+                    let error = format!("Failed to parse subflow: {}", e);
                     diagnostics.add(
-                        crate::DiagnosticMessage::InvalidSubflowLiteral {
-                            error: format!("Failed to parse subflow: {}", e),
-                        },
-                        path.clone(),
+                        diagnostic!(
+                            DiagnosticKind::InvalidSubflowLiteral,
+                            "Invalid subflow literal: {error}",
+                            { error }
+                        )
+                        .at(path.clone()),
                     );
                     path.pop();
                     return Ok(());

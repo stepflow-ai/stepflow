@@ -77,7 +77,6 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         flows::FlowResponse,
         stepflow_analysis::Diagnostic,
         stepflow_analysis::DiagnosticLevel,
-        stepflow_analysis::DiagnosticMessage,
         stepflow_analysis::Diagnostics,
         stepflow_core::workflow::WorkflowOverrides,
         stepflow_core::workflow::StepOverride,
@@ -101,4 +100,60 @@ pub fn create_api_router() -> OpenApiRouter<Arc<StepflowEnvironment>> {
         .routes(routes!(flows::store_flow))
         .routes(routes!(flows::get_flow))
         .routes(routes!(flows::delete_flow))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// This test generates the OpenAPI schema to schemas/openapi.json.
+    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation
+    #[test]
+    fn test_openapi_schema_generation() {
+        let openapi = StepflowApi::openapi();
+        let openapi_json =
+            serde_json::to_string_pretty(&openapi).expect("Failed to serialize OpenAPI schema");
+
+        // Get path to schemas/openapi.json
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let openapi_schema_path = manifest_dir
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("schemas")
+            .join("openapi.json");
+
+        if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
+            fs::write(&openapi_schema_path, &openapi_json).expect("Failed to write OpenAPI schema");
+            println!(
+                "Updated OpenAPI schema at {}",
+                openapi_schema_path.display()
+            );
+        } else if openapi_schema_path.exists() {
+            let existing = fs::read_to_string(&openapi_schema_path)
+                .expect("Failed to read existing OpenAPI schema");
+
+            // Parse both as JSON to compare (ignoring formatting differences)
+            let existing_json: serde_json::Value =
+                serde_json::from_str(&existing).expect("Failed to parse existing schema");
+            let new_json: serde_json::Value =
+                serde_json::from_str(&openapi_json).expect("Failed to parse new schema");
+
+            assert_eq!(
+                existing_json, new_json,
+                "OpenAPI schema mismatch. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to update."
+            );
+        } else {
+            panic!(
+                "OpenAPI schema file not found at {}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to create it.",
+                openapi_schema_path.display()
+            );
+        }
+    }
 }
