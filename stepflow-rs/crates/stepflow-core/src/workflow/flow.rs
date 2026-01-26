@@ -483,8 +483,8 @@ mod tests {
                 input: ValueRef::new(json!({"input": "example"})),
             }])
             .test_config(TestConfig {
-                config_file: None,
                 config: None,
+                config_file: None,
                 cases: vec![
                     TestCase {
                         name: "test1".to_string(),
