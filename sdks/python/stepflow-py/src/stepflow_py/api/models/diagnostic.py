@@ -21,30 +21,42 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import Any, ClassVar, Self
+from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
 from stepflow_py.api.models.diagnostic_level import DiagnosticLevel
-from stepflow_py.api.models.diagnostic_message import DiagnosticMessage
-from stepflow_py.api.models.path_part import PathPart
 
 
 class Diagnostic(BaseModel):
     """
-    A single diagnostic with its context
+    A diagnostic with error code, message, path, and metadata.  Created via the `diagnostic!` macro with optional builder methods:  ```ignore diagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })     .at(path)     .experimental() ```  ## JSON Format  ```json {   \"kind\": \"duplicateStepId\",   \"code\": 3000,   \"level\": \"fatal\",   \"formatted\": \"Duplicate step ID 'foo'\",   \"data\": { \"stepId\": \"foo\" },   \"path\": \"$.steps[0]\",   \"experimental\": false } ```
     """  # noqa: E501
 
-    message: DiagnosticMessage = Field(
-        description="The diagnostic message and type (boxed to handle varying sizes)"
+    kind: StrictStr = Field(description="The diagnostic kind name (camelCase)")
+    code: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Numeric error code"
     )
     level: DiagnosticLevel = Field(description="The severity level")
-    text: StrictStr = Field(description="Human-readable message text")
-    path: list[PathPart] | None = None
-    ignore: StrictBool = Field(
-        description="Whether this diagnostic should be ignored by default"
+    formatted: StrictStr = Field(description="Human-readable formatted message")
+    data: Any | None = None
+    path: StrictStr | None = Field(
+        default=None,
+        description="Path to a location in the workflow definition, serialized as a string",
     )
-    __properties: ClassVar[list[str]] = ["message", "level", "text", "path", "ignore"]
+    experimental: StrictBool | None = Field(
+        default=None,
+        description="Whether this diagnostic is experimental (may have false positives)",
+    )
+    __properties: ClassVar[list[str]] = [
+        "kind",
+        "code",
+        "level",
+        "formatted",
+        "data",
+        "path",
+        "experimental",
+    ]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -83,16 +95,11 @@ class Diagnostic(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of message
-        if self.message:
-            _dict["message"] = self.message.to_dict()
-        # override the default output from pydantic by calling `to_dict()` of each item in path (list)
-        _items = []
-        if self.path:
-            for _item_path in self.path:
-                if _item_path:
-                    _items.append(_item_path.to_dict())
-            _dict["path"] = _items
+        # set to None if data (nullable) is None
+        # and model_fields_set contains the field
+        if self.data is None and "data" in self.model_fields_set:
+            _dict["data"] = None
+
         return _dict
 
     @classmethod
@@ -106,15 +113,13 @@ class Diagnostic(BaseModel):
 
         _obj = cls.model_validate(
             {
-                "message": DiagnosticMessage.from_dict(obj["message"])
-                if obj.get("message") is not None
-                else None,
+                "kind": obj.get("kind"),
+                "code": obj.get("code"),
                 "level": obj.get("level"),
-                "text": obj.get("text"),
-                "path": [PathPart.from_dict(_item) for _item in obj["path"]]
-                if obj.get("path") is not None
-                else None,
-                "ignore": obj.get("ignore"),
+                "formatted": obj.get("formatted"),
+                "data": obj.get("data"),
+                "path": obj.get("path"),
+                "experimental": obj.get("experimental"),
             }
         )
         return _obj

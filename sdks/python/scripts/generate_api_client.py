@@ -28,23 +28,21 @@ Usage:
     python scripts/generate_api_client.py generate     # Same as above
     python scripts/generate_api_client.py generate --from FILE
     python scripts/generate_api_client.py check        # Check if up-to-date
-    python scripts/generate_api_client.py update-spec  # Update spec from server
-    python scripts/generate_api_client.py update-spec --generate
+
+To update the OpenAPI spec, run from stepflow-rs:
+    STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server \\
+        test_openapi_schema_generation
 """
 
 from __future__ import annotations
 
 import argparse
-import atexit
 import hashlib
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
-import time
-import urllib.request
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
@@ -53,7 +51,6 @@ PROJECT_ROOT = PYTHON_SDK_DIR.parent.parent
 API_CLIENT_DIR = PYTHON_SDK_DIR / "stepflow-py"
 SRC_DIR = API_CLIENT_DIR / "src" / "stepflow_py" / "api"
 STORED_SPEC = PROJECT_ROOT / "schemas" / "openapi.json"
-PORT = 17837
 
 # Header added to all generated Python files
 GENERATED_HEADER = """\
@@ -65,67 +62,7 @@ GENERATED_HEADER = """\
 """
 
 # Global for cleanup
-_server_process: subprocess.Popen | None = None
 _temp_dir: Path | None = None
-
-
-def cleanup():
-    """Clean up server process and temp directory."""
-    global _server_process, _temp_dir
-    if _server_process is not None:
-        _server_process.terminate()
-        try:
-            _server_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            _server_process.kill()
-        _server_process = None
-    if _temp_dir is not None and _temp_dir.exists():
-        shutil.rmtree(_temp_dir)
-        _temp_dir = None
-
-
-atexit.register(cleanup)
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
-signal.signal(signal.SIGINT, lambda *_: sys.exit(0))
-
-
-def fetch_spec_from_server(output_path: Path) -> None:
-    """Build and start server, fetch OpenAPI spec."""
-    global _server_process
-
-    print(">>> Building stepflow-server...")
-    subprocess.run(
-        ["cargo", "build", "--release", "-p", "stepflow-server"],
-        cwd=PROJECT_ROOT / "stepflow-rs",
-        check=True,
-        capture_output=True,
-    )
-
-    print(f">>> Starting stepflow-server on port {PORT}...")
-    server_bin = PROJECT_ROOT / "stepflow-rs" / "target" / "release" / "stepflow-server"
-    _server_process = subprocess.Popen(
-        [str(server_bin), "--port", str(PORT)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    print(">>> Waiting for server to be ready...")
-    for i in range(30):
-        try:
-            urllib.request.urlopen(f"http://localhost:{PORT}/api/v1/health", timeout=1)
-            break
-        except Exception as e:
-            if i == 29:
-                raise RuntimeError("Server failed to start") from e
-            time.sleep(1)
-
-    print(">>> Fetching OpenAPI spec...")
-    with urllib.request.urlopen(f"http://localhost:{PORT}/api/v1/openapi.json") as resp:
-        output_path.write_bytes(resp.read())
-
-    _server_process.terminate()
-    _server_process.wait()
-    _server_process = None
 
 
 def check_java_installed() -> bool:
@@ -259,8 +196,6 @@ ONEOF_MODELS = [
     "primitive_value.py",
     "error_action.py",
     "flow_result.py",
-    "diagnostic_message.py",
-    "path_part.py",
 ]
 
 
@@ -343,6 +278,46 @@ def exclude_additional_properties(directory: Path) -> None:
             count += 1
 
     print(f"    Fixed {count} model files")
+
+
+def fix_sanitize_for_serialization(directory: Path) -> None:
+    """Fix sanitize_for_serialization to handle oneOf wrappers returning non-dicts.
+
+    OneOf wrapper models like ValueExpr can return primitives from to_dict()
+    when they wrap a primitive value. The default sanitize_for_serialization
+    assumes to_dict() always returns a dict, causing AttributeError.
+
+    This patch adds a check after to_dict() to recursively sanitize non-dict results.
+    """
+    print(">>> Fixing sanitize_for_serialization for oneOf wrappers...")
+    api_client_path = directory / "api_client.py"
+
+    if not api_client_path.exists():
+        print("    api_client.py not found, skipping")
+        return
+
+    content = api_client_path.read_text()
+
+    # Pattern to find the problematic block
+    old_pattern = r"""(if hasattr\(obj, "to_dict"\) and callable\(obj\.to_dict\):
+                obj_dict = obj\.to_dict\(\))
+            else:"""
+
+    # Replacement with the fix
+    new_value = r"""if hasattr(obj, "to_dict") and callable(obj.to_dict):
+                obj_dict = obj.to_dict()
+                # Handle oneOf wrappers like ValueExpr that may return
+                # non-dict values from to_dict() (e.g., primitives)
+                if not isinstance(obj_dict, dict):
+                    return self.sanitize_for_serialization(obj_dict)
+            else:"""
+
+    if re.search(old_pattern, content):
+        content = re.sub(old_pattern, new_value, content)
+        api_client_path.write_text(content)
+        print("    Fixed sanitize_for_serialization in api_client.py")
+    else:
+        print("    Pattern not found (may already be patched)")
 
 
 def copy_generated_files(src: Path, dest: Path) -> None:
@@ -439,6 +414,9 @@ def do_generate(spec_file: Path) -> None:
     # Exclude additional_properties from serialization
     exclude_additional_properties(SRC_DIR)
 
+    # Fix sanitize_for_serialization for oneOf wrappers
+    fix_sanitize_for_serialization(SRC_DIR)
+
     # Format again after patches
     format_files(SRC_DIR)
 
@@ -474,11 +452,17 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"ERROR: No stored spec at {STORED_SPEC}")
         return 1
 
-    # Generate fresh
+    # Generate fresh with all transformations (same as do_generate)
     generated = run_openapi_generator(STORED_SPEC, _temp_dir)
     generated_pkg = generated / "stepflow_py" / "api"
     add_generated_headers(generated_pkg, STORED_SPEC.name)
     format_files(generated)
+
+    # Apply the same post-processing patches as do_generate
+    add_oneof_serializers(generated_pkg)
+    exclude_additional_properties(generated_pkg)
+    fix_sanitize_for_serialization(generated_pkg)
+    format_files(generated_pkg)
 
     # Compare hashes
     generated_hash = compute_dir_hash(generated_pkg)
@@ -493,19 +477,6 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_update_spec(args: argparse.Namespace) -> int:
-    """Handle 'update-spec' subcommand."""
-    print(">>> Updating stored OpenAPI spec from server...")
-    fetch_spec_from_server(STORED_SPEC)
-    print(f">>> Stored spec updated: {STORED_SPEC}")
-
-    if args.generate:
-        print()
-        do_generate(STORED_SPEC)
-
-    return 0
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Generate stepflow-api from OpenAPI spec",
@@ -514,14 +485,15 @@ def main():
 subcommands:
   generate      Regenerate client from stored spec (default)
   check         Check if client is up-to-date with stored spec
-  update-spec   Fetch new spec from running stepflow-server
 
 examples:
   %(prog)s                          # Regenerate from stored spec
   %(prog)s generate --from FILE     # Regenerate from specific file
   %(prog)s check                    # Verify client is current
-  %(prog)s update-spec              # Fetch new spec from server
-  %(prog)s update-spec --generate   # Fetch spec AND regenerate
+
+To update schemas/openapi.json, run from stepflow-rs:
+  STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server \\
+      test_openapi_schema_generation
 """,
     )
 
@@ -548,18 +520,6 @@ examples:
         description="Verify client matches stored spec. Exits non-zero if stale.",
     )
 
-    # update-spec subcommand
-    update_parser = subparsers.add_parser(
-        "update-spec",
-        help="Update stored spec from server",
-        description="Build stepflow-server, run it, and fetch the OpenAPI spec.",
-    )
-    update_parser.add_argument(
-        "--generate",
-        action="store_true",
-        help="Also regenerate client after updating spec",
-    )
-
     args = parser.parse_args()
 
     print("=== stepflow-api generation ===")
@@ -573,8 +533,6 @@ examples:
         result = cmd_generate(args)
     elif args.command == "check":
         result = cmd_check(args)
-    elif args.command == "update-spec":
-        result = cmd_update_spec(args)
     else:
         parser.print_help()
         result = 1

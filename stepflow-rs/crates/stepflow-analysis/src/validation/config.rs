@@ -13,7 +13,7 @@
 use indexmap::IndexMap;
 use stepflow_plugin::routing::RoutingConfig;
 
-use crate::{DiagnosticMessage, Diagnostics, make_path};
+use crate::{DiagnosticKind, Diagnostics, diagnostic, make_path};
 
 /// Validate configuration structure and consistency
 pub fn validate_config(
@@ -24,16 +24,19 @@ pub fn validate_config(
     // Check that at least one plugin is configured
     if plugins.is_empty() {
         diagnostics.add(
-            DiagnosticMessage::NoPluginsConfigured,
-            make_path!("plugins"),
+            diagnostic!(DiagnosticKind::NoPluginsConfigured, "No plugins configured")
+                .at(make_path!("plugins")),
         );
     }
 
     // Check that routing rules exist
     if routing.routes.is_empty() {
         diagnostics.add(
-            DiagnosticMessage::NoRoutingRulesConfigured,
-            make_path!("routes"),
+            diagnostic!(
+                DiagnosticKind::NoRoutingRulesConfigured,
+                "No routing rules configured"
+            )
+            .at(make_path!("routes")),
         );
     }
 
@@ -41,13 +44,20 @@ pub fn validate_config(
     for (path, rules) in &routing.routes {
         for (rule_index, rule) in rules.iter().enumerate() {
             if !plugins.contains_key(rule.plugin.as_ref()) {
+                let route_path = path.clone();
+                let plugin = rule.plugin.as_ref().to_string();
                 diagnostics.add(
-                    DiagnosticMessage::InvalidRouteReference {
-                        route_path: path.clone(),
+                    diagnostic!(
+                        DiagnosticKind::InvalidRouteReference,
+                        "Route '{route_path}' references unknown plugin '{plugin}'",
+                        { route_path, rule_index, plugin }
+                    )
+                    .at(make_path!(
+                        "routes",
+                        path.to_string(),
                         rule_index,
-                        plugin: rule.plugin.as_ref().to_string(),
-                    },
-                    make_path!("routes", path.to_string(), rule_index, "plugin"),
+                        "plugin"
+                    )),
                 );
             }
         }
@@ -61,11 +71,14 @@ pub fn validate_config(
             .flatten()
             .any(|rule| rule.plugin.as_ref() == plugin_name);
         if !is_referenced {
+            let plugin = plugin_name.clone();
             diagnostics.add(
-                DiagnosticMessage::UnusedPlugin {
-                    plugin: plugin_name.clone(),
-                },
-                make_path!("plugins", plugin_name.to_string()),
+                diagnostic!(
+                    DiagnosticKind::UnusedPlugin,
+                    "Plugin '{plugin}' is not used by any route",
+                    { plugin }
+                )
+                .at(make_path!("plugins", plugin_name.to_string())),
             );
         }
     }
@@ -76,7 +89,7 @@ mod tests {
     use indexmap::IndexMap;
 
     use super::validate_config;
-    use crate::{DiagnosticMessage, Diagnostics};
+    use crate::{DiagnosticKind, Diagnostics};
 
     #[test]
     fn test_valid_config() {
@@ -124,13 +137,13 @@ mod tests {
             diagnostics
                 .diagnostics
                 .iter()
-                .any(|d| matches!(d.message(), DiagnosticMessage::NoPluginsConfigured))
+                .any(|d| d.kind == DiagnosticKind::NoPluginsConfigured.name())
         );
         assert!(
             diagnostics
                 .diagnostics
                 .iter()
-                .any(|d| matches!(d.message(), DiagnosticMessage::NoRoutingRulesConfigured))
+                .any(|d| d.kind == DiagnosticKind::NoRoutingRulesConfigured.name())
         );
     }
 
@@ -164,7 +177,7 @@ mod tests {
             diagnostics
                 .diagnostics
                 .iter()
-                .any(|d| matches!(d.message(), DiagnosticMessage::InvalidRouteReference { .. }))
+                .any(|d| d.kind == DiagnosticKind::InvalidRouteReference.name())
         );
     }
 
@@ -186,7 +199,7 @@ mod tests {
             diagnostics
                 .diagnostics
                 .iter()
-                .any(|d| matches!(d.message(), DiagnosticMessage::UnusedPlugin { .. }))
+                .any(|d| d.kind == DiagnosticKind::UnusedPlugin.name())
         );
     }
 }

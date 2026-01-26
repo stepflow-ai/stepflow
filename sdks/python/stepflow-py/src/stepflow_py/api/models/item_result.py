@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,18 +32,23 @@ from stepflow_py.api.models.flow_result import FlowResult
 
 class ItemResult(BaseModel):
     """
-    A single item result in a multi-item run
+    Result for an individual item in a multi-item run.
     """  # noqa: E501
 
     item_index: Annotated[int, Field(strict=True, ge=0)] = Field(
-        description="Item index (0-based)", alias="itemIndex"
+        description="Index of this item in the input array (0-based).",
+        alias="itemIndex",
     )
-    status: ExecutionStatus = Field(description="The status of this item")
+    status: ExecutionStatus = Field(description="Execution status of this item.")
     result: FlowResult | None = Field(
-        default=None,
-        description="The result of the flow execution for this item (if completed)",
+        default=None, description="Result of this item, if completed."
     )
-    __properties: ClassVar[list[str]] = ["itemIndex", "status", "result"]
+    completed_at: datetime | None = Field(
+        default=None,
+        description="When this item completed (if completed).",
+        alias="completedAt",
+    )
+    __properties: ClassVar[list[str]] = ["itemIndex", "status", "result", "completedAt"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -89,6 +95,11 @@ class ItemResult(BaseModel):
         if self.result is None and "result" in self.model_fields_set:
             _dict["result"] = None
 
+        # set to None if completed_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.completed_at is None and "completed_at" in self.model_fields_set:
+            _dict["completedAt"] = None
+
         return _dict
 
     @classmethod
@@ -107,6 +118,7 @@ class ItemResult(BaseModel):
                 "result": FlowResult.from_dict(obj["result"])
                 if obj.get("result") is not None
                 else None,
+                "completedAt": obj.get("completedAt"),
             }
         )
         return _obj

@@ -15,9 +15,8 @@ use std::collections::HashSet;
 use stepflow_core::ValueExpr;
 use stepflow_core::workflow::Flow;
 
-use crate::DiagnosticMessage;
-use crate::Diagnostics;
 use crate::validation::path::make_path;
+use crate::{DiagnosticKind, Diagnostics, diagnostic};
 
 /// Detect unreachable steps (steps that no other step or output depends on)
 pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) {
@@ -34,11 +33,14 @@ pub fn validate_step_reachability(flow: &Flow, diagnostics: &mut Diagnostics) {
     // Find unreachable steps
     for (index, step) in flow.steps().iter().enumerate() {
         if !referenced_steps.contains(&step.id) {
+            let step_id = &step.id;
             diagnostics.add(
-                DiagnosticMessage::UnreachableStep {
-                    step_id: step.id.clone(),
-                },
-                make_path!("steps", index),
+                diagnostic!(
+                    DiagnosticKind::UnreachableStep,
+                    "Step '{step_id}' is not reachable from the output",
+                    { step_id }
+                )
+                .at(make_path!("steps", index)),
             );
         }
     }

@@ -17,7 +17,8 @@ use stepflow_core::{
     workflow::{Flow, Step},
 };
 
-use crate::{DiagnosticMessage, Diagnostics, Path, validation::path::make_path};
+use crate::validation::path::make_path;
+use crate::{DiagnosticKind, Diagnostics, Path, diagnostic};
 
 /// Validate step ordering and references - steps can only reference earlier steps
 pub fn validate_references(flow: &Flow, diagnostics: &mut Diagnostics) {
@@ -82,50 +83,64 @@ fn validate_value_expr(
         } => {
             // Check for self-reference
             if current_step_id == step {
+                let step_id = step.clone();
                 diagnostics.add(
-                    DiagnosticMessage::SelfReference {
-                        step_id: step.clone(),
-                    },
-                    path.clone(),
+                    diagnostic!(
+                        DiagnosticKind::SelfReference,
+                        "Step '{step_id}' references itself",
+                        { step_id }
+                    )
+                    .at(path.clone()),
                 );
                 return;
             }
 
             // Check if step exists and is available (defined earlier)
             if !available_steps.contains(step) {
+                let from_step = current_step_id.to_string();
+                let referenced_step = step.clone();
                 diagnostics.add(
-                    DiagnosticMessage::UndefinedStepReference {
-                        from_step: Some(current_step_id.to_string()),
-                        referenced_step: step.clone(),
-                    },
-                    path.clone(),
+                    diagnostic!(
+                        DiagnosticKind::UndefinedStepReference,
+                        "Step '{from_step}' references undefined step '{referenced_step}'",
+                        { from_step, referenced_step }
+                    )
+                    .at(path.clone()),
                 );
                 return;
             }
 
-            // Generate ignored diagnostic about potential field access issues (when we don't have schema info)
+            // Generate experimental diagnostic about potential field access issues (when we don't have schema info)
             if !field_path.is_empty() {
+                let step_id = step.clone();
+                let field = field_path.to_string();
+                let reason = "no output schema available".to_string();
                 diagnostics.add(
-                    DiagnosticMessage::UnvalidatedFieldAccess {
-                        step_id: step.clone(),
-                        field: field_path.to_string(),
-                        reason: "no output schema available".to_string(),
-                    },
-                    path.clone(),
+                    diagnostic!(
+                        DiagnosticKind::UnvalidatedFieldAccess,
+                        "Field access '{field}' on step '{step_id}' cannot be validated: {reason}",
+                        { step_id, field, reason }
+                    )
+                    .at(path.clone())
+                    .experimental(),
                 );
             }
         }
         ValueExpr::Input { input } => {
             // Workflow input reference is always valid
-            // Generate warning about unvalidated field access only if there's no input schema
+            // Generate experimental warning about unvalidated field access only if there's no input schema
             if !input.is_empty() && flow.input_schema().is_none() {
+                let step_id = "workflow_input".to_string();
+                let field = input.to_string();
+                let reason = "no input schema available".to_string();
                 diagnostics.add(
-                    DiagnosticMessage::UnvalidatedFieldAccess {
-                        step_id: "workflow_input".to_string(),
-                        field: input.to_string(),
-                        reason: "no input schema available".to_string(),
-                    },
-                    path.clone(),
+                    diagnostic!(
+                        DiagnosticKind::UnvalidatedFieldAccess,
+                        "Field access '{field}' on step '{step_id}' cannot be validated: {reason}",
+                        { step_id, field, reason }
+                    )
+                    .at(path.clone())
+                    .experimental(),
                 );
             }
         }
@@ -152,41 +167,53 @@ fn validate_value_expr(
                     let has_schema_default = var_schema.default_value(var_name).is_some();
 
                     if !has_inline_default && !has_schema_default {
+                        let variable = var_name.to_string();
+                        let context = format!("step '{}'", current_step_id);
                         diagnostics.add(
-                            DiagnosticMessage::UndefinedRequiredVariable {
-                                variable: var_name.to_string(),
-                                context: format!("step '{}'", current_step_id),
-                            },
-                            path.clone(),
+                            diagnostic!(
+                                DiagnosticKind::UndefinedRequiredVariable,
+                                "Required variable '{variable}' is not defined in {context}",
+                                { variable, context }
+                            )
+                            .at(path.clone()),
                         );
                     } else {
+                        let variable = var_name.to_string();
+                        let context = format!("step '{}'", current_step_id);
                         diagnostics.add(
-                            DiagnosticMessage::UndefinedVariable {
-                                variable: var_name.to_string(),
-                                context: format!("step '{}'", current_step_id),
-                            },
-                            path.clone(),
+                            diagnostic!(
+                                DiagnosticKind::UndefinedVariable,
+                                "Variable '{variable}' is not defined in {context}",
+                                { variable, context }
+                            )
+                            .at(path.clone()),
                         );
                     }
                 }
 
-                // Still generate warning for field access if no schema info available
+                // Still generate experimental warning for field access if no schema info available
                 if parts.len() > 1 {
+                    let step_id = format!("variable_{}", var_name);
+                    let field = variable.to_string();
+                    let reason = "variable field type validation not yet implemented".to_string();
                     diagnostics.add(
-                        DiagnosticMessage::UnvalidatedFieldAccess {
-                            step_id: format!("variable_{}", var_name),
-                            field: variable.to_string(),
-                            reason: "variable field type validation not yet implemented"
-                                .to_string(),
-                        },
-                        path.clone(),
+                        diagnostic!(
+                            DiagnosticKind::UnvalidatedFieldAccess,
+                            "Field access '{field}' on step '{step_id}' cannot be validated: {reason}",
+                            { step_id, field, reason }
+                        )
+                        .at(path.clone())
+                        .experimental(),
                     );
                 }
             } else {
                 // No variable schema defined - add warning
                 diagnostics.add(
-                    DiagnosticMessage::MissingVariableSchema,
-                    make_path!("variables"),
+                    diagnostic!(
+                        DiagnosticKind::MissingVariableSchema,
+                        "No variable schema defined"
+                    )
+                    .at(make_path!("variables")),
                 );
             }
 
