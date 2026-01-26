@@ -121,9 +121,7 @@ pub struct ListItemsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepRunResponse {
-    /// Step index in the flow
-    pub step_index: usize,
-    /// Step ID
+    /// Step ID (the stable identifier for this step in the workflow)
     pub step_id: String,
     /// Component name/URL that this step executes
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -442,7 +440,6 @@ pub async fn get_run_steps(
         let result = completed_steps.get(&idx).map(|sr| sr.result().clone());
 
         let step_response = StepRunResponse {
-            step_index: idx,
             step_id: step.id.clone(),
             component: Some(step.component.to_string()),
             status,
