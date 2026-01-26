@@ -20,7 +20,9 @@
 # Global state
 VERBOSE=${VERBOSE:-false}
 FAILED_CHECKS=()
+FAILED_CHECK_CMDS=()  # Parallel array with reproduce commands for each failed check
 _LIB_TMPDIR=""
+_LIB_PROJECT_ROOT=""  # Set by scripts for relative path calculation
 
 # Cleanup temp files on exit
 _lib_cleanup() {
@@ -91,16 +93,40 @@ print_skip() {
     echo "(skipped: $1)"
 }
 
+# Print verbose-only message (indented)
+# Usage: print_verbose "message"
+print_verbose() {
+    if [ "$VERBOSE" = true ]; then
+        echo "    $1"
+    fi
+}
+
 # Print warning (for optional tools)
 # Usage: print_warn "cargo-deny not found"
 print_warn() {
     echo "⚠️  $1"
 }
 
+# Compute the reproduce command for a check
+# Usage: _make_reproduce_cmd command [args...]
+# Outputs: cd <relative_path> && command [args...]
+_make_reproduce_cmd() {
+    local cmd="$*"
+    local rel_path=""
+
+    # Compute relative path from project root if set
+    if [ -n "$_LIB_PROJECT_ROOT" ] && [ "$PWD" != "$_LIB_PROJECT_ROOT" ]; then
+        rel_path="${PWD#$_LIB_PROJECT_ROOT/}"
+        echo "cd $rel_path && $cmd"
+    else
+        echo "$cmd"
+    fi
+}
+
 # Run a check command with output capture
 # Usage: run_check "Step name" command [args...]
 # Returns: 0 on success, 1 on failure
-# On failure, adds step name to FAILED_CHECKS array
+# On failure, adds step name to FAILED_CHECKS array and reproduce cmd to FAILED_CHECK_CMDS
 run_check() {
     local name="$1"
     shift
@@ -117,14 +143,24 @@ run_check() {
     if [ "$VERBOSE" = true ]; then
         echo ""
         echo "    Running: $*"
+        # Use pipefail to capture command exit code through tee
+        local exit_code
+        set -o pipefail
         if "$@" 2>&1 | tee "$outfile"; then
-            print_step "$name"
+            exit_code=0
+        else
+            exit_code=$?
+        fi
+        set +o pipefail
+
+        print_step "$name"
+        if [ $exit_code -eq 0 ]; then
             print_pass
             return 0
         else
-            print_step "$name"
             print_fail
             FAILED_CHECKS+=("$name")
+            FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
             return 1
         fi
     else
@@ -134,6 +170,7 @@ run_check() {
         else
             print_fail
             FAILED_CHECKS+=("$name")
+            FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
             # Show captured output on failure
             echo "    Output:"
             sed 's/^/      /' "$outfile" | head -50
@@ -190,8 +227,10 @@ print_summary() {
     else
         echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
         echo ""
-        echo "To debug:"
-        echo "  $script -v"
+        echo "To reproduce:"
+        for cmd in "${FAILED_CHECK_CMDS[@]}"; do
+            echo "  $cmd"
+        done
         return 1
     fi
 }

@@ -27,6 +27,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -42,48 +43,40 @@ require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 # PYTHON SDK SETUP
 # =============================================================================
 
-run_check "Python install" uv python install
-run_check "Dependencies" uv sync --all-extras --group dev
+run_check "Python install" uv python install || true
+run_check "Dependencies" uv sync --all-extras --group dev || true
 
 # =============================================================================
 # PYTHON SDK CHECKS
 # =============================================================================
 
-run_check "Codegen" uv run poe codegen-fix
+run_check "Codegen" uv run poe codegen-fix || true
 
-run_check "Formatting" uv run poe fmt-check
-if [ $? -ne 0 ]; then
+if ! run_check "Formatting" uv run poe fmt-check; then
     print_fix "uv run poe fmt-fix"
 fi
 
-run_check "Linting" uv run poe lint-check
-if [ $? -ne 0 ]; then
+if ! run_check "Linting" uv run poe lint-check; then
     print_fix "uv run poe lint-fix"
 fi
 
-run_check "Type checking" uv run poe type-check
-if [ $? -ne 0 ]; then
+if ! run_check "Type checking" uv run poe type-check; then
     print_fix "Fix type errors"
-    print_rerun "uv run poe type-check"
 fi
 
-run_check "Dep check" uv run poe dep-check
-if [ $? -ne 0 ]; then
+if ! run_check "Dep check" uv run poe dep-check; then
     print_fix "Fix dependency issues"
 fi
 
-run_check "Tests" uv run poe test
-if [ $? -ne 0 ]; then
+if ! run_check "Tests" uv run poe test; then
     print_fix "Fix failing tests"
-    print_rerun "uv run poe test"
 fi
 
 # =============================================================================
 # ADDITIONAL CHECKS
 # =============================================================================
 
-run_check "Codegen check" uv run poe codegen-check
-if [ $? -ne 0 ]; then
+if ! run_check "Codegen check" uv run poe codegen-check; then
     print_fix "uv run poe codegen-fix"
 fi
 

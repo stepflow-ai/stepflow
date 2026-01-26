@@ -27,6 +27,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -42,12 +43,10 @@ require_tool "pnpm" "npm install -g pnpm"
 # DOCUMENTATION CHECKS
 # =============================================================================
 
-run_check "Dependencies" pnpm install --frozen-lockfile
+run_check "Dependencies" pnpm install --frozen-lockfile || true
 
-run_check "Build" pnpm build
-if [ $? -ne 0 ]; then
+if ! run_check "Build" pnpm build; then
     print_fix "Fix build errors"
-    print_rerun "cd docs && pnpm build"
 fi
 
 # =============================================================================

@@ -27,6 +27,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -42,8 +43,7 @@ require_tool "licensure" "cargo install licensure"
 # LICENSE HEADER CHECKS
 # =============================================================================
 
-run_check "License headers" licensure -c -p
-if [ $? -ne 0 ]; then
+if ! run_check "License headers" licensure -c -p; then
     print_fix "licensure -p --in-place"
 fi
 
