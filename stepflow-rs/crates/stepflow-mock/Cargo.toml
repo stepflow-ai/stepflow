@@ -22,6 +22,7 @@ stepflow-plugin.workspace = true
 stepflow-core.workspace = true
 log.workspace = true
 tokio.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
 static_assertions.workspace = true

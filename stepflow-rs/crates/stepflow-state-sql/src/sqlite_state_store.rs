@@ -51,7 +51,7 @@ fn parse_sqlite_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 }
 
 /// Configuration for SqliteStateStore
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SqliteStateStoreConfig {
     pub database_url: String,

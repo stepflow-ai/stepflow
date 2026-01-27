@@ -27,6 +27,13 @@ import pytest_asyncio
 from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
 
 from stepflow_py import StepflowClient
+from stepflow_py.config import (
+    BuiltinPluginConfig,
+    InMemoryStateStoreConfig,
+    RouteRule,
+    StepflowConfig,
+    StepflowSubprocessPluginConfig,
+)
 
 
 # Configure pytest-asyncio to use module-scoped event loops
@@ -39,50 +46,34 @@ def event_loop():
 
 
 @pytest.fixture(scope="module")
-def integration_config(tmp_path_factory):
+def integration_config():
     """Create configuration for integration tests.
 
     Uses the Python SDK worker for UDF components.
+    Returns a StepflowConfig object (passed to orchestrator via stdin).
     """
-    import tempfile
-
-    import yaml
-
     # Get path to Python SDK for UDF component
     python_sdk_path = Path(__file__).parent.parent.parent.parent
 
-    config_dict = {
-        "plugins": {
-            "builtin": {"type": "builtin"},
-            "python": {
-                "type": "stepflow",
-                "command": "uv",
-                "args": [
+    return StepflowConfig(
+        plugins={
+            "builtin": BuiltinPluginConfig(),
+            "python": StepflowSubprocessPluginConfig(
+                command="uv",
+                args=[
                     "--project",
                     str(python_sdk_path),
                     "run",
                     "stepflow_worker",
                 ],
-            },
+            ),
         },
-        "routes": {
-            "/builtin/{*component}": [{"plugin": "builtin"}],
-            "/python/{*component}": [{"plugin": "python"}],
+        routes={
+            "/builtin/{*component}": [RouteRule(plugin="builtin")],
+            "/python/{*component}": [RouteRule(plugin="python")],
         },
-        "stateStore": {"type": "inMemory"},
-    }
-
-    # Write config to temporary file
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False
-    ) as config_file:
-        yaml.dump(config_dict, config_file, default_flow_style=False, sort_keys=False)
-        config_path = Path(config_file.name)
-
-    yield str(config_path)
-
-    # Cleanup
-    config_path.unlink(missing_ok=True)
+        stateStore=InMemoryStateStoreConfig(type="inMemory"),
+    )
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -99,9 +90,9 @@ async def stepflow_client(integration_config):
             "Set it to the path of the stepflow-server binary."
         )
 
-    # Create orchestrator config
+    # Create orchestrator config with StepflowConfig object (passed via stdin)
     orch_config = OrchestratorConfig(
-        config_path=Path(integration_config),
+        config=integration_config,
         startup_timeout=60.0,
     )
 

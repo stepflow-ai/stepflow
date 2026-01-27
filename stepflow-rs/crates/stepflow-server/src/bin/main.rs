@@ -13,6 +13,7 @@
 use clap::Parser;
 use error_stack::{Report, ResultExt as _};
 use log::info;
+use std::io::Read as _;
 use std::path::PathBuf;
 use stepflow_config::StepflowConfig;
 use stepflow_observability::{ObservabilityConfig, init_observability};
@@ -42,8 +43,12 @@ struct Args {
     port: u16,
 
     /// Path to stepflow configuration file
-    #[arg(short, long, env = "STEPFLOW_CONFIG")]
+    #[arg(short, long, env = "STEPFLOW_CONFIG", conflicts_with = "config_stdin")]
     config: Option<PathBuf>,
+
+    /// Read configuration from stdin as JSON
+    #[arg(long, conflicts_with = "config")]
+    config_stdin: bool,
 
     /// Observability configuration
     #[command(flatten)]
@@ -52,10 +57,18 @@ struct Args {
 
 async fn create_executor(
     config_path: Option<PathBuf>,
+    config_stdin: bool,
 ) -> Result<std::sync::Arc<stepflow_plugin::StepflowEnvironment>> {
     info!("Creating Stepflow executor from configuration");
 
-    let config = if let Some(path) = config_path {
+    let config = if config_stdin {
+        let mut buffer = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buffer)
+            .change_context(ServerError::ConfigError)
+            .attach_printable("Failed to read configuration from stdin")?;
+        StepflowConfig::load_from_json(&buffer).change_context(ServerError::ConfigError)?
+    } else if let Some(path) = config_path {
         StepflowConfig::load_from_file(&path)
             .await
             .change_context(ServerError::ConfigError)?
@@ -95,7 +108,7 @@ async fn main() {
     );
 
     let result = async {
-        let executor = create_executor(args.config).await?;
+        let executor = create_executor(args.config, args.config_stdin).await?;
 
         stepflow_server::start_server(args.port, executor)
             .await
