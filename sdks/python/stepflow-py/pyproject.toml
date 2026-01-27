@@ -67,6 +67,9 @@ http = [
 langchain = [
     "langchain-core>=0.3",
 ]
+local = [
+    "stepflow-orchestrator~=0.8.0",
+]
 
 [dependency-groups]
 dev = [
