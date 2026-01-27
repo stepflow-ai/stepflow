@@ -1,8 +1,8 @@
-name: Release - Rust
+name: Release - Stepflow
 
 on:
   repository_dispatch:
-    types: [build-release]
+    types: [build-stepflow-release]
   workflow_dispatch:
     inputs:
       version:
@@ -47,11 +47,11 @@ jobs:
             echo "Tag: ${{ github.event.client_payload.tag }}"
           else
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "tag=stepflow-rs-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-${{ inputs.version }}" >> $GITHUB_OUTPUT
             echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
             echo "Source: manual workflow dispatch"
             echo "Version: ${{ inputs.version }}"
-            echo "Tag: stepflow-rs-${{ inputs.version }}"
+            echo "Tag: stepflow-${{ inputs.version }}"
             echo "Skip tag: ${{ inputs.skip_tag_creation }}"
           fi
 
@@ -199,10 +199,64 @@ jobs:
             ${{ needs.determine-version.outputs.version }} \
             ${{ env.REGISTRY }}/${{ github.repository }}
 
+  build-stepflow-wheels:
+    name: Build Python Wheels
+    runs-on: ubuntu-22.04
+    needs: [build-binaries, determine-version]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./binaries
+          pattern: artifact-stepflow-*
+          merge-multiple: true
+
+      - name: Build platform-specific wheels
+        run: |
+          chmod +x ./scripts/build-stepflow-wheels.sh
+          ./scripts/build-stepflow-wheels.sh ./binaries ./wheels
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stepflow-wheels
+          path: ./wheels/*.whl
+          retention-days: 7
+
+  publish-stepflow-wheels:
+    name: Publish Wheels to PyPI
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-stepflow-wheels]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/stepflow-orchestrator
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: stepflow-wheels
+          path: ./wheels
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: wheels/
+          print-hash: true
+
   create-tag-and-release:
     name: Create Tag and Release
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-binaries, build-docker]
+    needs: [determine-version, build-binaries, build-docker, build-stepflow-wheels, publish-stepflow-wheels]
     if: needs.determine-version.outputs.skip_tag == 'false'
     permissions:
       contents: write
@@ -276,11 +330,17 @@ jobs:
       - name: Create release notes
         run: |
           cat > release-notes.md << 'EOF'
-          ## Stepflow Rust Binary Release v${{ needs.determine-version.outputs.version }}
+          ## Stepflow Release v${{ needs.determine-version.outputs.version }}
 
           📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[Full Changelog](https://github.com/${{ github.repository }}/blob/main/stepflow-rs/CHANGELOG.md)**
 
-          This release includes pre-built binaries for multiple platforms.
+          This release includes pre-built binaries for multiple platforms and Python wheels.
+
+          ### 🐍 Python Package (Recommended)
+          ```bash
+          pip install stepflow-orchestrator
+          ```
+          Platform-specific wheels are available on [PyPI](https://pypi.org/project/stepflow-orchestrator/).
 
           **Unix platforms** (Linux, macOS) include three binaries:
           - `stepflow` - CLI tool for running workflows
@@ -369,7 +429,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ needs.determine-version.outputs.tag }}" \
-            --title "Stepflow Rust v${{ needs.determine-version.outputs.version }}" \
+            --title "Stepflow v${{ needs.determine-version.outputs.version }}" \
             --notes-file release-notes.md \
             stepflow-rs/CHANGELOG.md \
             ./archives/stepflow-*.tar.gz \
@@ -378,39 +438,54 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-binaries, build-docker, create-tag-and-release]
+    needs: [determine-version, build-binaries, build-docker, build-stepflow-wheels, publish-stepflow-wheels, create-tag-and-release]
     if: always()
 
     steps:
       - name: Check job results
         run: |
-          echo "## Build Summary ${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Stepflow Release Summary ${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.build-binaries.result }}" = "success" ]; then
-            echo "| Binary builds |  Success |" >> $GITHUB_STEP_SUMMARY
+            echo "| Binary builds | ✅ Success |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Binary builds | L Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Binary builds | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ needs.build-docker.result }}" = "success" ]; then
-            echo "| Docker builds & manifests |  Success |" >> $GITHUB_STEP_SUMMARY
+            echo "| Docker builds & manifests | ✅ Success |" >> $GITHUB_STEP_SUMMARY
           else
-            echo "| Docker builds & manifests | L Failed |" >> $GITHUB_STEP_SUMMARY
+            echo "| Docker builds & manifests | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.build-stepflow-wheels.result }}" = "success" ]; then
+            echo "| Python wheel builds | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Python wheel builds | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
-            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
-              echo "| Release Creation |  Success |" >> $GITHUB_STEP_SUMMARY
-            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
-              echo "| Release Creation |  Skipped |" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ needs.publish-stepflow-wheels.result }}" = "success" ]; then
+              echo "| PyPI publish | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.publish-stepflow-wheels.result }}" = "skipped" ]; then
+              echo "| PyPI publish | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| Release Creation | L Failed |" >> $GITHUB_STEP_SUMMARY
+              echo "| PyPI publish | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+              echo "| GitHub Release | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
+              echo "| GitHub Release | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| GitHub Release | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "| Release Creation |  Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| PyPI publish | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Release | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -422,10 +497,12 @@ jobs:
           echo "  - stepflow-server (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
           echo "  - stepflow-load-balancer (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
           echo "  - stepflow (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Wheels**: 7 platform-specific wheels" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
             echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Release:** [Stepflow Rust v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** [Stepflow v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+            echo "**PyPI:** [stepflow-orchestrator ${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-orchestrator/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
           fi

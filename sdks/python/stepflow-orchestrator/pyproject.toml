@@ -56,6 +56,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stepflow_orchestrator"]
+# Include binary files in bin/ directory (added at build time for releases)
+artifacts = ["src/stepflow_orchestrator/bin/*"]
 
 [tool.ruff]
 target-version = "py311"
