@@ -17,7 +17,7 @@ use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::JsonPath;
 
 /// Path-keyed routing configuration
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutingConfig {
     /// Path-to-routing rules mapping
@@ -32,7 +32,7 @@ pub struct RoutingConfig {
 }
 
 /// A single routing rule for a specific path
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteRule {
     /// Optional input conditions that must match for this rule to apply
@@ -43,15 +43,18 @@ pub struct RouteRule {
     ///
     /// If omitted, all components are allowed to match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Vec<String>>)]
     pub component_allow: Option<Vec<Cow<'static, str>>>,
 
     /// Optional component denylist - these components are blocked from matching this rule
     ///
     /// If omitted, no components are blocked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Vec<String>>)]
     pub component_deny: Option<Vec<Cow<'static, str>>>,
 
     /// Plugin name to route to
+    #[schema(value_type = String)]
     pub plugin: Cow<'static, str>,
 
     /// Component name to pass to the plugin.
@@ -59,11 +62,12 @@ pub struct RouteRule {
     ///
     /// May be a pattern referencing path placeholders, e.g., "{component}" or "{*component}".
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
     pub component: Option<Cow<'static, str>>,
 }
 
 /// JSON path condition for matching specific parts of input data
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InputCondition {
     /// JSON path expression (e.g., "$.model", "$.config.temperature")
@@ -74,7 +78,7 @@ pub struct InputCondition {
 }
 
 /// Information about a route match for reverse routing
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteMatch {
     /// The path pattern that matches this route (e.g., "/builtin/{component}")

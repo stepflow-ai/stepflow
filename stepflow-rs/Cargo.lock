@@ -4671,6 +4671,7 @@ dependencies = [
  "subst",
  "thiserror 2.0.17",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 
@@ -4686,6 +4687,7 @@ dependencies = [
  "serde_yaml_ng",
  "stepflow-builtins",
  "stepflow-components-mcp",
+ "stepflow-core",
  "stepflow-mock",
  "stepflow-plugin",
  "stepflow-protocol",
@@ -4693,6 +4695,7 @@ dependencies = [
  "stepflow-state-sql",
  "thiserror 2.0.17",
  "tokio",
+ "utoipa",
 ]
 
 [[package]]
@@ -4787,6 +4790,7 @@ dependencies = [
  "stepflow-core",
  "stepflow-plugin",
  "tokio",
+ "utoipa",
 ]
 
 [[package]]
@@ -4827,6 +4831,7 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
  "trait-variant",
+ "utoipa",
  "uuid",
 ]
 
@@ -4926,6 +4931,7 @@ dependencies = [
  "stepflow-dtos",
  "stepflow-state",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 

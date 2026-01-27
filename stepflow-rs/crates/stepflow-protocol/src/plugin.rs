@@ -33,7 +33,7 @@ use crate::protocol::{
 };
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
@@ -44,7 +44,7 @@ pub struct StepflowPluginConfig {
 /// Either `command` or `url` must be provided (but not both):
 /// - `command`: Launch a subprocess HTTP server
 /// - `url`: Connect to an existing HTTP server
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum StepflowTransport {
     /// Subprocess mode: launch a process that runs an HTTP server.
@@ -70,7 +70,7 @@ pub enum StepflowTransport {
 }
 
 /// Configuration for health check polling when launching subprocess servers.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckConfig {
     /// Health check endpoint path. Default: "/health"

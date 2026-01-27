@@ -37,6 +37,7 @@ tokio.workspace = true
 # Utilities
 indexmap.workspace = true
 subst.workspace = true
+utoipa.workspace = true
 
 [dev-dependencies]
 uuid.workspace = true

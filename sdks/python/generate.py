@@ -147,14 +147,24 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
 
 
 def generate_types_from_schema(
-    schema_name: str, output_filename: str, check_only: bool = False
+    schema_name: str,
+    output_filename: str,
+    check_only: bool = False,
+    output_subdir: str = "worker",
 ) -> int:
-    """Generate types from a schema file."""
+    """Generate types from a schema file.
+
+    Args:
+        schema_name: Name of the schema file (without .json extension)
+        output_filename: Name of the output Python file
+        check_only: If True, only check if files are up to date
+        output_subdir: Subdirectory under stepflow_py/ to write to (default: "worker")
+    """
     # Get paths
     script_dir = Path(__file__).parent
-    output_path = (
-        script_dir / "stepflow-py" / "src" / "stepflow_py" / "worker" / output_filename
-    )
+    output_dir = script_dir / "stepflow-py" / "src" / "stepflow_py" / output_subdir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / output_filename
 
     try:
         print(f"Generating {schema_name} types...")
@@ -204,6 +214,16 @@ def main():
     # Generate protocol types (msgspec-based, for component server communication)
     result = generate_types_from_schema(
         "protocol", "generated_protocol.py", check_only=args.check
+    )
+    if result != 0:
+        return result
+
+    # Generate config types (msgspec-based, for configuration)
+    result = generate_types_from_schema(
+        "stepflow-config",
+        "_generated_config.py",
+        check_only=args.check,
+        output_subdir="config",
     )
     if result != 0:
         return result

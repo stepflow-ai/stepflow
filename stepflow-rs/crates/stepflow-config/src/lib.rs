@@ -34,13 +34,15 @@ pub enum ConfigError {
 
 type Result<T> = std::result::Result<T, Report<ConfigError>>;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepflowConfig {
     /// Working directory for the configuration.
     ///
     /// If not set, this will be the directory containing the config.
+    #[schema(value_type = Option<String>)]
     pub working_directory: Option<PathBuf>,
+    #[schema(value_type = std::collections::HashMap<String, SupportedPluginConfig>)]
     pub plugins: IndexMap<String, SupportedPluginConfig>,
     /// Routing configuration for mapping components to plugins.
     #[serde(flatten)]
@@ -69,7 +71,7 @@ impl Default for StepflowConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 #[derive(Default)]
 pub enum StateStoreConfig {
@@ -95,19 +97,19 @@ impl StateStoreConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
-enum SupportedPlugin {
+pub enum SupportedPlugin {
     Stepflow(StepflowPluginConfig),
     Builtin(BuiltinPluginConfig),
     Mock(MockPlugin),
     Mcp(McpPluginConfig),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct SupportedPluginConfig {
     #[serde(flatten)]
-    plugin: SupportedPlugin,
+    pub plugin: SupportedPlugin,
 }
 
 async fn create_plugin<P: PluginConfig>(
@@ -133,6 +135,13 @@ impl SupportedPluginConfig {
 }
 
 impl StepflowConfig {
+    /// Load configuration from a JSON string
+    pub fn load_from_json(json: &str) -> Result<Self> {
+        serde_json::from_str(json)
+            .change_context(ConfigError::Configuration)
+            .attach_printable("Failed to parse config JSON")
+    }
+
     /// Load configuration from a YAML file
     pub async fn load_from_file(path: &Path) -> Result<Self> {
         let contents = tokio::fs::read_to_string(path)
@@ -193,5 +202,59 @@ impl StepflowConfig {
             .change_context(ConfigError::Configuration)?;
 
         Ok(env)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    /// This test generates the StepflowConfig JSON schema to schemas/stepflow-config.json.
+    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation
+    #[test]
+    fn test_schema_generation() {
+        use stepflow_core::json_schema::generate_json_schema_with_defs;
+
+        // Generate schema using the utoipa-based utility
+        let generated_json = generate_json_schema_with_defs::<StepflowConfig>();
+        let generated_schema_str =
+            serde_json::to_string_pretty(&generated_json).expect("Failed to serialize schema");
+
+        // Get path to schemas/stepflow-config.json
+        let schema_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../schemas/stepflow-config.json"
+        );
+
+        if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
+            // Ensure the directory exists
+            if let Some(parent) = std::path::Path::new(schema_path).parent() {
+                std::fs::create_dir_all(parent).expect("Failed to create schema directory");
+            }
+
+            std::fs::write(schema_path, &generated_schema_str)
+                .expect("Failed to write updated schema");
+            println!("Updated StepflowConfig schema at {}", schema_path);
+        } else {
+            // Try to read the existing schema for comparison
+            match std::fs::read_to_string(schema_path) {
+                Ok(expected_schema_str) => {
+                    assert_eq!(
+                        generated_schema_str, expected_schema_str,
+                        "Generated schema does not match the reference schema at {}. \
+                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to update.",
+                        schema_path
+                    );
+                }
+                Err(_) => {
+                    panic!(
+                        "StepflowConfig schema file not found at {}. \
+                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to create it.",
+                        schema_path
+                    );
+                }
+            }
+        }
     }
 }
