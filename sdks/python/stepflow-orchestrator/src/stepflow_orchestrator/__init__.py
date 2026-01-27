@@ -19,19 +19,16 @@ binary as a subprocess with configuration management, health checking,
 and graceful shutdown.
 
 Example with default config:
-    async with StepflowOrchestrator.start() as client:
-        flow_id = client.store_flow(workflow)
-        result = client.run(flow_id, input_data)
+    async with StepflowOrchestrator.start() as orchestrator:
+        print(f"Server running at {orchestrator.url}")
+        # Use orchestrator.url with your preferred client
 
 Example with custom config:
     config = OrchestratorConfig(port=8080, log_level="debug")
-    async with StepflowOrchestrator.start(config) as client:
-        flow_id = client.store_flow(workflow)
-        result = client.run(flow_id, input_data)
+    async with StepflowOrchestrator.start(config) as orchestrator:
+        # orchestrator.url, orchestrator.port, orchestrator.is_running available
+        pass
 """
-
-# Re-export StepflowClient for convenience
-from stepflow_py import StepflowClient
 
 from stepflow_orchestrator.orchestrator import (
     OrchestratorConfig,
@@ -41,5 +38,4 @@ from stepflow_orchestrator.orchestrator import (
 __all__ = [
     "StepflowOrchestrator",
     "OrchestratorConfig",
-    "StepflowClient",
 ]

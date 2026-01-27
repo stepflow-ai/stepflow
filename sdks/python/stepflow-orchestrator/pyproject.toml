@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed"
 ]
 dependencies = [
-    "stepflow-py>=0.8.0",
+    "msgspec>=0.19.0",
 ]
 
 [project.urls]
@@ -41,9 +41,6 @@ Documentation = "https://stepflow-ai.github.io/stepflow/"
 Repository = "https://github.com/stepflow-ai/stepflow"
 "Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
 "Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-orchestrator"
-
-[tool.uv.sources]
-stepflow-py = { workspace = true }
 
 [dependency-groups]
 dev = [

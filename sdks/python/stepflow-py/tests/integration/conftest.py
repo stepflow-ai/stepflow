@@ -24,7 +24,6 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
 
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
@@ -78,7 +77,7 @@ def integration_config():
 
 @pytest_asyncio.fixture(scope="module")
 async def stepflow_client(integration_config):
-    """Start StepflowOrchestrator and return connected StepflowClient.
+    """Start local orchestrator and return connected StepflowClient.
 
     Requires STEPFLOW_DEV_BINARY environment variable to be set.
     """
@@ -90,21 +89,6 @@ async def stepflow_client(integration_config):
             "Set it to the path of the stepflow-server binary."
         )
 
-    # Create orchestrator config with StepflowConfig object (passed via stdin)
-    orch_config = OrchestratorConfig(
-        config=integration_config,
-        startup_timeout=60.0,
-    )
-
-    # Start orchestrator
-    orchestrator = StepflowOrchestrator(orch_config)
-    await orchestrator._start()
-
-    # Create client
-    client = StepflowClient.connect(orchestrator.url)
-
-    yield client
-
-    # Cleanup
-    await client.close()
-    await orchestrator._stop()
+    # Use StepflowClient.local() which handles orchestrator lifecycle
+    async with StepflowClient.local(integration_config, startup_timeout=60.0) as client:
+        yield client

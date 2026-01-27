@@ -25,13 +25,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-import msgspec
-
-if TYPE_CHECKING:
-    from stepflow_py import StepflowClient
-    from stepflow_py.config import StepflowConfig
+from typing import Any
 
 
 @dataclass
@@ -48,7 +42,7 @@ class OrchestratorConfig:
 
     Configuration can be provided in two ways (mutually exclusive):
         - config_path: Path to a stepflow-config.yml file
-        - config: A StepflowConfig object or dict (passed to server via stdin)
+        - config: A dict representing the config (passed to server via stdin as JSON)
     """
 
     # Server settings
@@ -62,7 +56,7 @@ class OrchestratorConfig:
 
     # Configuration - either path or object (mutually exclusive)
     config_path: Path | None = None  # Path to stepflow-config.yml
-    config: StepflowConfig | dict[str, Any] | None = None  # Direct config object
+    config: dict[str, Any] | None = None  # JSON-serializable config dict
 
     # Logging
     log_level: str = "info"
@@ -98,17 +92,16 @@ class StepflowOrchestrator:
     """Context manager for running the Stepflow orchestrator as a subprocess.
 
     Usage with default config:
-        async with StepflowOrchestrator.start() as client:
-            flow_id = client.store_flow(workflow)
-            result = client.run(flow_id, input_data)
+        async with StepflowOrchestrator.start() as orchestrator:
+            print(f"Server running at {orchestrator.url}")
+            # Use orchestrator.url with a client library
 
     Usage with custom config:
         config = OrchestratorConfig(port=8080, log_level="debug")
-        async with StepflowOrchestrator.start(config) as client:
-            flow_id = client.store_flow(workflow)
-            result = client.run(flow_id, input_data)
+        async with StepflowOrchestrator.start(config) as orchestrator:
+            # orchestrator.url, orchestrator.port, orchestrator.is_running available
 
-    The context manager yields a StepflowClient connected to the subprocess.
+    The context manager yields the orchestrator instance for accessing server info.
     The subprocess is automatically started and stopped with the context.
     """
 
@@ -123,24 +116,18 @@ class StepflowOrchestrator:
     async def start(
         cls,
         config: OrchestratorConfig | None = None,
-    ) -> AsyncIterator[StepflowClient]:
-        """Start the orchestrator and return a connected client.
+    ) -> AsyncIterator[StepflowOrchestrator]:
+        """Start the orchestrator and return it for lifecycle management.
 
         Args:
             config: Configuration for the orchestrator. Uses defaults if not provided.
 
         Yields:
-            StepflowClient connected to the subprocess server.
+            StepflowOrchestrator instance with url, port, and is_running properties.
         """
-        from stepflow_py import StepflowClient
-
         orchestrator = cls(config)
         async with orchestrator:
-            client = StepflowClient.connect(orchestrator.url)
-            try:
-                yield client
-            finally:
-                await client.close()
+            yield orchestrator
 
     @property
     def port(self) -> int:
@@ -194,18 +181,12 @@ class StepflowOrchestrator:
             cmd.extend(["--config", str(self._config.config_path)])
         elif self._config.config is not None:
             cmd.append("--config-stdin")
-            # Serialize config to JSON - handle both msgspec structs and dicts
+            # Serialize config dict to JSON
             # Note: We need to remove None values because Rust's serde untagged
             # enum deserialization can fail with explicit null values for
             # optional fields (e.g., StepflowTransport).
-            if isinstance(self._config.config, dict):
-                cleaned = self._remove_none_values(self._config.config)
-                stdin_input = json.dumps(cleaned).encode("utf-8")
-            else:
-                # Assume it's a msgspec Struct - decode to dict, clean, re-encode
-                data = msgspec.json.decode(msgspec.json.encode(self._config.config))
-                cleaned = self._remove_none_values(data)
-                stdin_input = json.dumps(cleaned).encode("utf-8")
+            cleaned = self._remove_none_values(self._config.config)
+            stdin_input = json.dumps(cleaned).encode("utf-8")
 
         env = os.environ.copy()
         env.update(self._config.env)

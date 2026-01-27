@@ -32,9 +32,14 @@ from typing import Any
 
 import pytest
 import pytest_asyncio
-import yaml
-from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
 from stepflow_py import StepflowClient
+from stepflow_py.config import (
+    BuiltinPluginConfig,
+    InMemoryStateStoreConfig,
+    RouteRule,
+    StepflowConfig,
+    StepflowSubprocessPluginConfig,
+)
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
 
@@ -54,8 +59,8 @@ def shared_config():
     - Shared database for memory/session handling
     - No environment variable setup (API keys now passed via variables)
 
-    Returns a tuple of (config_dict, config_path) where config_path is a stable
-    temporary file that persists for the module scope.
+    Yields a StepflowConfig object for use with StepflowClient.local().
+    Cleans up the database file after all tests complete.
     """
     # Create shared database path
     shared_db_path = Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
@@ -122,51 +127,38 @@ def shared_config():
     if "OPENAI_API_KEY" in env_vars:
         plugin_env["OPENAI_API_KEY"] = env_vars["OPENAI_API_KEY"]
 
-    # Create configuration dictionary
-    config_dict = {
-        "plugins": {
-            "builtin": {"type": "builtin"},
-            "langflow": {
-                "type": "stepflow",
-                "command": "uv",
-                "args": [
+    # Create typed StepflowConfig
+    yield StepflowConfig(
+        plugins={
+            "builtin": BuiltinPluginConfig(),
+            "langflow": StepflowSubprocessPluginConfig(
+                command="uv",
+                args=[
                     "--project",
                     str(current_dir),
                     "run",
                     "stepflow-langflow-server",
                 ],
-                "env": plugin_env,
-            },
+                env=plugin_env,
+            ),
         },
-        "routes": {
-            "/langflow/{*component}": [{"plugin": "langflow"}],
-            "/builtin/{*component}": [{"plugin": "builtin"}],
+        routes={
+            "/langflow/{*component}": [RouteRule(plugin="langflow")],
+            "/builtin/{*component}": [RouteRule(plugin="builtin")],
         },
-        "stateStore": {"type": "inMemory"},
-    }
-
-    # Write config to stable temporary file (persists for module scope)
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yml", delete=False
-    ) as config_file:
-        yaml.dump(config_dict, config_file, default_flow_style=False, sort_keys=False)
-        config_path = Path(config_file.name)
-
-    # Return config dict and path
-    yield config_dict, str(config_path)
+        stateStore=InMemoryStateStoreConfig(type="inMemory"),
+    )
 
     # Cleanup after all tests in module complete
-    config_path.unlink(missing_ok=True)
+    shared_db_path.unlink(missing_ok=True)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def stepflow_client(shared_config):
-    """Start StepflowOrchestrator and return connected StepflowClient.
+    """Start local orchestrator and return connected StepflowClient.
 
     The orchestrator and client are shared across all tests for performance.
     """
-    config_dict, config_path = shared_config
-
     # Check that STEPFLOW_DEV_BINARY is set
     dev_binary = os.environ.get("STEPFLOW_DEV_BINARY")
     if not dev_binary:
@@ -175,24 +167,9 @@ async def stepflow_client(shared_config):
             "Set it to the path of the stepflow-server binary."
         )
 
-    # Create orchestrator config
-    orch_config = OrchestratorConfig(
-        config_path=Path(config_path),
-        startup_timeout=60.0,
-    )
-
-    # Start orchestrator
-    orchestrator = StepflowOrchestrator(orch_config)
-    await orchestrator._start()
-
-    # Create client
-    client = StepflowClient.connect(orchestrator.url)
-
-    yield client
-
-    # Cleanup
-    await client.close()
-    await orchestrator._stop()
+    # Use StepflowClient.local() with StepflowConfig object
+    async with StepflowClient.local(shared_config, startup_timeout=60.0) as client:
+        yield client
 
 
 class TestExecutor:
@@ -560,10 +537,10 @@ async def test_memory_chatbot(test_executor, shared_config):
         session_id=other_session_id,
     )
 
-    # Access shared config dict via the server's config
-    config_dict, config_path = shared_config
-    langflow_plugin_config = config_dict["plugins"]["langflow"]
-    db_url = langflow_plugin_config.get("env", {}).get("LANGFLOW_DATABASE_URL", "")
+    # Access shared config to get the database URL
+    langflow_plugin = shared_config.plugins["langflow"]
+    env = langflow_plugin.env or {}
+    db_url = env.get("LANGFLOW_DATABASE_URL", "")
     # Extract path from sqlite:///path format
     db_path = (
         db_url.replace("sqlite:///", "") if db_url.startswith("sqlite:///") else None
