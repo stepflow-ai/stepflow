@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 ## <a id="0.9.0"></a> [Stepflow 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.9.0) - 2026-01-28
+
+This release contains significant enhancements to:
+
+- Batch and Subflow Execution: All items in the batch share a single executor, as do subflows submitted during execution. This should allow better throttling and lower resource usage for many applications.
+- Local execution via Python: New Python package (`stepflow-orchestrator`) packages the `stepflow-server` binary into platform-specific wheels for easy installation and execution via `pip`.
+
+### Breaking Changes
+
+- The STDIO transport was removed from the protocol. All Stepflow protocol interactions happen via Streamable HTTP transport.
+- Reference schema reworked to support oneOf and easier manipulation of references.
+- API and JSON schema heavily reworked to support and simplify generated OpenAPI clients.
+
 ### Bug Fixes
 
 - Handle non-flow YAML files gracefully in test command ([#490](https://github.com/stepflow-ai/stepflow/pull/490))
