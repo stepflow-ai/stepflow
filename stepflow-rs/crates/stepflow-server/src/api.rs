@@ -145,10 +145,11 @@ mod tests {
             let new_json: serde_json::Value =
                 serde_json::from_str(&openapi_json).expect("Failed to parse new schema");
 
-            assert_eq!(
-                existing_json, new_json,
-                "OpenAPI schema mismatch. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to update."
-            );
+            if existing_json != new_json {
+                panic!(
+                    "OpenAPI schema mismatch. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to update."
+                );
+            }
         } else {
             panic!(
                 "OpenAPI schema file not found at {}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to create it.",
