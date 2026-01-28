@@ -21,33 +21,33 @@ To showcase this, we've created a real-world example using an off the shelf Lang
 
 To get an idea of how Stepflow was designed, let's take a quick look at the Stepflow Kubernetes example production deployment. This not only serves as a reference architecture, but provides a complete execution environment for Langflow workflows. This example uses the built-in load balancer to distribute our example Langflow workflow across multiple worker instances. Docling and OpenSearch are included as two top-level infrastructure services, providing real world ingestion and search capabilities. The stack, as deployed, looks like this: 
 
-```
-┌──────────────┐                    ┌─────────────────────────────────────┐
-│   Client     │───────────────────▶│         stepflow namespace          │
-│  (localhost) │      :7840         │  ┌─────────────────────────────┐   │
-└──────────────┘                    │  │     Stepflow Orchestrator   │   │
-                                    │  │     (workflow engine)       │   │
-                                    │  └──────────────┬──────────────┘   │
-                                    │                 │                   │
-                                    │                 ▼                   │
-                                    │  ┌─────────────────────────────┐   │
-                                    │  │      Load Balancer          │   │
-                                    │  │    (instance-aware)         │   │
-                                    │  └──────────────┬──────────────┘   │
-                                    │                 │                   │
-                                    │       ┌─────────┼─────────┐        │
-                                    │       ▼         ▼         ▼        │
-                                    │  ┌─────────┐┌─────────┐┌─────────┐ │
-                                    │  │Langflow ││Langflow ││Langflow │ │
-                                    │  │Worker 1 ││Worker 2 ││Worker 3 │ │
-                                    │  └────┬────┘└────┬────┘└────┬────┘ │
-                                    │       └────┬────┴────┬─────┘       │
-                                    │            ▼         ▼             │
-                                    │  ┌─────────────┐ ┌─────────────┐   │
-                                    │  │ OpenSearch  │ │   Docling   │   │
-                                    │  │ (vectors)   │ │  (parsing)  │   │
-                                    │  └─────────────┘ └─────────────┘   │
-                                    └─────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph client["Client (localhost)"]
+        C[":7840"]
+    end
+    
+    subgraph stepflow["stepflow namespace"]
+        SO["Stepflow Orchestrator<br/>(workflow engine)"]
+        LB["Load Balancer<br/>(instance-aware)"]
+        
+        subgraph workers["Langflow Workers"]
+            W1["Worker 1"]
+            W2["Worker 2"]
+            W3["Worker 3"]
+        end
+        
+        subgraph infra["Infrastructure Services"]
+            OS["OpenSearch<br/>(vectors)"]
+            DL["Docling<br/>(parsing)"]
+        end
+        
+        SO --> LB
+        LB --> W1 & W2 & W3
+        W1 & W2 & W3 --> OS & DL
+    end
+    
+    C --> SO
 ```
 
 **Key components:**
@@ -289,24 +289,20 @@ Then submit workflows using the wrapper:
 
 So we now have an understanding of how this plugs together architecturally, let's look at the runtime and what specifically happens when you submit a workflow. The following diagram illustrates the execution path which we'll call out in detail below:
 
-```
-┌─────────┐    ┌──────────────┐    ┌──────────────┐    ┌────────────────┐
-│ Client  │───▶│   Stepflow   │───▶│    Stepflow  │───▶│    Langflow    │
-│         │    │ Orchestrator │    │ Load Balancer│    │     Worker     │
-└─────────┘    └──────────────┘    └──────────────┘    └────────────────┘
-     │                │                    │                    │
-     │  POST /submit  │                    │                    │
-     │───────────────▶│                    │                    │
-     │                │  route: /langflow/*│                    │
-     │                │───────────────────▶│                    │
-     │                │                    │  select worker     │
-     │                │                    │───────────────────▶│
-     │                │                    │                    │ execute
-     │                │                    │                    │ component
-     │                │                    │◀───────────────────│
-     │                │◀───────────────────│                    │
-     │◀───────────────│                    │                    │
-     │   result       │                    │                    │
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant SO as Stepflow<br/>Orchestrator
+    participant LB as Stepflow<br/>Load Balancer
+    participant W as Langflow<br/>Worker
+    
+    C->>SO: POST /submit
+    SO->>LB: route: /langflow/*
+    LB->>W: select worker
+    W->>W: execute component
+    W-->>LB: result
+    LB-->>SO: result
+    SO-->>C: result
 ```
 
 ### 1. Job Submission
@@ -411,25 +407,23 @@ This separation keeps the routing configuration simple while allowing workers to
 
 Given we were building a distributed workflow system from the ground up, observability (commonly abbreviated as o12y) was baked in from the start via the [Open Telemetry](https://opentelemetry.io/docs/specs/otlp/) standard. Along those lines, we've created the `stepflow-o12y` namespace with common open source telemetry servcies to provide full observability for the Stepflow runtime. The `stepflow-o12y` namespace contains the following services which are detailed below:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    stepflow-o12y namespace                  │
-│                                                             │
-│  ┌─────────────────┐                                        │
-│  │  OTel Collector │◀── traces, metrics, logs               │
-│  └────────┬────────┘                                        │
-│           │                                                 │
-│     ┌─────┼─────┬─────────────┐                             │
-│     ▼     ▼     ▼             ▼                             │
-│  ┌──────┐ ┌──────────┐ ┌──────┐                             │
-│  │Jaeger│ │Prometheus│ │ Loki │                             │
-│  └──┬───┘ └────┬─────┘ └──┬───┘                             │
-│     └──────────┼──────────┘                                 │
-│                ▼                                            │
-│         ┌──────────┐                                        │
-│         │ Grafana  │ ◀── dashboards                         │
-│         └──────────┘                                        │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph o12y["stepflow-o12y namespace"]
+        OT["OTel Collector"] 
+        
+        subgraph backends["Telemetry Backends"]
+            J["Jaeger"]
+            P["Prometheus"]
+            L["Loki"]
+        end
+        
+        G["Grafana<br/>(dashboards)"]
+        
+        traces["traces, metrics, logs"] --> OT
+        OT --> J & P & L
+        J & P & L --> G
+    end
 ```
 
 ### Trace Correlation
