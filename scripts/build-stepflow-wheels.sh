@@ -97,6 +97,10 @@ fi
 BINARIES_DIR="$1"
 OUTPUT_DIR="${2:-./wheels}"
 
+# Convert paths to absolute (needed because we cd during build)
+BINARIES_DIR="$(cd "$BINARIES_DIR" && pwd)"
+OUTPUT_DIR="$(mkdir -p "$OUTPUT_DIR" && cd "$OUTPUT_DIR" && pwd)"
+
 # Validate binaries directory
 if [[ ! -d "$BINARIES_DIR" ]]; then
     echo -e "${RED}Error: Binaries directory not found: $BINARIES_DIR${NC}" >&2
@@ -124,9 +128,6 @@ PLATFORMS=(
     "aarch64-apple-darwin:macosx_11_0_arm64:"
     "x86_64-pc-windows-msvc:win_amd64:.exe"
 )
-
-# Create output directory
-mkdir -p "$OUTPUT_DIR"
 
 # Create temporary directory for wheel building
 BUILD_TMPDIR=$(mktemp -d)
