@@ -49,9 +49,9 @@ The K8s production example deploys docling-serve as an infrastructure service. L
 2. **1:1 name mapping** — Langflow component names correspond exactly to Stepflow path suffixes
 3. **Routing config gets smart** — Whether a component runs on langflow-worker or docling-worker is determined by route rules, not translation logic
 
-### Langflow Translation (Unchanged)
+### Langflow Translation
 
-The translator converts Langflow core component class paths to Stepflow paths mechanically:
+Though the translator already emits paths based on component class names, pending the work on [544](https://github.com/stepflow-ai/stepflow/issues/544) the translator will converts Langflow core component class paths to Stepflow paths mechanically:
 
 | Langflow Component Class | Stepflow Path |
 |-------------------------|---------------|
@@ -62,7 +62,6 @@ The translator converts Langflow core component class paths to Stepflow paths me
 
 Translation formula: `/langflow/core/` + `<component_class_path>`
 
-No translator changes are required given that the translator already emits paths based on component class names.
 
 ### Routing Configuration
 
