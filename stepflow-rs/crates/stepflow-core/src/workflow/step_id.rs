@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::workflow::Flow;
 
@@ -176,40 +176,21 @@ impl std::fmt::Debug for StepId {
     }
 }
 
-// Serialization: Always serialize as the standalone form (index + name).
-// This ensures consistent serialization regardless of which variant is held.
+// Serialization: Serialize as just the step name string.
+// The index is an internal implementation detail not exposed in the API.
 impl Serialize for StepId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        use serde::ser::SerializeStruct as _;
-        let mut state = serializer.serialize_struct("StepId", 2)?;
-        state.serialize_field("index", &self.index())?;
-        state.serialize_field("name", &self.name())?;
-        state.end()
+        serializer.serialize_str(self.name())
     }
 }
 
-// Deserialization: Always deserialize as Standalone since we don't have a flow.
-impl<'de> Deserialize<'de> for StepId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct StepIdData {
-            index: usize,
-            name: String,
-        }
-
-        let data = StepIdData::deserialize(deserializer)?;
-        Ok(Self::Standalone {
-            name: data.name,
-            index: data.index,
-        })
-    }
-}
+// Note: StepId intentionally does NOT implement Deserialize.
+// When deserializing, use String for the step name and construct StepId
+// with the proper index from context (flow, database, etc.).
+// This prevents bugs where a deserialized StepId has an incorrect index.
 
 #[cfg(test)]
 mod tests {
@@ -334,16 +315,25 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization_roundtrip() {
+    fn test_serialize_as_string() {
+        let step_id = StepId::new("my_step".to_string(), 5);
+        let json = serde_json::to_string(&step_id).unwrap();
+        // Should serialize as just the step name string
+        assert_eq!(json, "\"my_step\"");
+    }
+
+    #[test]
+    fn test_serialize_with_flow() {
+        // Verify WithFlow variant also serializes as just the name
         let flow = create_test_flow();
         let step_id = StepId::for_step(flow, 1);
-
         let json = serde_json::to_string(&step_id).unwrap();
-        let deserialized: StepId = serde_json::from_str(&json).unwrap();
-
-        assert_eq!(step_id, deserialized);
-        assert!(!deserialized.has_flow()); // Deserialized is always standalone
+        assert_eq!(json, "\"step_two\"");
     }
+
+    // Note: StepId intentionally does NOT implement Deserialize.
+    // This prevents bugs where deserialized StepIds have incorrect indices.
+    // Use String for deserialization and construct StepId with proper index from context.
 
     #[test]
     fn test_display() {

@@ -13,6 +13,7 @@
 use std::{ffi::OsString, path::PathBuf, process::Stdio, time::Duration};
 
 use crate::error::{Result, TransportError};
+use crate::plugin::HealthCheckConfig;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::Deserialize;
@@ -38,6 +39,7 @@ pub struct SubprocessLauncher {
     command: PathBuf,
     args: Vec<OsString>,
     env: IndexMap<String, String>,
+    health_check: HealthCheckConfig,
 }
 
 /// Handle to a running subprocess.
@@ -88,6 +90,7 @@ impl SubprocessLauncher {
         command: String,
         args: Vec<String>,
         env: IndexMap<String, String>,
+        health_check: Option<HealthCheckConfig>,
     ) -> Result<Self> {
         let command = which::WhichConfig::new()
             .system_path_list()
@@ -102,6 +105,7 @@ impl SubprocessLauncher {
             command,
             args: args.into_iter().map(|s| s.into()).collect(),
             env,
+            health_check: health_check.unwrap_or_default(),
         })
     }
 
@@ -301,9 +305,10 @@ impl SubprocessLauncher {
 
     /// Poll the health endpoint until the server is ready.
     async fn wait_for_health(&self, url: &str) -> Result<()> {
-        let health_url = format!("{}/health", url);
+        let health_url = format!("{}{}", url, self.health_check.path);
         let client = reqwest::Client::new();
-        let timeout = Duration::from_secs(60);
+        let timeout = Duration::from_millis(self.health_check.timeout_ms);
+        let retry_delay = Duration::from_millis(self.health_check.retry_delay_ms);
         let start = std::time::Instant::now();
 
         loop {
@@ -332,7 +337,7 @@ impl SubprocessLauncher {
                 );
             }
 
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(retry_delay).await;
         }
     }
 }

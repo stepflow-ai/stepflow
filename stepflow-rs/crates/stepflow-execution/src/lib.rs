@@ -15,7 +15,6 @@
 //! This crate provides the core execution infrastructure:
 //!
 //! - [`FlowExecutor`] - batch/single workflow execution with scheduler
-//! - [`StepflowEnvironment`] - environment carrier for workflow execution
 //!
 //! ## Execution State
 //!

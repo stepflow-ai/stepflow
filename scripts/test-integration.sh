@@ -26,6 +26,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -54,6 +55,7 @@ if [ "$VERBOSE" = true ]; then
         print_step "Python deps"
         print_fail
         FAILED_CHECKS+=("Python deps")
+        FAILED_CHECK_CMDS+=("cd sdks/python && uv sync --all-extras --group dev")
     fi
 
     print_step "Build stepflow"
@@ -66,8 +68,8 @@ if [ "$VERBOSE" = true ]; then
         print_step "Build stepflow"
         print_fail
         FAILED_CHECKS+=("Build stepflow")
+        FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build")
         print_fix "Fix build errors"
-        print_rerun "cd stepflow-rs && cargo build"
     fi
 else
     # In quiet mode, run in parallel with output capture
@@ -84,6 +86,7 @@ else
     else
         print_fail
         FAILED_CHECKS+=("Python deps")
+        FAILED_CHECK_CMDS+=("cd sdks/python && uv sync --all-extras --group dev")
         echo "    Output:"
         sed 's/^/      /' "$_LIB_TMPDIR/python.txt" | head -50
     fi
@@ -94,10 +97,10 @@ else
     else
         print_fail
         FAILED_CHECKS+=("Build stepflow")
+        FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build")
         echo "    Output:"
         sed 's/^/      /' "$_LIB_TMPDIR/cargo.txt" | head -50
         print_fix "Fix build errors"
-        print_rerun "cd stepflow-rs && cargo build"
     fi
 fi
 
@@ -105,10 +108,8 @@ fi
 # RUN WORKFLOW TESTS
 # =============================================================================
 
-run_check "Workflow tests" "$PROJECT_ROOT/stepflow-rs/target/debug/stepflow" test "$PROJECT_ROOT/tests" "$PROJECT_ROOT/examples"
-if [ $? -ne 0 ]; then
+if ! run_check "Workflow tests" "$PROJECT_ROOT/stepflow-rs/target/debug/stepflow" test "$PROJECT_ROOT/tests" "$PROJECT_ROOT/examples"; then
     print_fix "Fix failing workflow tests"
-    print_rerun "./stepflow-rs/target/debug/stepflow test tests examples"
 fi
 
 # =============================================================================

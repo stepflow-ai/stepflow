@@ -71,12 +71,16 @@ cmd = "uvx ${DEPTRY} src"
 
 [tool.poe.tasks.codegen-check]
 help = "Check that generated types are up-to-date"
-cmd = "uv run python generate.py --check"
+sequence = [
+    {cmd = "uv run python generate.py --check"},
+    {cmd = "uv run python scripts/generate_api_client.py check"},
+]
 
 [tool.poe.tasks.codegen-fix]
 help = "Regenerate types from schemas"
 sequence = [
     {cmd = "uv run python generate.py"},
+    {cmd = "uv run python scripts/generate_api_client.py"},
 ]
 
 [tool.poe.tasks.test]

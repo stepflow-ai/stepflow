@@ -27,6 +27,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -39,20 +40,15 @@ cd "$PROJECT_ROOT/stepflow-rs"
 # RUST STYLE & QUALITY CHECKS
 # =============================================================================
 
-run_check "Formatting" cargo fmt --check
-FMT_FAILED=$?
-
-if [ $FMT_FAILED -ne 0 ]; then
+if ! run_check "Formatting" cargo fmt --check; then
     print_fix "cargo fmt"
 fi
 
-run_optional_check "Security audit" "cargo-deny" cargo deny check
-if [ $? -ne 0 ]; then
+if ! run_optional_check "Security audit" "cargo-deny" cargo deny check; then
     print_fix "cargo deny check (review and fix security issues)"
 fi
 
-run_optional_check "Unused deps" "cargo-machete" cargo machete --with-metadata
-if [ $? -ne 0 ]; then
+if ! run_optional_check "Unused deps" "cargo-machete" cargo machete --with-metadata; then
     print_fix "cargo machete --fix --with-metadata"
 fi
 
@@ -60,14 +56,11 @@ fi
 # RUST BUILD & TEST CHECKS
 # =============================================================================
 
-run_check "Tests" cargo test
-if [ $? -ne 0 ]; then
+if ! run_check "Tests" cargo test; then
     print_fix "Fix failing tests"
-    print_rerun "cargo test"
 fi
 
-run_check "Clippy" cargo clippy -- -D warnings
-if [ $? -ne 0 ]; then
+if ! run_check "Clippy" cargo clippy -- -D warnings; then
     print_fix "cargo clippy --fix"
 fi
 
@@ -75,13 +68,11 @@ fi
 # ADDITIONAL CHECKS (not in CI but useful for local development)
 # =============================================================================
 
-run_check "Compilation" cargo check --all-targets --all-features
-if [ $? -ne 0 ]; then
+if ! run_check "Compilation" cargo check --all-targets --all-features; then
     print_fix "Fix compilation errors"
 fi
 
-run_check "Documentation" cargo doc --all --no-deps
-if [ $? -ne 0 ]; then
+if ! run_check "Documentation" cargo doc --all --no-deps; then
     print_fix "Fix documentation errors"
 fi
 

@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use stepflow_core::workflow::{Flow, Step, StepId, ValueRef};
 use stepflow_core::{BlobId, FlowResult};
 use stepflow_observability::StepIdGuard;
@@ -49,45 +49,31 @@ pub struct StepMetadata {
     pub component: String,
 }
 
-// Custom serialization to maintain backward compatibility
+// Custom serialization - step_id is the only identifier exposed in the API
 impl Serialize for StepMetadata {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct as _;
-        let mut state = serializer.serialize_struct("StepMetadata", 3)?;
-        state.serialize_field("step_index", &self.step.index())?;
+        let mut state = serializer.serialize_struct("StepMetadata", 2)?;
         state.serialize_field("step_id", &self.step.name())?;
         state.serialize_field("component", &self.component)?;
         state.end()
     }
 }
 
-impl<'de> Deserialize<'de> for StepMetadata {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct StepMetadataData {
-            step_index: usize,
-            step_id: String,
-            component: String,
-        }
-        let data = StepMetadataData::deserialize(deserializer)?;
-        Ok(Self {
-            step: StepId::new(data.step_id, data.step_index),
-            component: data.component,
-        })
-    }
-}
+// Note: StepMetadata intentionally does NOT implement Deserialize.
+// The step index would be lost or default to 0, causing potential bugs.
+// If deserialization is needed, use a separate DTO type.
 
 /// Result of executing a step, including metadata.
 ///
 /// This is the result type returned by `StepRunner` and used by
 /// [`FlowExecutor`](crate::FlowExecutor).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// Note: StepRunResult intentionally does NOT implement Deserialize.
+// The step index would be lost or default to 0, causing potential bugs.
+#[derive(Debug, Clone, Serialize)]
 pub struct StepRunResult {
     /// Step metadata (index, id, component).
     #[serde(flatten)]

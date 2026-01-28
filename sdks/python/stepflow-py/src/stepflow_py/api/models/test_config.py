@@ -23,10 +23,9 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_py.api.models.test_case import TestCase
-from stepflow_py.api.models.test_server_config import TestServerConfig
 
 
 class TestConfig(BaseModel):
@@ -34,15 +33,16 @@ class TestConfig(BaseModel):
     Configuration for testing a workflow.
     """  # noqa: E501
 
-    servers: dict[str, TestServerConfig] | None = Field(
+    config_file: StrictStr | None = Field(
         default=None,
-        description="Test servers to start before running tests. Key is the server name, value is the server configuration.",
+        description="Path to an external stepflow config file for tests. Relative paths are resolved from the workflow file's directory. Mutually exclusive with `config` - validated at runtime.",
+        alias="configFile",
     )
     config: Any | None = None
     cases: list[TestCase] | None = Field(
         default=None, description="Test cases for the workflow."
     )
-    __properties: ClassVar[list[str]] = ["servers", "config", "cases"]
+    __properties: ClassVar[list[str]] = ["configFile", "config", "cases"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -81,13 +81,6 @@ class TestConfig(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each value in servers (dict)
-        _field_dict = {}
-        if self.servers:
-            for _key_servers in self.servers:
-                if self.servers[_key_servers]:
-                    _field_dict[_key_servers] = self.servers[_key_servers].to_dict()
-            _dict["servers"] = _field_dict
         # override the default output from pydantic by calling `to_dict()` of each item in cases (list)
         _items = []
         if self.cases:
@@ -95,6 +88,11 @@ class TestConfig(BaseModel):
                 if _item_cases:
                     _items.append(_item_cases.to_dict())
             _dict["cases"] = _items
+        # set to None if config_file (nullable) is None
+        # and model_fields_set contains the field
+        if self.config_file is None and "config_file" in self.model_fields_set:
+            _dict["configFile"] = None
+
         # set to None if config (nullable) is None
         # and model_fields_set contains the field
         if self.config is None and "config" in self.model_fields_set:
@@ -113,12 +111,7 @@ class TestConfig(BaseModel):
 
         _obj = cls.model_validate(
             {
-                "servers": dict(
-                    (_k, TestServerConfig.from_dict(_v))
-                    for _k, _v in obj["servers"].items()
-                )
-                if obj.get("servers") is not None
-                else None,
+                "configFile": obj.get("configFile"),
                 "config": obj.get("config"),
                 "cases": [TestCase.from_dict(_item) for _item in obj["cases"]]
                 if obj.get("cases") is not None

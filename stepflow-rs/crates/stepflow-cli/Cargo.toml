@@ -32,7 +32,6 @@ stepflow-typecheck.workspace = true
 reqwest.workspace = true
 walkdir.workspace = true
 similar.workspace = true
-nix.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 log.workspace = true

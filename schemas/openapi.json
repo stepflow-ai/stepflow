@@ -1629,19 +1629,13 @@
         "type": "object",
         "description": "Response for step run details",
         "required": [
-          "stepIndex",
           "stepId",
           "status"
         ],
         "properties": {
-          "stepIndex": {
-            "type": "integer",
-            "description": "Step index in the flow",
-            "minimum": 0
-          },
           "stepId": {
             "type": "string",
-            "description": "Step ID"
+            "description": "Step ID (the stable identifier for this step in the workflow)"
           },
           "component": {
             "type": [
@@ -1700,19 +1694,18 @@
         "type": "object",
         "description": "Response when a flow is stored",
         "required": [
+          "flowId",
+          "stored",
           "diagnostics"
         ],
         "properties": {
           "flowId": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/BlobId",
-                "description": "The ID of the stored flow (only present if no fatal diagnostics)"
-              }
-            ]
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The ID of the flow (computed from content hash, always present)"
+          },
+          "stored": {
+            "type": "boolean",
+            "description": "Whether the flow was actually stored (false for dry_run or if validation has fatal errors)"
           },
           "diagnostics": {
             "$ref": "#/components/schemas/Diagnostics",
@@ -1760,18 +1753,15 @@
         "type": "object",
         "description": "Configuration for testing a workflow.",
         "properties": {
-          "servers": {
-            "type": "object",
-            "description": "Test servers to start before running tests.\nKey is the server name, value is the server configuration.",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/TestServerConfig"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
+          "configFile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path to an external stepflow config file for tests.\nRelative paths are resolved from the workflow file's directory.\nMutually exclusive with `config` - validated at runtime."
           },
           "config": {
-            "description": "Stepflow configuration specific to tests.\nCan reference server URLs using placeholders like {server_name.url}."
+            "description": "Inline stepflow configuration for tests.\nMutually exclusive with `config_file` - validated at runtime."
           },
           "cases": {
             "type": "array",
@@ -1779,122 +1769,6 @@
               "$ref": "#/components/schemas/TestCase"
             },
             "description": "Test cases for the workflow."
-          }
-        }
-      },
-      "TestServerConfig": {
-        "type": "object",
-        "description": "Configuration for a test server.",
-        "required": [
-          "command"
-        ],
-        "properties": {
-          "command": {
-            "type": "string",
-            "description": "Command to start the server."
-          },
-          "args": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Arguments for the server command."
-          },
-          "env": {
-            "type": "object",
-            "description": "Environment variables for the server process.\nValues can contain placeholders like {port} which will be substituted.",
-            "additionalProperties": {
-              "type": "string"
-            },
-            "propertyNames": {
-              "type": "string"
-            }
-          },
-          "workingDirectory": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Working directory for the server process."
-          },
-          "portRange": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": false,
-            "prefixItems": [
-              {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              },
-              {
-                "type": "integer",
-                "format": "int32",
-                "minimum": 0
-              }
-            ],
-            "description": "Port range for automatic port allocation.\nIf not specified, a random available port will be used."
-          },
-          "healthCheck": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/TestServerHealthCheck",
-                "description": "Health check configuration."
-              }
-            ]
-          },
-          "startupTimeoutMs": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Maximum time to wait for server startup (in milliseconds).",
-            "default": 10000,
-            "minimum": 0
-          },
-          "shutdownTimeoutMs": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Maximum time to wait for server shutdown (in milliseconds).",
-            "default": 5000,
-            "minimum": 0
-          }
-        }
-      },
-      "TestServerHealthCheck": {
-        "type": "object",
-        "description": "Health check configuration for test servers.",
-        "required": [
-          "path"
-        ],
-        "properties": {
-          "path": {
-            "type": "string",
-            "description": "Path for health check endpoint (e.g., \"/health\")."
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Timeout for health check requests (in milliseconds).",
-            "default": 5000,
-            "minimum": 0
-          },
-          "retryAttempts": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Number of retry attempts for health checks.",
-            "default": 3,
-            "minimum": 0
-          },
-          "retryDelayMs": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Delay between retry attempts (in milliseconds).",
-            "default": 1000,
-            "minimum": 0
           }
         }
       },

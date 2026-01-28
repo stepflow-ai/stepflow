@@ -27,6 +27,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source shared helpers
 source "$SCRIPT_DIR/_lib.sh"
+_LIB_PROJECT_ROOT="$PROJECT_ROOT"
 
 # Parse command line arguments
 parse_flags "$@"
@@ -44,22 +45,20 @@ require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
 # Skip Python installation if already available
 if ! python3 --version >/dev/null 2>&1; then
-    run_check "Python install" uv python install
+    run_check "Python install" uv python install || true
 fi
 
-run_check "Dependencies" uv sync
+run_check "Dependencies" uv sync || true
 
 # =============================================================================
 # LANGFLOW CHECKS
 # =============================================================================
 
-run_check "Formatting" uv run poe fmt-check
-if [ $? -ne 0 ]; then
+if ! run_check "Formatting" uv run poe fmt-check; then
     print_fix "uv run poe fmt-fix"
 fi
 
-run_check "Linting" uv run poe lint-check
-if [ $? -ne 0 ]; then
+if ! run_check "Linting" uv run poe lint-check; then
     print_fix "uv run poe lint-fix"
 fi
 
@@ -70,17 +69,14 @@ fi
 # require reinstalling packages after every change to stepflow_py or stepflow_orchestrator.
 rm -rf .mypy_cache
 
-run_check "Type checking" uv run poe type-check
-if [ $? -ne 0 ]; then
+if ! run_check "Type checking" uv run poe type-check; then
     print_fix "Fix type errors"
 fi
 
-run_check "Dep check" uv run poe dep-check
+run_check "Dep check" uv run poe dep-check || true
 
-run_check "Tests" uv run poe test
-if [ $? -ne 0 ]; then
+if ! run_check "Tests" uv run poe test; then
     print_fix "Fix failing tests"
-    print_rerun "cd integrations/langflow && uv run poe test"
 fi
 
 # =============================================================================
@@ -92,30 +88,28 @@ fi
 # Otherwise, build the debug binary automatically to ensure we test the latest code
 if [ -n "$STEPFLOW_DEV_BINARY" ] && [ -f "$STEPFLOW_DEV_BINARY" ]; then
     STEPFLOW_BINARY="$STEPFLOW_DEV_BINARY"
-    echo "    Using STEPFLOW_DEV_BINARY: $STEPFLOW_BINARY"
+    print_verbose "Using STEPFLOW_DEV_BINARY: $STEPFLOW_BINARY"
 else
     # Build the debug binary to ensure we're testing the latest code
-    echo "    Building stepflow-server (debug)..."
+    print_verbose "Building stepflow-server (debug)..."
     if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --quiet); then
         STEPFLOW_BINARY="$PROJECT_ROOT/stepflow-rs/target/debug/stepflow-server"
-        echo "    Built: $STEPFLOW_BINARY"
+        print_verbose "Built: $STEPFLOW_BINARY"
     else
         STEPFLOW_BINARY=""
-        echo "    ⚠️  Build failed"
+        print_verbose "⚠️  Build failed"
     fi
 fi
 
 if [ -n "$STEPFLOW_BINARY" ]; then
     export STEPFLOW_DEV_BINARY="$STEPFLOW_BINARY"
-    run_check "Integration tests" uv run python -m pytest tests/integration/ -v -m "not slow" -x
-    if [ $? -ne 0 ]; then
+    if ! run_check "Integration tests" uv run python -m pytest tests/integration/ -v -m "not slow" -x; then
         print_fix "Fix integration test failures"
-        print_rerun "cd integrations/langflow && uv run python -m pytest tests/integration/ -v"
     fi
 else
     print_step "Integration tests"
     print_skip "stepflow-server binary build failed"
-    echo "    Check cargo build errors above"
+    print_verbose "Check cargo build errors above"
 fi
 
 # =============================================================================

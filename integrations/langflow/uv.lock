@@ -10101,11 +10101,11 @@ name = "stepflow-orchestrator"
 version = "0.8.0"
 source = { editable = "../../sdks/python/stepflow-orchestrator" }
 dependencies = [
-    { name = "stepflow-py" },
+    { name = "msgspec" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "stepflow-py", editable = "../../sdks/python/stepflow-py" }]
+requires-dist = [{ name = "msgspec", specifier = ">=0.19.0" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -10147,11 +10147,12 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "python-dateutil", specifier = ">=2.8.2" },
     { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
+    { name = "stepflow-orchestrator", marker = "extra == 'local'", editable = "../../sdks/python/stepflow-orchestrator" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "typing-extensions", specifier = ">=4.7.1" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["http", "langchain"]
+provides-extras = ["http", "langchain", "local"]
 
 [package.metadata.requires-dev]
 dev = [

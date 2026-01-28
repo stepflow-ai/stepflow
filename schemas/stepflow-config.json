@@ -1,0 +1,568 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StepflowConfig",
+  "allOf": [
+    {
+      "$ref": "#/$defs/RoutingConfig",
+      "description": "Routing configuration for mapping components to plugins."
+    },
+    {
+      "type": "object",
+      "required": [
+        "plugins"
+      ],
+      "properties": {
+        "workingDirectory": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Working directory for the configuration.\n\nIf not set, this will be the directory containing the config."
+        },
+        "plugins": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/SupportedPluginConfig"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "stateStore": {
+          "$ref": "#/$defs/StateStoreConfig",
+          "description": "State store configuration. If not specified, uses in-memory storage."
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "SupportedPluginConfig": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/SupportedPlugin"
+        }
+      ]
+    },
+    "RoutingConfig": {
+      "type": "object",
+      "description": "Path-keyed routing configuration",
+      "required": [
+        "routes"
+      ],
+      "properties": {
+        "routes": {
+          "type": "object",
+          "description": "Path-to-routing rules mapping\n\nKeys describe paths. For example \"/python/{component}\" or \"/openai/{component}\".\nPlaceholders may match a single segment (e.g., \"{component}\") or multiple segments (e.g., \"{*component}\").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/RouteRule"
+            }
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "StateStoreConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "In-memory state store (default, for testing and demos)",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "inMemory"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SqliteStateStoreConfig",
+              "description": "SQLite-based persistent state store"
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "sqlite"
+                }
+              }
+            }
+          ],
+          "description": "SQLite-based persistent state store"
+        }
+      ]
+    },
+    "SupportedPlugin": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/StepflowPluginConfig"
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "stepflow"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/BuiltinPluginConfig"
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "builtin"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/MockPlugin"
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "mock"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/McpPluginConfig"
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "mcp"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "StepflowPluginConfig": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/StepflowTransport"
+        }
+      ]
+    },
+    "BuiltinPluginConfig": {
+      "default": null
+    },
+    "MockPlugin": {
+      "type": "object",
+      "description": "A mock plugin that can be used to test various things in the plugin protocol.",
+      "required": [
+        "components"
+      ],
+      "properties": {
+        "components": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MockComponent"
+          },
+          "propertyNames": {
+            "type": "string",
+            "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+            "examples": [
+              "/builtin/eval",
+              "/mcpfs/list_files",
+              "/python/udf"
+            ]
+          }
+        }
+      }
+    },
+    "McpPluginConfig": {
+      "type": "object",
+      "required": [
+        "command",
+        "args"
+      ],
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "StepflowTransport": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Subprocess mode: launch a process that runs an HTTP server.\nThe process must print {\"port\": N} to stdout when ready.",
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "env": {
+              "type": "object",
+              "description": "Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
+            },
+            "healthCheck": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/HealthCheckConfig",
+                  "description": "Health check configuration for the subprocess server."
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "description": "Remote mode: connect directly to an existing HTTP endpoint.",
+          "required": [
+            "url"
+          ],
+          "properties": {
+            "url": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server"
+    },
+    "HealthCheckConfig": {
+      "type": "object",
+      "description": "Configuration for health check polling when launching subprocess servers.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Health check endpoint path. Default: \"/health\""
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)",
+          "minimum": 0
+        },
+        "retryDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Delay between health check attempts in milliseconds. Default: 100",
+          "minimum": 0
+        }
+      }
+    },
+    "MockComponent": {
+      "type": "object",
+      "required": [
+        "input_schema",
+        "output_schema",
+        "behaviors"
+      ],
+      "properties": {
+        "input_schema": {
+          "$ref": "#/$defs/Schema"
+        },
+        "output_schema": {
+          "$ref": "#/$defs/Schema"
+        },
+        "behaviors": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MockComponentBehavior"
+          },
+          "propertyNames": {
+            "allOf": [],
+            "description": "Any JSON value (object, array, string, number, boolean, or null)"
+          }
+        }
+      }
+    },
+    "Schema": {
+      "type": "object",
+      "description": "A valid JSON Schema object."
+    },
+    "MockComponentBehavior": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Produce the given internal (non-flow) error.",
+          "required": [
+            "error"
+          ],
+          "properties": {
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/FlowResult"
+            }
+          ],
+          "description": "Return the given result (success or flow-error)."
+        }
+      ],
+      "description": "Enumeration of behaviors for the mock components."
+    },
+    "FlowResult": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/FlowResultSuccess"
+        },
+        {
+          "$ref": "#/$defs/FlowResultFailed"
+        }
+      ],
+      "title": "FlowResult",
+      "description": "The results of a step execution.",
+      "discriminator": {
+        "propertyName": "outcome",
+        "mapping": {
+          "failed": "#/$defs/FlowResultFailed",
+          "success": "#/$defs/FlowResultSuccess"
+        }
+      }
+    },
+    "Value": {
+      "allOf": [],
+      "description": "Any JSON value (object, array, string, number, boolean, or null)"
+    },
+    "FlowError": {
+      "type": "object",
+      "description": "An error reported from within a flow or step.",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Value"
+            }
+          ]
+        }
+      }
+    },
+    "FlowResultSuccess": {
+      "type": "object",
+      "title": "FlowResultSuccess",
+      "description": "The step execution was successful.",
+      "required": [
+        "outcome",
+        "result"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "title": "FlowOutcome",
+          "default": "success",
+          "const": "success"
+        },
+        "result": {
+          "$ref": "#/$defs/Value"
+        }
+      }
+    },
+    "FlowResultFailed": {
+      "type": "object",
+      "title": "FlowResultFailed",
+      "description": "The step failed with the given error.",
+      "required": [
+        "outcome",
+        "error"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "title": "FlowOutcome",
+          "default": "failed",
+          "const": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/FlowError"
+        }
+      }
+    },
+    "RouteRule": {
+      "type": "object",
+      "description": "A single routing rule for a specific path",
+      "required": [
+        "plugin"
+      ],
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/InputCondition"
+          },
+          "description": "Optional input conditions that must match for this rule to apply"
+        },
+        "componentAllow": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match."
+        },
+        "componentDeny": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked."
+        },
+        "plugin": {
+          "type": "string",
+          "description": "Plugin name to route to"
+        },
+        "component": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., \"{component}\" or \"{*component}\"."
+        }
+      }
+    },
+    "InputCondition": {
+      "type": "object",
+      "description": "JSON path condition for matching specific parts of input data",
+      "required": [
+        "path",
+        "value"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/JsonPath",
+          "description": "JSON path expression (e.g., \"$.model\", \"$.config.temperature\")"
+        },
+        "value": {
+          "$ref": "#/$defs/Value",
+          "description": "Value to match against (equality comparison)"
+        }
+      }
+    },
+    "JsonPath": {
+      "type": "string",
+      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
+      "examples": [
+        "field",
+        "$.field",
+        "$[\"field\"]",
+        "$[0]",
+        "$.field[0].nested"
+      ]
+    },
+    "SqliteStateStoreConfig": {
+      "type": "object",
+      "description": "Configuration for SqliteStateStore",
+      "required": [
+        "databaseUrl"
+      ],
+      "properties": {
+        "databaseUrl": {
+          "type": "string"
+        },
+        "maxConnections": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "autoMigrate": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
