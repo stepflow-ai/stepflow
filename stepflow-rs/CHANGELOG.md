@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.9.0"></a> [Stepflow 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.9.0) - 2026-01-28
+### Bug Fixes
+
+- Handle non-flow YAML files gracefully in test command ([#490](https://github.com/stepflow-ai/stepflow/pull/490))
+
+### Features
+
+- Introduce new edge syntax ([#451](https://github.com/stepflow-ai/stepflow/pull/451))
+- De-clutter stderr from component servers ([#453](https://github.com/stepflow-ai/stepflow/pull/453))
+- Add queue/eval debug primitives with lazy step evaluation ([#459](https://github.com/stepflow-ai/stepflow/pull/459))
+- Add static type checking for workflows ([#461](https://github.com/stepflow-ai/stepflow/pull/461))
+- Unify single and multi-item run model ([#467](https://github.com/stepflow-ai/stepflow/pull/467))
+- Redesign batch execution with pluggable schedulers ([#473](https://github.com/stepflow-ai/stepflow/pull/473))
+- Add RunContext for run-scoped bidirectional communication ([#494](https://github.com/stepflow-ai/stepflow/pull/494))
+- Subflow execution support in FlowExecutor ([#502](https://github.com/stepflow-ai/stepflow/pull/502))
+- Run test cases in batches ([#513](https://github.com/stepflow-ai/stepflow/pull/513))
+- Return flow_id in dry_run mode for store_flow endpoint ([#543](https://github.com/stepflow-ai/stepflow/pull/543))
+- Add StepflowConfig JSON schema and stdin config input ([#545](https://github.com/stepflow-ai/stepflow/pull/545))
+- Restructure orchestrator release to include Python wheels ([#547](https://github.com/stepflow-ai/stepflow/pull/547))
+
+### Refactoring
+
+- Simplify execution to use lazy step evaluation ([#454](https://github.com/stepflow-ai/stepflow/pull/454))
+- Eliminate duplicate JsonSchema crate ([#460](https://github.com/stepflow-ai/stepflow/pull/460))
+- Deduplicate StepflowConfig definitions ([#471](https://github.com/stepflow-ai/stepflow/pull/471))
+- Remove debugging API / REPL ([#480](https://github.com/stepflow-ai/stepflow/pull/480))
+- Replace STDIO transport with unified HTTP transport ([#486](https://github.com/stepflow-ai/stepflow/pull/486))
+- Rename stepflow-py package to stepflow-server ([#481](https://github.com/stepflow-ai/stepflow/pull/481))
+- Convert StepflowEnvironment to type map pattern ([#514](https://github.com/stepflow-ai/stepflow/pull/514))
+- Remove schema versioning from Flow type ([#517](https://github.com/stepflow-ai/stepflow/pull/517))
+- Standardize check scripts with consistent output and -v flag ([#518](https://github.com/stepflow-ai/stepflow/pull/518))
+- Use StepId and DTOs uniformly ([#519](https://github.com/stepflow-ai/stepflow/pull/519))
+- Reorganize Python SDK "primary" and orchestrator packages ([#523](https://github.com/stepflow-ai/stepflow/pull/523))
+- Simplify Diagnostic and Path types for cleaner OpenAPI schemas ([#527](https://github.com/stepflow-ai/stepflow/pull/527))
+- Unify test server management with subprocess plugin ([#538](https://github.com/stepflow-ai/stepflow/pull/538))
+- Standardize step identification API to use step_id only ([#542](https://github.com/stepflow-ai/stepflow/pull/542))
+- Reverse dependency between stepflow-py and stepflow-orchestrator ([#546](https://github.com/stepflow-ai/stepflow/pull/546))
+
+### Style
+
+- Fix formatting issues in validation and codegen files ([#536](https://github.com/stepflow-ai/stepflow/pull/536))
+
 ## <a id="0.8.0"></a> [Stepflow 0.8.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-rs-0.8.0) - 2025-12-15
 ### Features
 
