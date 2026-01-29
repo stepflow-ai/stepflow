@@ -1946,7 +1946,7 @@ wheels = [
 
 [[package]]
 name = "stepflow-orchestrator"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "stepflow-orchestrator" }
 dependencies = [
     { name = "msgspec" },
@@ -1973,7 +1973,7 @@ dev = [
 
 [[package]]
 name = "stepflow-py"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "stepflow-py" }
 dependencies = [
     { name = "aiohttp" },
@@ -1987,6 +1987,7 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "types-jsonschema" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
@@ -2038,6 +2039,7 @@ requires-dist = [
     { name = "stepflow-orchestrator", marker = "extra == 'local'", editable = "stepflow-orchestrator" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "typing-extensions", specifier = ">=4.7.1" },
+    { name = "urllib3", specifier = ">=2.0.0" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["http", "langchain", "local"]

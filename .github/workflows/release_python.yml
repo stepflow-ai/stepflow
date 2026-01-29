@@ -108,9 +108,19 @@ jobs:
           echo "Built packages:"
           ls -la dist/
 
-          # Test that the built wheel can be imported
-          uv pip install dist/*.whl --force-reinstall
-          uv run python -c "import stepflow_py; print(f'stepflow_py version: {stepflow_py.__version__ if hasattr(stepflow_py, \"__version__\") else \"unknown\"}')"
+          # Create isolated venv and install the built wheel
+          echo "Creating isolated test environment..."
+          uv venv /tmp/verify-venv
+          source /tmp/verify-venv/bin/activate
+          uv pip install dist/*.whl
+
+          # Run release verification tests
+          echo "Running verification tests..."
+          python release_verification/verify_stepflow_py.py
+
+          # Clean up
+          deactivate
+          rm -rf /tmp/verify-venv
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
