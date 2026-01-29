@@ -3,6 +3,9 @@
 All notable changes to this project will be documented in this file.
 
 ## <a id="0.9.0"></a> [stepflow-py 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.0) - 2026-01-29
+
+`stepflow-py` now includes a generated API client for submitting flows and interacting with Stepflow and an optional `local` feature for launching and interacting with a local Stepflow.
+
 ### Bug Fixes
 
 - Add cliff.toml and fix changelog path for stepflow-py ([#555](https://github.com/stepflow-ai/stepflow/pull/555))
@@ -19,7 +22,6 @@ All notable changes to this project will be documented in this file.
 
 ### Refactoring
 
-- Rename stepflow-py package to stepflow-server ([#481](https://github.com/stepflow-ai/stepflow/pull/481))
 - Reorganize Python SDK "primary" and orchestrator packages ([#523](https://github.com/stepflow-ai/stepflow/pull/523))
 - Simplify Diagnostic and Path types for cleaner OpenAPI schemas ([#527](https://github.com/stepflow-ai/stepflow/pull/527))
 - Reverse dependency between stepflow-py and stepflow-orchestrator ([#546](https://github.com/stepflow-ai/stepflow/pull/546))
