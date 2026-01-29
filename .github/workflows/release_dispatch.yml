@@ -66,7 +66,7 @@ jobs:
 
       - name: Extract version from pyproject.toml
         id: version
-        working-directory: sdks/python
+        working-directory: sdks/python/stepflow-py
         run: |
           VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
