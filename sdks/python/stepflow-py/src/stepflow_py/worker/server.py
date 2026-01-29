@@ -51,6 +51,7 @@ from stepflow_py.worker.generated_protocol import (
     Notification,
     RequestId,
 )
+from stepflow_py.worker.path_trie import PathTrie
 from stepflow_py.worker.udf import udf
 
 # Check if LangChain is available
@@ -77,6 +78,11 @@ class ComponentEntry:
         return msgspec.json.schema(self.output_type)
 
 
+def _has_path_params(name: str) -> bool:
+    """Check if a component name contains path parameters."""
+    return "{" in name and "}" in name
+
+
 def _handle_exception(e: Exception, id: RequestId) -> MethodError:
     """Convert any exception to a proper JSON-RPC error response."""
     if not isinstance(e, StepflowError):
@@ -97,6 +103,7 @@ class StepflowServer:
 
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
+        self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
         self._initialized = False
 
         # Add LangChain registry functionality if available
@@ -124,10 +131,22 @@ class StepflowServer:
     ):
         """Decorator to register a component function.
 
+        Supports path parameters in component names:
+        - `{name}` - captures a single path segment
+        - `{*name}` - captures remaining path (wildcard/catch-all)
+
+        Path parameters are passed as keyword arguments to the function.
+
+        Example:
+            @server.component(name="core/{*component}")
+            async def handler(input_data: dict, context: StepflowContext,
+                              component: str) -> dict:
+                ...
+
         Args:
             func: The function to register (provided by the decorator)
             name: Optional name for the component. If not provided, uses the function
-                name
+                name. Supports path parameters like {name} and {*name}.
             description: Optional description. If not provided, uses the function's
                 docstring
         """
@@ -157,13 +176,19 @@ class StepflowServer:
                 f.__doc__.strip() if f.__doc__ else None
             )
 
-            self._components[component_name] = ComponentEntry(
+            entry = ComponentEntry(
                 name=component_name,
                 function=f,
                 input_type=input_type,
                 output_type=return_type,
                 description=component_description,
             )
+
+            # Store in appropriate registry based on whether name has path params
+            if _has_path_params(component_name):
+                self._wildcard_trie.insert(component_name, entry)
+            else:
+                self._components[component_name] = entry
 
             # Store whether function expects context
             f._expects_context = expects_context  # type: ignore[attr-defined]
@@ -187,13 +212,36 @@ class StepflowServer:
             return decorator
         return decorator(func)
 
-    def get_component(self, component_path: str) -> ComponentEntry | None:
-        """Get a registered component by path."""
-        return self._components.get(component_path)
+    def get_component(
+        self, component_path: str
+    ) -> tuple[ComponentEntry, dict[str, str]] | None:
+        """Get a registered component by path.
+
+        Supports both exact matches and pattern matching for components
+        registered with path parameters.
+
+        Args:
+            component_path: The component path to look up
+
+        Returns:
+            Tuple of (ComponentEntry, path_params) if found, None otherwise.
+            path_params is an empty dict for exact matches.
+        """
+        # Try exact match first (faster)
+        if component_path in self._components:
+            return self._components[component_path], {}
+
+        # Try pattern matching using trie (O(n) where n = path segments)
+        result = self._wildcard_trie.match(component_path)
+        if result is not None:
+            entry, params = result
+            return entry, params
+
+        return None
 
     def get_components(self) -> dict[str, ComponentEntry]:
-        """Get all registered components."""
-        return self._components
+        """Get all registered components (both exact and pattern-based)."""
+        return {**self._components, **self._wildcard_trie.get_patterns()}
 
     def requires_context(self, message: Message) -> bool:
         """Check if a message requires bidirectional communication context.
@@ -210,11 +258,12 @@ class StepflowServer:
                 try:
                     # Parse the component name from the request
                     assert isinstance(message.params, ComponentExecuteParams)
-                    component = self._components.get(message.params.component)
-                    if component is None:
+                    result = self.get_component(message.params.component)
+                    if result is None:
                         # Component not found - doesn't require context (errors later)
                         return False
 
+                    component, _ = result
                     # Check if component function expects context parameter
                     return (
                         hasattr(component.function, "_expects_context")
@@ -335,10 +384,11 @@ class StepflowServer:
         assert isinstance(request.params, ComponentInfoParams)
         params: ComponentInfoParams = request.params
 
-        component = self._components.get(params.component)
-        if component is None:
+        result = self.get_component(params.component)
+        if result is None:
             raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
+        component, _ = result
         info = ComponentInfo(
             component=params.component,
             input_schema=component.input_schema(),
@@ -346,8 +396,8 @@ class StepflowServer:
             description=component.description,
         )
 
-        result = ComponentInfoResult(info=info)
-        return MethodSuccess(id=request.id, result=result)
+        result_info = ComponentInfoResult(info=info)
+        return MethodSuccess(id=request.id, result=result_info)
 
     async def _handle_component_infer_schema(
         self, request: MethodRequest
@@ -362,14 +412,17 @@ class StepflowServer:
         assert isinstance(request.params, ComponentInferSchemaParams)
         params: ComponentInferSchemaParams = request.params
 
-        component = self._components.get(params.component)
-        if component is None:
+        result = self.get_component(params.component)
+        if result is None:
             raise ComponentNotFoundError(f"Component '{params.component}' not found")
 
+        component, _ = result
         # Return the static output schema from the component's type annotations
         # In the future, components could implement dynamic schema inference
-        result = ComponentInferSchemaResult(output_schema=component.output_schema())
-        return MethodSuccess(id=request.id, result=result)
+        schema_result = ComponentInferSchemaResult(
+            output_schema=component.output_schema()
+        )
+        return MethodSuccess(id=request.id, result=schema_result)
 
     async def _handle_component_execute(
         self, request: MethodRequest, context: StepflowContext | None = None
@@ -378,9 +431,11 @@ class StepflowServer:
         assert isinstance(request.params, ComponentExecuteParams)
         params: ComponentExecuteParams = request.params
 
-        component = self._components.get(params.component)
-        if component is None:
+        lookup_result = self.get_component(params.component)
+        if lookup_result is None:
             raise ComponentNotFoundError(f"Component '{params.component}' not found")
+
+        component, path_params = lookup_result
 
         try:
             import logging
@@ -451,15 +506,15 @@ class StepflowServer:
                 )
                 logger.debug(f"Component input: {input_value}")
 
-                # Execute component with or without context
+                # Execute component with or without context, plus path params as kwargs
                 args = [input_value]
                 if context is not None:
                     args.append(context)
 
                 if inspect.iscoroutinefunction(component.function):
-                    output = await component.function(*args)
+                    output = await component.function(*args, **path_params)
                 else:
-                    output = component.function(*args)
+                    output = component.function(*args, **path_params)
 
                 result = ComponentExecuteResult(output=output)
                 logger.info(f"Component {params.component} executed successfully")
