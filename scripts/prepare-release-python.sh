@@ -204,12 +204,10 @@ if [[ "$BUMP_TYPE" == "minor" ]] || [[ "$BUMP_TYPE" == "major" ]]; then
     echo -e "${GREEN}Updated orchestrator dependency to ${NEW_CONSTRAINT}${NC}"
 fi
 
-# Update uv.lock if it exists
-if [[ -f "uv.lock" ]]; then
-    echo -e "${BLUE}Updating uv.lock...${NC}"
-    if ! uv lock; then
-        echo -e "${YELLOW}Warning: Failed to update uv.lock, continuing anyway...${NC}"
-    fi
+# Update workspace lock file
+echo -e "${BLUE}Updating workspace lock file...${NC}"
+if ! (cd .. && uv lock); then
+    echo -e "${YELLOW}Warning: Failed to update uv.lock, continuing anyway...${NC}"
 fi
 
 # Generate changelog (located at sdks/python/CHANGELOG.md, one level up from stepflow-py)
@@ -244,9 +242,7 @@ echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in pyproject.toml
 if [[ "$BUMP_TYPE" == "minor" ]] || [[ "$BUMP_TYPE" == "major" ]]; then
     echo "  - Updated stepflow-orchestrator dependency constraint to ~=${NEW_MAJOR}.${NEW_MINOR}.0"
 fi
-if [[ -f "uv.lock" ]]; then
-    echo "  - Updated uv.lock"
-fi
+echo "  - Updated uv.lock"
 echo "  - Generated/updated CHANGELOG.md"
 
 if [[ "$CREATE_PR" == false ]]; then
@@ -281,15 +277,12 @@ git checkout -b "$RELEASE_BRANCH"
 
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
-if [[ -f "uv.lock" ]]; then
-    git add pyproject.toml uv.lock "$CHANGELOG_PATH"
-else
-    git add pyproject.toml "$CHANGELOG_PATH"
-fi
+git add pyproject.toml "$CHANGELOG_PATH" ../uv.lock
 git commit -m "chore: release stepflow-py v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
-- Update CHANGELOG.md with release notes"
+- Update CHANGELOG.md with release notes
+- Update uv.lock"
 
 # Push branch
 echo -e "${BLUE}Pushing release branch...${NC}"
