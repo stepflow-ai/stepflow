@@ -165,7 +165,7 @@ jobs:
           cat > release-notes.md << 'EOF'
           ## Stepflow Python SDK v${{ needs.determine-version.outputs.version }}
 
-          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/stepflow-py/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)**
+          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/sdks/python/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-py/${{ needs.determine-version.outputs.version }}/)**
 
           This release includes the Python SDK for Stepflow with the following distribution files:
 
@@ -244,7 +244,7 @@ jobs:
           gh release create "${{ needs.determine-version.outputs.tag }}" \
             --title "Stepflow Python SDK v${{ needs.determine-version.outputs.version }}" \
             --notes-file release-notes.md \
-            sdks/python/stepflow-py/CHANGELOG.md \
+            sdks/python/CHANGELOG.md \
             ./release-artifacts/stepflow_py-*.whl \
             ./release-artifacts/stepflow_py-*.tar.gz
 
