@@ -1973,7 +1973,7 @@ dev = [
 
 [[package]]
 name = "stepflow-py"
-version = "0.9.0"
+version = "0.9.1"
 source = { editable = "stepflow-py" }
 dependencies = [
     { name = "aiohttp" },

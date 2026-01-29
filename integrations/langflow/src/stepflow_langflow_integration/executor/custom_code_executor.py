@@ -12,7 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
+"""Custom code executor for Langflow components.
+
+Executes Langflow components by compiling their code from blob storage.
+Uses a pre-compilation approach to eliminate context calls during execution.
+"""
 
 import inspect
 import os
@@ -22,15 +26,15 @@ from stepflow_py.worker import StepflowContext
 from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
-from .type_converter import TypeConverter
+from .base_executor import BaseExecutor
 
 
-class UDFExecutor:
-    """Executes Langflow components using pre-compilation to eliminate context calls."""
+class CustomCodeExecutor(BaseExecutor):
+    """Executes Langflow custom code components by compiling code from blobs."""
 
     def __init__(self):
-        """Initialize UDF executor."""
-        self.type_converter = TypeConverter()
+        """Initialize custom code executor."""
+        super().__init__()
         self.compiled_components: dict[str, Any] = {}
 
     async def execute(
@@ -296,18 +300,7 @@ class UDFExecutor:
         )
         session_id = component_parameters.get("session_id", "default_session")
         component_instance._session_id = session_id
-
-        # Set up graph object for components that use self.graph.session_id (like Agent)
-        # Some components (like Agent) have graph as a read-only property, so we need to
-        # set it via __dict__ to ensure it has vertices attribute for lfx compatibility
-        class GraphContext:
-            def __init__(self, session_id: str):
-                self.session_id = session_id
-                self.vertices: list[Any] = []  # Empty list for lfx compatibility
-                self.flow_id = None  # Optional attribute some components may expect
-
-        # Use __dict__ to set graph even if it's a read-only property
-        component_instance.__dict__["graph"] = GraphContext(session_id)
+        self._setup_graph_context(component_instance, session_id)
 
         # Note: No conversion needed - langflow.schema types are lfx.schema types
         # (langflow re-exports from lfx, so isinstance checks work correctly)

@@ -14,12 +14,16 @@
 
 """Process individual Langflow nodes into Stepflow steps."""
 
+import logging
 from typing import Any
 
 from stepflow_py.worker import FlowBuilder, Value
 
 from ..exceptions import ConversionError
+from .known_components import lookup_known_component, module_to_path
 from .schema_mapper import SchemaMapper
+
+logger = logging.getLogger(__name__)
 
 
 class NodeProcessor:
@@ -112,17 +116,56 @@ class NodeProcessor:
                     field_mapping,
                 )
 
-            # For regular components, create a UDF step
+            # For regular components, determine routing based on component type
             custom_code = template.get("code", {}).get("value", "")
 
-            # Determine component path and inputs based on available information
-            if custom_code:
-                # Any component with code - use UDF executor for real execution
+            # Check for known core components via hash lookup
+            metadata = node_info.get("metadata", {})
+            code_hash = metadata.get("code_hash")
+            module = metadata.get("module")
 
-                # Routing to UDF executor
-                component_path = "/langflow/udf_executor"
+            known_component = None
+            if code_hash and module:
+                known_component = lookup_known_component(code_hash, module)
 
-                # First create a blob step for the UDF code using auto ID generation
+            # Determine component path and inputs based on routing
+            if known_component:
+                # Known core component - use core executor (no blob needed)
+                component_path = (
+                    f"/langflow/core/{module_to_path(known_component.module)}"
+                )
+                logger.debug(
+                    f"Routing {component_type} to core executor: {component_path}"
+                )
+
+                # Extract outputs and selected_output for core executor
+                outputs = node_info.get("outputs", [])
+                selected_output = output_mapping.get(node_id)
+                if not selected_output and outputs:
+                    selected_output = outputs[0].get("name")
+
+                # Prepare template without code field
+                template_without_code = {
+                    k: v for k, v in template.items() if k != "code"
+                }
+
+                step_input = {
+                    "template": template_without_code,
+                    "outputs": outputs,
+                    "selected_output": selected_output,
+                    "input": self._extract_runtime_inputs_for_builder(
+                        node,
+                        dependencies.get(node_id, []),
+                        node_output_refs,
+                        field_mapping,
+                    ),
+                }
+            elif custom_code:
+                # Component with custom code - use custom code executor
+                component_path = "/langflow/custom_code"
+                logger.debug(f"Routing {component_type} to custom_code executor")
+
+                # First create a blob step for the code
                 blob_data = self._prepare_udf_blob(node, component_type, output_mapping)
 
                 blob_step_id = f"{step_id}_blob"
@@ -133,7 +176,7 @@ class NodeProcessor:
                     must_execute=True,
                 )
 
-                # Now create the UDF executor step that uses the blob
+                # Create the custom code executor step that uses the blob
                 step_input = {
                     "blob_id": Value.step(blob_step_handle.id, "blob_id"),
                     "input": self._extract_runtime_inputs_for_builder(
@@ -144,11 +187,10 @@ class NodeProcessor:
                     ),
                 }
             else:
-                # All executable components should have custom code
-                # If we reach here, the fixture may be incomplete
+                # All executable components should have custom code or be known
                 raise ConversionError(
-                    f"Component {component_type} in node {node_id} has no custom code. "
-                    f"All executable components should have custom code."
+                    f"Component {component_type} in node {node_id} has no custom code "
+                    f"and is not a known core component."
                 )
 
             # Add step to builder with proper ID and component path

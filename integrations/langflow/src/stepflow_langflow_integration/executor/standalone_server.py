@@ -31,22 +31,37 @@ from stepflow_py.worker import StepflowContext, StepflowServer
 from stepflow_langflow_integration.components.component_tool import (
     component_tool_executor,
 )
-from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
+from stepflow_langflow_integration.executor.core_executor import CoreExecutor
+from stepflow_langflow_integration.executor.custom_code_executor import (
+    CustomCodeExecutor,
+)
 
 # Create server instance (following the exact pattern from stepflow_py.worker/main.py)
 server = StepflowServer()
 
-# Create UDF executor
-udf_executor = UDFExecutor()
+# Create executors
+custom_code_executor = CustomCodeExecutor()
+core_executor = CoreExecutor()
 
 
-# Register the main UDF executor component at module level
-@server.component(name="udf_executor")
-async def udf_executor_component(
+# Register the main custom code executor component at module level
+@server.component(name="custom_code")
+async def custom_code_component(
     input_data: dict[str, Any], context: StepflowContext
 ) -> dict[str, Any]:
-    """Execute a Langflow UDF component."""
-    return await udf_executor.execute(input_data, context)
+    """Execute a Langflow custom code component."""
+    return await custom_code_executor.execute(input_data, context)
+
+
+# Register the core component handler with wildcard path
+@server.component(name="core/{*component}")
+async def core_component(
+    input_data: dict[str, Any],
+    context: StepflowContext,
+    component: str,
+) -> dict[str, Any]:
+    """Execute a known core Langflow component by module path."""
+    return await core_executor.execute(component, input_data, context)
 
 
 # Register the component tool wrapper component
@@ -58,7 +73,7 @@ async def component_tool_component(
     return await component_tool_executor(input_data, context)
 
 
-# All Langflow components now route through the UDF executor for real execution
+# All Langflow components now route through the custom code executor for real execution
 # No hardcoded component implementations - everything uses real Langflow code
 
 
