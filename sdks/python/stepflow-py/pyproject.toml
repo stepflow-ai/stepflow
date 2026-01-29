@@ -48,6 +48,7 @@ dependencies = [
     "aiohttp-retry>=2.8.0",
     "python-dateutil>=2.8.2",
     "typing-extensions>=4.7.1",
+    "urllib3>=2.0.0",  # Required by generated API client
 ]
 
 [project.urls]
@@ -130,9 +131,6 @@ opentelemetry-api = "opentelemetry"
 opentelemetry-sdk = "opentelemetry"
 opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 python-dateutil = "dateutil"
-
-[tool.deptry.per_rule_ignores]
-DEP001 = ["urllib3"]  # urllib3 is a transitive dependency used by generated API client
 
 # Note: mypy configuration is at the workspace level (sdks/python/pyproject.toml)
 # to ensure consistent settings across all packages

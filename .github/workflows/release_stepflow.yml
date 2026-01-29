@@ -229,10 +229,54 @@ jobs:
           path: ./wheels/*.whl
           retention-days: 7
 
+  verify-stepflow-wheels:
+    name: Verify Python Wheels
+    runs-on: ubuntu-22.04
+    needs: [build-stepflow-wheels]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: stepflow-wheels
+          path: ./wheels
+
+      - name: Verify wheel (Linux x86_64)
+        run: |
+          echo "Available wheels:"
+          ls -la ./wheels/
+
+          # Find the manylinux x86_64 wheel
+          WHEEL=$(ls ./wheels/*manylinux*x86_64*.whl 2>/dev/null | head -1)
+          if [ -z "$WHEEL" ]; then
+            echo "ERROR: No manylinux x86_64 wheel found"
+            exit 1
+          fi
+          echo "Testing wheel: $WHEEL"
+
+          # Create isolated venv and install the wheel
+          echo "Creating isolated test environment..."
+          uv venv /tmp/verify-venv
+          source /tmp/verify-venv/bin/activate
+          uv pip install "$WHEEL"
+
+          # Run release verification tests
+          echo "Running verification tests..."
+          python sdks/python/stepflow-orchestrator/release_verification/verify_stepflow_orchestrator.py
+
+          # Clean up
+          deactivate
+          rm -rf /tmp/verify-venv
+
   publish-stepflow-wheels:
     name: Publish Wheels to PyPI
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-stepflow-wheels]
+    needs: [determine-version, build-stepflow-wheels, verify-stepflow-wheels]
     if: needs.determine-version.outputs.skip_tag == 'false'
     environment:
       name: pypi
@@ -438,7 +482,7 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-binaries, build-docker, build-stepflow-wheels, publish-stepflow-wheels, create-tag-and-release]
+    needs: [determine-version, build-binaries, build-docker, build-stepflow-wheels, verify-stepflow-wheels, publish-stepflow-wheels, create-tag-and-release]
     if: always()
 
     steps:
@@ -465,6 +509,12 @@ jobs:
             echo "| Python wheel builds | ✅ Success |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| Python wheel builds | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.verify-stepflow-wheels.result }}" = "success" ]; then
+            echo "| Python wheel verification | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Python wheel verification | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
