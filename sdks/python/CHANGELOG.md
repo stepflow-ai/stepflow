@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.9.1"></a> [stepflow-py 0.9.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.1) - 2026-01-29
+### Bug Fixes
+
+- Add urllib3 dependency required by generated API client ([#560](https://github.com/stepflow-ai/stepflow/pull/560))
+
 ## <a id="0.9.0"></a> [stepflow-py 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.0) - 2026-01-29
 
 `stepflow-py` now includes a generated API client for submitting flows and interacting with Stepflow and an optional `local` feature for launching and interacting with a local Stepflow.
