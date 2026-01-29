@@ -100,7 +100,7 @@ jobs:
 
       - name: Build package
         working-directory: sdks/python/stepflow-py
-        run: uv build
+        run: uv build --out-dir dist/
 
       - name: Verify build
         working-directory: sdks/python/stepflow-py
