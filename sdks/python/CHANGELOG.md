@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.9.0"></a> [stepflow-py 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.0) - 2026-01-29
+
+`stepflow-py` now includes a generated API client for submitting flows and interacting with Stepflow and an optional `local` feature for launching and interacting with a local Stepflow.
+
+### Bug Fixes
+
+- Add cliff.toml and fix changelog path for stepflow-py ([#555](https://github.com/stepflow-ai/stepflow/pull/555))
+
+### Features
+
+- Return flow_id in dry_run mode for store_flow endpoint ([#543](https://github.com/stepflow-ai/stepflow/pull/543))
+- Add StepflowConfig JSON schema and stdin config input ([#545](https://github.com/stepflow-ai/stepflow/pull/545))
+- Restructure orchestrator release to include Python wheels ([#547](https://github.com/stepflow-ai/stepflow/pull/547))
+
+### Miscellaneous Tasks
+
+- Release stepflow v0.9.0 ([#550](https://github.com/stepflow-ai/stepflow/pull/550))
+
+### Refactoring
+
+- Reorganize Python SDK "primary" and orchestrator packages ([#523](https://github.com/stepflow-ai/stepflow/pull/523))
+- Simplify Diagnostic and Path types for cleaner OpenAPI schemas ([#527](https://github.com/stepflow-ai/stepflow/pull/527))
+- Reverse dependency between stepflow-py and stepflow-orchestrator ([#546](https://github.com/stepflow-ai/stepflow/pull/546))
+
 ## <a id="0.8.0"></a> [Stepflow Python SDK 0.8.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.8.0) - 2025-12-15
 ### Features
 

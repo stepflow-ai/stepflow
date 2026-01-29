@@ -1,6 +1,6 @@
 [project]
 name = "stepflow-py"
-version = "0.8.0"
+version = "0.9.0"
 description = "Python SDK for Stepflow - includes API client and component server (worker) functionality."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -68,7 +68,7 @@ langchain = [
     "langchain-core>=0.3",
 ]
 local = [
-    "stepflow-orchestrator~=0.8.0",
+    "stepflow-orchestrator~=0.9.0",
 ]
 
 [dependency-groups]
