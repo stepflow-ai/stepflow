@@ -212,13 +212,14 @@ if [[ -f "uv.lock" ]]; then
     fi
 fi
 
-# Generate changelog
+# Generate changelog (located at sdks/python/CHANGELOG.md, one level up from stepflow-py)
 echo -e "${BLUE}Generating changelog...${NC}"
+CHANGELOG_PATH="../CHANGELOG.md"
 
 # Check if CHANGELOG.md exists, create if not
-if [[ ! -f "CHANGELOG.md" ]]; then
+if [[ ! -f "$CHANGELOG_PATH" ]]; then
     echo -e "${YELLOW}Creating new CHANGELOG.md${NC}"
-    cat > CHANGELOG.md << EOF
+    cat > "$CHANGELOG_PATH" << EOF
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -232,9 +233,9 @@ fi
 echo -e "${BLUE}Generating changelog (Python SDK changes only)${NC}"
 if [[ -n "$TAG_MESSAGE" ]]; then
     echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
-    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
+    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend "$CHANGELOG_PATH" --with-tag-message "$TAG_MESSAGE"
 else
-    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend CHANGELOG.md
+    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend "$CHANGELOG_PATH"
 fi
 
 echo -e "${GREEN}✅ Release preparation complete!${NC}"
@@ -281,9 +282,9 @@ git checkout -b "$RELEASE_BRANCH"
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
 if [[ -f "uv.lock" ]]; then
-    git add pyproject.toml uv.lock CHANGELOG.md
+    git add pyproject.toml uv.lock "$CHANGELOG_PATH"
 else
-    git add pyproject.toml CHANGELOG.md
+    git add pyproject.toml "$CHANGELOG_PATH"
 fi
 git commit -m "chore: release stepflow-py v$NEW_VERSION
 
