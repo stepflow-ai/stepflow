@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and platform_machine == 'arm64' and sys_platform == 'darwin'",
@@ -10098,7 +10098,7 @@ dev = [
 
 [[package]]
 name = "stepflow-orchestrator"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "../../sdks/python/stepflow-orchestrator" }
 dependencies = [
     { name = "msgspec" },
@@ -10117,7 +10117,7 @@ dev = [
 
 [[package]]
 name = "stepflow-py"
-version = "0.8.0"
+version = "0.9.1"
 source = { editable = "../../sdks/python/stepflow-py" }
 dependencies = [
     { name = "aiohttp" },
@@ -10131,6 +10131,7 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "types-jsonschema" },
     { name = "typing-extensions" },
+    { name = "urllib3" },
 ]
 
 [package.metadata]
@@ -10150,6 +10151,7 @@ requires-dist = [
     { name = "stepflow-orchestrator", marker = "extra == 'local'", editable = "../../sdks/python/stepflow-orchestrator" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "typing-extensions", specifier = ">=4.7.1" },
+    { name = "urllib3", specifier = ">=2.0.0" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["http", "langchain", "local"]
