@@ -55,7 +55,7 @@ Homepage = "https://stepflow-ai.github.io/stepflow/"
 Documentation = "https://stepflow-ai.github.io/stepflow/"
 Repository = "https://github.com/stepflow-ai/stepflow"
 "Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
-Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/stepflow-py/CHANGELOG.md"
+Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/CHANGELOG.md"
 "Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-py"
 
 [project.optional-dependencies]
