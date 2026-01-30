@@ -87,8 +87,11 @@ def test_component_registration(server):
         )
 
     assert "/test_component" in server.get_components()
-    component = server.get_component("/test_component")
+    result = server.get_component("/test_component")
+    assert result is not None
+    component, path_params = result
     assert isinstance(component, ComponentEntry)
+    assert path_params == {}
     assert component.name == "/test_component"
     assert component.input_type == ValidInput
     assert component.output_type == ValidOutput
@@ -102,8 +105,11 @@ def test_component_with_custom_name(server):
         )
 
     assert "/custom_name" in server.get_components()
-    component = server.get_component("/custom_name")
+    result = server.get_component("/custom_name")
+    assert result is not None
+    component, path_params = result
     assert isinstance(component, ComponentEntry)
+    assert path_params == {}
     assert component.name == "/custom_name"
     assert component.input_type == ValidInput
     assert component.output_type == ValidOutput
@@ -116,8 +122,10 @@ def test_component_execution(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    component = server.get_component("/test_component")
-    assert component is not None
+    lookup_result = server.get_component("/test_component")
+    assert lookup_result is not None
+    component, path_params = lookup_result
+    assert path_params == {}
     result = component.function(ValidInput(name="Alice", age=25))
     assert isinstance(result, ValidOutput)
     assert result.greeting == "Hello Alice!"
@@ -555,8 +563,10 @@ async def test_decorator_sync():
             greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
         )
 
-    component = server.get_component("/sync_component")
-    assert component is not None
+    lookup_result = server.get_component("/sync_component")
+    assert lookup_result is not None
+    component, path_params = lookup_result
+    assert path_params == {}
     result = component.function(ValidInput(name="Bob", age=30))
     assert isinstance(result, ValidOutput)
     assert result.greeting == "Sync Hello Bob!"
@@ -573,8 +583,10 @@ async def test_decorator_async():
             greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
         )
 
-    component = server.get_component("/async_component")
-    assert component is not None
+    lookup_result = server.get_component("/async_component")
+    assert lookup_result is not None
+    component, path_params = lookup_result
+    assert path_params == {}
     assert inspect.iscoroutinefunction(component.function)
     result = await component.function(ValidInput(name="Bob", age=30))
     assert isinstance(result, ValidOutput)
@@ -584,10 +596,176 @@ async def test_decorator_async():
     server2 = StepflowServer()
     server2.component(async_component, name="async_component2")
 
-    component2 = server2.get_component("/async_component2")
-    assert component2 is not None
+    lookup_result2 = server2.get_component("/async_component2")
+    assert lookup_result2 is not None
+    component2, path_params2 = lookup_result2
+    assert path_params2 == {}
     assert inspect.iscoroutinefunction(component2.function)
     result2 = await component2.function(ValidInput(name="Bob", age=30))
     assert isinstance(result2, ValidOutput)
     assert result2.greeting == "Sync Hello Bob!"
     assert result2.age_next_year == 31
+
+
+# =============================================================================
+# Path Parameter Tests
+# =============================================================================
+
+
+def test_wildcard_path_parameter():
+    """Test wildcard path parameter {*name} captures remaining path."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="core/{*component}")
+    def core_handler(input: ValidInput, component: str) -> ValidOutput:
+        return ValidOutput(greeting=f"Component: {component}", age_next_year=input.age)
+
+    # Test wildcard matching with nested path
+    result = server.get_component("/core/my/nested/component")
+    assert result is not None
+    component, path_params = result
+    assert path_params == {"component": "my/nested/component"}
+    assert component.name == "/core/{*component}"
+
+    # Test single segment also matches
+    result2 = server.get_component("/core/simple")
+    assert result2 is not None
+    _, path_params2 = result2
+    assert path_params2 == {"component": "simple"}
+
+    # Test no match for just the prefix
+    assert server.get_component("/core") is None
+    assert server.get_component("/core/") is None
+
+
+def test_single_segment_path_parameter():
+    """Test single segment path parameter {name} captures one segment."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="users/{user_id}/profile")
+    def user_profile(input: ValidInput, user_id: str) -> ValidOutput:
+        return ValidOutput(greeting=f"User: {user_id}", age_next_year=input.age)
+
+    # Test matching
+    result = server.get_component("/users/alice/profile")
+    assert result is not None
+    component, path_params = result
+    assert path_params == {"user_id": "alice"}
+    assert component.name == "/users/{user_id}/profile"
+
+    # Test non-matching (too many segments)
+    assert server.get_component("/users/alice/bob/profile") is None
+
+    # Test non-matching (wrong suffix)
+    assert server.get_component("/users/alice/settings") is None
+
+
+def test_multiple_path_parameters():
+    """Test multiple path parameters in one path."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="orgs/{org}/repos/{repo}")
+    def repo_handler(input: ValidInput, org: str, repo: str) -> ValidOutput:
+        return ValidOutput(greeting=f"{org}/{repo}", age_next_year=input.age)
+
+    result = server.get_component("/orgs/acme/repos/my-project")
+    assert result is not None
+    component, path_params = result
+    assert path_params == {"org": "acme", "repo": "my-project"}
+
+
+def test_path_params_passed_to_function():
+    """Test that path parameters are passed as kwargs to function."""
+    server = StepflowServer(include_builtins=False)
+
+    captured_params = {}
+
+    @server.component(name="api/{version}/{*path}")
+    def api_handler(input: ValidInput, version: str, path: str) -> ValidOutput:
+        captured_params["version"] = version
+        captured_params["path"] = path
+        return ValidOutput(greeting=f"v{version}: {path}", age_next_year=input.age)
+
+    result = server.get_component("/api/v2/users/list")
+    assert result is not None
+    component, path_params = result
+    assert path_params == {"version": "v2", "path": "users/list"}
+
+    # Call function with path params
+    output = component.function(ValidInput(name="test", age=25), **path_params)
+    assert captured_params == {"version": "v2", "path": "users/list"}
+    assert output.greeting == "vv2: users/list"
+
+
+@pytest.mark.asyncio
+async def test_path_params_execution_via_handle_message():
+    """Test that path parameters work through the full handle_message flow."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="core/{*component}")
+    def core_handler(input: ValidInput, component: str) -> ValidOutput:
+        return ValidOutput(greeting=f"Executed: {component}", age_next_year=input.age)
+
+    server.set_initialized(True)
+
+    request = MethodRequest(
+        jsonrpc="2.0",
+        id="test-path-params",
+        method=Method.components_execute,
+        params=ComponentExecuteParams(
+            component="/core/my/nested/path",
+            input={"name": "Test", "age": 30},
+            attempt=1,
+            observability=create_test_observability(),
+        ),
+    )
+
+    response = await server.handle_message(request)
+    assert hasattr(response, "result")
+    assert response.result.output.greeting == "Executed: my/nested/path"
+    assert response.result.output.age_next_year == 30
+
+
+def test_exact_match_takes_precedence():
+    """Test that exact component matches take precedence over wildcards."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="api/{*path}")
+    def wildcard_handler(input: ValidInput, path: str) -> ValidOutput:
+        return ValidOutput(greeting=f"Wildcard: {path}", age_next_year=input.age)
+
+    @server.component(name="api/health")
+    def health_handler(input: ValidInput) -> ValidOutput:
+        return ValidOutput(greeting="Health OK", age_next_year=input.age)
+
+    # Exact match should win
+    result = server.get_component("/api/health")
+    assert result is not None
+    component, path_params = result
+    assert path_params == {}
+    assert component.name == "/api/health"
+
+    # Wildcard should match other paths
+    result2 = server.get_component("/api/other/path")
+    assert result2 is not None
+    component2, path_params2 = result2
+    assert path_params2 == {"path": "other/path"}
+    assert component2.name == "/api/{*path}"
+
+
+def test_get_components_includes_wildcard():
+    """Test that get_components() includes wildcard components."""
+    server = StepflowServer(include_builtins=False)
+
+    @server.component(name="exact")
+    def exact_handler(input: ValidInput) -> ValidOutput:
+        return ValidOutput(greeting="exact", age_next_year=input.age)
+
+    @server.component(name="wild/{*path}")
+    def wildcard_handler(input: ValidInput, path: str) -> ValidOutput:
+        return ValidOutput(greeting=f"wild: {path}", age_next_year=input.age)
+
+    components = server.get_components()
+    assert "/exact" in components
+    assert "/wild/{*path}" in components
+    # Note: LangChain components may also be present if langchain is installed
