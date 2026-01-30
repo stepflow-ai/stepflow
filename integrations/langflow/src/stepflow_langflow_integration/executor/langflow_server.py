@@ -14,7 +14,9 @@
 
 """Stepflow component server for Langflow integration.
 
-Clean architecture without CachedStepflowContext.
+Provides component handlers for executing Langflow components:
+- /langflow/custom_code: Executes components by compiling code from blobs
+- /langflow/core/{*component}: Executes known core components by module path
 """
 
 import asyncio
@@ -23,7 +25,8 @@ from typing import Any
 
 from stepflow_py.worker import StepflowContext, StepflowServer
 
-from .udf_executor import UDFExecutor
+from .core_executor import CoreExecutor
+from .custom_code_executor import CustomCodeExecutor
 
 # Configure logging
 logging.basicConfig(
@@ -34,16 +37,20 @@ logging.basicConfig(
 
 
 class StepflowLangflowServer:
-    """Stepflow component server with Langflow UDF execution capabilities.
+    """Stepflow component server with Langflow execution capabilities.
 
-    This server uses the new pre-compilation approach that eliminates the need
-    for CachedStepflowContext by pre-compiling all components before execution.
+    This server provides handlers for executing Langflow components:
+    - custom_code: Compiles and executes component code from blob storage
+    - core/{*component}: Executes known core components by module path
+
+    Uses a pre-compilation approach that eliminates context calls during execution.
     """
 
     def __init__(self):
         """Initialize the Langflow component server."""
         self.server = StepflowServer()
-        self.udf_executor = UDFExecutor()
+        self.custom_code_executor = CustomCodeExecutor()
+        self.core_executor = CoreExecutor()
 
         # Register components
         self._register_components()
@@ -51,18 +58,34 @@ class StepflowLangflowServer:
     def _register_components(self) -> None:
         """Register all Langflow components."""
 
-        @self.server.component(name="udf_executor")
-        async def udf_executor(
+        @self.server.component(name="custom_code")
+        async def custom_code(
             input_data: dict[str, Any], context: StepflowContext
         ) -> dict[str, Any]:
-            """Execute a Langflow UDF component using the new pre-compilation approach.
+            """Execute a Langflow custom code component.
 
-            This method uses the new UDF executor that pre-compiles all components
-            from blob data before execution, eliminating the need for context calls
-            during component execution and preventing JSON-RPC deadlocks.
+            Compiles component code from blob storage and executes it.
+            Uses pre-compilation to prevent JSON-RPC deadlocks.
             """
-            # Use the new UDF executor directly - it handles pre-compilation internally
-            return await self.udf_executor.execute(input_data, context)
+            return await self.custom_code_executor.execute(input_data, context)
+
+        @self.server.component(name="core/{*component}")
+        async def core(
+            input_data: dict[str, Any],
+            context: StepflowContext,
+            component: str,
+        ) -> dict[str, Any]:
+            """Execute a known core Langflow component by module path.
+
+            The component path is captured from the URL wildcard and converted
+            to a Python module path for direct import and execution.
+
+            Args:
+                input_data: Component input with template, outputs, runtime inputs
+                context: Stepflow context for runtime services
+                component: From wildcard, e.g., "lfx/components/.../Class"
+            """
+            return await self.core_executor.execute(component, input_data, context)
 
         # TODO: Register native component implementations
         # self.server.component(name="openai_chat", func=self._openai_chat)

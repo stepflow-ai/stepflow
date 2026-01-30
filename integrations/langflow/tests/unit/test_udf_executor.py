@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Unit test for UDF execution in isolation (with real Langflow code)."""
+"""Unit test for custom code execution in isolation (with real Langflow code)."""
 
 from typing import Any
 from unittest.mock import AsyncMock
@@ -20,16 +20,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 from stepflow_langflow_integration.exceptions import ExecutionError
-from stepflow_langflow_integration.executor.udf_executor import UDFExecutor
+from stepflow_langflow_integration.executor.custom_code_executor import (
+    CustomCodeExecutor,
+)
 
 
-class TestUDFExecutor:
-    """Test UDFExecutor functionality with real Langflow component code."""
+class TestCustomCodeExecutor:
+    """Test CustomCodeExecutor functionality with real Langflow component code."""
 
     @pytest.fixture
     def executor(self):
-        """Create UDFExecutor instance."""
-        return UDFExecutor()
+        """Create CustomCodeExecutor instance."""
+        return CustomCodeExecutor()
 
     @pytest.fixture
     def mock_context(self):
@@ -174,7 +176,9 @@ class ChatInput(ChatComponent):
         }
 
     @pytest.mark.asyncio
-    async def test_execute_missing_blob_id(self, executor: UDFExecutor, mock_context):
+    async def test_execute_missing_blob_id(
+        self, executor: CustomCodeExecutor, mock_context
+    ):
         """Test execution fails when blob_id is missing."""
         input_data = {"input": {"text": "test"}}
 
@@ -183,7 +187,10 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_simple_component(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
+        self,
+        executor: CustomCodeExecutor,
+        mock_context,
+        simple_component_blob: dict[str, Any],
     ):
         """Test execution of a simple custom component."""
         # Setup mock context
@@ -217,7 +224,7 @@ class ChatInput(ChatComponent):
     @pytest.mark.asyncio
     async def test_execute_chat_input_component(
         self,
-        executor: UDFExecutor,
+        executor: CustomCodeExecutor,
         mock_context,
         chat_input_component_blob: dict[str, Any],
     ):
@@ -253,7 +260,10 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_with_template_defaults(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
+        self,
+        executor: CustomCodeExecutor,
+        mock_context,
+        simple_component_blob: dict[str, Any],
     ):
         """Test that template default values are used when input is not provided."""
         # Modify blob to have default value
@@ -277,7 +287,10 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_runtime_overrides_template(
-        self, executor: UDFExecutor, mock_context, simple_component_blob: dict[str, Any]
+        self,
+        executor: CustomCodeExecutor,
+        mock_context,
+        simple_component_blob: dict[str, Any],
     ):
         """Test that runtime inputs override template defaults."""
         # Set template default
@@ -301,7 +314,7 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_with_missing_code(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when component code is missing."""
         blob_data = {
@@ -319,7 +332,7 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_with_invalid_code(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when component code is invalid Python."""
         blob_data = {
@@ -337,7 +350,7 @@ class ChatInput(ChatComponent):
 
     @pytest.mark.asyncio
     async def test_execute_component_class_not_found(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when component class is not found in code."""
         blob_data = {
@@ -362,7 +375,7 @@ def some_function():
 
     @pytest.mark.asyncio
     async def test_execute_component_instantiation_fails(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when component cannot be instantiated."""
         blob_data = {
@@ -400,7 +413,7 @@ class FailingComponent(Component):
 
     @pytest.mark.asyncio
     async def test_execute_component_method_not_found(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when execution method is not found."""
         blob_data = {
@@ -426,7 +439,7 @@ class NoMethodComponent(Component):
 
     @pytest.mark.asyncio
     async def test_execute_component_method_execution_fails(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         """Test execution fails when component method throws exception."""
         blob_data = {
@@ -451,7 +464,9 @@ class FailingMethodComponent(Component):
         with pytest.raises(ExecutionError, match="Failed to execute failing_method"):
             await executor.execute(input_data, mock_context)
 
-    def test_environment_variable_handling_deprecated(self, executor: UDFExecutor):
+    def test_environment_variable_handling_deprecated(
+        self, executor: CustomCodeExecutor
+    ):
         """Test that environment variable handling is now handled via preprocessing.
 
         This test documents that environment variable resolution was moved from
@@ -463,7 +478,7 @@ class FailingMethodComponent(Component):
         # instead of runtime resolution in the UDF executor
         assert True  # This test now just documents the architectural change
 
-    def test_determine_execution_method(self, executor: UDFExecutor):
+    def test_determine_execution_method(self, executor: CustomCodeExecutor):
         """Test execution method determination from outputs metadata."""
         outputs = [
             {"name": "result1", "method": "method1", "types": ["str"]},
@@ -487,14 +502,14 @@ class FailingMethodComponent(Component):
         assert method == "method1"
 
 
-class TestUDFExecutorIntegration:
+class TestCustomCodeExecutorIntegration:
     """Integration tests with mock Langflow imports."""
 
     @pytest.fixture
     def executor_with_mocks(self):
-        """Create UDFExecutor with mocked Langflow imports."""
+        """Create CustomCodeExecutor with mocked Langflow imports."""
         # We'll test this without real Langflow imports to avoid dependency issues
-        return UDFExecutor()
+        return CustomCodeExecutor()
 
     # Registry fixture removed - no longer needed after eliminating test registry
 
@@ -507,7 +522,7 @@ class TestUDFExecutorIntegration:
 
     @pytest.mark.asyncio
     async def test_component_parameter_preparation(
-        self, executor_with_mocks: UDFExecutor
+        self, executor_with_mocks: CustomCodeExecutor
     ):
         """Test component parameter preparation logic.
 
@@ -551,13 +566,13 @@ class TestUDFExecutorIntegration:
         assert params["extra_field"] == "extra_value"
 
 
-class TestUDFExecutorWithRealLangflowComponents:
-    """Test UDFExecutor with real converted Langflow workflow components."""
+class TestCustomCodeExecutorWithRealLangflowComponents:
+    """Test CustomCodeExecutor with real converted Langflow workflow components."""
 
     @pytest.fixture
     def executor(self):
-        """Create UDFExecutor instance."""
-        return UDFExecutor()
+        """Create CustomCodeExecutor instance."""
+        return CustomCodeExecutor()
 
     @pytest.fixture
     def mock_context(self):
@@ -576,7 +591,7 @@ class TestUDFExecutorWithRealLangflowComponents:
 
     @pytest.mark.asyncio
     async def test_execute_converted_workflow_components(
-        self, executor: UDFExecutor, mock_context, converter
+        self, executor: CustomCodeExecutor, mock_context, converter
     ):
         """Test that components from converted workflows execute correctly."""
         # Create simple workflow data to test UDF component creation
@@ -615,32 +630,36 @@ class TestPrompt(Component):
             }
         }
 
-        # Convert to find the UDF components
+        # Convert to find the custom code components
         stepflow_workflow = converter.convert(langflow_data)
 
-        # Find steps that use /langflow/udf_executor
-        udf_steps = [
+        # Find steps that use /langflow/custom_code
+        custom_code_steps = [
             step
             for step in stepflow_workflow.steps
-            if step.component == "/langflow/udf_executor"
+            if step.component == "/langflow/custom_code"
         ]
 
-        assert len(udf_steps) > 0, "No UDF executor steps found in test workflow"
+        assert len(custom_code_steps) > 0, (
+            "No custom code executor steps found in test workflow"
+        )
 
-        # Test the first UDF step
-        first_step = udf_steps[0]
+        # Test the first custom code step
+        first_step = custom_code_steps[0]
 
         # The step input should have blob_id reference
         assert "blob_id" in str(first_step.input), (
             f"No blob_id found in step input: {first_step.input}"
         )
 
-        print(f"✅ Found {len(udf_steps)} UDF components in converted workflow")
-        print(f"✅ First UDF step: {first_step.id} using {first_step.component}")
+        print(f"✅ Found {len(custom_code_steps)} custom code components")
+        print(
+            f"✅ First custom code step: {first_step.id} using {first_step.component}"
+        )
 
     @pytest.mark.asyncio
     async def test_component_metadata_extraction_and_usage(
-        self, executor: UDFExecutor, mock_context
+        self, executor: CustomCodeExecutor, mock_context
     ):
         # Create blob with enhanced metadata (from Phase 1 improvements)
         enhanced_blob = {
@@ -778,7 +797,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_agent_component(
-        self, executor: UDFExecutor, mock_context, agent_component_blob
+        self, executor: CustomCodeExecutor, mock_context, agent_component_blob
     ):
         """Test that Agent component can be compiled and instantiated.
 
@@ -815,7 +834,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_agent_component_execution_attempt(
-        self, executor: UDFExecutor, mock_context, agent_component_blob
+        self, executor: CustomCodeExecutor, mock_context, agent_component_blob
     ):
         """Test Agent component execution (will fail without real API key).
 
@@ -855,7 +874,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_prompt_component(
-        self, executor: UDFExecutor, mock_context, prompt_component_data
+        self, executor: CustomCodeExecutor, mock_context, prompt_component_data
     ):
         """Test executing Prompt component with string-type system_message field.
 
@@ -913,7 +932,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_language_model_message_to_string_conversion(
-        self, executor: UDFExecutor, mock_context, basic_prompting_flow
+        self, executor: CustomCodeExecutor, mock_context, basic_prompting_flow
     ):
         """Test LanguageModelComponent receives string when Message passed.
 
@@ -977,7 +996,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_chat_input_lfx_component(
-        self, executor: UDFExecutor, mock_context, chat_input_component_data
+        self, executor: CustomCodeExecutor, mock_context, chat_input_component_data
     ):
         """Test executing ChatInput component (lfx-based) from basic_prompting flow.
 
@@ -1031,7 +1050,7 @@ class EnhancedTestComponent(Component):
 
     @pytest.mark.asyncio
     async def test_chat_input_message_to_string_conversion(
-        self, executor: UDFExecutor, mock_context, chat_input_component_data
+        self, executor: CustomCodeExecutor, mock_context, chat_input_component_data
     ):
         """Test ChatInput component with Message object passed to string field.
 

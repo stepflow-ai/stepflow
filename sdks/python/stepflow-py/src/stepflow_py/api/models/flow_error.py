@@ -96,9 +96,7 @@ class FlowError(BaseModel):
             {
                 "code": obj.get("code"),
                 "message": obj.get("message"),
-                "data": OneOf.from_dict(obj["data"])
-                if obj.get("data") is not None
-                else None,
+                "data": obj.get("data") if obj.get("data") is not None else None,
             }
         )
         return _obj
