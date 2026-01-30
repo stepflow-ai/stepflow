@@ -117,18 +117,18 @@ class TestStepflowTweaksIntegration:
 
         modified_dict = apply_stepflow_tweaks_to_dict(basic_prompting_flow_dict, tweaks)
 
-        # Find the LanguageModelComponent UDF executor step
+        # Find the LanguageModelComponent executor step (custom_code or core)
         langflow_step = None
         for step in modified_dict["steps"]:
-            if (
-                step["id"] == "langflow_LanguageModelComponent-kBOja"
-                and step["component"] == "/langflow/udf_executor"
+            if step["id"] == "langflow_LanguageModelComponent-kBOja" and (
+                step["component"] == "/langflow/custom_code"
+                or step["component"].startswith("/langflow/core/")
             ):
                 langflow_step = step
                 break
 
         assert langflow_step is not None, (
-            "LanguageModelComponent UDF executor step not found"
+            "LanguageModelComponent executor step not found"
         )
 
         # Verify tweaks were applied

@@ -400,13 +400,13 @@ class CustomComponent(Component):
 
         workflow = converter.convert(workflow_data)
 
-        # Should create blob step + UDF executor step for component with custom code
+        # Should create blob + custom_code steps for component with custom code
         step_components = [step.component for step in workflow.steps]
         assert "/builtin/put_blob" in step_components, (
             "Should create blob step for custom code"
         )
-        assert "/langflow/udf_executor" in step_components, (
-            "Should route custom code to UDF executor"
+        assert "/langflow/custom_code" in step_components, (
+            "Should route custom code to custom code executor"
         )
 
         # Find the blob step and verify it contains the custom code
