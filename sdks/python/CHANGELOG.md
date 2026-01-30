@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.9.2"></a> [stepflow-py 0.9.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.2) - 2026-01-30
+### Bug Fixes
+
+- Update uv.lock and simplify release script ([#566](https://github.com/stepflow-ai/stepflow/pull/566))
+
+### Features
+
+- Add wildcard path parameters to stepflow-py SDK ([#567](https://github.com/stepflow-ai/stepflow/pull/567))
+- Add core component translation for Langflow integration ([#568](https://github.com/stepflow-ai/stepflow/pull/568))
+
 ## <a id="0.9.1"></a> [stepflow-py 0.9.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.1) - 2026-01-29
 ### Bug Fixes
 
