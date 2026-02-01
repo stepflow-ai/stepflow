@@ -41,6 +41,7 @@ Documentation = "https://stepflow-ai.github.io/stepflow/"
 Repository = "https://github.com/stepflow-ai/stepflow"
 "Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
 "Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-orchestrator"
+Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/stepflow-rs/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
