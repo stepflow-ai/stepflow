@@ -57,3 +57,7 @@ Set `STEPFLOW_DEV_BINARY` to use a local development build:
 ```bash
 export STEPFLOW_DEV_BINARY=/path/to/stepflow-server
 ```
+
+## Changelog
+
+This package bundles the Stepflow server binary. For release notes and changelog, see the main [Stepflow Changelog](https://github.com/stepflow-ai/stepflow/blob/main/stepflow-rs/CHANGELOG.md).
