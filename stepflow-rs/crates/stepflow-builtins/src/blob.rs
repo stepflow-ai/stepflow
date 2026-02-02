@@ -12,11 +12,13 @@
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::workflow::Component;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult, blob::BlobId, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::RunContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -66,7 +68,12 @@ impl BuiltinComponent for PutBlobComponent {
         })
     }
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: PutBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -75,8 +82,8 @@ impl BuiltinComponent for PutBlobComponent {
         // DEBUG: Log what's being stored
         log::debug!("put_blob storing data: {:?}", data_ref.as_ref());
 
-        // Create the blob through the execution context
-        let blob_id = context
+        // Create the blob through the run context
+        let blob_id = run_context
             .state_store()
             .put_blob(data_ref, input.blob_type)
             .await
@@ -136,7 +143,12 @@ impl BuiltinComponent for GetBlobComponent {
         })
     }
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: GetBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -146,8 +158,8 @@ impl BuiltinComponent for GetBlobComponent {
                 .attach_printable(format!("Invalid blob ID: {e}"))
         })?;
 
-        // Retrieve the blob through the execution context
-        let data_ref = context
+        // Retrieve the blob through the run context
+        let data_ref = run_context
             .state_store()
             .get_blob(&blob_id)
             .await
@@ -187,7 +199,7 @@ mod tests {
         let mock = MockContext::new().await;
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 
@@ -214,7 +226,7 @@ mod tests {
 
         // First, store the blob
         let blob_id = mock
-            .execution_context()
+            .run_context()
             .state_store()
             .put_blob(
                 ValueRef::new(test_data.clone()),
@@ -230,7 +242,7 @@ mod tests {
         let input_value = serde_json::to_value(input).unwrap();
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 
@@ -264,7 +276,7 @@ mod tests {
         let create_input_value = serde_json::to_value(create_input).unwrap();
 
         let create_result = create_component
-            .execute(mock.execution_context(), create_input_value.into())
+            .execute(&mock.run_context(), None, create_input_value.into())
             .await
             .unwrap();
 
@@ -282,7 +294,7 @@ mod tests {
         let get_input_value = serde_json::to_value(get_input).unwrap();
 
         let get_result = get_component
-            .execute(mock.execution_context(), get_input_value.into())
+            .execute(&mock.run_context(), None, get_input_value.into())
             .await
             .unwrap();
 
@@ -309,7 +321,7 @@ mod tests {
         let mock = MockContext::new().await;
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await;
 
         // Should return an error for invalid blob ID

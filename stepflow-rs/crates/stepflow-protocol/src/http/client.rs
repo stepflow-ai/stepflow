@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use futures::stream::StreamExt as _;
-use stepflow_plugin::{RunContext, StepflowEnvironment};
+use stepflow_plugin::RunContext;
 use tokio::sync::mpsc;
 
 use super::bidirectional_driver::BidirectionalDriver;
@@ -82,14 +82,12 @@ impl HttpClientHandle {
     ///
     /// # Arguments
     /// * `params` - The method parameters
-    /// * `env` - Optional environment for bidirectional communication handlers.
-    ///   Required if the call may result in SSE streaming (bidirectional).
     /// * `run_context` - Optional run context for bidirectional communication.
     ///   Required if the call may result in SSE streaming (bidirectional).
+    ///   The environment is accessed via `run_context.env()`.
     pub async fn method<I>(
         &self,
         params: &I,
-        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<I::Response>
     where
@@ -97,12 +95,7 @@ impl HttpClientHandle {
         I::Response: DeserializeOwned + Send + Sync + 'static,
     {
         let response = self
-            .method_dyn(
-                I::METHOD_NAME,
-                LazyValue::write_ref(params),
-                env,
-                run_context,
-            )
+            .method_dyn(I::METHOD_NAME, LazyValue::write_ref(params), run_context)
             .await?;
 
         response
@@ -115,7 +108,6 @@ impl HttpClientHandle {
         &self,
         method: Method,
         params: LazyValue<'_>,
-        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<OwnedJson<LazyValue<'static>>> {
         let id = RequestId::new_uuid();
@@ -130,7 +122,7 @@ impl HttpClientHandle {
             .change_context(TransportError::SerializeRequest(method))?;
 
         let response = self
-            .send_method_request(method, id.clone(), request_str, env, run_context)
+            .send_method_request(method, id.clone(), request_str, run_context)
             .await?
             .owned_response()?;
 
@@ -183,16 +175,14 @@ impl HttpClientHandle {
     /// * `method` - The method name (for error messages)
     /// * `id` - The request ID
     /// * `message` - The serialized JSON-RPC request
-    /// * `env` - Environment for bidirectional communication handlers. Required if
-    ///   the response may be an SSE stream (bidirectional mode).
     /// * `run_context` - Run context for bidirectional communication. Required if
-    ///   the response may be an SSE stream (bidirectional mode).
+    ///   the response may be an SSE stream (bidirectional mode). The environment
+    ///   is accessed via `run_context.env()`.
     async fn send_method_request(
         &self,
         method: Method,
         id: RequestId,
         message: String,
-        env: Option<Arc<StepflowEnvironment>>,
         run_context: Option<Arc<RunContext>>,
     ) -> Result<OwnedJson> {
         // Send the HTTP POST request using pre-built headers
@@ -235,19 +225,11 @@ impl HttpClientHandle {
                 id
             );
 
-            // SSE mode requires env and run_context for bidirectional handlers.
-            // If these are None, it means the server returned SSE for a call that
+            // SSE mode requires run_context for bidirectional handlers.
+            // If run_context is None, it means the server returned SSE for a call that
             // wasn't expected to need bidirectional communication (e.g., initialize,
             // list_components, component_info).
             let run_context = run_context.ok_or_else(|| {
-                error_stack::report!(TransportError::Recv)
-                    .attach_printable(format!(
-                        "Unexpected SSE response for '{}': server initiated bidirectional session for a call that doesn't support it",
-                        method
-                    ))
-            })?;
-
-            let env = env.ok_or_else(|| {
                 error_stack::report!(TransportError::Recv)
                     .attach_printable(format!(
                         "Unexpected SSE response for '{}': server initiated bidirectional session for a call that doesn't support it",
@@ -273,7 +255,7 @@ impl HttpClientHandle {
             }
 
             // Create a bidirectional driver to handle the SSE stream
-            let driver = BidirectionalDriver::new(self.clone(), instance_id, env, run_context);
+            let driver = BidirectionalDriver::new(self.clone(), instance_id, run_context);
             let messages = self.sse_messages(response);
             driver.drive_to_completion(id, messages).await
         } else {
@@ -367,7 +349,6 @@ impl HttpClientHandle {
         incoming_id: RequestId,
         owned_message: OwnedJson<Message<'static>>,
         instance_id: Option<&str>,
-        env: Arc<StepflowEnvironment>,
         run_context: &Arc<RunContext>,
     ) -> Result<()> {
         log::debug!(
@@ -415,7 +396,7 @@ impl HttpClientHandle {
             };
 
             // Start the handler and the message sender concurrently
-            let handler_future = handler.handle_message(request, outgoing_tx, env, &run_context);
+            let handler_future = handler.handle_message(request, outgoing_tx, &run_context);
             let sender_future = async {
                 while let Some(outgoing_message) = outgoing_rx.recv().await {
                     if let Err(e) = client_handle

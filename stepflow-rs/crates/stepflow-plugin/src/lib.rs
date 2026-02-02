@@ -18,7 +18,7 @@ mod plugin;
 pub mod routing;
 mod subflow;
 
-pub use context::{ExecutionContext, RunContext};
+pub use context::RunContext;
 pub use environment_builder::StepflowEnvironmentBuilder;
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};

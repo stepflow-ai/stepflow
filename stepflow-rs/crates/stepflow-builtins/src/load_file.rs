@@ -13,9 +13,11 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::Arc;
 use stepflow_core::workflow::Component;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::RunContext;
 use tokio::fs;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
@@ -103,12 +105,17 @@ impl BuiltinComponent for LoadFileComponent {
         })
     }
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let LoadFileInput { path, format } = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        // Resolve the file path using the execution context's working directory
-        let base_dir = context.working_directory();
+        // Resolve the file path using the run context's working directory
+        let base_dir = run_context.working_directory();
 
         let file_path = if Path::new(&path).is_absolute() {
             Path::new(&path).to_path_buf()
@@ -169,7 +176,7 @@ mod tests {
         let input_value = serde_json::to_value(input).unwrap();
         let mock = MockContext::new().await;
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 

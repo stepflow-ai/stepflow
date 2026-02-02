@@ -15,22 +15,22 @@ use serde_json::json;
 use std::sync::Arc;
 use stepflow_components_mcp::McpPluginConfig;
 use stepflow_core::{
-    FlowResult,
-    workflow::{Component, ValueRef},
+    BlobId, FlowResult,
+    workflow::{Component, Flow, ValueRef},
 };
 use stepflow_plugin::{
-    ExecutionContext, Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment,
-    StepflowEnvironmentBuilder,
+    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, StepflowEnvironmentBuilder,
 };
 use uuid::Uuid;
 
 // Helper function to create a test context
-async fn create_test_context() -> (Arc<StepflowEnvironment>, ExecutionContext) {
+async fn create_test_context() -> (Arc<StepflowEnvironment>, Arc<RunContext>) {
     let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
     let run_id = Uuid::now_v7();
-    let run_context = Arc::new(RunContext::for_root(run_id));
-    let exec_context = ExecutionContext::for_testing(env.clone(), run_context);
-    (env, exec_context)
+    let test_flow = Arc::new(Flow::default());
+    let flow_id = BlobId::from_flow(&test_flow).expect("Flow should serialize");
+    let run_context = Arc::new(RunContext::new(run_id, test_flow, flow_id, env.clone()));
+    (env, run_context)
 }
 
 #[tokio::test]
@@ -44,8 +44,8 @@ async fn test_mcp_plugin_initialization() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (env, _exec_context) = create_test_context().await;
-    plugin.ensure_initialized(&env).await.unwrap();
+    let (_, run_context) = create_test_context().await;
+    plugin.ensure_initialized(run_context.env()).await.unwrap();
 
     // List components should return our mock tools
     let components = plugin.list_components().await.unwrap();
@@ -71,8 +71,8 @@ async fn test_mcp_tool_execution() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (env, exec_context) = create_test_context().await;
-    plugin.ensure_initialized(&env).await.unwrap();
+    let (_, run_context) = create_test_context().await;
+    plugin.ensure_initialized(run_context.env()).await.unwrap();
 
     // Test echo tool
     let echo_component = Component::from_string("/mock-server/echo");
@@ -81,7 +81,7 @@ async fn test_mcp_tool_execution() {
     }));
 
     let result = plugin
-        .execute(&echo_component, exec_context.clone(), echo_input)
+        .execute(&echo_component, &run_context, None, echo_input)
         .await
         .unwrap();
 
@@ -105,7 +105,7 @@ async fn test_mcp_tool_execution() {
     }));
 
     let result = plugin
-        .execute(&add_component, exec_context, add_input)
+        .execute(&add_component, &run_context, None, add_input)
         .await
         .unwrap();
 
@@ -133,14 +133,16 @@ async fn test_mcp_error_handling() {
     let working_dir = std::env::current_dir().unwrap();
     let plugin = config.create_plugin(&working_dir).await.unwrap();
 
-    let (env, exec_context) = create_test_context().await;
-    plugin.ensure_initialized(&env).await.unwrap();
+    let (_, run_context) = create_test_context().await;
+    plugin.ensure_initialized(run_context.env()).await.unwrap();
 
     // Test calling a non-existent tool
     let bad_component = Component::from_string("/mock-server/nonexistent");
     let input = ValueRef::new(json!({}));
 
-    let result = plugin.execute(&bad_component, exec_context, input).await;
+    let result = plugin
+        .execute(&bad_component, &run_context, None, input)
+        .await;
     assert!(
         result.is_ok(),
         "Expected Ok(FlowResult::Failed), got Err: {result:?}"

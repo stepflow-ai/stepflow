@@ -17,13 +17,14 @@ use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowError, FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
+    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -438,7 +439,8 @@ impl Plugin for McpPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: ExecutionContext,
+        _run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
         input: ValueRef,
     ) -> Result<FlowResult> {
         let tool_name = component_path_to_tool_name(component.path())

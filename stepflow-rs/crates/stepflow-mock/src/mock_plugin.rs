@@ -14,6 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
@@ -21,7 +22,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
+    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
 };
 use tokio::sync::Mutex;
 
@@ -221,7 +222,8 @@ impl Plugin for MockPlugin {
     async fn execute(
         &self,
         component: &Component,
-        _context: ExecutionContext,
+        _run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
         input: ValueRef,
     ) -> Result<FlowResult> {
         let mock_component = self

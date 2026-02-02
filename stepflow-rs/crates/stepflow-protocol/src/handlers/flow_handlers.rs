@@ -13,7 +13,7 @@
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
 use stepflow_core::GetRunParams;
-use stepflow_plugin::{RunContext, StepflowEnvironment};
+use stepflow_plugin::RunContext;
 use stepflow_state::StateStoreExt as _;
 use tokio::sync::mpsc;
 
@@ -33,9 +33,9 @@ impl MethodHandler for SubmitRunHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        env: Arc<StepflowEnvironment>,
-        _run_context: &'a Arc<RunContext>,
+        run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        let env = run_context.env().clone();
         handle_method_call(
             request,
             response_tx,
@@ -112,9 +112,9 @@ impl MethodHandler for GetRunHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        env: Arc<StepflowEnvironment>,
-        _run_context: &'a Arc<RunContext>,
+        run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        let env = run_context.env().clone();
         handle_method_call(
             request,
             response_tx,

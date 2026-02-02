@@ -12,12 +12,12 @@
 
 use std::{path::Path, sync::Arc};
 
-use crate::{ExecutionContext, Result, StepflowEnvironment};
+use crate::{Result, RunContext, StepflowEnvironment};
 use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
-    workflow::{Component, ValueRef},
+    workflow::{Component, StepId, ValueRef},
 };
 
 #[trait_variant::make(Send)]
@@ -42,10 +42,17 @@ pub trait Plugin: Send + Sync {
     /// Execute the step and return the resulting arguments.
     ///
     /// The arguments should be fully resolved.
+    ///
+    /// # Arguments
+    /// * `component` - The component to execute
+    /// * `run_context` - The run context with flow, environment, and subflow submission
+    /// * `step` - The step being executed (None for workflow-level operations)
+    /// * `input` - The resolved input values
     async fn execute(
         &self,
         component: &Component,
-        context: ExecutionContext,
+        run_context: &Arc<RunContext>,
+        step: Option<&StepId>,
         input: ValueRef,
     ) -> Result<FlowResult>;
 }

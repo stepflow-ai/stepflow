@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt as _};
-use stepflow_plugin::{RunContext, StepflowEnvironment};
+use stepflow_plugin::RunContext;
 use tokio::task::JoinHandle;
 
 use crate::error::{Result, TransportError};
@@ -41,10 +41,8 @@ use crate::{Message, OwnedJson, RequestId};
 pub struct BidirectionalDriver {
     client_handle: super::HttpClientHandle,
     instance_id: Option<String>,
-    /// Environment for bidirectional request handlers (state store access, etc.)
-    env: Arc<StepflowEnvironment>,
     /// Run context for this bidirectional session.
-    /// Required so handlers know which run tree they're serving.
+    /// Provides run hierarchy, environment access, and handler context.
     run_context: Arc<RunContext>,
 }
 
@@ -62,18 +60,15 @@ impl BidirectionalDriver {
     /// # Arguments
     /// * `client_handle` - HTTP client handle for sending responses
     /// * `instance_id` - Optional instance ID for load balancer routing
-    /// * `env` - Environment for bidirectional request handlers
-    /// * `run_context` - Run context for bidirectional handlers
+    /// * `run_context` - Run context for bidirectional handlers (provides environment access)
     pub fn new(
         client_handle: super::HttpClientHandle,
         instance_id: Option<String>,
-        env: Arc<StepflowEnvironment>,
         run_context: Arc<RunContext>,
     ) -> Self {
         Self {
             client_handle,
             instance_id,
-            env,
             run_context,
         }
     }
@@ -193,7 +188,6 @@ impl BidirectionalDriver {
 
         // Clone values for the spawned task
         let instance_id = self.instance_id.clone();
-        let env = self.env.clone();
         let run_context = self.run_context.clone();
 
         // Spawn concurrent handler
@@ -204,7 +198,6 @@ impl BidirectionalDriver {
                     request_id.clone(),
                     owned_json,
                     instance_id.as_deref(),
-                    env,
                     &run_context,
                 )
                 .await

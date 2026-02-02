@@ -13,13 +13,14 @@
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
     schema::SchemaRef,
     workflow::{Flow, ValueRef},
 };
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::RunContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -78,7 +79,12 @@ impl BuiltinComponent for MapComponent {
         })
     }
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: MapInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
@@ -88,7 +94,7 @@ impl BuiltinComponent for MapComponent {
             stepflow_core::BlobId::from_flow(&flow).change_context(BuiltinError::Internal)?;
 
         // Use batch execution API for efficient parallel processing
-        let results = context
+        let results = run_context
             .execute_batch(flow, flow_id, input.items, input.max_concurrency, None)
             .await
             .change_context(BuiltinError::Internal)?;
@@ -149,7 +155,7 @@ mod tests {
         let mock = MockContext::new().await;
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 
@@ -185,7 +191,7 @@ mod tests {
         let mock = MockContext::new().await;
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 

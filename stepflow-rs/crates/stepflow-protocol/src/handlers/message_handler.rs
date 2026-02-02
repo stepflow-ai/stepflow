@@ -13,7 +13,7 @@
 use futures::future::BoxFuture;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
-use stepflow_plugin::{RunContext, StepflowEnvironment};
+use stepflow_plugin::RunContext;
 use tokio::sync::mpsc;
 
 use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
@@ -31,8 +31,7 @@ pub trait MethodHandler: Send + Sync {
     /// # Arguments
     /// * `request` - The method request to handle
     /// * `outgoing_tx` - Channel to send messages back to the component server
-    /// * `env` - The shared environment (state store, plugins, etc.)
-    /// * `run_context` - The run context with run_id and root_run_id.
+    /// * `run_context` - The run context with run_id, root_run_id, and environment access.
     ///   Always present since bidirectional requests only occur during component execution.
     ///
     /// # Returns
@@ -41,7 +40,6 @@ pub trait MethodHandler: Send + Sync {
         &self,
         request: &'a MethodRequest<'a>,
         outgoing_tx: mpsc::Sender<String>,
-        env: Arc<StepflowEnvironment>,
         run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>>;
 }

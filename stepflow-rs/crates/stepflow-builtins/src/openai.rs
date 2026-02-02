@@ -13,9 +13,11 @@
 use error_stack::ResultExt as _;
 use openai_api_rs::v1::{api::OpenAIClient, chat_completion};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::workflow::Component;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef};
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::RunContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -101,7 +103,12 @@ impl BuiltinComponent for OpenAIComponent {
         })
     }
 
-    async fn execute(&self, _context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        _run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: OpenAIInput = input
             .deserialize()
             .change_context(BuiltinError::InvalidInput)?;
@@ -172,7 +179,7 @@ mod tests {
         let input = serde_json::to_value(input).unwrap();
         let mock = MockContext::new().await;
         let output = component
-            .execute(mock.execution_context(), input.into())
+            .execute(&mock.run_context(), None, input.into())
             .await
             .unwrap();
 
