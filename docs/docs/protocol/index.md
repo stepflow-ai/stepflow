@@ -5,15 +5,14 @@ sidebar_position: 1
 # Overview
 
 The Stepflow Protocol is a JSON-RPC 2.0 based communication protocol designed for executing local and remote workflow components.
-It supports multiple transport mechanisms and allows bidirectional communication between the Stepflow runtime and component servers.
-This allows the component servers to use the Stepflow runtime for concerns like logging and blob storage while ensuring durabble execution.
+It enables bidirectional communication between the Stepflow runtime and workers over HTTP, allowing workers to access runtime services like blob storage while ensuring durable execution.
 
 ## Architecture
 
 The protocol defines communication between two primary entities:
 
-- **Stepflow Runtime**: Orchestrates workflow execution and persistence and routes components to plugins
-- **Component Server**: Hosts one or more workflow components and executes them on behalf of the runtime
+- **Stepflow Runtime**: Orchestrates workflow execution, persistence, and routes components to plugins
+- **Worker**: Hosts one or more workflow components and executes them on behalf of the runtime
 
 ```mermaid
 graph TB
@@ -23,16 +22,16 @@ graph TB
         BS[Blob Store]
     end
 
-    subgraph "Component Server A"
+    subgraph "Worker A"
         CA1[Component A1]
         CA2[Component A2]
-        CTX[Server Context]
+        CTX[Worker Context]
     end
 
-    subgraph "Component Server B"
+    subgraph "Worker B"
         CB1[Component B1]
         CB2[Component B2]
-        CTX2[Server Context]
+        CTX2[Worker Context]
     end
 
     WE --> PS
@@ -69,13 +68,13 @@ The protocol includes a built-in blob storage system:
 - **Cross-component sharing**: Blobs can be accessed by any component in a workflow
 - **Type-aware storage**: Support for different blob types (JSON, binary, etc.)
 
-### Multi-Transport Support
-Component servers can communicate via different transport mechanisms:
-- **STDIO Transport**: Process-based communication for local components
-- **HTTP Transport**: Network-based communication for distributed components
-- **Session isolation**: Optional MCP-style session negotiation for multi-client scenarios
+### HTTP Transport
+Workers communicate via HTTP with Server-Sent Events (SSE) for bidirectional communication:
+- **Streamable HTTP**: JSON-RPC over HTTP with SSE streaming
+- **Bidirectional calls**: Workers can call back to the runtime during execution
+- **Flexible deployment**: Workers can run locally (spawned by runtime) or remotely
 
-See [Transport](./transport/) for details.
+See [Transport](./transport.md) for details.
 
 ## Method Categories
 
@@ -112,49 +111,29 @@ Simple component operations follow a request-response pattern:
 ```mermaid
 sequenceDiagram
     participant Runtime as Stepflow Runtime
-    participant Server as Component Server
+    participant Worker as Worker
 
-    Runtime->>+Server: component_execute request
-    Server->>Server: Process input data
-    Server-->>-Runtime: component_execute response
+    Runtime->>+Worker: components/execute request
+    Worker->>Worker: Process input data
+    Worker-->>-Runtime: execution response
 ```
 
 ### Bidirectional Operations
-Components can make requests back to the runtime during execution:
+Workers can make requests back to the runtime during execution via SSE streaming:
 
 ```mermaid
 sequenceDiagram
     participant Runtime as Stepflow Runtime
-    participant Server as Component Server
+    participant Worker as Worker
 
-    Runtime->>+Server: component_execute request
-    Server->>+Runtime: blobs/put request
-    Runtime-->>-Server: blob_id response
-    Server->>+Runtime: blobs/get request
-    Runtime-->>-Server: blob_data response
-    Server-->>-Runtime: component_execute response
+    Runtime->>+Worker: components/execute request
+    Note over Worker: Start SSE stream
+    Worker-->>Runtime: SSE: blobs/put request
+    Runtime->>Worker: blobs/put response
+    Worker-->>-Runtime: SSE: execution result
 ```
 
 See the [Bidirectional Communication](./bidirectional.md) document for more details.
-
-### Session Management
-HTTP transport supports session isolation for concurrent clients:
-
-```mermaid
-sequenceDiagram
-    participant C1 as Client 1
-    participant C2 as Client 2
-    participant Server as Component Server
-
-    C1->>Server: Connect to /runtime/events (SSE)
-    Server-->>C1: endpoint: /session/abc123
-    C2->>Server: Connect to /runtime/events (SSE)
-    Server-->>C2: endpoint: /session/def456
-
-    Note over C1,C2: Clients use different session URLs
-    C1->>Server: POST /session/abc123 (JSON-RPC)
-    C2->>Server: POST /session/def456 (JSON-RPC)
-```
 
 ## Error Handling
 
@@ -180,7 +159,7 @@ See the [protocol schema](../reference/protocol-schema.mdx) for detailed message
 ## Next Steps
 
 - **[Message Format](./message-format.md)**: JSON-RPC message structure and correlation
-- **[Transport](./transport/)**: STDIO and HTTP transport specifications
+- **[Transport](./transport.md)**: HTTP transport specification
 - **[Methods](./methods/)**: Detailed method specifications with examples
 - **[Error Handling](./errors.md)**: Complete error code reference
-- **[Bidirectional Communication](./bidirectional.md)**: Advanced communication patterns
+- **[Implementing Workers](../components/component-server/implementing-workers.md)**: Guide to building workers
