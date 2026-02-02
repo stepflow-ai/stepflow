@@ -10,9 +10,10 @@ While the [Python SDK](./custom-components.md) provides a high-level API that ha
 
 ## What is a Worker?
 
-A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers:
+A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../../configuration/index.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
 
-- Receive component execution requests from the runtime
+- Register components at specific paths through runtime configuration
+- Receive component execution requests when workflows invoke those paths
 - Execute business logic and return results
 - Can make calls back to the runtime (e.g., for blob storage)
 - Run as independent processes, enabling language flexibility and fault isolation
@@ -80,69 +81,13 @@ This section uses RFC 2119 terminology:
 
 Workers communicate over HTTP using the Streamable HTTP transport, which supports bidirectional communication through Server-Sent Events (SSE).
 
-### Endpoints
+For complete transport details including request/response formats, headers, SSE streaming, and port announcement, see the [Transport documentation](../../protocol/transport.md).
 
-Workers MUST expose these HTTP endpoints:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | POST | JSON-RPC message endpoint |
-| `/health` | GET | Health check (SHOULD implement) |
-
-### Request Format
-
-All JSON-RPC requests are sent as HTTP POST to `/`:
-
-```http
-POST / HTTP/1.1
-Host: localhost:8080
-Content-Type: application/json
-Accept: application/json, text/event-stream
-
-{"jsonrpc":"2.0","id":"req-001","method":"components/list","params":{}}
-```
-
-**Required Headers:**
-- `Content-Type: application/json`
-- `Accept: application/json, text/event-stream`
-
-### Response Formats
-
-Workers respond based on whether bidirectional communication is needed:
-
-**Simple Response (no bidirectional calls):**
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"jsonrpc":"2.0","id":"req-001","result":{"components":[...]}}
-```
-
-**Streaming Response (bidirectional calls needed):**
-```http
-HTTP/1.1 200 OK
-Content-Type: text/event-stream
-
-data: {"jsonrpc":"2.0","id":"blob-001","method":"blobs/put","params":{...}}
-
-data: {"jsonrpc":"2.0","id":"req-001","result":{"output":{...}}}
-
-```
-
-When a component needs to make bidirectional calls (like `blobs/put`), the worker:
-1. Sends requests to the runtime as SSE `data:` events
-2. Receives responses from the runtime as subsequent HTTP POST requests
-3. Sends the final result as the last SSE event
-
-### Port Announcement
-
-When starting in subprocess mode, workers MUST announce their listening port to stdout:
-
-```json
-{"port": 8080}
-```
-
-This allows the Stepflow runtime to discover the worker's port when spawning it as a subprocess.
+**Key requirements:**
+- Workers MUST expose a POST `/` endpoint for JSON-RPC messages (MAY expose additional endpoints)
+- Workers SHOULD expose a GET `/health` endpoint for health checks
+- Workers MUST support both `application/json` and `text/event-stream` response formats
+- When starting as a subprocess, workers MUST print `{"port": N}` to stdout
 
 ## Protocol Methods
 
