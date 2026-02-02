@@ -17,10 +17,9 @@ use std::time::Duration;
 
 use std::sync::Arc;
 
-use stepflow_core::workflow::ValueRef;
-use stepflow_plugin::{
-    ExecutionContext, Plugin as _, PluginConfig as _, RunContext, StepflowEnvironmentBuilder,
-};
+use stepflow_core::BlobId;
+use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_plugin::{Plugin as _, PluginConfig as _, RunContext, StepflowEnvironmentBuilder};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
@@ -157,13 +156,19 @@ async fn test_http_protocol_integration() {
                                 });
                                 let input_ref = ValueRef::from(input_json);
 
-                                let run_context = Arc::new(RunContext::for_root(Uuid::now_v7()));
-                                let execution_context =
-                                    ExecutionContext::for_testing(env.clone(), run_context);
+                                let test_flow = Arc::new(Flow::default());
+                                let flow_id =
+                                    BlobId::from_flow(&test_flow).expect("Flow should serialize");
+                                let run_context = Arc::new(RunContext::new(
+                                    Uuid::now_v7(),
+                                    test_flow,
+                                    flow_id,
+                                    env.clone(),
+                                ));
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),
-                                    plugin.execute(component, execution_context, input_ref),
+                                    plugin.execute(component, &run_context, None, input_ref),
                                 )
                                 .await;
 

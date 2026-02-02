@@ -194,7 +194,8 @@ mod tests {
         async fn execute(
             &self,
             _component: &stepflow_core::workflow::Component,
-            _context: crate::ExecutionContext,
+            _run_context: &std::sync::Arc<crate::RunContext>,
+            _step: Option<&stepflow_core::workflow::StepId>,
             _input: stepflow_core::workflow::ValueRef,
         ) -> crate::Result<stepflow_core::FlowResult> {
             Ok(stepflow_core::FlowResult::Success(

@@ -560,17 +560,12 @@ impl FlowExecutor {
         // Create RunContext with subflow submitter for this task's run
         // The submitter uses this run as the parent_run_id for any subflows
         let submitter = self.submit_sender.for_run(task.run_id);
-        let run_context = Arc::new(RunContext::for_root(task.run_id).with_submitter(submitter));
+        let run_context = Arc::new(
+            RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
+        );
 
         // Create step runner with all execution context
-        let runner = StepRunner::new(
-            flow,
-            task.step_index,
-            step_input,
-            self.env.clone(),
-            flow_id,
-            run_context,
-        );
+        let runner = StepRunner::new(task.step_index, step_input, run_context);
 
         // Create an owned future that runs the step and handles errors
         let future = async move {

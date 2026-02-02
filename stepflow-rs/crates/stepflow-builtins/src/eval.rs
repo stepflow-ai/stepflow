@@ -12,11 +12,13 @@
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use stepflow_core::workflow::Component;
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     BlobId, FlowResult, component::ComponentInfo, schema::SchemaRef, workflow::ValueRef,
 };
-use stepflow_plugin::ExecutionContext;
+use stepflow_plugin::RunContext;
 
 use crate::{BuiltinComponent, Result, error::BuiltinError};
 
@@ -72,13 +74,18 @@ impl BuiltinComponent for EvalComponent {
         })
     }
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult> {
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        _step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult> {
         let input: EvalInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
         // Execute the nested workflow using the shared utility
         let workflow_input = input.input;
-        let flow_result = context
+        let flow_result = run_context
             .execute_flow_by_id(&input.flow_id, workflow_input, None)
             .await
             .change_context(BuiltinError::Internal)?;
@@ -86,7 +93,7 @@ impl BuiltinComponent for EvalComponent {
         // Wrap that to make the evaluation output
         let output = EvalOutput {
             result: flow_result.clone(),
-            run_id: context.run_id().to_string(),
+            run_id: run_context.run_id.to_string(),
         };
 
         let result = FlowResult::Success(ValueRef::new(serde_json::to_value(output).unwrap()));
@@ -120,7 +127,7 @@ mod tests {
         // Store the flow as a blob first
         let flow_data = ValueRef::new(serde_json::to_value(&test_flow).unwrap());
         let flow_id = mock
-            .execution_context()
+            .run_context()
             .state_store()
             .put_blob(flow_data, stepflow_core::BlobType::Flow)
             .await
@@ -134,7 +141,7 @@ mod tests {
         let input_value = serde_json::to_value(input).unwrap();
 
         let result = component
-            .execute(mock.execution_context(), input_value.into())
+            .execute(&mock.run_context(), None, input_value.into())
             .await
             .unwrap();
 

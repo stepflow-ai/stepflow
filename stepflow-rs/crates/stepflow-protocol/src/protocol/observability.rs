@@ -65,21 +65,24 @@ pub struct ObservabilityContext {
 }
 
 impl ObservabilityContext {
-    /// Create observability context from current span and execution context.
+    /// Create observability context from current span and run context.
     ///
     /// This extracts trace context from the current fastrace span and combines it
-    /// with execution context (run_id, flow_id, step_id) to create a complete
+    /// with run context (run_id, flow_id) and optional step to create a complete
     /// observability context for component execution.
-    pub fn from_execution_context(execution_context: &stepflow_plugin::ExecutionContext) -> Self {
+    pub fn from_run_context(
+        run_context: &stepflow_plugin::RunContext,
+        step: Option<&stepflow_core::workflow::StepId>,
+    ) -> Self {
         // Extract trace context from current fastrace span
         let (trace_id, span_id) = Self::extract_trace_context();
 
         Self {
             trace_id,
             span_id,
-            run_id: Some(execution_context.run_id().to_string()),
-            flow_id: execution_context.flow_id().cloned(),
-            step_id: execution_context.step_id().map(|s| s.to_owned()),
+            run_id: Some(run_context.run_id.to_string()),
+            flow_id: Some(run_context.flow_id.clone()),
+            step_id: step.map(|s| s.name().to_owned()),
         }
     }
 

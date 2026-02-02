@@ -10,8 +10,13 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use stepflow_core::{FlowResult, component::ComponentInfo, workflow::ValueRef};
-use stepflow_plugin::ExecutionContext;
+use std::sync::Arc;
+use stepflow_core::{
+    FlowResult,
+    component::ComponentInfo,
+    workflow::{StepId, ValueRef},
+};
+use stepflow_plugin::RunContext;
 
 mod blob;
 mod error;
@@ -34,5 +39,10 @@ pub use plugin::{BuiltinPluginConfig, Builtins};
 pub(crate) trait BuiltinComponent: Send + Sync {
     fn component_info(&self) -> Result<ComponentInfo>;
 
-    async fn execute(&self, context: ExecutionContext, input: ValueRef) -> Result<FlowResult>;
+    async fn execute(
+        &self,
+        run_context: &Arc<RunContext>,
+        step: Option<&StepId>,
+        input: ValueRef,
+    ) -> Result<FlowResult>;
 }

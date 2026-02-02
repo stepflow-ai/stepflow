@@ -25,12 +25,10 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use serde::Serialize;
-use stepflow_core::workflow::{Flow, Step, StepId, ValueRef};
-use stepflow_core::{BlobId, FlowResult};
+use stepflow_core::FlowResult;
+use stepflow_core::workflow::{Step, StepId, ValueRef};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{
-    DynPlugin, ExecutionContext, Plugin as _, PluginRouterExt as _, RunContext, StepflowEnvironment,
-};
+use stepflow_plugin::{DynPlugin, Plugin as _, PluginRouterExt as _, RunContext};
 
 use crate::{ExecutionError, Result};
 
@@ -137,7 +135,8 @@ async fn execute_step_async(
     step: &stepflow_core::workflow::Step,
     resolved_component: &str,
     input: ValueRef,
-    context: ExecutionContext,
+    run_context: &Arc<RunContext>,
+    step_id: &StepId,
 ) -> Result<FlowResult> {
     use stepflow_observability::fastrace::prelude::*;
 
@@ -160,7 +159,10 @@ async fn execute_step_async(
         let component = stepflow_core::workflow::Component::from_string(resolved_component);
 
         // Execute the component
-        let result = match plugin.execute(&component, context, input).await {
+        let result = match plugin
+            .execute(&component, run_context, Some(step_id), input)
+            .await
+        {
             Ok(result) => result,
             Err(error) => {
                 // Convert plugin execution errors to FlowResult::Failed
@@ -222,14 +224,7 @@ async fn execute_step_async(
 /// # Example
 ///
 /// ```ignore
-/// let runner = StepRunner::new(
-///     flow.clone(),
-///     step_index,
-///     step_input,
-///     stepflow.clone(),
-///     flow_id,
-///     run_context,
-/// );
+/// let runner = StepRunner::new(step_index, step_input, run_context);
 ///
 /// let result = runner.run().await;
 /// ```
@@ -238,15 +233,9 @@ pub struct StepRunner {
     step: Step,
     /// Index of the step in the flow.
     step_index: usize,
-    /// The flow containing this step.
-    flow: Arc<Flow>,
     /// Resolved step input (may be Success or Failed).
     step_input: FlowResult,
-    /// Environment for plugin access.
-    env: Arc<StepflowEnvironment>,
-    /// Flow ID for execution context.
-    flow_id: BlobId,
-    /// Run context for bidirectional communication (run hierarchy, subflow submission).
+    /// Run context containing run hierarchy, environment, flow, and subflow submission.
     run_context: Arc<RunContext>,
 }
 
@@ -257,24 +246,14 @@ impl StepRunner {
     /// or `FlowResult::Failed` (input resolution failed). If failed, `run()`
     /// will return the failure immediately.
     ///
-    /// The `run_context` provides run hierarchy information (run_id, root_run_id)
-    /// and optionally a subflow submitter for in-process subflow execution.
-    pub fn new(
-        flow: Arc<Flow>,
-        step_index: usize,
-        step_input: FlowResult,
-        env: Arc<StepflowEnvironment>,
-        flow_id: BlobId,
-        run_context: Arc<RunContext>,
-    ) -> Self {
-        let step = flow.step(step_index).clone();
+    /// The `run_context` provides run hierarchy information (run_id, root_run_id),
+    /// the flow and flow_id, environment access, and optionally a subflow submitter.
+    pub fn new(step_index: usize, step_input: FlowResult, run_context: Arc<RunContext>) -> Self {
+        let step = run_context.flow.step(step_index).clone();
         Self {
             step,
             step_index,
-            flow,
             step_input,
-            env,
-            flow_id,
             run_context,
         }
     }
@@ -291,7 +270,7 @@ impl StepRunner {
     /// - Business failures (`FlowResult::Failed`) are expected and should be recorded
     /// - System errors (`Err`) indicate infrastructure issues and may warrant logging/alerting
     pub async fn run(self) -> Result<StepRunResult> {
-        let step_id = StepId::for_step(self.flow.clone(), self.step_index);
+        let step_id = StepId::for_step(self.run_context.flow.clone(), self.step_index);
         let component = self.step.component.to_string();
 
         // Handle input resolution failure (business logic failure)
@@ -308,21 +287,21 @@ impl StepRunner {
 
         // Get plugin for this component (system error if fails)
         let (plugin, resolved_component) = self
-            .env
+            .run_context
+            .env()
             .get_plugin_and_component(&self.step.component, input.clone())
             .change_context(ExecutionError::RouterError)?;
 
-        // Create execution context with run context for bidirectional communication
-        let context = ExecutionContext::for_step(
-            self.env.clone(),
-            step_id.clone(),
-            self.flow_id,
-            self.run_context,
-        );
-
         // Execute the step (system error if infrastructure fails)
-        let result =
-            execute_step_async(plugin, &self.step, &resolved_component, input, context).await?;
+        let result = execute_step_async(
+            plugin,
+            &self.step,
+            &resolved_component,
+            input,
+            &self.run_context,
+            &step_id,
+        )
+        .await?;
 
         Ok(StepRunResult::new(step_id, component, result))
     }

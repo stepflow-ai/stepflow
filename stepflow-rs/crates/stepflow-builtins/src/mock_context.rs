@@ -11,16 +11,17 @@
 // the License.
 
 use std::sync::Arc;
-use stepflow_core::{FlowResult, status::ExecutionStatus, workflow::ValueRef};
+use stepflow_core::workflow::Flow;
+use stepflow_core::{BlobId, FlowResult, status::ExecutionStatus, workflow::ValueRef};
 use stepflow_plugin::{
-    ExecutionContext, RunContext, StepflowEnvironment, StepflowEnvironmentBuilder, subflow_channel,
+    RunContext, StepflowEnvironment, StepflowEnvironmentBuilder, subflow_channel,
 };
 use stepflow_state::{CreateRunParams, StateStoreExt as _};
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
 ///
-/// This provides a way to create ExecutionContext instances for testing
+/// This provides a way to create RunContext instances for testing
 /// built-in components without requiring complex workflow execution.
 /// It includes a mock subflow submitter that returns mock results.
 pub struct MockContext {
@@ -36,15 +37,15 @@ impl MockContext {
         Self { env }
     }
 
-    /// Get an execution context for testing from this mock context.
+    /// Get a run context for testing from this mock context.
     ///
-    /// This creates a new execution context with a subflow submitter that
+    /// This creates a new run context with a subflow submitter that
     /// returns mock results immediately.
-    pub fn execution_context(&self) -> ExecutionContext {
+    pub fn run_context(&self) -> Arc<RunContext> {
         // Create run ID for this context
         let run_id = Uuid::now_v7();
 
-        // Create a channel for this specific execution context
+        // Create a channel for this specific run context
         let (submitter, mut receiver) = subflow_channel(10, run_id);
 
         // Clone what we need for the spawned task
@@ -81,9 +82,13 @@ impl MockContext {
             }
         });
 
-        // Create run context with the submitter using the builder pattern
-        let run_context = Arc::new(RunContext::for_root(run_id).with_submitter(submitter));
+        // Create a dummy flow for testing
+        let test_flow = Arc::new(Flow::default());
+        let flow_id = BlobId::from_flow(&test_flow).expect("Flow should serialize");
 
-        ExecutionContext::for_testing(self.env.clone(), run_context)
+        // Create run context with the submitter
+        Arc::new(
+            RunContext::new(run_id, test_flow, flow_id, self.env.clone()).with_submitter(submitter),
+        )
     }
 }

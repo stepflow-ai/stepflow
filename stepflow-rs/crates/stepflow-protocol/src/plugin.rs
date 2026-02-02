@@ -15,13 +15,14 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, ExecutionContext, Plugin, PluginConfig, PluginError, Result, StepflowEnvironment,
+    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
 };
 use tokio::sync::RwLock;
 
@@ -246,8 +247,7 @@ impl StepflowPlugin {
                         None
                     },
                 },
-                None, // No env for initialization (no bidirectional)
-                None, // No run context for initialization
+                None, // No run context for initialization (no bidirectional)
             )
             .await
             .change_context(PluginError::Execution)
@@ -336,8 +336,7 @@ impl Plugin for StepflowPlugin {
                         None
                     },
                 },
-                None, // No env for initialization (no bidirectional)
-                None, // No run context for initialization
+                None, // No run context for initialization (no bidirectional)
             )
             .await
             .change_context(PluginError::Initializing)?;
@@ -353,11 +352,7 @@ impl Plugin for StepflowPlugin {
     async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
         let client_handle = self.client_handle().await?;
         let response = client_handle
-            .method(
-                &ComponentListParams {},
-                None, // No env for listing (no bidirectional)
-                None, // No run context for component listing
-            )
+            .method(&ComponentListParams {}, None) // No run context for component listing
             .await
             .change_context(PluginError::ComponentInfo)?;
 
@@ -371,7 +366,6 @@ impl Plugin for StepflowPlugin {
                 &ComponentInfoParams {
                     component: component.clone(),
                 },
-                None, // No env for info (no bidirectional)
                 None, // No run context for component info
             )
             .await
@@ -383,19 +377,16 @@ impl Plugin for StepflowPlugin {
     async fn execute(
         &self,
         component: &Component,
-        context: ExecutionContext,
+        run_context: &Arc<RunContext>,
+        step: Option<&StepId>,
         input: ValueRef,
     ) -> Result<FlowResult> {
         const MAX_ATTEMPTS: u32 = 3;
         let can_restart = self.is_subprocess_mode().await;
 
-        // Get the env and run context from ExecutionContext for bidirectional communication.
-        let env = context.env().clone();
-        let run_context = context.run_context().clone();
-
         for attempt in 1..=MAX_ATTEMPTS {
-            // Create observability context from execution context
-            let observability = ObservabilityContext::from_execution_context(&context);
+            // Create observability context from run context and step
+            let observability = ObservabilityContext::from_run_context(run_context, step);
 
             // Get the client handle (will create if not initialized)
             let client_handle = self.get_or_create_client_handle().await?;
@@ -408,8 +399,7 @@ impl Plugin for StepflowPlugin {
                         attempt,
                         observability,
                     },
-                    Some(env.clone()),
-                    Some(run_context.clone()),
+                    Some(Arc::clone(run_context)),
                 )
                 .await;
 

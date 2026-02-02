@@ -12,8 +12,7 @@
 
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
-use stepflow_plugin::{RunContext, StepflowEnvironment};
-use stepflow_state::StateStoreExt as _;
+use stepflow_plugin::RunContext;
 use tokio::sync::mpsc;
 
 use super::handle_method_call;
@@ -29,15 +28,14 @@ impl MethodHandler for PutBlobHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        env: Arc<StepflowEnvironment>,
-        _run_context: &'a Arc<RunContext>,
+        run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        let state_store = run_context.state_store().clone();
         handle_method_call(
             request,
             response_tx,
             async move |request: crate::protocol::PutBlobParams| {
-                let blob_id = env
-                    .state_store()
+                let blob_id = state_store
                     .put_blob(request.data, request.blob_type)
                     .await
                     .map_err(|e| {
@@ -59,21 +57,17 @@ impl MethodHandler for GetBlobHandler {
         &self,
         request: &'a MethodRequest<'a>,
         response_tx: mpsc::Sender<String>,
-        env: Arc<StepflowEnvironment>,
-        _run_context: &'a Arc<RunContext>,
+        run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
+        let state_store = run_context.state_store().clone();
         handle_method_call(
             request,
             response_tx,
             async move |request: crate::protocol::GetBlobParams| {
-                let blob_data =
-                    env.state_store()
-                        .get_blob(&request.blob_id)
-                        .await
-                        .map_err(|e| {
-                            log::error!("Failed to get blob: {e}");
-                            Error::internal("Failed to get blob")
-                        })?;
+                let blob_data = state_store.get_blob(&request.blob_id).await.map_err(|e| {
+                    log::error!("Failed to get blob: {e}");
+                    Error::internal("Failed to get blob")
+                })?;
                 Ok(crate::protocol::GetBlobResult {
                     data: blob_data.data(),
                     blob_type: blob_data.blob_type(),

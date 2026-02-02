@@ -17,22 +17,23 @@ use std::path::Path;
 use std::sync::Arc;
 use stepflow_core::{
     BlobId, FlowResult, StepflowEnvironment,
-    workflow::{Flow, StepId, ValueRef, WorkflowOverrides},
+    workflow::{Flow, ValueRef, WorkflowOverrides},
 };
 use stepflow_dtos::ResultOrder;
 use stepflow_state::{StateStore, StateStoreExt as _};
 use uuid::Uuid;
 
-/// Run hierarchy context for execution.
+/// Run context for workflow execution.
 ///
-/// This captures the run tree context for a component execution,
-/// allowing bidirectional message handlers to know which run tree
-/// they're serving. It optionally includes a submitter for in-process
-/// sub-flow submission.
+/// This is the primary context type for workflow runs, providing access to:
+/// - Run hierarchy information (run_id, root_run_id)
+/// - The flow being executed and its ID
+/// - The shared environment (state store, working directory, plugin router)
+/// - Subflow submission for nested flow execution
 ///
-/// `RunContext` is cheap to clone - it contains two UUIDs and an optional
-/// `SubflowSubmitter` (which itself is just an mpsc::Sender + two UUIDs).
-#[derive(Clone, Debug)]
+/// `RunContext` is passed to plugins during step execution. The step being
+/// executed is passed separately as a `StepId` parameter.
+#[derive(Clone)]
 pub struct RunContext {
     /// The current run ID.
     pub run_id: Uuid,
@@ -41,6 +42,12 @@ pub struct RunContext {
     /// For top-level runs, this equals `run_id`.
     /// For sub-flows, this is the original run that started the tree.
     pub root_run_id: Uuid,
+    /// The flow being executed.
+    pub flow: Arc<Flow>,
+    /// Flow ID (content hash) for the current flow.
+    pub flow_id: BlobId,
+    /// The shared environment.
+    env: Arc<StepflowEnvironment>,
     /// Optional submitter for in-process sub-flow submission.
     ///
     /// When present, sub-flows can be submitted directly to the parent
@@ -48,165 +55,69 @@ pub struct RunContext {
     pub subflow_submitter: Option<SubflowSubmitter>,
 }
 
+impl std::fmt::Debug for RunContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunContext")
+            .field("run_id", &self.run_id)
+            .field("root_run_id", &self.root_run_id)
+            .field("flow_id", &self.flow_id)
+            .field("subflow_submitter", &self.subflow_submitter.is_some())
+            .finish()
+    }
+}
+
 impl RunContext {
     /// Create a new RunContext for a root (top-level) run.
     ///
     /// Sets `root_run_id` equal to `run_id`.
-    pub fn for_root(run_id: Uuid) -> Self {
+    pub fn new(
+        run_id: Uuid,
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        env: Arc<StepflowEnvironment>,
+    ) -> Self {
         Self {
             run_id,
             root_run_id: run_id,
+            flow,
+            flow_id,
+            env,
             subflow_submitter: None,
         }
     }
 
     /// Create a new RunContext for a sub-flow within an existing run tree.
     ///
-    /// The `root_run_id` is inherited from the parent context.
-    pub fn for_subflow(&self, run_id: Uuid) -> Self {
+    /// The `root_run_id` and `subflow_submitter` are inherited from the parent context.
+    /// The environment is shared.
+    pub fn for_subflow(&self, run_id: Uuid, flow: Arc<Flow>, flow_id: BlobId) -> Self {
         Self {
             run_id,
             root_run_id: self.root_run_id,
+            flow,
+            flow_id,
+            env: self.env.clone(),
             subflow_submitter: self.subflow_submitter.clone(),
         }
     }
 
-    /// Create a new RunContext with a subflow submitter.
+    /// Add a subflow submitter (builder pattern).
     pub fn with_submitter(mut self, submitter: SubflowSubmitter) -> Self {
         self.subflow_submitter = Some(submitter);
         self
     }
-}
 
-/// Execution context for workflow runs.
-///
-/// This struct provides access to:
-/// - The shared environment (state store, working directory, plugin router)
-/// - Run-specific information (run ID, step, flow)
-/// - Subflow submission for nested flow execution
-///
-/// `ExecutionContext` is passed to plugins during step execution and provides
-/// everything needed to execute a component, including the ability to submit
-/// nested sub-flows.
-///
-/// Every `ExecutionContext` has a `RunContext` because execution always happens
-/// within the context of a run. The `RunContext` provides run hierarchy information
-/// and optionally a subflow submitter for nested execution.
-#[derive(Clone)]
-pub struct ExecutionContext {
-    /// The shared environment.
-    env: Arc<StepflowEnvironment>,
-    /// The current step being executed (contains flow reference and step index).
-    step: Option<StepId>,
-    /// Flow reference for workflow-level contexts (when step is None).
-    flow: Option<Arc<Flow>>,
-    /// Flow ID (content hash) for the current flow.
-    flow_id: Option<BlobId>,
-    /// Run context for bidirectional communication (run hierarchy, subflow submission).
-    /// Always present - execution always happens within a run.
-    run_context: Arc<RunContext>,
-}
-
-impl ExecutionContext {
-    /// Create a new ExecutionContext for a specific step.
-    pub fn for_step(
-        env: Arc<StepflowEnvironment>,
-        step: StepId,
-        flow_id: BlobId,
-        run_context: Arc<RunContext>,
-    ) -> Self {
-        Self {
-            env,
-            step: Some(step),
-            flow: None,
-            flow_id: Some(flow_id),
-            run_context,
-        }
+    /// Get the flow for this context.
+    pub fn flow(&self) -> &Arc<Flow> {
+        &self.flow
     }
 
-    /// Create a new ExecutionContext for testing without a flow.
+    /// Get the flow ID for this context.
     ///
-    /// This is only for unit tests where a full Flow is not available.
-    /// In production code, use `for_step()` or `for_workflow_with_flow()`.
-    pub fn for_testing(env: Arc<StepflowEnvironment>, run_context: Arc<RunContext>) -> Self {
-        Self {
-            env,
-            step: None,
-            flow: None,
-            flow_id: None,
-            run_context,
-        }
-    }
-
-    /// Create a new ExecutionContext for workflow-level operations (no specific step).
-    pub fn for_workflow(env: Arc<StepflowEnvironment>, run_context: Arc<RunContext>) -> Self {
-        Self {
-            env,
-            step: None,
-            flow: None,
-            flow_id: None,
-            run_context,
-        }
-    }
-
-    /// Create a new ExecutionContext for workflow-level operations with flow metadata access.
-    pub fn for_workflow_with_flow(
-        env: Arc<StepflowEnvironment>,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        run_context: Arc<RunContext>,
-    ) -> Self {
-        Self {
-            env,
-            step: None,
-            flow: Some(flow),
-            flow_id: Some(flow_id),
-            run_context,
-        }
-    }
-
-    /// Create a new ExecutionContext with a step, reusing the same environment and run context.
-    pub fn with_step(&self, step: StepId) -> Self {
-        Self {
-            env: self.env.clone(),
-            step: Some(step),
-            flow: None, // Flow is accessible via step.flow
-            flow_id: self.flow_id.clone(),
-            run_context: self.run_context.clone(),
-        }
-    }
-
-    /// Get the run context.
-    pub fn run_context(&self) -> &Arc<RunContext> {
-        &self.run_context
-    }
-
-    /// Get the execution ID for this context.
-    pub fn run_id(&self) -> Uuid {
-        self.run_context.run_id
-    }
-
-    /// Get the step for this context, if available.
-    pub fn step(&self) -> Option<&StepId> {
-        self.step.as_ref()
-    }
-
-    /// Get the step name for this context, if available.
-    pub fn step_id(&self) -> Option<&str> {
-        self.step.as_ref().map(|s| s.name())
-    }
-
-    /// Get the flow for this context, if available.
-    pub fn flow(&self) -> Option<&Arc<Flow>> {
-        self.step
-            .as_ref()
-            .and_then(|s| s.flow())
-            .or(self.flow.as_ref())
-    }
-
-    /// Get the flow ID for this context, if available.
-    pub fn flow_id(&self) -> Option<&BlobId> {
-        self.flow_id.as_ref()
+    /// This is the [`BlobId`] derived from the content hash of the flow definition,
+    /// i.e., a content-addressed identifier for the flow itself (not the run ID).
+    pub fn flow_id(&self) -> &BlobId {
+        &self.flow_id
     }
 
     /// Get the shared environment.
@@ -234,7 +145,7 @@ impl ExecutionContext {
     /// the subflow submitter when available, so most code doesn't need to
     /// access this directly.
     pub fn subflow_submitter(&self) -> Option<&SubflowSubmitter> {
-        self.run_context.subflow_submitter.as_ref()
+        self.subflow_submitter.as_ref()
     }
 
     // ========================================================================
