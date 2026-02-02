@@ -8,9 +8,9 @@ on:
         required: true
         type: choice
         options:
-          - stepflow-rs
+          - stepflow
           - stepflow-py
-        default: 'stepflow-rs'
+        default: 'stepflow'
       bump_type:
         description: 'Type of version bump'
         required: true
@@ -59,11 +59,11 @@ jobs:
       - name: Prepare release
         run: |
           case "${{ inputs.package }}" in
-            stepflow-rs)
+            stepflow)
               if [[ -n "${{ inputs.message }}" ]]; then
-                ./scripts/prepare-release-rust.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+                ./scripts/prepare-release-stepflow.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
               else
-                ./scripts/prepare-release-rust.sh ${{ inputs.bump_type }} --pr
+                ./scripts/prepare-release-stepflow.sh ${{ inputs.bump_type }} --pr
               fi
               ;;
             stepflow-py)

@@ -12,26 +12,64 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""New UDF executor with pre-compilation approach (no CachedStepflowContext needed)."""
+"""Custom code executor for Langflow components.
+
+Executes Langflow components by compiling their code from blob storage.
+Uses a pre-compilation approach to eliminate context calls during execution.
+"""
 
 import inspect
-import os
 from typing import Any
 
 from stepflow_py.worker import StepflowContext
 from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
-from .type_converter import TypeConverter
+from .base_executor import BaseExecutor
 
 
-class UDFExecutor:
-    """Executes Langflow components using pre-compilation to eliminate context calls."""
+class CustomCodeExecutor(BaseExecutor):
+    """Executes Langflow custom code components by compiling code from blobs.
+
+    This executor compiles component code from blob storage and instantiates
+    the resulting classes. It uses a pre-compilation approach to eliminate
+    context calls during execution.
+    """
 
     def __init__(self):
-        """Initialize UDF executor."""
-        self.type_converter = TypeConverter()
+        """Initialize custom code executor."""
+        super().__init__()
         self.compiled_components: dict[str, Any] = {}
+
+    async def _instantiate_component(
+        self,
+        component_info: dict[str, Any],
+    ) -> tuple[Any, str]:
+        """Instantiate a component from pre-compiled component info.
+
+        Args:
+            component_info: Contains 'class' (the component class) and
+                'component_type' (name for logging)
+
+        Returns:
+            Tuple of (component_instance, component_type)
+        """
+        component_class = component_info["class"]
+        component_type = component_info.get("component_type", "Unknown")
+        tracer = get_tracer(__name__)
+
+        with tracer.start_as_current_span(
+            f"instantiate_component:{component_type}",
+            attributes={"component_type": component_type},
+        ):
+            try:
+                component_instance = component_class()
+            except Exception as e:
+                raise ExecutionError(
+                    f"Failed to instantiate {component_type}: {e}"
+                ) from e
+
+            return component_instance, component_type
 
     async def execute(
         self, input_data: dict[str, Any], context: StepflowContext
@@ -296,18 +334,7 @@ class UDFExecutor:
         )
         session_id = component_parameters.get("session_id", "default_session")
         component_instance._session_id = session_id
-
-        # Set up graph object for components that use self.graph.session_id (like Agent)
-        # Some components (like Agent) have graph as a read-only property, so we need to
-        # set it via __dict__ to ensure it has vertices attribute for lfx compatibility
-        class GraphContext:
-            def __init__(self, session_id: str):
-                self.session_id = session_id
-                self.vertices: list[Any] = []  # Empty list for lfx compatibility
-                self.flow_id = None  # Optional attribute some components may expect
-
-        # Use __dict__ to set graph even if it's a read-only property
-        component_instance.__dict__["graph"] = GraphContext(session_id)
+        self._setup_graph_context(component_instance, session_id)
 
         # Note: No conversion needed - langflow.schema types are lfx.schema types
         # (langflow re-exports from lfx, so isinstance checks work correctly)
@@ -541,22 +568,11 @@ class UDFExecutor:
             else:
                 component_parameters[key] = value
 
-                # If the runtime value is falsy and we were supposed to load it from
-                # the DB, then it means we didn't receive a runtime variable, so we
-                # should attempt to load it from the environment. The `"value"` is the
-                # name of the variable / environment variable to load from.
-                if (
-                    not value
-                    and (template_field := template.get(key, {}))
-                    and template_field.get("load_from_db", False)
-                ):
-                    field_name = template_field.get("value", key)
-                    env_value = os.environ.get(field_name)
-                    if env_value is None:
-                        raise ExecutionError(
-                            f"Environment variable '{field_name}' for '{key}' not set."
-                        )
-                    component_parameters[key] = env_value
+        # Resolve environment variables for load_from_db fields
+        # This handles API keys and other secrets from environment
+        component_parameters = self._resolve_env_variables(
+            component_parameters, template
+        )
 
         # Defaults will be applied from component inputs definition during execution
         # This respects the actual component specification rather than hardcoding

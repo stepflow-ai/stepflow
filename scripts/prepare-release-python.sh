@@ -137,14 +137,14 @@ if [[ "$CREATE_PR" == true ]] && ! command_exists gh; then
 fi
 
 # Ensure we're in the project root directory
-if [[ ! -d "sdks/python" ]] || [[ ! -f "sdks/python/stepflow-worker/pyproject.toml" ]]; then
+if [[ ! -d "sdks/python" ]] || [[ ! -f "sdks/python/stepflow-py/pyproject.toml" ]]; then
     echo -e "${RED}Error: Must be run from project root directory${NC}" >&2
-    echo "Expected to find sdks/python/stepflow-worker/pyproject.toml" >&2
+    echo "Expected to find sdks/python/stepflow-py/pyproject.toml" >&2
     exit 1
 fi
 
 # Change to Python SDK directory for operations
-cd sdks/python/stepflow-worker
+cd sdks/python/stepflow-py
 
 # Check git status only if creating PR
 if [[ "$CREATE_PR" == true ]] && [[ -n "$(git status --porcelain)" ]]; then
@@ -187,21 +187,37 @@ else
     sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" pyproject.toml
 fi
 
-# Update uv.lock if it exists
-if [[ -f "uv.lock" ]]; then
-    echo -e "${BLUE}Updating uv.lock...${NC}"
-    if ! uv lock; then
-        echo -e "${YELLOW}Warning: Failed to update uv.lock, continuing anyway...${NC}"
+# Calculate new version parts for constraint update
+IFS='.' read -ra NEW_VERSION_PARTS <<< "$NEW_VERSION"
+NEW_MAJOR=${NEW_VERSION_PARTS[0]}
+NEW_MINOR=${NEW_VERSION_PARTS[1]}
+
+# Update stepflow-orchestrator constraint on minor/major bumps
+if [[ "$BUMP_TYPE" == "minor" ]] || [[ "$BUMP_TYPE" == "major" ]]; then
+    echo -e "${BLUE}Updating stepflow-orchestrator dependency constraint...${NC}"
+    NEW_CONSTRAINT="~=${NEW_MAJOR}.${NEW_MINOR}.0"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/stepflow-orchestrator~=[0-9]*\.[0-9]*\.[0-9]*/stepflow-orchestrator${NEW_CONSTRAINT}/" pyproject.toml
+    else
+        sed -i "s/stepflow-orchestrator~=[0-9]*\.[0-9]*\.[0-9]*/stepflow-orchestrator${NEW_CONSTRAINT}/" pyproject.toml
     fi
+    echo -e "${GREEN}Updated orchestrator dependency to ${NEW_CONSTRAINT}${NC}"
 fi
 
-# Generate changelog
+# Update workspace lock file
+echo -e "${BLUE}Updating workspace lock file...${NC}"
+if ! (cd .. && uv lock); then
+    echo -e "${YELLOW}Warning: Failed to update uv.lock, continuing anyway...${NC}"
+fi
+
+# Generate changelog (located at sdks/python/CHANGELOG.md, one level up from stepflow-py)
 echo -e "${BLUE}Generating changelog...${NC}"
+CHANGELOG_PATH="../CHANGELOG.md"
 
 # Check if CHANGELOG.md exists, create if not
-if [[ ! -f "CHANGELOG.md" ]]; then
+if [[ ! -f "$CHANGELOG_PATH" ]]; then
     echo -e "${YELLOW}Creating new CHANGELOG.md${NC}"
-    cat > CHANGELOG.md << EOF
+    cat > "$CHANGELOG_PATH" << EOF
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -215,17 +231,18 @@ fi
 echo -e "${BLUE}Generating changelog (Python SDK changes only)${NC}"
 if [[ -n "$TAG_MESSAGE" ]]; then
     echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
-    git-cliff --config cliff.toml --tag "stepflow-worker-$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
+    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend "$CHANGELOG_PATH" --with-tag-message "$TAG_MESSAGE"
 else
-    git-cliff --config cliff.toml --tag "stepflow-worker-$NEW_VERSION" -u --prepend CHANGELOG.md
+    git-cliff --config cliff.toml --tag "stepflow-py-$NEW_VERSION" -u --prepend "$CHANGELOG_PATH"
 fi
 
 echo -e "${GREEN}✅ Release preparation complete!${NC}"
 echo -e "${BLUE}Changes made:${NC}"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in pyproject.toml"
-if [[ -f "uv.lock" ]]; then
-    echo "  - Updated uv.lock"
+if [[ "$BUMP_TYPE" == "minor" ]] || [[ "$BUMP_TYPE" == "major" ]]; then
+    echo "  - Updated stepflow-orchestrator dependency constraint to ~=${NEW_MAJOR}.${NEW_MINOR}.0"
 fi
+echo "  - Updated uv.lock"
 echo "  - Generated/updated CHANGELOG.md"
 
 if [[ "$CREATE_PR" == false ]]; then
@@ -242,7 +259,7 @@ echo ""
 echo -e "${BLUE}Creating pull request...${NC}"
 
 # Create release branch
-RELEASE_BRANCH="release/stepflow-worker-v$NEW_VERSION"
+RELEASE_BRANCH="release/stepflow-py-v$NEW_VERSION"
 echo -e "${BLUE}Creating release branch: $RELEASE_BRANCH${NC}"
 
 # Check if release branch already exists
@@ -260,24 +277,21 @@ git checkout -b "$RELEASE_BRANCH"
 
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
-if [[ -f "uv.lock" ]]; then
-    git add pyproject.toml uv.lock CHANGELOG.md
-else
-    git add pyproject.toml CHANGELOG.md
-fi
-git commit -m "chore: release stepflow-worker v$NEW_VERSION
+git add pyproject.toml "$CHANGELOG_PATH" ../uv.lock
+git commit -m "chore: release stepflow-py v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
-- Update CHANGELOG.md with release notes"
+- Update CHANGELOG.md with release notes
+- Update uv.lock"
 
 # Push branch
 echo -e "${BLUE}Pushing release branch...${NC}"
 git push -u origin "$RELEASE_BRANCH" --force
 
 # Create PR
-PR_BODY="## Release stepflow-worker v$NEW_VERSION
+PR_BODY="## Release stepflow-py v$NEW_VERSION
 
-This PR prepares the release of stepflow-worker v$NEW_VERSION.
+This PR prepares the release of stepflow-py v$NEW_VERSION.
 
 ### Changes
 - Version bump from $CURRENT_VERSION to $NEW_VERSION
@@ -289,10 +303,10 @@ This PR prepares the release of stepflow-worker v$NEW_VERSION.
 3. The release will be automatically tagged and published to PyPI"
 
 PR_URL=$(gh pr create \
-    --title "chore: release stepflow-worker v$NEW_VERSION" \
+    --title "chore: release stepflow-py v$NEW_VERSION" \
     --body "$PR_BODY" \
     --label "release" \
-    --label "release:stepflow-worker")
+    --label "release:stepflow-py")
 
 echo -e "${GREEN}✅ Release PR created successfully!${NC}"
 echo -e "${BLUE}PR URL: $PR_URL${NC}"

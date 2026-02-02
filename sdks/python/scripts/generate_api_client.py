@@ -280,6 +280,32 @@ def exclude_additional_properties(directory: Path) -> None:
     print(f"    Fixed {count} model files")
 
 
+def fix_any_type_from_dict(directory: Path) -> None:
+    """Fix from_dict for fields typed as Any that incorrectly reference OneOf.
+
+    OpenAPI Generator sometimes generates code that references 'OneOf.from_dict()'
+    for fields typed as 'Any'. This is incorrect as 'Any' fields should just
+    pass the value through directly.
+    """
+    print(">>> Fixing Any type from_dict...")
+    models_dir = directory / "models"
+    count = 0
+
+    for filepath in models_dir.glob("*.py"):
+        content = filepath.read_text()
+
+        # Pattern: "field": OneOf.from_dict(obj["field"])
+        # This is incorrect for Any-typed fields
+        # Replace with: "field": obj.get("field")
+        old_pattern = r'"(\w+)": OneOf\.from_dict\(obj\["\1"\]\)'
+        if re.search(old_pattern, content):
+            content = re.sub(old_pattern, r'"\1": obj.get("\1")', content)
+            filepath.write_text(content)
+            count += 1
+
+    print(f"    Fixed {count} model files")
+
+
 def fix_sanitize_for_serialization(directory: Path) -> None:
     """Fix sanitize_for_serialization to handle oneOf wrappers returning non-dicts.
 
@@ -414,6 +440,9 @@ def do_generate(spec_file: Path) -> None:
     # Exclude additional_properties from serialization
     exclude_additional_properties(SRC_DIR)
 
+    # Fix Any-typed fields that incorrectly reference OneOf
+    fix_any_type_from_dict(SRC_DIR)
+
     # Fix sanitize_for_serialization for oneOf wrappers
     fix_sanitize_for_serialization(SRC_DIR)
 
@@ -461,6 +490,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     # Apply the same post-processing patches as do_generate
     add_oneof_serializers(generated_pkg)
     exclude_additional_properties(generated_pkg)
+    fix_any_type_from_dict(generated_pkg)
     fix_sanitize_for_serialization(generated_pkg)
     format_files(generated_pkg)
 

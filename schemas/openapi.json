@@ -10,7 +10,7 @@
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
     },
-    "version": "0.8.0"
+    "version": "0.9.0"
   },
   "paths": {
     "/components": {
@@ -1629,19 +1629,13 @@
         "type": "object",
         "description": "Response for step run details",
         "required": [
-          "stepIndex",
           "stepId",
           "status"
         ],
         "properties": {
-          "stepIndex": {
-            "type": "integer",
-            "description": "Step index in the flow",
-            "minimum": 0
-          },
           "stepId": {
             "type": "string",
-            "description": "Step ID"
+            "description": "Step ID (the stable identifier for this step in the workflow)"
           },
           "component": {
             "type": [
@@ -1700,19 +1694,18 @@
         "type": "object",
         "description": "Response when a flow is stored",
         "required": [
+          "flowId",
+          "stored",
           "diagnostics"
         ],
         "properties": {
           "flowId": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/BlobId",
-                "description": "The ID of the stored flow (only present if no fatal diagnostics)"
-              }
-            ]
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The ID of the flow (computed from content hash, always present)"
+          },
+          "stored": {
+            "type": "boolean",
+            "description": "Whether the flow was actually stored (false for dry_run or if validation has fatal errors)"
           },
           "diagnostics": {
             "$ref": "#/components/schemas/Diagnostics",

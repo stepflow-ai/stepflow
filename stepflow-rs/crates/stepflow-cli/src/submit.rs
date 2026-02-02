@@ -123,15 +123,17 @@ pub async fn submit(
     let failure_count = display_diagnostics(&store_result.diagnostics);
 
     // Check if the workflow was stored successfully
-    let flow_id = store_result.flow_id.ok_or_else(|| {
+    if !store_result.stored {
         // If validation failed, the error details were already shown by display_diagnostics
         if failure_count > 0 {
             log::error!("Workflow validation failed - see diagnostics above");
         } else {
-            log::error!("Workflow was not stored for unknown reasons");
+            log::error!("Workflow was not stored (dry_run mode)");
         }
-        MainError::ValidationError("Workflow validation failed".to_string())
-    })?;
+        return Err(MainError::ValidationError("Workflow not stored".to_string()).into());
+    }
+
+    let flow_id = store_result.flow_id;
 
     // Step 2: Execute the workflow - works for both single and batch
     let execute_request = CreateRunRequest {

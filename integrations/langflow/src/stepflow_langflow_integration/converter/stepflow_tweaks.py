@@ -62,13 +62,19 @@ def apply_stepflow_tweaks_to_dict(
 
     for step_dict in modified_dict.get("steps", []):
         step_id = step_dict.get("id", "")
+        component = step_dict.get("component", "")
 
-        # Check if this is a Langflow UDF executor step
-        if (
+        # Check if this is a Langflow executor step (custom_code or core)
+        is_langflow_step = (
             step_id.startswith("langflow_")
             and not step_id.endswith("_blob")
-            and step_dict.get("component") == "/langflow/udf_executor"
-        ):
+            and (
+                component == "/langflow/custom_code"
+                or component.startswith("/langflow/core/")
+            )
+        )
+
+        if is_langflow_step:
             # Extract Langflow node ID
             langflow_node_id = step_id[len("langflow_") :]
 

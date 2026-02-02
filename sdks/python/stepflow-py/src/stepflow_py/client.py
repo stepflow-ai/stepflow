@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from stepflow_py.api import ApiClient, Configuration
@@ -28,6 +31,7 @@ from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 if TYPE_CHECKING:
     from stepflow_py.api.models.create_run_response import CreateRunResponse
     from stepflow_py.api.models.store_flow_response import StoreFlowResponse
+    from stepflow_py.config import StepflowConfig
 
 
 class StepflowClient:
@@ -38,9 +42,11 @@ class StepflowClient:
             response = await client.store_flow(workflow_dict)
             result = await client.run(response.flow_id, {"input": "value"})
 
-    Usage with orchestrator (see stepflow_orchestrator package):
-        async with StepflowOrchestrator.start() as client:
-            # client is a StepflowClient connected to the subprocess
+    Usage with local orchestrator (requires pip install stepflow-py[local]):
+        from stepflow_py.config import StepflowConfig
+
+        config = StepflowConfig(plugins={...}, routes={...})
+        async with StepflowClient.local(config) as client:
             response = await client.store_flow(workflow)
             result = await client.run(response.flow_id, input_data)
     """
@@ -68,6 +74,92 @@ class StepflowClient:
         config = Configuration(host=base_url)
         api_client = ApiClient(configuration=config)
         return cls(api_client)
+
+    @classmethod
+    @asynccontextmanager
+    async def local(
+        cls,
+        config: StepflowConfig | Path,
+        *,
+        startup_timeout: float = 30.0,
+        shutdown_timeout: float = 10.0,
+        log_level: str = "info",
+        env: dict[str, str] | None = None,
+    ) -> AsyncIterator[StepflowClient]:
+        """Start a local orchestrator and return a connected client.
+
+        The client owns the orchestrator and shuts it down when the context exits.
+
+        Args:
+            config: StepflowConfig object or Path to config file
+            startup_timeout: Max seconds to wait for orchestrator startup
+            shutdown_timeout: Max seconds to wait for graceful shutdown
+            log_level: Orchestrator log level (debug, info, warn, error)
+            env: Additional environment variables for the orchestrator process
+
+        Yields:
+            StepflowClient connected to the local orchestrator.
+
+        Raises:
+            ImportError: If stepflow-orchestrator is not installed.
+                Install with: pip install stepflow-py[local]
+
+        Example:
+            from stepflow_py import StepflowClient
+            from stepflow_py.config import StepflowConfig
+
+            config = StepflowConfig(plugins={...}, routes={...})
+            async with StepflowClient.local(config) as client:
+                response = await client.store_flow(workflow)
+                result = await client.run(response.flow_id, input_data)
+
+        For separate orchestrator lifecycle management, use StepflowClient.connect()
+        with a manually-managed StepflowOrchestrator instead.
+        """
+        try:
+            from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
+        except ImportError as e:
+            raise ImportError(
+                "stepflow-orchestrator is required for local(). "
+                "Install with: pip install stepflow-py[local]"
+            ) from e
+
+        import msgspec
+
+        from stepflow_py.config import StepflowConfig as StepflowConfigType
+
+        # Build orchestrator config based on input type
+        if isinstance(config, Path):
+            orch_config = OrchestratorConfig(
+                config_path=config,
+                startup_timeout=startup_timeout,
+                shutdown_timeout=shutdown_timeout,
+                log_level=log_level,
+                env=env or {},
+            )
+        elif isinstance(config, StepflowConfigType):
+            # Convert StepflowConfig to dict, removing None values
+            config_dict = msgspec.to_builtins(config)
+            config_dict = _remove_none_values(config_dict)
+            orch_config = OrchestratorConfig(
+                config=config_dict,
+                startup_timeout=startup_timeout,
+                shutdown_timeout=shutdown_timeout,
+                log_level=log_level,
+                env=env or {},
+            )
+        else:
+            raise TypeError(
+                f"config must be StepflowConfig or Path, got {type(config).__name__}"
+            )
+
+        # Start orchestrator - client owns it, shuts down on exit
+        async with StepflowOrchestrator.start(orch_config) as orchestrator:
+            client = cls.connect(orchestrator.url)
+            try:
+                yield client
+            finally:
+                await client.close()
 
     async def __aenter__(self) -> StepflowClient:
         return self
@@ -181,3 +273,16 @@ class StepflowClient:
             item.model_dump(by_alias=True, exclude_unset=True)
             for item in response.items
         ]
+
+
+def _remove_none_values(obj: Any) -> Any:
+    """Recursively remove None values from a dict or list.
+
+    This is needed because Rust's serde untagged enum deserialization
+    can fail when explicit null values are present for optional fields.
+    """
+    if isinstance(obj, dict):
+        return {k: _remove_none_values(v) for k, v in obj.items() if v is not None}
+    elif isinstance(obj, list):
+        return [_remove_none_values(item) for item in obj]
+    return obj

@@ -42,9 +42,10 @@ pub struct StoreFlowRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreFlowResponse {
-    /// The ID of the stored flow (only present if no fatal diagnostics)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flow_id: Option<BlobId>,
+    /// The ID of the flow (computed from content hash, always present)
+    pub flow_id: BlobId,
+    /// Whether the flow was actually stored (false for dry_run or if validation has fatal errors)
+    pub stored: bool,
     /// Validation diagnostics
     pub diagnostics: Diagnostics,
 }
@@ -82,15 +83,19 @@ pub async fn store_flow(
     // Validate the workflow
     let diagnostics = validate(&flow)?;
 
-    // Determine if we can store the flow (no fatal diagnostics and not dry_run)
-    let flow_id = if diagnostics.has_fatal() || req.dry_run {
-        // Validation failed or dry_run: don't store the flow
-        None
-    } else {
+    // Always compute the flow_id (content-based hash)
+    let flow_id = BlobId::from_flow(&flow).map_err(|_| ErrorResponse {
+        code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Failed to compute flow ID".to_string(),
+        stack: vec![],
+    })?;
+
+    // Only store the flow if no fatal diagnostics and not dry_run
+    let stored = if !diagnostics.has_fatal() && !req.dry_run {
         // Store the flow as a blob
         let state_store = executor.state_store();
         let flow_data = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
-        let flow_id = state_store
+        state_store
             .put_blob(flow_data, BlobType::Flow)
             .await
             .map_err(|_| ErrorResponse {
@@ -98,11 +103,14 @@ pub async fn store_flow(
                 message: "Failed to store flow".to_string(),
                 stack: vec![],
             })?;
-        Some(flow_id)
+        true
+    } else {
+        false
     };
 
     Ok(Json(StoreFlowResponse {
         flow_id,
+        stored,
         diagnostics,
     }))
 }

@@ -50,8 +50,11 @@ EXAMPLES:
 
 BEHAVIOR:
     By default, this script only updates local files:
-    - Updates version in Cargo.toml
+    - Updates version in stepflow-rs/Cargo.toml
+    - Updates version in sdks/python/stepflow-orchestrator/pyproject.toml
     - Updates Cargo.lock
+    - Regenerates OpenAPI schema (schemas/openapi.json)
+    - Regenerates Python API client (stepflow-py)
     - Generates/updates CHANGELOG.md
 
     With --pr flag, it also:
@@ -61,6 +64,8 @@ BEHAVIOR:
 
 REQUIREMENTS:
     - git-cliff (for changelog generation)
+    - uv (for Python dependency management)
+    - Java Runtime Environment 11+ (for OpenAPI generator)
     - gh CLI (only needed with --pr flag)
     - Clean git working directory (only needed with --pr flag)
 
@@ -123,6 +128,12 @@ if ! command_exists git-cliff; then
     exit 1
 fi
 
+if ! command_exists uv; then
+    echo -e "${RED}Error: uv is not installed${NC}" >&2
+    echo "Install from: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
+
 if [[ "$CREATE_PR" == true ]] && ! command_exists gh; then
     echo -e "${RED}Error: gh CLI is not installed (required for --pr flag)${NC}" >&2
     echo "Install from: https://cli.github.com/" >&2
@@ -180,9 +191,35 @@ else
     sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
 fi
 
+# Update version in stepflow-orchestrator Python package
+echo -e "${BLUE}Updating version in stepflow-orchestrator/pyproject.toml...${NC}"
+ORCHESTRATOR_PYPROJECT="../sdks/python/stepflow-orchestrator/pyproject.toml"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$ORCHESTRATOR_PYPROJECT"
+else
+    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$ORCHESTRATOR_PYPROJECT"
+fi
+
 # Update Cargo.lock
 echo -e "${BLUE}Updating Cargo.lock...${NC}"
 cargo update > /dev/null
+
+# Regenerate OpenAPI schema with new version
+echo -e "${BLUE}Regenerating OpenAPI schema...${NC}"
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation --quiet 2>/dev/null || {
+    echo -e "${RED}Error: Failed to regenerate OpenAPI schema${NC}" >&2
+    exit 1
+}
+
+# Regenerate Python API client
+echo -e "${BLUE}Regenerating Python API client...${NC}"
+cd ../sdks/python
+uv run python scripts/generate_api_client.py > /dev/null || {
+    echo -e "${RED}Error: Failed to regenerate Python API client${NC}" >&2
+    exit 1
+}
+cd ../..
+cd stepflow-rs
 
 # Generate changelog
 echo -e "${BLUE}Generating changelog...${NC}"
@@ -201,7 +238,7 @@ EOF
 fi
 
 # Generate changelog with git-cliff
-echo -e "${BLUE}Generating changelog (stepflow-rs changes only)${NC}"
+echo -e "${BLUE}Generating changelog (stepflow changes only)${NC}"
 if [[ -n "$TAG_MESSAGE" ]]; then
     echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
     git-cliff -v -v --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
@@ -212,7 +249,10 @@ fi
 echo -e "${GREEN}✅ Release preparation complete!${NC}"
 echo -e "${BLUE}Changes made:${NC}"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml"
+echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in stepflow-orchestrator/pyproject.toml"
 echo "  - Updated Cargo.lock"
+echo "  - Regenerated schemas/openapi.json"
+echo "  - Regenerated Python API client (stepflow-py)"
 echo "  - Generated/updated CHANGELOG.md"
 
 if [[ "$CREATE_PR" == false ]]; then
@@ -229,7 +269,7 @@ echo ""
 echo -e "${BLUE}Creating pull request...${NC}"
 
 # Create release branch
-RELEASE_BRANCH="release/stepflow-rs-v$NEW_VERSION"
+RELEASE_BRANCH="release/stepflow-$NEW_VERSION"
 echo -e "${BLUE}Creating release branch: $RELEASE_BRANCH${NC}"
 
 # Check if release branch already exists
@@ -247,10 +287,14 @@ git checkout -b "$RELEASE_BRANCH"
 
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
-git add Cargo.toml Cargo.lock CHANGELOG.md
-git commit -m "chore: release stepflow-rs v$NEW_VERSION
+git add Cargo.toml Cargo.lock CHANGELOG.md "$ORCHESTRATOR_PYPROJECT"
+git add ../schemas/openapi.json
+git add ../sdks/python/stepflow-py/src/stepflow_py/api/
+git commit -m "chore: release stepflow v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
+- Update stepflow-orchestrator Python package version
+- Regenerate OpenAPI schema and Python API client
 - Update CHANGELOG.md with release notes"
 
 # Push branch
@@ -258,24 +302,27 @@ echo -e "${BLUE}Pushing release branch...${NC}"
 git push -u origin "$RELEASE_BRANCH" --force
 
 # Create PR
-PR_BODY="## Release stepflow-rs v$NEW_VERSION
+PR_BODY="## Release Stepflow v$NEW_VERSION
 
-This PR prepares the release of stepflow-rs v$NEW_VERSION.
+This PR prepares the release of Stepflow v$NEW_VERSION.
 
 ### Changes
-- Version bump from $CURRENT_VERSION to $NEW_VERSION
+- Version bump from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml
+- Version bump in stepflow-orchestrator Python package
+- Regenerated OpenAPI schema and Python API client
 - Updated CHANGELOG.md with release notes
 
 ### Next Steps
 1. Review the changelog entries
 2. Merge this PR
-3. The release will be automatically tagged and built"
+3. The release will be automatically tagged and built
+4. Python wheels will be published to PyPI"
 
 PR_URL=$(gh pr create \
-    --title "chore: release stepflow-rs v$NEW_VERSION" \
+    --title "chore: release stepflow v$NEW_VERSION" \
     --body "$PR_BODY" \
     --label "release" \
-    --label "release:stepflow-rs")
+    --label "release:stepflow")
 
 echo -e "${GREEN}✅ Release PR created successfully!${NC}"
 echo -e "${BLUE}PR URL: $PR_URL${NC}"

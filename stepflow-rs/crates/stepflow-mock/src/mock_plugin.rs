@@ -47,12 +47,13 @@ impl PluginConfig for MockPlugin {
 type WaitSignalKey = (Component, ValueRef);
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, utoipa::ToSchema)]
 pub struct MockPlugin {
     components: HashMap<Component, MockComponent>,
     /// Runtime-only wait signals that block execution until signaled.
     /// Each signal can only be used once (oneshot).
     #[serde(skip)]
+    #[schema(ignore)]
     wait_signals: Arc<Mutex<HashMap<WaitSignalKey, WaitSignal>>>,
 }
 
@@ -66,7 +67,7 @@ impl std::fmt::Debug for MockPlugin {
 }
 
 /// Enumeration of behaviors for the mock components.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, utoipa::ToSchema)]
 #[serde(untagged, rename_all = "camelCase")]
 pub enum MockComponentBehavior {
     /// Produce the given internal (non-flow) error.
@@ -90,7 +91,7 @@ impl MockComponentBehavior {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, utoipa::ToSchema)]
 pub struct MockComponent {
     input_schema: SchemaRef,
     output_schema: SchemaRef,
