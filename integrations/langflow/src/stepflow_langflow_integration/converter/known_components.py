@@ -64,13 +64,26 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
     # Note: PromptComponent (langflow.components.prompts.prompt) is NOT included
     # because the module doesn't exist in the lfx package - it must be compiled
     # from custom code.
+    #
+    # Docling components (lfx)
+    # Note: DoclingRemote uses custom_components.docling_serve which requires
+    # custom_code compilation. Only lfx.components.docling.* modules are known.
+    "d76b3853ceb4": KnownComponent(
+        code_hash="d76b3853ceb4",
+        module="lfx.components.docling.docling_inline.DoclingInlineComponent",
+        description="Docling inline document processing (local/sidecar)",
+    ),
+    "397fa38f89d7": KnownComponent(
+        code_hash="397fa38f89d7",
+        module="lfx.components.docling.chunk_docling_document.ChunkDoclingDocumentComponent",
+        description="Chunk DoclingDocument for RAG pipelines",
+    ),
+    "4de16ddd37ac": KnownComponent(
+        code_hash="4de16ddd37ac",
+        module="lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent",
+        description="Export DoclingDocument to markdown, html or other formats",
+    ),
     # Add more known components here as needed
-    # Example for DoclingInlineComponent (hash TBD):
-    # "HASH_HERE": KnownComponent(
-    #     code_hash="HASH_HERE",
-    #     module="lfx.components.docling.DoclingInlineComponent",
-    #     description="Docling inline document processing",
-    # ),
 }
 
 

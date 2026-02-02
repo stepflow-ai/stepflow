@@ -66,6 +66,47 @@ integrations/docling/
 
 4. **Output compatibility**: Formats output to match Langflow's expected structure (files list with content, status, etc.).
 
+## Computing Component Code Hashes
+
+Langflow uses `code_hash` values in workflow metadata to identify components. These hashes are used by the Langflow integration's `known_components.py` to route lfx components to the core executor instead of compiling custom code.
+
+**Hash computation method** (from `lfx/custom/utils.py`):
+
+```python
+import hashlib
+
+def get_component_hash(component_class):
+    """Compute the code_hash for a Langflow/lfx component."""
+    instance = component_class()
+    if hasattr(instance, '_code') and instance._code:
+        return hashlib.sha256(instance._code.encode('utf-8')).hexdigest()[:12]
+    return None
+```
+
+**Example: Computing hashes for Docling components**:
+
+```python
+from lfx.components.docling.docling_inline import DoclingInlineComponent
+from lfx.components.docling.chunk_docling_document import ChunkDoclingDocumentComponent
+from lfx.components.docling.export_docling_document import ExportDoclingDocumentComponent
+
+# Compute hashes
+for cls in [DoclingInlineComponent, ChunkDoclingDocumentComponent, ExportDoclingDocumentComponent]:
+    instance = cls()
+    hash_val = hashlib.sha256(instance._code.encode('utf-8')).hexdigest()[:12]
+    print(f"{cls.__name__}: {hash_val}")
+```
+
+**Current known hashes** (for `integrations/langflow/.../converter/known_components.py`):
+
+| Component | code_hash | Module |
+|-----------|-----------|--------|
+| DoclingInlineComponent | `d76b3853ceb4` | `lfx.components.docling.docling_inline.DoclingInlineComponent` |
+| ChunkDoclingDocumentComponent | `397fa38f89d7` | `lfx.components.docling.chunk_docling_document.ChunkDoclingDocumentComponent` |
+| ExportDoclingDocumentComponent | `4de16ddd37ac` | `lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent` |
+
+**Note**: Hashes are version-specific. When lfx package versions change, the `_code` attribute may change, requiring hash updates.
+
 ## Development Commands
 
 ### Setup
