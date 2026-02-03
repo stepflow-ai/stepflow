@@ -66,12 +66,18 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
     # from custom code.
     #
     # Docling components (lfx)
-    # Note: DoclingRemote uses custom_components.docling_serve which requires
-    # custom_code compilation. Only lfx.components.docling.* modules are known.
+    # Note: Some workflows use custom_components.docling_serve which requires
+    # custom_code compilation. The lfx.components.docling.docling_remote module
+    # provides the standard DoclingRemoteComponent for connecting to docling-serve.
     "d76b3853ceb4": KnownComponent(
         code_hash="d76b3853ceb4",
         module="lfx.components.docling.docling_inline.DoclingInlineComponent",
         description="Docling inline document processing (local/sidecar)",
+    ),
+    "26eeb513dded": KnownComponent(
+        code_hash="26eeb513dded",
+        module="lfx.components.docling.docling_remote.DoclingRemoteComponent",
+        description="Docling remote processing via docling-serve API",
     ),
     "397fa38f89d7": KnownComponent(
         code_hash="397fa38f89d7",

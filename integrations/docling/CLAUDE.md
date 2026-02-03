@@ -102,8 +102,11 @@ for cls in [DoclingInlineComponent, ChunkDoclingDocumentComponent, ExportDocling
 | Component | code_hash | Module |
 |-----------|-----------|--------|
 | DoclingInlineComponent | `d76b3853ceb4` | `lfx.components.docling.docling_inline.DoclingInlineComponent` |
+| DoclingRemoteComponent | `26eeb513dded` | `lfx.components.docling.docling_remote.DoclingRemoteComponent` |
 | ChunkDoclingDocumentComponent | `397fa38f89d7` | `lfx.components.docling.chunk_docling_document.ChunkDoclingDocumentComponent` |
 | ExportDoclingDocumentComponent | `4de16ddd37ac` | `lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent` |
+
+**Note**: The `custom_components.docling_serve` module (hash `5723576d00e5`) seen in some workflows is a custom implementation, not the standard lfx component. Workflows should use `DoclingRemoteComponent` for known_components routing.
 
 **Note**: Hashes are version-specific. When lfx package versions change, the `_code` attribute may change, requiring hash updates.
 
