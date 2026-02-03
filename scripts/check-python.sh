@@ -52,33 +52,21 @@ run_check "Dependencies" uv sync --all-extras --group dev || true
 
 run_check "Codegen" uv run poe codegen-fix || true
 
-if ! run_check "Formatting" uv run poe fmt-check; then
-    print_fix "uv run poe fmt-fix"
-fi
+run_check "Formatting" --fix "uv run poe fmt-fix" uv run poe fmt-check
 
-if ! run_check "Linting" uv run poe lint-check; then
-    print_fix "uv run poe lint-fix"
-fi
+run_check "Linting" --fix "uv run poe lint-fix" uv run poe lint-check
 
-if ! run_check "Type checking" uv run poe type-check; then
-    print_fix "Fix type errors"
-fi
+run_check "Type checking" uv run poe type-check
 
-if ! run_check "Dep check" uv run poe dep-check; then
-    print_fix "Fix dependency issues"
-fi
+run_check "Dep check" uv run poe dep-check
 
-if ! run_check "Tests" uv run poe test; then
-    print_fix "Fix failing tests"
-fi
+run_check "Tests" uv run poe test
 
 # =============================================================================
 # ADDITIONAL CHECKS
 # =============================================================================
 
-if ! run_check "Codegen check" uv run poe codegen-check; then
-    print_fix "uv run poe codegen-fix"
-fi
+run_check "Codegen check" --fix "uv run poe codegen-fix" uv run poe codegen-check
 
 # =============================================================================
 # RESULTS SUMMARY

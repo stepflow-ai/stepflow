@@ -21,6 +21,7 @@
 VERBOSE=${VERBOSE:-false}
 FAILED_CHECKS=()
 FAILED_CHECK_CMDS=()  # Parallel array with reproduce commands for each failed check
+FAILED_CHECK_FIXES=()  # Parallel array with fix commands for each failed check
 _LIB_TMPDIR=""
 _LIB_PROJECT_ROOT=""  # Set by scripts for relative path calculation
 
@@ -124,12 +125,20 @@ _make_reproduce_cmd() {
 }
 
 # Run a check command with output capture
-# Usage: run_check "Step name" command [args...]
+# Usage: run_check "Step name" [--fix "fix command"] command [args...]
 # Returns: 0 on success, 1 on failure
-# On failure, adds step name to FAILED_CHECKS array and reproduce cmd to FAILED_CHECK_CMDS
+# On failure, adds step name to FAILED_CHECKS array, reproduce cmd to FAILED_CHECK_CMDS,
+# and fix cmd to FAILED_CHECK_FIXES
 run_check() {
     local name="$1"
     shift
+
+    # Parse optional --fix argument
+    local fix_cmd=""
+    if [ "$1" = "--fix" ]; then
+        fix_cmd="$2"
+        shift 2
+    fi
 
     # Ensure temp dir exists
     if [ -z "$_LIB_TMPDIR" ]; then
@@ -161,6 +170,12 @@ run_check() {
             print_fail
             FAILED_CHECKS+=("$name")
             FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
+            if [ -n "$fix_cmd" ]; then
+                FAILED_CHECK_FIXES+=("$(_make_reproduce_cmd "$fix_cmd")")
+                print_fix "$fix_cmd"
+            else
+                FAILED_CHECK_FIXES+=("")
+            fi
             return 1
         fi
     else
@@ -171,11 +186,19 @@ run_check() {
             print_fail
             FAILED_CHECKS+=("$name")
             FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
+            if [ -n "$fix_cmd" ]; then
+                FAILED_CHECK_FIXES+=("$(_make_reproduce_cmd "$fix_cmd")")
+            else
+                FAILED_CHECK_FIXES+=("")
+            fi
             # Show captured output on failure
             echo "    Output:"
             sed 's/^/      /' "$outfile" | head -50
             if [ "$(wc -l < "$outfile")" -gt 50 ]; then
                 echo "      ... (truncated, run with -v for full output)"
+            fi
+            if [ -n "$fix_cmd" ]; then
+                print_fix "$fix_cmd"
             fi
             return 1
         fi
@@ -183,7 +206,7 @@ run_check() {
 }
 
 # Run an optional check (warns but doesn't fail if tool missing)
-# Usage: run_optional_check "Step name" "tool_name" command [args...]
+# Usage: run_optional_check "Step name" "tool_name" [--fix "fix command"] command [args...]
 # Returns: 0 on success or tool missing, 1 on check failure
 run_optional_check() {
     local name="$1"
@@ -227,9 +250,12 @@ print_summary() {
     else
         echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
         echo ""
-        echo "To reproduce:"
-        for cmd in "${FAILED_CHECK_CMDS[@]}"; do
-            echo "  $cmd"
+        for i in "${!FAILED_CHECKS[@]}"; do
+            echo "  ${FAILED_CHECKS[$i]}:"
+            echo "    Check: ${FAILED_CHECK_CMDS[$i]}"
+            if [ -n "${FAILED_CHECK_FIXES[$i]}" ]; then
+                echo "    Fix:   ${FAILED_CHECK_FIXES[$i]}"
+            fi
         done
         return 1
     fi

@@ -40,41 +40,27 @@ cd "$PROJECT_ROOT/stepflow-rs"
 # RUST STYLE & QUALITY CHECKS
 # =============================================================================
 
-if ! run_check "Formatting" cargo fmt --check; then
-    print_fix "cargo fmt"
-fi
+run_check "Formatting" --fix "cargo fmt" cargo fmt --check
 
-if ! run_optional_check "Security audit" "cargo-deny" cargo deny check; then
-    print_fix "cargo deny check (review and fix security issues)"
-fi
+run_optional_check "Security audit" "cargo-deny" cargo deny check
 
-if ! run_optional_check "Unused deps" "cargo-machete" cargo machete --with-metadata; then
-    print_fix "cargo machete --fix --with-metadata"
-fi
+run_optional_check "Unused deps" "cargo-machete" --fix "cargo machete --fix --with-metadata" cargo machete --with-metadata
 
 # =============================================================================
 # RUST BUILD & TEST CHECKS
 # =============================================================================
 
-if ! run_check "Tests" cargo test; then
-    print_fix "Fix failing tests"
-fi
+run_check "Tests" cargo test
 
-if ! run_check "Clippy" cargo clippy -- -D warnings; then
-    print_fix "cargo clippy --fix"
-fi
+run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings
 
 # =============================================================================
 # ADDITIONAL CHECKS (not in CI but useful for local development)
 # =============================================================================
 
-if ! run_check "Compilation" cargo check --all-targets --all-features; then
-    print_fix "Fix compilation errors"
-fi
+run_check "Compilation" cargo check --all-targets --all-features
 
-if ! run_check "Documentation" cargo doc --all --no-deps; then
-    print_fix "Fix documentation errors"
-fi
+run_check "Documentation" cargo doc --all --no-deps
 
 # =============================================================================
 # RESULTS SUMMARY
