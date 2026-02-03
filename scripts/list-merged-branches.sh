@@ -27,9 +27,34 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+# Help text for usage output
+read -r -d '' HELP_TEXT <<'EOF' || true
+Lists local branches that have been merged into the main branch.
+Detects both regular merges and squash merges.
+
+Usage: ./scripts/list-merged-branches.sh [options]
+
+Options:
+  -r, --remote     Check remote branches instead of local
+  -d, --delete     Delete the merged branches (dry-run by default)
+  -f, --force      Actually delete branches (use with -d)
+  -m, --main       Specify main branch (default: main)
+  -h, --help       Show this help message
+EOF
+
 usage() {
-    head -14 "$0" | tail -13 | sed 's/^# //' | sed 's/^#//'
+    printf '%s\n' "$HELP_TEXT"
     exit 0
+}
+
+# Track whether we've shown the gh CLI hint
+GH_HINT_SHOWN=false
+
+show_gh_hint() {
+    if [[ "$GH_HINT_SHOWN" == "false" ]] && ! command -v gh > /dev/null 2>&1; then
+        echo -e "${YELLOW}Note: Install GitHub CLI (gh) for improved squash-merge detection via PR status.${NC}" >&2
+        GH_HINT_SHOWN=true
+    fi
 }
 
 # Parse arguments
@@ -76,6 +101,9 @@ if ! git rev-parse "origin/$MAIN_BRANCH" > /dev/null 2>&1; then
     echo "Error: Main branch 'origin/$MAIN_BRANCH' not found" >&2
     exit 1
 fi
+
+# Show hint about gh CLI if not installed
+show_gh_hint
 
 # Function to check if a branch has been squash-merged
 # This works by checking if the tree diff between the branch and main is empty
