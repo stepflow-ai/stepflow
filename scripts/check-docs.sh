@@ -45,9 +45,7 @@ require_tool "pnpm" "npm install -g pnpm"
 
 run_check "Dependencies" pnpm install --frozen-lockfile || true
 
-if ! run_check "Build" pnpm build; then
-    print_fix "Fix build errors"
-fi
+run_check "Build" pnpm build
 
 # =============================================================================
 # OPTIONAL CHECKS (warn but don't fail)
