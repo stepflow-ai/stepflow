@@ -308,7 +308,7 @@ sequenceDiagram
 
 ### 1. Job Submission
 
-To kick things off, the client submits a workflow to the Stepflow server using the [stepflow CLI](/docs/cli/index):
+To kick things off, the client submits a workflow to the Stepflow server using the [stepflow CLI](/docs/cli):
 
 ```bash
 stepflow submit \
