@@ -10,7 +10,7 @@ While the [Python SDK](./custom-components.md) provides a high-level API that ha
 
 ## What is a Worker?
 
-A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../../configuration/index.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
+A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
 
 - Register components at specific paths through runtime configuration
 - Receive component execution requests when workflows invoke those paths
@@ -91,296 +91,44 @@ For complete transport details including request/response formats, headers, SSE 
 
 ## Protocol Methods
 
-### Initialization
+Workers must implement the following JSON-RPC methods. See the [Protocol Methods Reference](../../protocol/methods/index.md) for detailed request/response schemas and examples.
 
-The initialization handshake MUST occur before any other communication.
+### Initialization (MUST)
 
-**1. Runtime sends `initialize` request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "init-001",
-  "method": "initialize",
-  "params": {
-    "runtime_protocol_version": 1,
-    "observability": {
-      "trace_id": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
-      "span_id": "1234567890abcdef"
-    }
-  }
-}
-```
+Workers MUST complete the initialization handshake before accepting other requests:
 
-**2. Worker responds with supported version:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "init-001",
-  "result": {
-    "server_protocol_version": 1
-  }
-}
-```
+1. Runtime sends `initialize` with `runtime_protocol_version`
+2. Worker responds with `server_protocol_version` (current version: `1`)
+3. Runtime sends `initialized` notification
 
-**3. Runtime sends `initialized` notification:**
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "initialized",
-  "params": {}
-}
-```
+See [Initialization Methods](../../protocol/methods/initialization.md) for details.
 
-Workers MUST NOT accept other requests until receiving the `initialized` notification.
+### Component Methods (MUST)
 
-**Protocol Version:** The current protocol version is `1`. Workers MUST respond with the version they support. The runtime will terminate the connection if versions are incompatible.
+| Method | Description |
+|--------|-------------|
+| `components/list` | Return all available components with optional schemas |
+| `components/info` | Return metadata for a specific component |
+| `components/execute` | Execute a component with input data and observability context |
 
-### Component Discovery
+See [Component Methods](../../protocol/methods/components.md) for details.
 
-#### `components/list`
+### Bidirectional Methods
 
-Returns all available components.
+During `components/execute`, workers can call back to the runtime:
 
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "list-001",
-  "method": "components/list",
-  "params": {}
-}
-```
+| Method | Direction | Description |
+|--------|-----------|-------------|
+| `blobs/put` | Worker → Runtime | Store data, receive content-addressed ID (`sha256:...`) |
+| `blobs/get` | Worker → Runtime | Retrieve data by blob ID |
 
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "list-001",
-  "result": {
-    "components": [
-      {
-        "component": "/my_worker/process_data",
-        "description": "Process and transform data records",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "records": {"type": "array"},
-            "operation": {"type": "string"}
-          },
-          "required": ["records", "operation"]
-        },
-        "output_schema": {
-          "type": "object",
-          "properties": {
-            "processed": {"type": "array"},
-            "count": {"type": "integer"}
-          }
-        }
-      }
-    ]
-  }
-}
-```
-
-#### `components/info`
-
-Returns detailed information about a specific component.
-
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "info-001",
-  "method": "components/info",
-  "params": {
-    "component": "/my_worker/process_data"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "info-001",
-  "result": {
-    "info": {
-      "component": "/my_worker/process_data",
-      "description": "Process and transform data records",
-      "input_schema": {...},
-      "output_schema": {...}
-    }
-  }
-}
-```
-
-### Component Execution
-
-#### `components/execute`
-
-Executes a component with the provided input.
-
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "exec-001",
-  "method": "components/execute",
-  "params": {
-    "component": "/my_worker/process_data",
-    "input": {
-      "records": [{"id": 1, "value": "test"}],
-      "operation": "uppercase"
-    },
-    "attempt": 1,
-    "observability": {
-      "trace_id": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
-      "span_id": "1234567890abcdef",
-      "run_id": "run-12345",
-      "flow_id": "sha256:abc123...",
-      "step_id": "process_step"
-    }
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "exec-001",
-  "result": {
-    "output": {
-      "processed": [{"id": 1, "value": "TEST"}],
-      "count": 1
-    }
-  }
-}
-```
-
-**Parameters:**
-- `component`: The component path to execute
-- `input`: Input data (validated against component's input schema)
-- `attempt`: Retry attempt number (1-based), useful for retry logic
-- `observability`: Context for tracing and logging (see [Observability](#observability))
-
-### Bidirectional: Blob Storage
-
-During component execution, workers can store and retrieve data using blob storage.
-
-#### `blobs/put`
-
-Store data and receive a content-addressed ID.
-
-**Request (Worker → Runtime):**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "blob-put-001",
-  "method": "blobs/put",
-  "params": {
-    "data": {"large_result": "..."},
-    "blob_type": "data",
-    "observability": {
-      "trace_id": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
-      "span_id": "fedcba0987654321",
-      "run_id": "run-12345",
-      "flow_id": "sha256:abc123...",
-      "step_id": "process_step"
-    }
-  }
-}
-```
-
-**Response (Runtime → Worker):**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "blob-put-001",
-  "result": {
-    "blob_id": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-  }
-}
-```
-
-#### `blobs/get`
-
-Retrieve data by blob ID.
-
-**Request (Worker → Runtime):**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "blob-get-001",
-  "method": "blobs/get",
-  "params": {
-    "blob_id": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "observability": {...}
-  }
-}
-```
-
-**Response (Runtime → Worker):**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "blob-get-001",
-  "result": {
-    "data": {"large_result": "..."},
-    "blob_type": "data"
-  }
-}
-```
-
-**Blob Types:**
-- `flow`: Workflow definition blobs
-- `data`: General data blobs
-
-**Blob IDs:** Content-addressed using SHA-256 (format: `sha256:<64-hex-chars>`). The same data always produces the same ID.
+See [Blob Storage Methods](../../protocol/methods/blobs.md) for details.
 
 ## Error Handling
 
-Workers MUST return JSON-RPC error responses for failures:
+Workers MUST return JSON-RPC error responses for failures. Use standard error codes (e.g., `-32004` for component execution failures) with descriptive messages and optional `data` for debugging context.
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "exec-001",
-  "error": {
-    "code": -32004,
-    "message": "Component execution failed",
-    "data": {
-      "component": "/my_worker/process_data",
-      "reason": "Invalid input format"
-    }
-  }
-}
-```
-
-### Standard Error Codes
-
-| Code | Name | When to Use |
-|------|------|-------------|
-| -32700 | Parse Error | Invalid JSON received |
-| -32600 | Invalid Request | Missing required fields |
-| -32601 | Method Not Found | Unknown method name |
-| -32602 | Invalid Params | Schema validation failure |
-| -32603 | Internal Error | Server implementation error |
-
-### Stepflow Error Codes
-
-| Code | Name | When to Use |
-|------|------|-------------|
-| -32000 | Server Error | Generic server error |
-| -32001 | Component Not Found | Unknown component |
-| -32002 | Server Not Initialized | Request before initialization |
-| -32003 | Invalid Input Schema | Input validation failure |
-| -32004 | Component Execution Failed | Business logic error |
-| -32005 | Resource Unavailable | External dependency failure |
-| -32006 | Timeout | Operation timeout |
-| -32008 | Blob Not Found | Invalid blob ID |
-
-See [Error Handling](../../protocol/errors.md) for the complete list.
+See [Error Handling](../../protocol/errors.md) for the complete error codes reference.
 
 ## Observability
 
@@ -475,30 +223,6 @@ Workers SHOULD support these environment variables for observability configurati
 | `STEPFLOW_TRACE_ENABLED` | Enable tracing | `true` if endpoint set |
 | `STEPFLOW_LOG_LEVEL` | Log level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `STEPFLOW_LOG_DESTINATION` | Where to log (stderr, file, otlp) | `otlp` if endpoint set, else `stderr` |
-
-## Health Check Endpoint
-
-Workers SHOULD implement a health check endpoint:
-
-```http
-GET /health HTTP/1.1
-Host: localhost:8080
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "instanceId": "abc123def456",
-  "timestamp": "2025-01-15T10:30:00.000Z",
-  "service": "my-worker"
-}
-```
-
-This enables:
-- Load balancer health checks
-- Kubernetes liveness/readiness probes
-- Monitoring and alerting
 
 ## Implementation Checklist
 
