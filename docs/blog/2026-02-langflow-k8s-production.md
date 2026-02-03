@@ -1,12 +1,13 @@
 ---
-date: 2026-01-21
+date: 2026-02-03
 title: "Running AI Workflows at Scale: Distributed Langflow using Stepflow and Kubernetes"
 description: "A deep dive into running Langflow flows via Stepflow and deploying them at scale with full observability on Kubernetes"
 slug: langflow-stepflow-k8s-production
 authors:
   - natemccall
 tags: [production, kubernetes, langflow, observability]
-draft: true
+draft: false
+unlisted: true
 ---
 
 # Running AI Workflows at Scale: Distributed Langflow using Stepflow and Kubernetes
@@ -75,7 +76,7 @@ cd integrations/langflow
 uv run stepflow-langflow analyze path/to/flow.json
 ```
 
-This shows node count, component types, dependencies, and potential issues—useful for understanding complex workflows before conversion. TODO: example output?
+This shows node count, component types, dependencies, and potential issues—useful for understanding complex workflows before conversion. 
 
 ### Convert to Stepflow YAML
 
@@ -509,10 +510,6 @@ stepflow submit \
   --flow ../examples/production/k8s/workflow.yaml \
   --input-json '{"message": "Hello from K8s!"}'
 ```
-
-TODO: screen shots of tracing request through the system.
-
-
 
 ### Access the Observability Stack and Stepflow Infrastructure
 
