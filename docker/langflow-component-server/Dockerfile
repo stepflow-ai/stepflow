@@ -28,7 +28,7 @@ WORKDIR /app
 USER root
 
 # Copy dependency files first for better layer caching
-COPY sdks/python/pyproject.toml /tmp/stepflow-py/pyproject.toml
+COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
 COPY integrations/langflow/pyproject.toml /tmp/stepflow-langflow/pyproject.toml
 
 # Install dependencies only (no source code yet)
@@ -58,7 +58,7 @@ RUN uv pip install --python /app/.venv/bin/python \
 FROM deps AS runtime
 
 # Copy stepflow-py SDK source
-COPY sdks/python /tmp/stepflow-py
+COPY sdks/python/stepflow-py /tmp/stepflow-py
 
 # Copy langflow integration source
 COPY integrations/langflow /tmp/stepflow-langflow
