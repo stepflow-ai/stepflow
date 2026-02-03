@@ -1,0 +1,209 @@
+[project]
+name = "stepflow-docling"
+version = "0.1.0"
+description = "Docling integration for Stepflow - document processing as routable components"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Stepflow Contributors"}
+]
+maintainers = [
+    {name = "Stepflow Contributors"}
+]
+requires-python = ">=3.11"
+keywords = [
+    "workflow",
+    "docling",
+    "stepflow",
+    "document-processing",
+    "pdf",
+    "ocr",
+    "rag",
+    "chunking"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: General",
+    "Typing :: Typed"
+]
+
+dependencies = [
+    "stepflow-py>=0.8.0",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+    "click>=8.0",
+    "python-dotenv>=1.0.0",
+    "nest-asyncio>=1.6.0",
+    "urllib3>=2.0.0",  # Transitive dependency needed by stepflow-py API client
+]
+
+[project.optional-dependencies]
+# OpenTelemetry support for distributed tracing
+otel = [
+    "opentelemetry-instrumentation-httpx>=0.48b0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.26.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.14.1",
+    "poethepoet>=0.24.0",
+    "ruff>=0.9.4",
+    "mypy==1.19.1",
+    "deptry>=0.22.0",
+    "respx>=0.22.0",  # For mocking httpx requests
+]
+
+[project.urls]
+Homepage = "https://stepflow.org/"
+Documentation = "https://stepflow.org/"
+Repository = "https://github.com/stepflow-ai/stepflow"
+"Bug Tracker" = "https://github.com/stepflow-ai/stepflow/issues"
+"Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/integrations/docling"
+
+[project.scripts]
+stepflow-docling = "stepflow_docling.cli.main:main"
+stepflow-docling-server = "stepflow_docling.standalone_server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stepflow_docling"]
+
+[tool.uv.sources]
+stepflow-py = { path = "../../sdks/python/stepflow-py", editable = true }
+
+[tool.poe]
+# comment this out to debug poe tasks
+verbosity = -1
+
+[tool.poe.env]
+RUFF = "ruff@0.9.4"
+DEPTRY = "deptry@0.22.0"
+
+[tool.poe.tasks.fmt-check]
+help = "Runs `ruff format --check` to check for formatting issues (fix with `fmt-fix`)"
+cmd = "uvx ${RUFF} format --check ."
+
+[tool.poe.tasks.fmt-fix]
+help = "Runs `ruff format` to fix formatting issues"
+cmd = "uvx ${RUFF} format ."
+
+[tool.poe.tasks.lint-check]
+help = "Runs `ruff check` to check for lint issues (fix with `lint-fix`)"
+cmd = "uvx ${RUFF} check ."
+
+[tool.poe.tasks.lint-fix]
+help = "Runs `ruff check --fix` to fix lint issues"
+cmd = "uvx ${RUFF} check --fix ."
+
+[tool.poe.tasks.type-check]
+help = "Runs `mypy` to check for static type issues"
+cmd = "uv run mypy src tests"
+
+[tool.poe.tasks.dep-check]
+help = "Runs `deptry` to check for dependency issues"
+cmd = "uvx ${DEPTRY} src tests"
+
+[tool.poe.tasks.test]
+help = "Run tests"
+cmd = "uv run pytest tests"
+
+# Aliases for common commands
+[tool.poe.tasks.fmt]
+help = "Alias for fmt-fix"
+ref = "fmt-fix"
+
+[tool.poe.tasks.lint]
+help = "Runs all checks (fixing where possible)"
+sequence = ["fmt-fix", "lint-fix", "dep-check"]
+
+[tool.poe.tasks.typecheck]
+help = "Alias for type-check"
+ref = "type-check"
+
+[tool.poe.tasks.check]
+help = "Runs all checks and tests"
+sequence = ["lint", "test"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "C4"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/{tests,tools,scripts}/*" = ["D", "DOC", "T201", "B018", "F841", "E712"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.deptry]
+# types-* packages are type stubs for mypy and not directly imported
+# DEP001 ignored for opentelemetry since it's an optional import
+ignore = ["DEP002"]
+
+[tool.deptry.per_rule_ignores]
+DEP001 = ["opentelemetry"]
+
+[tool.deptry.package_module_name_map]
+python-dotenv = ["dotenv"]
+stepflow-py = ["stepflow_py"]
+nest-asyncio = ["nest_asyncio"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+# Enable strict checks gradually
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
+strict_equality = false
+
+# Ignore errors in tests for now
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "-ra",  # show all test results
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests requiring docling-serve",
+]
