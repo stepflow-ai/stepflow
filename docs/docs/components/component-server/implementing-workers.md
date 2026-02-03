@@ -12,9 +12,9 @@ While the [Python SDK](./custom-components.md) provides a high-level API that ha
 
 A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
 
-- Register components at specific paths through runtime configuration
+- Provide a list of supported component paths
 - Receive component execution requests when workflows invoke those paths
-- Execute business logic and return results
+- Execute components and return results
 - Can make calls back to the runtime (e.g., for blob storage)
 - Run as independent processes, enabling language flexibility and fault isolation
 
@@ -32,11 +32,24 @@ sequenceDiagram
     Runtime->>Worker: components/list
     Worker-->>Runtime: available components
 
-    Note over Runtime,Worker: Execution
-    Runtime->>Worker: components/execute
-    Worker->>Runtime: blobs/put (optional)
-    Runtime-->>Worker: blob_id
-    Worker-->>Runtime: execution result
+    Note over Runtime,Worker: Direct Execution
+    Runtime->>Worker: POST / (components/execute)
+    activate Worker
+    Worker-->>Runtime: execution result (Content-Type: application/json)
+    deactivate Worker
+
+    Note over Runtime,Worker: Bidirectional Execution
+    Runtime->>Worker: POST / (components/execute)
+    activate Worker
+    Worker-->>Runtime: 200 OK (Content-Type: text/event-stream)
+    Note right of Worker: SSE channel open
+    Worker->>Runtime: SSE event: blobs/put request
+    Runtime->>Worker: POST / (blobs/put response)
+    Worker->>Runtime: SSE event: runs/submit request
+    Runtime->>Worker: POST / (runs/submit response)
+    Worker->>Runtime: SSE event: execution result
+    deactivate Worker
+    Note right of Worker: SSE channel closed
 ```
 
 ## Requirements Overview
@@ -46,18 +59,21 @@ This section uses RFC 2119 terminology:
 - **SHOULD**: Recommended for production-quality implementations
 - **MAY**: Optional features
 
-### Protocol Requirements (MUST)
+### Protocol Requirements
 
 | Requirement | Description |
 |------------|-------------|
-| **Streamable HTTP Transport** | Workers MUST support HTTP transport with SSE for bidirectional communication |
+| **Streamable HTTP Transport** | Workers MUST support HTTP transport; MUST support SSE if bidirectional communication is used |
 | **JSON-RPC 2.0 Messages** | All messages MUST follow JSON-RPC 2.0 format |
+| **Immediate Response** | Workers SHOULD return `application/json` when possible |
 | **Initialization Handshake** | Workers MUST implement the `initialize`/`initialized` handshake |
 | **Component Methods** | Workers MUST implement `components/list`, `components/info`, and `components/execute` |
 | **Error Handling** | Workers MUST return proper JSON-RPC errors with standardized codes |
-| **Bidirectional Support** | Workers MUST handle runtime responses during execution (for blob operations) |
+| **Bidirectional Requests** | Workers MAY make bidirectional requests (blob storage, subflow execution) during component execution |
+| **SSE Streaming** | Workers MUST use `text/event-stream` response format if bidirectional requests may be made during execution |
+| **Bidirectional Responses** | Workers MUST handle runtime responses if they use SSE streaming |
 
-### Observability Requirements (SHOULD)
+### Observability Requirements
 
 | Requirement | Description |
 |------------|-------------|
@@ -67,7 +83,7 @@ This section uses RFC 2119 terminology:
 | **Trace Context** | Workers SHOULD include `trace_id`, `span_id` in logs when tracing is enabled |
 | **Context Propagation** | Workers SHOULD propagate observability context in bidirectional calls |
 
-### Best Practices (SHOULD)
+### Best Practices
 
 | Requirement | Description |
 |------------|-------------|
@@ -86,8 +102,14 @@ For complete transport details including request/response formats, headers, SSE 
 **Key requirements:**
 - Workers MUST expose a POST `/` endpoint for JSON-RPC messages (MAY expose additional endpoints)
 - Workers SHOULD expose a GET `/health` endpoint for health checks
-- Workers MUST support both `application/json` and `text/event-stream` response formats
+- Workers MUST support `application/json` response format
+- Workers MUST use `text/event-stream` (SSE) response format for any execution where bidirectional requests may be made
 - When starting as a subprocess, workers MUST print `{"port": N}` to stdout
+
+**Response format selection:**
+- Use `application/json` for simple request-response (initialization, component listing, executions without bidirectional calls)
+- Use `text/event-stream` when the component execution may make bidirectional requests (e.g., blob storage, subflow execution)
+- The decision is based on whether bidirectional calls are *possible*, not whether they will actually occur (e.g., the Python SDK uses SSE if the handler accepts a context parameter)
 
 ## Protocol Methods
 
@@ -113,16 +135,40 @@ See [Initialization Methods](../../protocol/methods/initialization.md) for detai
 
 See [Component Methods](../../protocol/methods/components.md) for details.
 
-### Bidirectional Methods
+### Bidirectional Methods (MAY)
 
-During `components/execute`, workers can call back to the runtime:
+During `components/execute`, workers MAY call back to the runtime for blob storage and subflow execution. Using any bidirectional method requires SSE streaming (see [Transport](#transport-streamable-http)).
 
-| Method | Direction | Description |
-|--------|-----------|-------------|
-| `blobs/put` | Worker → Runtime | Store data, receive content-addressed ID (`sha256:...`) |
-| `blobs/get` | Worker → Runtime | Retrieve data by blob ID |
+#### Blob Storage
+
+| Method | Description |
+|--------|-------------|
+| `blobs/put` | Store JSON data, receive content-addressed ID (`sha256:...`) |
+| `blobs/get` | Retrieve JSON data by blob ID |
 
 See [Blob Storage Methods](../../protocol/methods/blobs.md) for details.
+
+#### Subflow Execution
+
+| Method | Description |
+|--------|-------------|
+| `runs/submit` | Submit a workflow for execution, optionally waiting for completion |
+| `runs/get` | Get the status and results of a workflow run |
+
+**`runs/submit` parameters:**
+- `flow_id`: Blob ID of the workflow to execute (store the flow definition with `blobs/put` first)
+- `inputs`: Array of input values (one per run item for batch execution)
+- `wait`: If `true`, block until the run completes and return results
+- `max_concurrency`: Limit concurrent item execution (optional)
+- `overrides`: Step overrides for the subflow (optional)
+
+**`runs/get` parameters:**
+- `run_id`: UUID of the run to query
+- `wait`: If `true`, block until the run completes
+- `include_results`: If `true`, include individual item results
+- `result_order`: `"byIndex"` (original order) or `"byCompletion"` (completion order)
+
+Both methods return a `RunStatus` with `run_id`, `status`, item statistics, and optionally results.
 
 ## Error Handling
 
@@ -232,7 +278,6 @@ Use this checklist when implementing a worker:
 
 - [ ] HTTP server listening on configurable port
 - [ ] POST `/` endpoint for JSON-RPC messages
-- [ ] Accept header validation (`application/json` and `text/event-stream`)
 - [ ] Content-Type header validation (`application/json`)
 - [ ] Handle `initialize` request and respond with protocol version
 - [ ] Wait for `initialized` notification before accepting other requests
@@ -240,9 +285,16 @@ Use this checklist when implementing a worker:
 - [ ] Implement `components/info` returning component metadata
 - [ ] Implement `components/execute` with input validation
 - [ ] Return proper JSON-RPC error responses
-- [ ] SSE streaming for bidirectional communication during execution
-- [ ] Handle runtime responses (for `blobs/put`, `blobs/get` results)
 - [ ] Print `{"port": N}` to stdout on startup (subprocess mode)
+
+### Required IF Using Bidirectional Communication (Conditional MUST)
+
+If any component may make bidirectional requests (blob storage, subflow execution), the worker MUST:
+
+- [ ] Return `text/event-stream` response format for executions where bidirectional calls may occur
+- [ ] Implement SSE streaming with proper event formatting
+- [ ] Handle runtime responses and route them to the waiting request
+- [ ] Track pending requests by JSON-RPC message ID
 
 ### Recommended (SHOULD)
 
