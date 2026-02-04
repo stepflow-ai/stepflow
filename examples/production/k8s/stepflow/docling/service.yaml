@@ -12,24 +12,27 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Docling-Serve Service
-# ClusterIP service for internal access by Langflow workers.
-# Accessible at: docling-serve.stepflow.svc.cluster.local:5001
+# Docling Worker Service
+# Exposes the stepflow-docling component server for Stepflow routing.
+# Accessible at: docling-worker.stepflow.svc.cluster.local:8080
+#
+# Note: docling-serve (port 5001) is only accessed internally via localhost
+# within the pod and is not exposed through this service.
 
 apiVersion: v1
 kind: Service
 metadata:
-  name: docling-serve
+  name: docling-worker
   namespace: stepflow
   labels:
-    app: docling-serve
+    app: docling-worker
     component: document-processing
 spec:
   type: ClusterIP
   selector:
-    app: docling-serve
+    app: docling-worker
   ports:
   - name: http
-    port: 5001
+    port: 8080
     targetPort: http
     protocol: TCP

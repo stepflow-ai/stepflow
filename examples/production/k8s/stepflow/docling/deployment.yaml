@@ -12,53 +12,55 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Docling-Serve Deployment
-# Document processing service for converting PDFs, DOCX, images to structured formats.
-# This is an infrastructure service accessed directly by Langflow workers,
-# similar to how they access OpenSearch.
+# Docling Worker Deployment
+# Combined pod with stepflow-docling component server and docling-serve sidecar.
+# The component server handles Stepflow requests and routes them to the local
+# docling-serve instance for document processing.
+#
+# Architecture:
+#   stepflow-server → docling-worker:8080 → localhost:5001 (docling-serve)
 #
 # Future Work:
 # - PVC-mounted model cache for updates without image rebuilds
 # - GPU acceleration (use docling-serve-cu126 or docling-serve-cu128 images)
-# - Horizontal scaling strategies for high-volume document processing
+# - Horizontal scaling with dedicated load balancer
 # - Model versioning and rollback support
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: docling-serve
+  name: docling-worker
   namespace: stepflow
   labels:
-    app: docling-serve
+    app: docling-worker
     component: document-processing
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: docling-serve
+      app: docling-worker
   template:
     metadata:
       labels:
-        app: docling-serve
+        app: docling-worker
         component: document-processing
     spec:
       containers:
-      - name: docling-serve
-        image: quay.io/docling-project/docling-serve-cpu:v1.10.0
+      # Stepflow component server - handles incoming requests
+      - name: stepflow-docling
+        image: localhost/stepflow-docling:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
-          containerPort: 5001
+          containerPort: 8080
           protocol: TCP
         resources:
-          # Document processing is CPU-intensive
-          # Adjust based on workload and cluster capacity
           requests:
-            cpu: 500m
-            memory: 1Gi
+            cpu: 100m
+            memory: 256Mi
           limits:
-            cpu: 2000m
-            memory: 4Gi
+            cpu: 500m
+            memory: 512Mi
         env:
         # Pod metadata (standard pattern)
         - name: POD_NAME
@@ -73,36 +75,79 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        # Docling-serve sidecar URL (localhost within same pod)
+        - name: DOCLING_SERVE_URL
+          value: "http://localhost:5001"
+        # Stepflow logging configuration
+        - name: STEPFLOW_LOG_LEVEL
+          value: "debug"
+        - name: STEPFLOW_LOG_DESTINATION
+          value: "stderr"
+        # OpenTelemetry configuration
+        - name: STEPFLOW_OTLP_ENDPOINT
+          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "stepflow-docling"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=kubernetes,service.namespace=stepflow,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+      # Docling-serve sidecar - actual document processing
+      - name: docling-serve
+        image: quay.io/docling-project/docling-serve-cpu:v1.10.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: docling
+          containerPort: 5001
+          protocol: TCP
+        resources:
+          # Document processing is CPU-intensive
+          # Adjust based on workload and cluster capacity
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        env:
         # Thread contention prevention - critical for containerized deployments
         # Without this, OMP may spawn too many threads causing performance degradation
         - name: OMP_NUM_THREADS
           value: "4"
         # Docling-serve v1.10.0 OpenTelemetry configuration
-        # Enables metrics and traces via OTLP to align with existing observability stack
         - name: DOCLING_SERVE_OTEL_ENABLE_METRICS
           value: "true"
         - name: DOCLING_SERVE_OTEL_ENABLE_TRACES
           value: "true"
         - name: DOCLING_SERVE_OTEL_ENABLE_PROMETHEUS
-          value: "false"  # Disabled - metrics pushed via OTLP instead
+          value: "false"
         - name: DOCLING_SERVE_OTEL_ENABLE_OTLP_METRICS
-          value: "true"   # Push metrics to OTel Collector
+          value: "true"
         - name: DOCLING_SERVE_OTEL_SERVICE_NAME
           value: "docling-serve"
-        # Standard OTEL endpoint for traces and metrics
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
-        # Resource attributes for trace/metric correlation
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=kubernetes,service.namespace=stepflow"
-        # Docling-serve configuration
-        # Uncomment to enable the web UI at /ui
-        # - name: DOCLING_SERVE_ENABLE_UI
-        #   value: "true"
         livenessProbe:
           httpGet:
             path: /health
-            port: http
+            port: docling
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
@@ -110,7 +155,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: http
+            port: docling
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 10

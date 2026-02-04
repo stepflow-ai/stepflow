@@ -23,7 +23,7 @@ metadata:
 data:
   stepflow-config.yml: |
     # Stepflow Configuration for Kubernetes Deployment
-    # Routes Langflow component execution to Kubernetes load balancer
+    # Routes component execution to appropriate backend services
 
     plugins:
       # Built-in components (OpenAI, eval, etc.)
@@ -31,14 +31,27 @@ data:
         type: builtin
 
       # Langflow components via Kubernetes load balancer
-      # Cluster-internal routing via service DNS
+      # Handles general Langflow component execution
       langflow_k8s:
         type: stepflow
         transport: http
         url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
 
+      # Docling components via dedicated docling-worker
+      # Routes directly to stepflow-docling for document processing
+      docling_k8s:
+        type: stepflow
+        transport: http
+        url: "http://docling-worker.stepflow.svc.cluster.local:8080"
+
     routes:
-      # Route all /langflow/* components to Kubernetes cluster
+      # Route docling components to dedicated docling-worker
+      # Components: DoclingInlineComponent, DoclingRemoteComponent,
+      #             ChunkDoclingDocument, ExportDoclingDocument
+      "/docling/{*component}":
+        - plugin: docling_k8s
+
+      # Route all other /langflow/* components to Kubernetes cluster
       "/langflow/{*component}":
         - plugin: langflow_k8s
 

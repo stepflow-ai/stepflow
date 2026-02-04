@@ -72,6 +72,92 @@ class TestExtractFiles:
         files = server._extract_files(input_data)
         assert len(files) == 0
 
+    def test_extract_from_path_string(self, server):
+        """Test extracting from path field with URL string."""
+        input_data = {"path": "https://en.wikipedia.org/wiki/Artificial_intelligence"}
+        files = server._extract_files(input_data)
+        assert len(files) == 1
+        assert files[0]["url"] == "https://en.wikipedia.org/wiki/Artificial_intelligence"
+
+    def test_extract_from_path_list(self, server):
+        """Test extracting from path field with URL list."""
+        input_data = {
+            "path": [
+                "https://example.com/doc1.pdf",
+                "https://example.com/doc2.pdf",
+            ]
+        }
+        files = server._extract_files(input_data)
+        assert len(files) == 2
+        assert files[0]["url"] == "https://example.com/doc1.pdf"
+        assert files[1]["url"] == "https://example.com/doc2.pdf"
+
+    def test_extract_from_url_string(self, server):
+        """Test extracting from url field."""
+        input_data = {"url": "https://example.com/doc.pdf"}
+        files = server._extract_files(input_data)
+        assert len(files) == 1
+        assert files[0]["url"] == "https://example.com/doc.pdf"
+
+    def test_extract_nested_input_path(self, server):
+        """Test extracting from nested input.input.path (Langflow workflow format).
+
+        In Langflow workflows, the component input structure is:
+        - input.template: Langflow component metadata
+        - input.input: Actual runtime values with resolved references
+
+        Example workflow structure:
+          input:
+            template:
+              _type: Component
+              path:
+                _input_type: FileInput
+                value: ''  # Empty in template
+            input:
+              path: "https://example.com/doc.pdf"  # Resolved at runtime
+        """
+        input_data = {
+            "template": {
+                "_type": "Component",
+                "path": {
+                    "_input_type": "FileInput",
+                    "value": "",  # Empty in template
+                },
+            },
+            "input": {
+                "api_url": None,
+                "path": "https://en.wikipedia.org/wiki/Artificial_intelligence",
+            },
+        }
+        files = server._extract_files(input_data)
+        assert len(files) == 1
+        assert files[0]["url"] == "https://en.wikipedia.org/wiki/Artificial_intelligence"
+
+    def test_extract_nested_input_url(self, server):
+        """Test extracting from nested input.input.url (Langflow workflow format)."""
+        input_data = {
+            "template": {"_type": "Component"},
+            "input": {
+                "url": "https://example.com/doc.pdf",
+            },
+        }
+        files = server._extract_files(input_data)
+        assert len(files) == 1
+        assert files[0]["url"] == "https://example.com/doc.pdf"
+
+    def test_extract_prefers_top_level_over_nested(self, server):
+        """Test that top-level path is preferred over nested."""
+        input_data = {
+            "path": "https://top-level.com/doc.pdf",
+            "input": {
+                "path": "https://nested.com/doc.pdf",
+            },
+        }
+        files = server._extract_files(input_data)
+        assert len(files) == 1
+        # Top-level should be found first
+        assert files[0]["url"] == "https://top-level.com/doc.pdf"
+
 
 class TestBuildSources:
     """Tests for building document sources."""
@@ -112,6 +198,86 @@ class TestBuildSources:
         sources = server._build_sources(files)
         assert len(sources) == 2
         assert all(s.kind == SourceKind.HTTP for s in sources)
+
+
+class TestExtractContentForExport:
+    """Tests for extracting content from already-converted documents."""
+
+    @pytest.fixture
+    def server(self):
+        return StepflowDoclingServer()
+
+    def test_extract_from_files_list(self, server):
+        """Test extracting content from files list (DoclingRemoteComponent output)."""
+        data_inputs = {
+            "files": [
+                {"content": "# Document 1\nSome content", "filename": "doc1.md"},
+                {"content": "# Document 2\nMore content", "filename": "doc2.md"},
+            ],
+            "status": "success",
+        }
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert "# Document 1" in content
+        assert "# Document 2" in content
+        assert "Some content" in content
+        assert "More content" in content
+
+    def test_extract_from_direct_content(self, server):
+        """Test extracting content from dict with direct content."""
+        data_inputs = {"content": "# Direct Content\nText here"}
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert content == "# Direct Content\nText here"
+
+    def test_extract_from_md_content(self, server):
+        """Test extracting content from md_content field."""
+        data_inputs = {"md_content": "# Markdown Content"}
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert content == "# Markdown Content"
+
+    def test_extract_from_list_of_dicts(self, server):
+        """Test extracting content from list of document dicts."""
+        data_inputs = [
+            {"content": "Content 1"},
+            {"content": "Content 2"},
+        ]
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert "Content 1" in content
+        assert "Content 2" in content
+
+    def test_extract_from_list_of_strings(self, server):
+        """Test extracting content from list of strings."""
+        data_inputs = ["Text 1", "Text 2"]
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert "Text 1" in content
+        assert "Text 2" in content
+
+    def test_extract_empty_input(self, server):
+        """Test extracting from empty input returns empty string."""
+        content = server._extract_content_for_export({}, "Markdown")
+        assert content == ""
+
+    def test_extract_nested_result_structure(self, server):
+        """Test extracting from DoclingRemoteComponent result structure.
+
+        DoclingRemoteComponent returns: {result: {files: [...], status: ...}}
+        After Stepflow resolves $step path 'result', downstream gets: {files: [...]}
+        """
+        # This is what ExportDoclingDocument receives after path resolution
+        data_inputs = {
+            "files": [
+                {
+                    "filename": "wiki_article",
+                    "content": "# Artificial Intelligence\n\nAI is...",
+                    "docling_document": {"source": "https://en.wikipedia.org/..."},
+                    "status": "success",
+                    "processing_time": 6.5,
+                }
+            ],
+            "status": "success",
+        }
+        content = server._extract_content_for_export(data_inputs, "Markdown")
+        assert "# Artificial Intelligence" in content
+        assert "AI is..." in content
 
 
 class TestBuildConversionOptions:
@@ -160,9 +326,11 @@ class TestFormatOutput:
         result.processing_time = 1.5
 
         output = server._format_conversion_output(result, [])
-        assert "files" in output
-        assert len(output["files"]) == 1
-        assert output["files"][0]["content"] == "# Test"
+        # Output is wrapped in 'result' for Langflow compatibility
+        assert "result" in output
+        assert "files" in output["result"]
+        assert len(output["result"]["files"]) == 1
+        assert output["result"]["files"][0]["content"] == "# Test"
 
     def test_format_chunk_output(self, server):
         """Test formatting chunk output."""
@@ -173,9 +341,11 @@ class TestFormatOutput:
             ]
         }
         output = server._format_chunk_output(result)
-        assert "data" in output
-        assert "chunks" in output
-        assert len(output["chunks"]) == 2
+        # Output is wrapped in 'result' for Langflow compatibility
+        assert "result" in output
+        assert "data" in output["result"]
+        assert "chunks" in output["result"]
+        assert len(output["result"]["chunks"]) == 2
 
     def test_format_export_output(self, server):
         """Test formatting export output."""
@@ -183,8 +353,10 @@ class TestFormatOutput:
         result.document = {"md_content": "# Exported content"}
 
         output = server._format_export_output(result, "Markdown")
-        assert output["format"] == "Markdown"
-        assert output["content"] == "# Exported content"
+        # Output is wrapped in 'result' for Langflow compatibility
+        assert "result" in output
+        assert output["result"]["format"] == "Markdown"
+        assert output["result"]["content"] == "# Exported content"
 
 
 class TestIsBase64:

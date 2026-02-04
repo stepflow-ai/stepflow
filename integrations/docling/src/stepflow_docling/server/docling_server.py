@@ -28,7 +28,11 @@ import logging
 import os
 from typing import Any
 
+import msgspec
+
 from stepflow_py.worker import StepflowContext, StepflowServer
+
+
 
 from stepflow_docling.client.docling_client import (
     ChunkerType,
@@ -118,8 +122,8 @@ class StepflowDoclingServer:
 
         @self.server.component(name="DoclingInlineComponent")
         async def docling_inline(
-            input_data: dict[str, Any], context: StepflowContext
-        ) -> dict[str, Any]:
+            input_data: Any, context: StepflowContext
+        ) -> Any:
             """Process documents using docling-serve (inline mode).
 
             This component processes documents through docling-serve, handling
@@ -138,8 +142,8 @@ class StepflowDoclingServer:
 
         @self.server.component(name="DoclingRemoteComponent")
         async def docling_remote(
-            input_data: dict[str, Any], context: StepflowContext
-        ) -> dict[str, Any]:
+            input_data: Any, context: StepflowContext
+        ) -> Any:
             """Process documents via remote docling-serve API.
 
             This component processes documents through a remote docling-serve
@@ -158,8 +162,8 @@ class StepflowDoclingServer:
 
         @self.server.component(name="ChunkDoclingDocument")
         async def chunk_docling(
-            input_data: dict[str, Any], context: StepflowContext
-        ) -> dict[str, Any]:
+            input_data: Any, context: StepflowContext
+        ) -> Any:
             """Split DoclingDocument into semantic chunks.
 
             This component takes previously converted documents and chunks them
@@ -178,8 +182,8 @@ class StepflowDoclingServer:
 
         @self.server.component(name="ExportDoclingDocument")
         async def export_docling(
-            input_data: dict[str, Any], context: StepflowContext
-        ) -> dict[str, Any]:
+            input_data: Any, context: StepflowContext
+        ) -> Any:
             """Export DoclingDocument to various formats.
 
             This component exports converted documents to Markdown, HTML,
@@ -203,7 +207,16 @@ class StepflowDoclingServer:
         This method handles the conversion of documents from various input
         formats to structured DoclingDocument output.
         """
-        logger.debug("Processing documents with input: %s", list(input_data.keys()))
+        # Log input structure at INFO level for debugging
+        logger.info("Processing documents with input keys: %s", list(input_data.keys()) if isinstance(input_data, dict) else type(input_data).__name__)
+        if isinstance(input_data, dict):
+            for key, value in input_data.items():
+                if isinstance(value, dict):
+                    logger.info("  input_data['%s'] keys: %s", key, list(value.keys()))
+                elif isinstance(value, str) and len(value) > 100:
+                    logger.info("  input_data['%s']: <string of length %d>", key, len(value))
+                else:
+                    logger.info("  input_data['%s']: %s", key, repr(value)[:200])
 
         # Extract files from input
         files = self._extract_files(input_data)
@@ -227,15 +240,30 @@ class StepflowDoclingServer:
         self, input_data: dict[str, Any], context: StepflowContext
     ) -> dict[str, Any]:
         """Chunk documents using docling-serve."""
-        logger.debug("Chunking documents with input: %s", list(input_data.keys()))
+        logger.info("Chunking documents with input keys: %s", list(input_data.keys()) if isinstance(input_data, dict) else type(input_data).__name__)
 
-        # Extract document data
-        data_inputs = input_data.get("data_inputs", input_data.get("data", []))
+        # Check for nested Langflow workflow format (input.input.data_inputs)
+        nested_input = input_data.get("input", {})
+        if isinstance(nested_input, dict) and nested_input:
+            logger.info("Found nested 'input' key with keys: %s", list(nested_input.keys()))
+
+        # Extract document data - check both top-level and nested
+        data_inputs = (
+            input_data.get("data_inputs")
+            or input_data.get("data")
+            or nested_input.get("data_inputs")
+            or nested_input.get("data")
+            or []
+        )
         if not data_inputs:
+            logger.error("No data_inputs found. input_data keys: %s, nested_input keys: %s",
+                        list(input_data.keys()), list(nested_input.keys()) if nested_input else [])
             raise DoclingValidationError("No document data provided for chunking")
 
-        # Determine chunker type
-        chunker_config = input_data.get("chunker", {})
+        logger.info("Found data_inputs: %s", type(data_inputs).__name__)
+
+        # Determine chunker type - check both top-level and nested
+        chunker_config = input_data.get("chunker") or nested_input.get("chunker") or {}
         chunker_type = ChunkerType.HYBRID
         if isinstance(chunker_config, dict):
             chunker_name = chunker_config.get("type", "HybridChunker")
@@ -263,46 +291,160 @@ class StepflowDoclingServer:
         conversion itself by specifying to_formats. This component provides
         a separate step for format conversion of already-processed documents.
         """
-        logger.debug("Exporting documents with input: %s", list(input_data.keys()))
+        logger.info("Exporting documents with input keys: %s", list(input_data.keys()) if isinstance(input_data, dict) else type(input_data).__name__)
 
-        # Extract document data
-        data_inputs = input_data.get("data_inputs", input_data.get("data", []))
+        # Check for nested Langflow workflow format (input.input.data_inputs)
+        nested_input = input_data.get("input", {})
+        if isinstance(nested_input, dict) and nested_input:
+            logger.info("Found nested 'input' key with keys: %s", list(nested_input.keys()))
+
+        # Extract document data - check both top-level and nested
+        data_inputs = (
+            input_data.get("data_inputs")
+            or input_data.get("data")
+            or nested_input.get("data_inputs")
+            or nested_input.get("data")
+            or nested_input.get("df")  # DataFrame input
+            or []
+        )
         if not data_inputs:
+            logger.error("No data_inputs found. input_data keys: %s, nested_input keys: %s",
+                        list(input_data.keys()), list(nested_input.keys()) if nested_input else [])
             raise DoclingValidationError("No document data provided for export")
 
-        # Determine export format
-        export_format_str = input_data.get("export_format", "Markdown")
-        format_mapping = {
-            "Markdown": ExportFormat.MARKDOWN,
-            "HTML": ExportFormat.HTML,
-            "Plaintext": ExportFormat.TEXT,
-            "Text": ExportFormat.TEXT,
-            "DocTags": ExportFormat.DOCTAGS,
-            "JSON": ExportFormat.JSON,
+        logger.info("Found data_inputs: %s", type(data_inputs).__name__)
+        logger.info("data_inputs content: %s", repr(data_inputs)[:500])
+
+        # Determine export format - check both top-level and nested
+        export_format_str = (
+            input_data.get("export_format")
+            or nested_input.get("export_format")
+            or "Markdown"
+        )
+
+        # Extract content from already-converted document data
+        # The data_inputs comes from DoclingRemoteComponent output which has:
+        # {files: [{content, docling_document, ...}], status: ...}
+        content = self._extract_content_for_export(data_inputs, export_format_str)
+
+        # Return formatted output with result wrapper
+        return {
+            "result": {
+                "data": {
+                    "content": content,
+                    "format": export_format_str,
+                },
+                "content": content,
+                "format": export_format_str,
+            }
         }
-        export_format = format_mapping.get(export_format_str, ExportFormat.MARKDOWN)
 
-        # Build conversion options with target format
-        options = ConversionOptions(to_formats=[export_format.value])
+    def _extract_content_for_export(
+        self, data_inputs: Any, export_format: str
+    ) -> str:
+        """Extract content from already-converted document data for export.
 
-        # Build sources from document data
-        sources = self._build_sources_from_data(data_inputs)
+        The data_inputs can be:
+        - dict with 'files' list containing converted documents
+        - dict with 'content' directly
+        - list of document dicts
+        """
+        content_parts = []
 
-        # Convert with export format
-        async with self._get_client() as client:
-            result = await client.convert(sources, options)
+        # Handle dict input
+        if isinstance(data_inputs, dict):
+            # Check for files list (from DoclingRemoteComponent output)
+            files = data_inputs.get("files", [])
+            if files:
+                for f in files:
+                    if isinstance(f, dict):
+                        # Get content based on export format
+                        doc_content = (
+                            f.get("content")
+                            or f.get("md_content")
+                            or f.get("text")
+                            or ""
+                        )
+                        if doc_content:
+                            content_parts.append(doc_content)
+            else:
+                # Direct content
+                doc_content = (
+                    data_inputs.get("content")
+                    or data_inputs.get("md_content")
+                    or data_inputs.get("text")
+                    or ""
+                )
+                if doc_content:
+                    content_parts.append(doc_content)
 
-        # Format output
-        return self._format_export_output(result, export_format_str)
+        # Handle list input
+        elif isinstance(data_inputs, list):
+            for item in data_inputs:
+                if isinstance(item, dict):
+                    doc_content = (
+                        item.get("content")
+                        or item.get("md_content")
+                        or item.get("text")
+                        or ""
+                    )
+                    if doc_content:
+                        content_parts.append(doc_content)
+                elif isinstance(item, str):
+                    content_parts.append(item)
+
+        return "\n\n".join(content_parts)
 
     def _extract_files(self, input_data: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extract file data from input."""
+        """Extract file data from input.
+
+        Supports multiple input formats:
+        - files: List of file data dicts (standard format)
+        - file: Single file data dict
+        - path: URL string or list of URLs (lfx DoclingRemoteComponent format)
+        - url: URL string (direct URL input)
+        - input.path: Nested Langflow workflow format (path under 'input' key)
+        """
+        # Log input structure for debugging
+        logger.debug("_extract_files input_data keys: %s", list(input_data.keys()))
+
+        # Check for nested Langflow workflow format first
+        # Workflow structure: input.template + input.input.path
+        nested_input = input_data.get("input", {})
+        if isinstance(nested_input, dict) and nested_input:
+            logger.debug("Found nested 'input' key with keys: %s", list(nested_input.keys()))
+
         files = input_data.get("files", [])
         if not files:
             # Try alternative field names
             files = input_data.get("file", [])
             if files and not isinstance(files, list):
                 files = [files]
+
+        if not files:
+            # Handle lfx-style 'path' input (URL string or list)
+            # Check both top-level and nested input.path
+            path = input_data.get("path") or nested_input.get("path")
+            if path:
+                logger.debug("Found path: %s (type: %s)", path, type(path).__name__)
+                if isinstance(path, str):
+                    # Single URL/path string
+                    files = [{"url": path}]
+                elif isinstance(path, list):
+                    # List of URLs/paths
+                    files = [{"url": p} if isinstance(p, str) else p for p in path]
+
+        if not files:
+            # Handle direct 'url' input (top-level or nested)
+            url = input_data.get("url") or nested_input.get("url")
+            if url:
+                logger.debug("Found url: %s (type: %s)", url, type(url).__name__)
+                if isinstance(url, str):
+                    files = [{"url": url}]
+                elif isinstance(url, list):
+                    files = [{"url": u} if isinstance(u, str) else u for u in url]
+
+        logger.debug("Extracted %d files: %s", len(files), files[:3] if files else [])
         return files if isinstance(files, list) else [files] if files else []
 
     def _build_conversion_options(
@@ -417,7 +559,11 @@ class StepflowDoclingServer:
     def _format_conversion_output(
         self, result: Any, original_files: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        """Format conversion result for Langflow compatibility."""
+        """Format conversion result for Langflow compatibility.
+
+        Output is wrapped in a 'result' field to match Langflow conventions.
+        Downstream steps expect: $step: docling_step, path: result
+        """
         output_files = []
 
         if hasattr(result, "document") and result.document:
@@ -434,35 +580,47 @@ class StepflowDoclingServer:
         else:
             # Return result as-is if it's already structured
             if isinstance(result, dict):
-                return result
+                # Wrap in result for Langflow compatibility
+                return {"result": result}
 
+        # Wrap output in 'result' field for Langflow compatibility
         return {
-            "files": output_files,
-            "status": getattr(result, "status", "success"),
+            "result": {
+                "files": output_files,
+                "status": getattr(result, "status", "success"),
+            }
         }
 
     def _format_chunk_output(self, result: dict[str, Any]) -> dict[str, Any]:
-        """Format chunking result as DataFrame-compatible structure."""
+        """Format chunking result as DataFrame-compatible structure.
+
+        Output is wrapped in a 'result' field to match Langflow conventions.
+        """
         chunks = result.get("chunks", [])
 
-        # Format as DataFrame-compatible output
+        # Format as DataFrame-compatible output, wrapped in 'result'
         return {
-            "data": {
-                "columns": ["text", "metadata", "chunk_index"],
-                "data": [
-                    [
-                        chunk.get("text", ""),
-                        chunk.get("metadata", {}),
-                        idx,
-                    ]
-                    for idx, chunk in enumerate(chunks)
-                ],
-            },
-            "chunks": chunks,
+            "result": {
+                "data": {
+                    "columns": ["text", "metadata", "chunk_index"],
+                    "data": [
+                        [
+                            chunk.get("text", ""),
+                            chunk.get("metadata", {}),
+                            idx,
+                        ]
+                        for idx, chunk in enumerate(chunks)
+                    ],
+                },
+                "chunks": chunks,
+            }
         }
 
     def _format_export_output(self, result: Any, export_format: str) -> dict[str, Any]:
-        """Format export result."""
+        """Format export result.
+
+        Output is wrapped in a 'result' field to match Langflow conventions.
+        """
         content = ""
         if hasattr(result, "document") and result.document:
             doc = result.document
@@ -470,12 +628,14 @@ class StepflowDoclingServer:
             content = doc.get("md_content") or doc.get("content") or ""
 
         return {
-            "data": {
+            "result": {
+                "data": {
+                    "content": content,
+                    "format": export_format,
+                },
                 "content": content,
                 "format": export_format,
-            },
-            "content": content,
-            "format": export_format,
+            }
         }
 
     def run(self, *args: Any, **kwargs: Any) -> None:
