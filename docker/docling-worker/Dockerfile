@@ -63,7 +63,8 @@ RUN uv pip install --python /opt/venv/bin/python \
     # opentelemetry deps
     opentelemetry-api>=1.20.0 \
     opentelemetry-sdk>=1.20.0 \
-    opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+    opentelemetry-exporter-otlp-proto-grpc>=1.20.0 \
+    opentelemetry-instrumentation-httpx>=0.48b0
 
 
 # Stage 2: Runtime image
