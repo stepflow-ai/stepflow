@@ -99,6 +99,13 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
         module="lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent",
         description="Export DoclingDocument to markdown, html or other formats",
     ),
+    # EmbeddingModel component (lfx)
+    "0e2d6fe67a26": KnownComponent(
+        code_hash="0e2d6fe67a26",
+        module="lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent",
+        description="Embedding Model - generate embeddings using OpenAI, Ollama, or IBM watsonx.ai",
+        aliases=("custom_components.embedding_model",),
+    ),
     # Add more known components here as needed
 }
 

@@ -43,8 +43,8 @@ dependencies = [
     "click>=8.0",
     "jsonschema>=4.17.0",
     "pydantic>=2.0.0", # For BaseModel serialization and SecretStr handling
-    "langflow-nightly==1.6.4.dev5", # Update to 1.6.5 when available
-    "lfx-nightly==0.1.12.dev39",    # Update to match langflow
+    "langflow==1.7.1",
+    "lfx==0.2.1",
     "pandas>=2.0.0", # For DataFrame serialization and deserialization
     "python-dotenv>=1.0.0", # For .env file support
     "openai>=1.0.0", # For OpenAI API integration
@@ -178,8 +178,8 @@ extend_exclude = ["types-PyYAML"]
 [tool.deptry.package_module_name_map]
 python-dotenv = ["dotenv"]
 pyyaml = ["yaml"]
-langflow-nightly = ["langflow"]
-lfx-nightly = ["lfx"]
+langflow = ["langflow"]
+lfx = ["lfx"]
 opensearch-py = ["opensearchpy"]
 
 [tool.mypy]

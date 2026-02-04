@@ -358,6 +358,22 @@ class TestFormatOutput:
         assert output["result"]["format"] == "Markdown"
         assert output["result"]["content"] == "# Exported content"
 
+    def test_extract_rows_for_export(self, server):
+        """Test extracting rows for DataFrame-compatible export."""
+        data_inputs = {
+            "files": [
+                {"content": "# Doc 1", "filename": "doc1.md"},
+                {"content": "# Doc 2", "filename": "doc2.md"},
+            ]
+        }
+        rows = server._extract_rows_for_export(data_inputs, "Markdown")
+        assert len(rows) == 2
+        assert rows[0]["text"] == "# Doc 1"
+        assert rows[0]["format"] == "Markdown"
+        assert rows[0]["source"] == "doc1.md"
+        assert rows[1]["text"] == "# Doc 2"
+        assert rows[1]["source"] == "doc2.md"
+
 
 class TestIsBase64:
     """Tests for base64 detection."""

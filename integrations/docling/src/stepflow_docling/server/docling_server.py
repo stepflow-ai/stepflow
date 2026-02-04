@@ -199,6 +199,42 @@ class StepflowDoclingServer:
             """
             return await self._export_documents(input_data, context)
 
+        # Register lfx-style paths for routing from known_components.py
+        # These paths match the lfx module structure used when components are
+        # identified as known components and routed via:
+        #   /langflow/core/lfx/components/docling/{*component}
+        @self.server.component(name="docling_inline/DoclingInlineComponent")
+        async def docling_inline_lfx(
+            input_data: Any, context: StepflowContext
+        ) -> Any:
+            """Alias for DoclingInlineComponent via lfx path."""
+            return await self._process_documents(input_data, context)
+
+        @self.server.component(name="docling_remote/DoclingRemoteComponent")
+        async def docling_remote_lfx(
+            input_data: Any, context: StepflowContext
+        ) -> Any:
+            """Alias for DoclingRemoteComponent via lfx path."""
+            return await self._process_documents(input_data, context)
+
+        @self.server.component(
+            name="chunk_docling_document/ChunkDoclingDocumentComponent"
+        )
+        async def chunk_docling_lfx(
+            input_data: Any, context: StepflowContext
+        ) -> Any:
+            """Alias for ChunkDoclingDocument via lfx path."""
+            return await self._chunk_documents(input_data, context)
+
+        @self.server.component(
+            name="export_docling_document/ExportDoclingDocumentComponent"
+        )
+        async def export_docling_lfx(
+            input_data: Any, context: StepflowContext
+        ) -> Any:
+            """Alias for ExportDoclingDocument via lfx path."""
+            return await self._export_documents(input_data, context)
+
     async def _process_documents(
         self, input_data: dict[str, Any], context: StepflowContext
     ) -> dict[str, Any]:
@@ -325,31 +361,29 @@ class StepflowDoclingServer:
         # Extract content from already-converted document data
         # The data_inputs comes from DoclingRemoteComponent output which has:
         # {files: [{content, docling_document, ...}], status: ...}
-        content = self._extract_content_for_export(data_inputs, export_format_str)
+        rows = self._extract_rows_for_export(data_inputs, export_format_str)
 
-        # Return formatted output with result wrapper
+        # Return DataFrame-compatible output for Langflow DataFrameOperations
+        # Structure matches lfx DataFrame schema: list of row dicts
         return {
-            "result": {
-                "data": {
-                    "content": content,
-                    "format": export_format_str,
-                },
-                "content": content,
-                "format": export_format_str,
-            }
+            "result": rows  # List of dicts, each dict is a row
         }
 
-    def _extract_content_for_export(
+    def _extract_rows_for_export(
         self, data_inputs: Any, export_format: str
-    ) -> str:
-        """Extract content from already-converted document data for export.
+    ) -> list[dict[str, Any]]:
+        """Extract rows for DataFrame-compatible export output.
+
+        Returns a list of dicts where each dict represents a row.
+        This format is compatible with Langflow's DataFrame schema and
+        can be consumed by DataFrameOperations.
 
         The data_inputs can be:
         - dict with 'files' list containing converted documents
         - dict with 'content' directly
         - list of document dicts
         """
-        content_parts = []
+        rows = []
 
         # Handle dict input
         if isinstance(data_inputs, dict):
@@ -358,15 +392,17 @@ class StepflowDoclingServer:
             if files:
                 for f in files:
                     if isinstance(f, dict):
-                        # Get content based on export format
                         doc_content = (
                             f.get("content")
                             or f.get("md_content")
                             or f.get("text")
                             or ""
                         )
-                        if doc_content:
-                            content_parts.append(doc_content)
+                        rows.append({
+                            "text": doc_content,
+                            "format": export_format,
+                            "source": f.get("filename", ""),
+                        })
             else:
                 # Direct content
                 doc_content = (
@@ -376,7 +412,11 @@ class StepflowDoclingServer:
                     or ""
                 )
                 if doc_content:
-                    content_parts.append(doc_content)
+                    rows.append({
+                        "text": doc_content,
+                        "format": export_format,
+                        "source": "",
+                    })
 
         # Handle list input
         elif isinstance(data_inputs, list):
@@ -388,12 +428,32 @@ class StepflowDoclingServer:
                         or item.get("text")
                         or ""
                     )
-                    if doc_content:
-                        content_parts.append(doc_content)
+                    rows.append({
+                        "text": doc_content,
+                        "format": export_format,
+                        "source": item.get("filename", ""),
+                    })
                 elif isinstance(item, str):
-                    content_parts.append(item)
+                    rows.append({
+                        "text": item,
+                        "format": export_format,
+                        "source": "",
+                    })
 
-        return "\n\n".join(content_parts)
+        return rows
+
+    def _extract_content_for_export(
+        self, data_inputs: Any, export_format: str
+    ) -> str:
+        """Extract content from already-converted document data for export.
+
+        The data_inputs can be:
+        - dict with 'files' list containing converted documents
+        - dict with 'content' directly
+        - list of document dicts
+        """
+        rows = self._extract_rows_for_export(data_inputs, export_format)
+        return "\n\n".join(row.get("text", "") for row in rows)
 
     def _extract_files(self, input_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Extract file data from input.

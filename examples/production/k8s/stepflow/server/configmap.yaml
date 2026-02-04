@@ -51,6 +51,11 @@ data:
       "/docling/{*component}":
         - plugin: docling_k8s
 
+      # Route lfx docling components (from known_components.py) to docling-worker
+      # These paths come from workflows converted with known component mappings
+      "/langflow/core/lfx/components/docling/{*component}":
+        - plugin: docling_k8s
+
       # Route all other /langflow/* components to Kubernetes cluster
       "/langflow/{*component}":
         - plugin: langflow_k8s
