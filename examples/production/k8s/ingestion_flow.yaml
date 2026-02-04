@@ -5591,7 +5591,7 @@ steps:
       index_name:
         $literal: "stepflow-documents"
       engine:
-        $literal: "faiss"
+        $literal: "jvector"
   mustExecute: true
   metadata: {}
 output:
