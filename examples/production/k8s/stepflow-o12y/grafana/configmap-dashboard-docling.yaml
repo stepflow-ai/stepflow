@@ -71,7 +71,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_http_server_active_requests{service_name=\"docling-serve\"})",
+              "expr": "sum(stepflow_http_server_active_requests{exported_job=\"stepflow/docling-serve\"})",
               "refId": "A"
             }
           ],
@@ -106,7 +106,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_rq_workers{service_name=\"docling-serve\"})",
+              "expr": "sum(stepflow_rq_workers{exported_job=\"stepflow/docling-serve\"})",
               "refId": "A"
             }
           ],
@@ -141,7 +141,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_rq_workers_success_total{service_name=\"docling-serve\"}[5m]))",
+              "expr": "sum(increase(stepflow_rq_workers_success_total{exported_job=\"stepflow/docling-serve\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -179,7 +179,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_rq_workers_failed_total{service_name=\"docling-serve\"}[5m]))",
+              "expr": "sum(increase(stepflow_rq_workers_failed_total{exported_job=\"stepflow/docling-serve\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -231,19 +231,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_http_server_duration_milliseconds_bucket{service_name=\"docling-serve\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=\"stepflow/docling-serve\"}[5m])) by (le))",
               "legendFormat": "p50",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(stepflow_http_server_duration_milliseconds_bucket{service_name=\"docling-serve\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=\"stepflow/docling-serve\"}[5m])) by (le))",
               "legendFormat": "p95",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.99, sum(rate(stepflow_http_server_duration_milliseconds_bucket{service_name=\"docling-serve\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=\"stepflow/docling-serve\"}[5m])) by (le))",
               "legendFormat": "p99",
               "refId": "C"
             }
@@ -296,7 +296,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{service_name=\"docling-serve\"}[5m]))",
+              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{exported_job=\"stepflow/docling-serve\"}[5m]))",
               "legendFormat": "requests/sec",
               "refId": "A"
             }
@@ -349,13 +349,13 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_rq_workers_success_total{service_name=\"docling-serve\"}[5m]))",
+              "expr": "sum(rate(stepflow_rq_workers_success_total{exported_job=\"stepflow/docling-serve\"}[5m]))",
               "legendFormat": "success",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_rq_workers_failed_total{service_name=\"docling-serve\"}[5m]))",
+              "expr": "sum(rate(stepflow_rq_workers_failed_total{exported_job=\"stepflow/docling-serve\"}[5m]))",
               "legendFormat": "failed",
               "refId": "B"
             }
@@ -408,7 +408,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum by (queue_name, status) (stepflow_rq_jobs{service_name=\"docling-serve\"})",
+              "expr": "sum by (queue_name, status) (stepflow_rq_jobs{exported_job=\"stepflow/docling-serve\"})",
               "legendFormat": "{{queue_name}} - {{status}}",
               "refId": "A"
             }

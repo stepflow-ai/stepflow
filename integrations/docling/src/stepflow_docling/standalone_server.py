@@ -32,6 +32,11 @@ def main():
     - STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for tracing/logging
     - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-docling)
     """
+    # Initialize observability (tracing, logging) before starting server
+    from stepflow_py.worker.observability import setup_observability
+
+    setup_observability()
+
     server = StepflowDoclingServer()
     server.run()
 

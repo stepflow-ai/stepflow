@@ -82,7 +82,11 @@ spec:
         - name: STEPFLOW_LOG_LEVEL
           value: "debug"
         - name: STEPFLOW_LOG_DESTINATION
-          value: "stderr"
+          value: "stderr,otlp"
+        - name: STEPFLOW_SERVICE_NAME
+          value: "stepflow-docling"
+        - name: STEPFLOW_TRACE_ENABLED
+          value: "true"
         # OpenTelemetry configuration
         - name: STEPFLOW_OTLP_ENDPOINT
           value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"

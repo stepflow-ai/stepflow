@@ -45,13 +45,7 @@ from stepflow_docling.client.docling_client import (
 )
 from stepflow_docling.exceptions import DoclingValidationError
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    force=True,
-)
-
+# Get logger - logging is configured by setup_observability() in standalone_server.py
 logger = logging.getLogger(__name__)
 
 
