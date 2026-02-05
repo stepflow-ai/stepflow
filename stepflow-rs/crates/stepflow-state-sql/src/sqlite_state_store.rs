@@ -25,7 +25,10 @@ use stepflow_dtos::{
     ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo,
     StepResult,
 };
-use stepflow_state::{RunCompletionNotifier, StateError, StateStore, StateWriteOperation};
+use stepflow_state::{
+    ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo, RunCompletionNotifier,
+    SequenceNumber, StateError, StateStore, StateWriteOperation,
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -300,7 +303,7 @@ impl SqliteStateStore {
     }
 }
 
-impl StateStore for SqliteStateStore {
+impl MetadataStore for SqliteStateStore {
     fn put_blob(
         &self,
         data: ValueRef,
@@ -377,6 +380,660 @@ impl StateStore for SqliteStateStore {
         .boxed()
     }
 
+    fn store_flow(
+        &self,
+        workflow: Arc<Flow>,
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let workflow_json = serde_json::to_value(workflow.as_ref());
+        async move {
+            let flow_data = workflow_json.change_context(StateError::Serialization)?;
+            let flow_value = ValueRef::new(flow_data);
+            self.put_blob(flow_value, BlobType::Flow).await
+        }
+        .boxed()
+    }
+
+    fn get_flow(
+        &self,
+        flow_id: &BlobId,
+    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
+        let flow_id = flow_id.clone();
+        async move {
+            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
+                Some(blob_data) => {
+                    let workflow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
+                        .change_context(StateError::Serialization)?;
+                    Ok(Some(Arc::new(workflow)))
+                }
+                None => Ok(None),
+            }
+        }
+        .boxed()
+    }
+
+    fn create_run(
+        &self,
+        params: stepflow_state::CreateRunParams,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move { Self::create_run_sync(&pool, params).await }.boxed()
+    }
+
+    fn get_run(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id FROM runs WHERE id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => {
+                    let status_str: String = row.get("status");
+                    let status = match status_str.as_str() {
+                        "running" => ExecutionStatus::Running,
+                        "completed" => ExecutionStatus::Completed,
+                        "failed" => ExecutionStatus::Failed,
+                        "paused" => ExecutionStatus::Paused,
+                        _ => {
+                            log::warn!("Unrecognized execution status: {status_str}");
+                            ExecutionStatus::Running
+                        }
+                    };
+
+                    let flow_name = row.get::<Option<String>, _>("flow_name");
+                    let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
+
+                    let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
+                        .ok_or_else(|| error_stack::report!(StateError::Internal))?;
+
+                    let completed_at = row
+                        .get::<Option<String>, _>("completed_at")
+                        .and_then(|s| parse_sqlite_datetime(&s));
+
+                    let items_sql = "SELECT item_index, input_json, status FROM run_items WHERE run_id = ? ORDER BY item_index";
+                    let item_rows = sqlx::query(items_sql)
+                        .bind(run_id.to_string())
+                        .fetch_all(&pool)
+                        .await
+                        .change_context(StateError::Internal)?;
+
+                    let mut inputs = Vec::new();
+                    let mut running = 0usize;
+                    let mut completed = 0usize;
+                    let mut failed = 0usize;
+                    let mut cancelled = 0usize;
+
+                    for item_row in item_rows {
+                        let input_json: String = item_row.get("input_json");
+                        let input_value: serde_json::Value = serde_json::from_str(&input_json)
+                            .change_context(StateError::Serialization)?;
+                        inputs.push(ValueRef::new(input_value));
+
+                        let item_status: String = item_row.get("status");
+                        match item_status.as_str() {
+                            "running" => running += 1,
+                            "completed" => completed += 1,
+                            "failed" => failed += 1,
+                            "cancelled" => cancelled += 1,
+                            _ => running += 1,
+                        }
+                    }
+
+                    let items = ItemStatistics {
+                        total: inputs.len(),
+                        running,
+                        completed,
+                        failed,
+                        cancelled,
+                    };
+
+                    let root_run_id_str: Option<String> = row.get("root_run_id");
+                    let root_run_id = root_run_id_str
+                        .as_ref()
+                        .and_then(|s| Uuid::parse_str(s).ok())
+                        .unwrap_or(run_id);
+
+                    let parent_run_id_str: Option<String> = row.get("parent_run_id");
+                    let parent_run_id = parent_run_id_str
+                        .as_ref()
+                        .and_then(|s| Uuid::parse_str(s).ok());
+
+                    let details = RunDetails {
+                        summary: RunSummary {
+                            run_id,
+                            flow_name,
+                            flow_id,
+                            status,
+                            items,
+                            created_at,
+                            completed_at,
+                            root_run_id,
+                            parent_run_id,
+                        },
+                        inputs,
+                        overrides: None,
+                    };
+
+                    Ok(Some(details))
+                },
+                None => Ok(None),
+            }
+        }.boxed()
+    }
+
+    fn list_runs(
+        &self,
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
+        let pool = self.pool.clone();
+        let filters = filters.clone();
+
+        async move {
+            let mut sql = r#"
+                SELECT
+                    r.id, r.flow_name, r.flow_id, r.status,
+                    r.created_at, r.completed_at,
+                    r.root_run_id, r.parent_run_id,
+                    COALESCE(i.total, 0) as item_total,
+                    COALESCE(i.running, 0) as item_running,
+                    COALESCE(i.completed, 0) as item_completed,
+                    COALESCE(i.failed, 0) as item_failed,
+                    COALESCE(i.cancelled, 0) as item_cancelled
+                FROM runs r
+                LEFT JOIN (
+                    SELECT
+                        run_id,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
+                        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+                    FROM run_items
+                    GROUP BY run_id
+                ) i ON r.id = i.run_id
+            "#
+            .to_string();
+            let mut conditions = Vec::new();
+            let mut bind_values: Vec<String> = Vec::new();
+
+            if let Some(ref status) = filters.status {
+                let status_str = match status {
+                    ExecutionStatus::Running => "running",
+                    ExecutionStatus::Completed => "completed",
+                    ExecutionStatus::Failed => "failed",
+                    ExecutionStatus::Cancelled => "cancelled",
+                    ExecutionStatus::Paused => "paused",
+                };
+                conditions.push("r.status = ?".to_string());
+                bind_values.push(status_str.to_string());
+            }
+
+            if let Some(ref flow_name) = filters.flow_name {
+                conditions.push("r.flow_name = ?".to_string());
+                bind_values.push(flow_name.clone());
+            }
+
+            if let Some(root_run_id) = filters.root_run_id {
+                conditions.push("r.root_run_id = ?".to_string());
+                bind_values.push(root_run_id.to_string());
+            }
+
+            if let Some(parent_run_id) = filters.parent_run_id {
+                conditions.push("r.parent_run_id = ?".to_string());
+                bind_values.push(parent_run_id.to_string());
+            }
+
+            // Filter for root runs only (no parent)
+            if filters.roots_only == Some(true) {
+                conditions.push("r.parent_run_id IS NULL".to_string());
+            }
+
+            if !conditions.is_empty() {
+                sql.push_str(" WHERE ");
+                sql.push_str(&conditions.join(" AND "));
+            }
+
+            sql.push_str(" ORDER BY r.created_at DESC");
+
+            if let Some(limit) = filters.limit {
+                sql.push_str(" LIMIT ");
+                sql.push_str(&limit.to_string());
+
+                if let Some(offset) = filters.offset {
+                    sql.push_str(" OFFSET ");
+                    sql.push_str(&offset.to_string());
+                }
+            }
+
+            let mut query = sqlx::query(&sql);
+            for value in bind_values {
+                query = query.bind(value);
+            }
+
+            let rows = query
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut summaries = Vec::new();
+            for row in rows {
+                let run_id_str: String = row.get("id");
+                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
+
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "running" => ExecutionStatus::Running,
+                    "completed" => ExecutionStatus::Completed,
+                    "failed" => ExecutionStatus::Failed,
+                    "paused" => ExecutionStatus::Paused,
+                    _ => ExecutionStatus::Running,
+                };
+
+                let flow_name = row.get::<Option<String>, _>("flow_name");
+                let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
+                    .change_context(StateError::Internal)?;
+
+                let items = ItemStatistics {
+                    total: row.get::<i64, _>("item_total") as usize,
+                    running: row.get::<i64, _>("item_running") as usize,
+                    completed: row.get::<i64, _>("item_completed") as usize,
+                    failed: row.get::<i64, _>("item_failed") as usize,
+                    cancelled: row.get::<i64, _>("item_cancelled") as usize,
+                };
+
+                let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
+                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
+
+                let completed_at = row
+                    .get::<Option<String>, _>("completed_at")
+                    .and_then(|s| parse_sqlite_datetime(&s));
+
+                let root_run_id_str: Option<String> = row.get("root_run_id");
+                let root_run_id = root_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or(run_id);
+
+                let parent_run_id_str: Option<String> = row.get("parent_run_id");
+                let parent_run_id = parent_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+
+                let summary = RunSummary {
+                    run_id,
+                    flow_name,
+                    flow_id,
+                    status,
+                    items,
+                    created_at,
+                    completed_at,
+                    root_run_id,
+                    parent_run_id,
+                };
+
+                summaries.push(summary);
+            }
+
+            Ok(summaries)
+        }
+        .boxed()
+    }
+
+    fn update_run_status(
+        &self,
+        run_id: Uuid,
+        status: ExecutionStatus,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let is_terminal = matches!(
+                status,
+                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+            );
+
+            let sql = if is_terminal {
+                "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
+            } else {
+                "UPDATE runs SET status = ? WHERE id = ?"
+            };
+
+            sqlx::query(sql)
+                .bind(status.as_str())
+                .bind(run_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            if is_terminal {
+                self.completion_notifier.notify_completion(run_id);
+            }
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_run_overrides(
+        &self,
+        _run_id: Uuid,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Option<stepflow_core::workflow::WorkflowOverrides>, StateError>,
+    > {
+        async move { Ok(None) }.boxed()
+    }
+
+    fn record_item_result(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        result: FlowResult,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let status = match &result {
+                FlowResult::Success(_) => "completed",
+                FlowResult::Failed(_) => "failed",
+            };
+
+            let result_json =
+                serde_json::to_string(&result).change_context(StateError::Serialization)?;
+
+            let sql = r#"
+                UPDATE run_items
+                SET status = ?, result_json = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE run_id = ? AND item_index = ?
+            "#;
+
+            let result = sqlx::query(sql)
+                .bind(status)
+                .bind(&result_json)
+                .bind(run_id.to_string())
+                .bind(item_index as i64)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            if result.rows_affected() == 0 {
+                return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+            }
+
+            let count_sql = r#"
+                SELECT
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ?) as total,
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status IN ('completed', 'failed')) as done,
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status = 'failed') as failed
+            "#;
+
+            let counts = sqlx::query(count_sql)
+                .bind(run_id.to_string())
+                .bind(run_id.to_string())
+                .bind(run_id.to_string())
+                .fetch_one(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let total: i64 = counts.get("total");
+            let done: i64 = counts.get("done");
+            let failed: i64 = counts.get("failed");
+
+            if done >= total {
+                let run_status = if failed > 0 { "failed" } else { "completed" };
+                let update_sql =
+                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?";
+                sqlx::query(update_sql)
+                    .bind(run_status)
+                    .bind(run_id.to_string())
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+
+                self.completion_notifier.notify_completion(run_id);
+            }
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_item_results(
+        &self,
+        run_id: Uuid,
+        order: ResultOrder,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        let pool = self.pool.clone();
+        let run_id_str = run_id.to_string();
+
+        async move {
+            let order_clause = match order {
+                ResultOrder::ByIndex => "ORDER BY item_index",
+                ResultOrder::ByCompletion => {
+                    "ORDER BY CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END, completed_at, item_index"
+                }
+            };
+
+            let sql = format!(
+                "SELECT item_index, status, result_json, completed_at FROM run_items WHERE run_id = ? {}",
+                order_clause
+            );
+
+            let rows = sqlx::query(&sql)
+                .bind(&run_id_str)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut items = Vec::new();
+            for row in rows {
+                let item_index: i64 = row.get("item_index");
+                let status_str: String = row.get("status");
+                let status = match status_str.as_str() {
+                    "completed" => ExecutionStatus::Completed,
+                    "failed" => ExecutionStatus::Failed,
+                    "cancelled" => ExecutionStatus::Cancelled,
+                    _ => ExecutionStatus::Running,
+                };
+
+                let result = if let Some(result_json) = row.get::<Option<String>, _>("result_json")
+                {
+                    let flow_result: FlowResult = serde_json::from_str(&result_json)
+                        .change_context(StateError::Serialization)?;
+                    Some(flow_result)
+                } else {
+                    None
+                };
+
+                let completed_at = row
+                    .get::<Option<String>, _>("completed_at")
+                    .and_then(|s| parse_sqlite_datetime(&s));
+
+                items.push(ItemResult {
+                    item_index: item_index as usize,
+                    status,
+                    result,
+                    completed_at,
+                });
+            }
+
+            Ok(items)
+        }
+        .boxed()
+    }
+
+    fn wait_for_completion(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT status FROM runs WHERE id = ?";
+
+            let receiver = self.completion_notifier.subscribe();
+
+            let row = sqlx::query(sql)
+                .bind(run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => {
+                    let status_str: String = row.get("status");
+                    if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                        return Ok(());
+                    }
+                }
+                None => {
+                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                }
+            }
+
+            self.completion_notifier
+                .wait_for_completion_with_receiver(run_id, receiver)
+                .await;
+
+            loop {
+                let row = sqlx::query(sql)
+                    .bind(run_id.to_string())
+                    .fetch_optional(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+
+                match row {
+                    Some(row) => {
+                        let status_str: String = row.get("status");
+                        if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                            return Ok(());
+                        }
+                    }
+                    None => {
+                        return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                    }
+                }
+
+                tokio::task::yield_now().await;
+            }
+        }
+        .boxed()
+    }
+
+    fn list_pending_runs(
+        &self,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            // Query runs that are in a non-terminal state (running or paused)
+            // Join with run_items to get item statistics
+            let sql = r#"
+                SELECT
+                    r.id, r.flow_id, r.flow_name, r.status,
+                    COALESCE(i.total, 0) as item_total,
+                    COALESCE(i.running, 0) as item_running,
+                    COALESCE(i.completed, 0) as item_completed,
+                    COALESCE(i.failed, 0) as item_failed,
+                    COALESCE(i.cancelled, 0) as item_cancelled,
+                    r.created_at, r.completed_at,
+                    r.root_run_id, r.parent_run_id
+                FROM runs r
+                LEFT JOIN (
+                    SELECT
+                        run_id,
+                        COUNT(*) as total,
+                        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
+                        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+                    FROM run_items
+                    GROUP BY run_id
+                ) i ON r.id = i.run_id
+                WHERE r.status IN ('running', 'paused')
+                ORDER BY r.created_at ASC
+                LIMIT ?
+            "#;
+
+            let rows = sqlx::query(sql)
+                .bind(limit as i64)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut results = Vec::with_capacity(rows.len());
+            for row in rows {
+                let id_str: String = row.get("id");
+                let flow_id_str: String = row.get("flow_id");
+                let flow_name: Option<String> = row.get("flow_name");
+                let status_str: String = row.get("status");
+                let created_at_str: String = row.get("created_at");
+                let completed_at_str: Option<String> = row.get("completed_at");
+                let root_run_id_str: Option<String> = row.get("root_run_id");
+                let parent_run_id_str: Option<String> = row.get("parent_run_id");
+
+                let run_id = Uuid::parse_str(&id_str).change_context(StateError::Internal)?;
+                let flow_id = BlobId::new(flow_id_str).change_context(StateError::Internal)?;
+
+                let status = match status_str.as_str() {
+                    "running" => ExecutionStatus::Running,
+                    "completed" => ExecutionStatus::Completed,
+                    "failed" => ExecutionStatus::Failed,
+                    "cancelled" => ExecutionStatus::Cancelled,
+                    "paused" => ExecutionStatus::Paused,
+                    _ => ExecutionStatus::Running,
+                };
+
+                let created_at =
+                    parse_sqlite_datetime(&created_at_str).unwrap_or_else(chrono::Utc::now);
+                let completed_at = completed_at_str
+                    .as_ref()
+                    .and_then(|s| parse_sqlite_datetime(s));
+
+                let root_run_id = root_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or(run_id);
+
+                let parent_run_id = parent_run_id_str
+                    .as_ref()
+                    .and_then(|s| Uuid::parse_str(s).ok());
+
+                results.push(RunSummary {
+                    run_id,
+                    flow_id,
+                    flow_name,
+                    status,
+                    items: ItemStatistics {
+                        total: row.get::<i64, _>("item_total") as usize,
+                        running: row.get::<i64, _>("item_running") as usize,
+                        completed: row.get::<i64, _>("item_completed") as usize,
+                        failed: row.get::<i64, _>("item_failed") as usize,
+                        cancelled: row.get::<i64, _>("item_cancelled") as usize,
+                    },
+                    created_at,
+                    completed_at,
+                    root_run_id,
+                    parent_run_id,
+                });
+            }
+
+            Ok(results)
+        }
+        .boxed()
+    }
+}
+
+impl StateStore for SqliteStateStore {
     fn get_step_result(
         &self,
         run_id: Uuid,
@@ -443,447 +1100,6 @@ impl StateStore for SqliteStateStore {
 
             Ok(results)
         }.boxed()
-    }
-
-    // Workflow Management Methods using unified blob storage
-
-    fn store_flow(
-        &self,
-        workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        // Use the unified blob storage
-        let workflow_json = serde_json::to_value(workflow.as_ref());
-        async move {
-            let flow_data = workflow_json.change_context(StateError::Serialization)?;
-            let flow_value = ValueRef::new(flow_data);
-            self.put_blob(flow_value, BlobType::Flow).await
-        }
-        .boxed()
-    }
-
-    fn get_flow(
-        &self,
-        flow_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
-        let flow_id = flow_id.clone();
-        async move {
-            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
-                Some(blob_data) => {
-                    let workflow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
-                        .change_context(StateError::Serialization)?;
-                    Ok(Some(Arc::new(workflow)))
-                }
-                None => Ok(None),
-            }
-        }
-        .boxed()
-    }
-
-    fn create_run(
-        &self,
-        params: stepflow_state::CreateRunParams,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        // Execute synchronously to avoid race condition with step results
-        let pool = self.pool.clone();
-
-        async move { Self::create_run_sync(&pool, params).await }.boxed()
-    }
-
-    fn update_run_status(
-        &self,
-        run_id: Uuid,
-        status: ExecutionStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            let is_terminal = matches!(
-                status,
-                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
-            );
-
-            let sql = if is_terminal {
-                "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
-            } else {
-                "UPDATE runs SET status = ? WHERE id = ?"
-            };
-
-            sqlx::query(sql)
-                .bind(status.as_str())
-                .bind(run_id.to_string())
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            // Notify waiters if the run reached a terminal status
-            if is_terminal {
-                self.completion_notifier.notify_completion(run_id);
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn record_item_result(
-        &self,
-        run_id: Uuid,
-        item_index: usize,
-        result: FlowResult,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            // Determine status from result
-            let status = match &result {
-                FlowResult::Success(_) => "completed",
-                FlowResult::Failed(_) => "failed",
-            };
-
-            // Serialize result
-            let result_json =
-                serde_json::to_string(&result).change_context(StateError::Serialization)?;
-
-            // Update the existing run_items row (created by create_run)
-            let sql = r#"
-                UPDATE run_items
-                SET status = ?, result_json = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE run_id = ? AND item_index = ?
-            "#;
-
-            let result = sqlx::query(sql)
-                .bind(status)
-                .bind(&result_json)
-                .bind(run_id.to_string())
-                .bind(item_index as i64)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            if result.rows_affected() == 0 {
-                return Err(error_stack::report!(StateError::RunNotFound { run_id }));
-            }
-
-            // Check if all items are complete and update runs table if so
-            let count_sql = r#"
-                SELECT
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ?) as total,
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status IN ('completed', 'failed')) as done,
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status = 'failed') as failed
-            "#;
-
-            let counts = sqlx::query(count_sql)
-                .bind(run_id.to_string())
-                .bind(run_id.to_string())
-                .bind(run_id.to_string())
-                .fetch_one(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let total: i64 = counts.get("total");
-            let done: i64 = counts.get("done");
-            let failed: i64 = counts.get("failed");
-
-            // If all items are done, update the run status and notify
-            if done >= total {
-                let run_status = if failed > 0 { "failed" } else { "completed" };
-                let update_sql =
-                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?";
-                sqlx::query(update_sql)
-                    .bind(run_status)
-                    .bind(run_id.to_string())
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-
-                // Notify waiters that the run completed
-                self.completion_notifier.notify_completion(run_id);
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_run(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            // First get run metadata
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id FROM runs WHERE id = ?";
-
-            let row = sqlx::query(sql)
-                .bind(run_id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            match row {
-                Some(row) => {
-                    let status_str: String = row.get("status");
-                    let status = match status_str.as_str() {
-                        "running" => ExecutionStatus::Running,
-                        "completed" => ExecutionStatus::Completed,
-                        "failed" => ExecutionStatus::Failed,
-                        "paused" => ExecutionStatus::Paused,
-                        _ => {
-                            log::warn!("Unrecognized execution status: {status_str}");
-                            ExecutionStatus::Running
-                        }
-                    };
-
-                    let flow_name = row.get::<Option<String>, _>("flow_name");
-                    let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
-
-                    let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                    let completed_at = row
-                        .get::<Option<String>, _>("completed_at")
-                        .and_then(|s| parse_sqlite_datetime(&s));
-
-                    // Fetch items from run_items table (inputs and status only, not results)
-                    let items_sql = "SELECT item_index, input_json, status FROM run_items WHERE run_id = ? ORDER BY item_index";
-                    let item_rows = sqlx::query(items_sql)
-                        .bind(run_id.to_string())
-                        .fetch_all(&pool)
-                        .await
-                        .change_context(StateError::Internal)?;
-
-                    let mut inputs = Vec::new();
-                    let mut running = 0usize;
-                    let mut completed = 0usize;
-                    let mut failed = 0usize;
-                    let mut cancelled = 0usize;
-
-                    for item_row in item_rows {
-                        // Parse input
-                        let input_json: String = item_row.get("input_json");
-                        let input_value: serde_json::Value = serde_json::from_str(&input_json)
-                            .change_context(StateError::Serialization)?;
-                        inputs.push(ValueRef::new(input_value));
-
-                        // Count item statuses for statistics
-                        let item_status: String = item_row.get("status");
-                        match item_status.as_str() {
-                            "running" => running += 1,
-                            "completed" => completed += 1,
-                            "failed" => failed += 1,
-                            "cancelled" => cancelled += 1,
-                            _ => running += 1,
-                        }
-                    }
-
-                    let items = ItemStatistics {
-                        total: inputs.len(),
-                        running,
-                        completed,
-                        failed,
-                        cancelled,
-                    };
-
-                    // Parse hierarchy fields
-                    let root_run_id_str: Option<String> = row.get("root_run_id");
-                    let root_run_id = root_run_id_str
-                        .as_ref()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(run_id); // Default to run_id for backwards compatibility
-
-                    let parent_run_id_str: Option<String> = row.get("parent_run_id");
-                    let parent_run_id = parent_run_id_str
-                        .as_ref()
-                        .and_then(|s| Uuid::parse_str(s).ok());
-
-                    let details = RunDetails {
-                        summary: RunSummary {
-                            run_id,
-                            flow_name,
-                            flow_id,
-                            status,
-                            items,
-                            created_at,
-                            completed_at,
-                            root_run_id,
-                            parent_run_id,
-                        },
-                        inputs,
-                        overrides: None, // TODO: Store and retrieve overrides from database
-                    };
-
-                    Ok(Some(details))
-                },
-                None => Ok(None),
-            }
-        }.boxed()
-    }
-
-    fn get_run_overrides(
-        &self,
-        _run_id: Uuid,
-    ) -> BoxFuture<
-        '_,
-        error_stack::Result<Option<stepflow_core::workflow::WorkflowOverrides>, StateError>,
-    > {
-        // TODO: Implement override storage/retrieval in SQL database
-        async move { Ok(None) }.boxed()
-    }
-
-    fn list_runs(
-        &self,
-        filters: &RunFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
-        let pool = self.pool.clone();
-        let filters = filters.clone();
-
-        async move {
-            // Use a subquery to get item statistics per run
-            let mut sql = r#"
-                SELECT
-                    r.id, r.flow_name, r.flow_id, r.status,
-                    r.created_at, r.completed_at,
-                    r.root_run_id, r.parent_run_id,
-                    COALESCE(i.total, 0) as item_total,
-                    COALESCE(i.running, 0) as item_running,
-                    COALESCE(i.completed, 0) as item_completed,
-                    COALESCE(i.failed, 0) as item_failed,
-                    COALESCE(i.cancelled, 0) as item_cancelled
-                FROM runs r
-                LEFT JOIN (
-                    SELECT
-                        run_id,
-                        COUNT(*) as total,
-                        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
-                        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
-                    FROM run_items
-                    GROUP BY run_id
-                ) i ON r.id = i.run_id
-            "#
-            .to_string();
-            let mut conditions = Vec::new();
-            let mut bind_values: Vec<String> = Vec::new();
-
-            if let Some(ref status) = filters.status {
-                let status_str = match status {
-                    ExecutionStatus::Running => "running",
-                    ExecutionStatus::Completed => "completed",
-                    ExecutionStatus::Failed => "failed",
-                    ExecutionStatus::Cancelled => "cancelled",
-                    ExecutionStatus::Paused => "paused",
-                };
-                conditions.push("r.status = ?".to_string());
-                bind_values.push(status_str.to_string());
-            }
-
-            if let Some(ref flow_name) = filters.flow_name {
-                conditions.push("r.flow_name = ?".to_string());
-                bind_values.push(flow_name.clone());
-            }
-
-            if let Some(root_run_id) = filters.root_run_id {
-                conditions.push("r.root_run_id = ?".to_string());
-                bind_values.push(root_run_id.to_string());
-            }
-
-            if let Some(parent_run_id) = filters.parent_run_id {
-                conditions.push("r.parent_run_id = ?".to_string());
-                bind_values.push(parent_run_id.to_string());
-            }
-
-            if !conditions.is_empty() {
-                sql.push_str(" WHERE ");
-                sql.push_str(&conditions.join(" AND "));
-            }
-
-            sql.push_str(" ORDER BY r.created_at DESC");
-
-            if let Some(limit) = filters.limit {
-                sql.push_str(" LIMIT ");
-                sql.push_str(&limit.to_string());
-
-                if let Some(offset) = filters.offset {
-                    sql.push_str(" OFFSET ");
-                    sql.push_str(&offset.to_string());
-                }
-            }
-
-            let mut query = sqlx::query(&sql);
-            for value in bind_values {
-                query = query.bind(value);
-            }
-
-            let rows = query
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            let mut summaries = Vec::new();
-            for row in rows {
-                let run_id_str: String = row.get("id");
-                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
-
-                let status_str: String = row.get("status");
-                let status = match status_str.as_str() {
-                    "running" => ExecutionStatus::Running,
-                    "completed" => ExecutionStatus::Completed,
-                    "failed" => ExecutionStatus::Failed,
-                    "paused" => ExecutionStatus::Paused,
-                    _ => ExecutionStatus::Running,
-                };
-
-                let flow_name = row.get::<Option<String>, _>("flow_name");
-                let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
-                    .change_context(StateError::Internal)?;
-
-                let items = ItemStatistics {
-                    total: row.get::<i64, _>("item_total") as usize,
-                    running: row.get::<i64, _>("item_running") as usize,
-                    completed: row.get::<i64, _>("item_completed") as usize,
-                    failed: row.get::<i64, _>("item_failed") as usize,
-                    cancelled: row.get::<i64, _>("item_cancelled") as usize,
-                };
-
-                let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                let completed_at = row
-                    .get::<Option<String>, _>("completed_at")
-                    .and_then(|s| parse_sqlite_datetime(&s));
-
-                // Parse hierarchy fields
-                let root_run_id_str: Option<String> = row.get("root_run_id");
-                let root_run_id = root_run_id_str
-                    .as_ref()
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                    .unwrap_or(run_id); // Default to run_id for backwards compatibility
-
-                let parent_run_id_str: Option<String> = row.get("parent_run_id");
-                let parent_run_id = parent_run_id_str
-                    .as_ref()
-                    .and_then(|s| Uuid::parse_str(s).ok());
-
-                let summary = RunSummary {
-                    run_id,
-                    flow_name,
-                    flow_id,
-                    status,
-                    items,
-                    created_at,
-                    completed_at,
-                    root_run_id,
-                    parent_run_id,
-                };
-
-                summaries.push(summary);
-            }
-
-            Ok(summaries)
-        }
-        .boxed()
     }
 
     // Step Status Management
@@ -1036,135 +1252,292 @@ impl StateStore for SqliteStateStore {
             Ok(step_infos)
         }.boxed()
     }
+}
 
-    fn get_item_results(
+impl ExecutionJournal for SqliteStateStore {
+    fn append(
         &self,
-        run_id: Uuid,
-        order: ResultOrder,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        entry: JournalEntry,
+    ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
         let pool = self.pool.clone();
-        let run_id_str = run_id.to_string();
 
         async move {
-            // Choose ordering based on order parameter
-            let order_clause = match order {
-                ResultOrder::ByIndex => "ORDER BY item_index",
-                ResultOrder::ByCompletion => {
-                    // Items with completed_at first (sorted by time), then incomplete items by index
-                    "ORDER BY CASE WHEN completed_at IS NULL THEN 1 ELSE 0 END, completed_at, item_index"
-                }
-            };
-
-            let sql = format!(
-                "SELECT item_index, status, result_json, completed_at FROM run_items WHERE run_id = ? {}",
-                order_clause
-            );
-
-            let rows = sqlx::query(&sql)
-                .bind(&run_id_str)
-                .fetch_all(&pool)
+            // Get the next sequence number for this root run's journal.
+            // All events for an execution tree share the same journal keyed by root_run_id.
+            let max_seq_sql =
+                "SELECT COALESCE(MAX(sequence), -1) as max_seq FROM journal_entries WHERE root_run_id = ?";
+            let row = sqlx::query(max_seq_sql)
+                .bind(entry.root_run_id.to_string())
+                .fetch_one(&pool)
                 .await
                 .change_context(StateError::Internal)?;
 
-            let mut items = Vec::new();
-            for row in rows {
-                let item_index: i64 = row.get("item_index");
-                let status_str: String = row.get("status");
-                let status = match status_str.as_str() {
-                    "completed" => ExecutionStatus::Completed,
-                    "failed" => ExecutionStatus::Failed,
-                    "cancelled" => ExecutionStatus::Cancelled,
-                    _ => ExecutionStatus::Running,
-                };
+            let max_seq: i64 = row.get("max_seq");
+            let next_seq = SequenceNumber::new((max_seq + 1) as u64);
 
-                let result = if let Some(result_json) = row.get::<Option<String>, _>("result_json")
-                {
-                    let flow_result: FlowResult = serde_json::from_str(&result_json)
-                        .change_context(StateError::Serialization)?;
-                    Some(flow_result)
-                } else {
-                    None
-                };
+            // Serialize the event
+            let event_type = match &entry.event {
+                stepflow_state::JournalEvent::RunCreated { .. } => "run_created",
+                stepflow_state::JournalEvent::RunInitialized { .. } => "run_initialized",
+                stepflow_state::JournalEvent::RunCompleted { .. } => "run_completed",
+                stepflow_state::JournalEvent::TaskCompleted { .. } => "task_completed",
+                stepflow_state::JournalEvent::StepsUnblocked { .. } => "steps_unblocked",
+                stepflow_state::JournalEvent::ItemCompleted { .. } => "item_completed",
+            };
 
-                let completed_at = row
-                    .get::<Option<String>, _>("completed_at")
-                    .and_then(|s| parse_sqlite_datetime(&s));
+            let event_data =
+                serde_json::to_string(&entry.event).change_context(StateError::Serialization)?;
 
-                items.push(ItemResult {
-                    item_index: item_index as usize,
-                    status,
-                    result,
-                    completed_at,
-                });
-            }
+            let timestamp = entry.timestamp.to_rfc3339();
 
-            Ok(items)
+            let insert_sql = r#"
+                INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data, synced)
+                VALUES (?, ?, ?, ?, ?, ?, 0)
+            "#;
+
+            sqlx::query(insert_sql)
+                .bind(entry.run_id.to_string())
+                .bind(next_seq.value() as i64)
+                .bind(entry.root_run_id.to_string())
+                .bind(&timestamp)
+                .bind(event_type)
+                .bind(&event_data)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(next_seq)
         }
         .boxed()
     }
 
-    fn wait_for_completion(
+    fn read_from(
         &self,
-        run_id: Uuid,
+        root_run_id: Uuid,
+        from_sequence: SequenceNumber,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            // Read all entries for this root run's journal (across all runs in the tree)
+            let sql = r#"
+                SELECT run_id, sequence, timestamp, event_data
+                FROM journal_entries
+                WHERE root_run_id = ? AND sequence >= ?
+                ORDER BY sequence
+                LIMIT ?
+            "#;
+
+            let rows = sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .bind(from_sequence.value() as i64)
+                .bind(limit as i64)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut entries = Vec::new();
+            for row in rows {
+                let sequence = SequenceNumber::new(row.get::<i64, _>("sequence") as u64);
+                let run_id_str: String = row.get("run_id");
+                let run_id =
+                    Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
+                let timestamp_str: String = row.get("timestamp");
+                let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+                    .change_context(StateError::Internal)?
+                    .with_timezone(&chrono::Utc);
+                let event_data: String = row.get("event_data");
+                let event: stepflow_state::JournalEvent =
+                    serde_json::from_str(&event_data).change_context(StateError::Serialization)?;
+
+                let entry = JournalEntry {
+                    run_id,
+                    root_run_id,
+                    timestamp,
+                    event,
+                };
+
+                entries.push((sequence, entry));
+            }
+
+            Ok(entries)
+        }
+        .boxed()
+    }
+
+    fn latest_sequence(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT MAX(sequence) as max_seq FROM journal_entries WHERE root_run_id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .fetch_one(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let max_seq: Option<i64> = row.get("max_seq");
+            Ok(max_seq.map(|s| SequenceNumber::new(s as u64)))
+        }
+        .boxed()
+    }
+
+    fn checkpoint(
+        &self,
+        root_run_id: Uuid,
+        sequence: SequenceNumber,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT status FROM runs WHERE id = ?";
+            // Checkpoints are keyed by root_run_id (one checkpoint per execution tree)
+            let sql = r#"
+                INSERT INTO journal_checkpoints (root_run_id, checkpoint_sequence, checkpointed_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(root_run_id) DO UPDATE SET
+                    checkpoint_sequence = excluded.checkpoint_sequence,
+                    checkpointed_at = excluded.checkpointed_at
+            "#;
 
-            // Subscribe BEFORE checking status to avoid race condition where
-            // completion happens between status check and subscribe
-            let receiver = self.completion_notifier.subscribe();
+            let now = chrono::Utc::now().to_rfc3339();
 
-            // Now check if already complete
+            sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .bind(sequence.value() as i64)
+                .bind(&now)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            // Mark entries up to checkpoint as synced
+            let mark_synced_sql = r#"
+                UPDATE journal_entries
+                SET synced = 1
+                WHERE root_run_id = ? AND sequence <= ?
+            "#;
+
+            sqlx::query(mark_synced_sql)
+                .bind(root_run_id.to_string())
+                .bind(sequence.value() as i64)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_checkpoint(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "SELECT checkpoint_sequence FROM journal_checkpoints WHERE root_run_id = ?";
+
             let row = sqlx::query(sql)
-                .bind(run_id.to_string())
+                .bind(root_run_id.to_string())
                 .fetch_optional(&pool)
                 .await
                 .change_context(StateError::Internal)?;
 
-            match row {
-                Some(row) => {
-                    let status_str: String = row.get("status");
-                    if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
-                        return Ok(());
-                    }
-                }
-                None => {
-                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
-                }
-            }
+            Ok(row.map(|r| SequenceNumber::new(r.get::<i64, _>("checkpoint_sequence") as u64)))
+        }
+        .boxed()
+    }
 
-            // Wait for notification using the receiver we subscribed before status check
-            self.completion_notifier
-                .wait_for_completion_with_receiver(run_id, receiver)
-                .await;
+    fn compact(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
 
-            // After receiving our notification, poll until we see the terminal status.
-            // We should only receive our run_id's notification once, so if the status
-            // isn't terminal yet (due to timing), just poll rather than waiting again.
-            loop {
-                let row = sqlx::query(sql)
-                    .bind(run_id.to_string())
-                    .fetch_optional(&pool)
+        async move {
+            // Get the checkpoint sequence for this root run
+            let checkpoint_sql =
+                "SELECT checkpoint_sequence FROM journal_checkpoints WHERE root_run_id = ?";
+
+            let row = sqlx::query(checkpoint_sql)
+                .bind(root_run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            if let Some(row) = row {
+                let checkpoint_seq: i64 = row.get("checkpoint_sequence");
+
+                // Delete entries before the checkpoint for this root run
+                let delete_sql =
+                    "DELETE FROM journal_entries WHERE root_run_id = ? AND sequence < ?";
+
+                sqlx::query(delete_sql)
+                    .bind(root_run_id.to_string())
+                    .bind(checkpoint_seq)
+                    .execute(&pool)
                     .await
                     .change_context(StateError::Internal)?;
-
-                match row {
-                    Some(row) => {
-                        let status_str: String = row.get("status");
-                        if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
-                            return Ok(());
-                        }
-                    }
-                    None => {
-                        return Err(error_stack::report!(StateError::RunNotFound { run_id }));
-                    }
-                }
-
-                // Brief yield to allow the status update to propagate
-                tokio::task::yield_now().await;
             }
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn list_active_roots(
+        &self,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            // Get all root runs that have journal entries, along with their statistics.
+            // Group by root_run_id since all events for an execution tree share one journal.
+            let sql = r#"
+                SELECT
+                    j.root_run_id,
+                    MAX(j.sequence) as latest_sequence,
+                    c.checkpoint_sequence,
+                    SUM(CASE WHEN j.synced = 0 THEN 1 ELSE 0 END) as unsynced_count
+                FROM journal_entries j
+                LEFT JOIN journal_checkpoints c ON j.root_run_id = c.root_run_id
+                GROUP BY j.root_run_id
+            "#;
+
+            let rows = sqlx::query(sql)
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut infos = Vec::new();
+            for row in rows {
+                let root_run_id_str: String = row.get("root_run_id");
+                let root_run_id =
+                    Uuid::parse_str(&root_run_id_str).change_context(StateError::Internal)?;
+
+                let latest_sequence =
+                    SequenceNumber::new(row.get::<i64, _>("latest_sequence") as u64);
+
+                let checkpoint_sequence = row
+                    .get::<Option<i64>, _>("checkpoint_sequence")
+                    .map(|s| SequenceNumber::new(s as u64));
+
+                let unsynced_count = row.get::<i64, _>("unsynced_count") as u64;
+
+                infos.push(RootJournalInfo {
+                    root_run_id,
+                    latest_sequence,
+                    checkpoint_sequence,
+                    unsynced_count,
+                });
+            }
+
+            Ok(infos)
         }
         .boxed()
     }

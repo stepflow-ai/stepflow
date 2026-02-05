@@ -240,7 +240,7 @@ spec:
 - Multiple orchestrator instances (with PostgreSQL)
 - Durable execution with fault tolerance
 
-See [Configuration - State Store](../configuration.md#state-store-configuration) for details.
+See [Persistence and Recovery](./persistence-recovery.md) for the full architecture, and [Configuration - State Store](../configuration.md#state-store-configuration) for configuration options.
 
 ## Best Practices
 
@@ -277,6 +277,7 @@ Design for resilience:
 
 ## Next Steps
 
+- **[Persistence and Recovery](./persistence-recovery.md)** - Durable execution and crash recovery
 - **[Load Balancer](./load-balancer.md)** - Detailed load balancer documentation
 - **[Configuration](../configuration.md)** - Configure routing and plugins
 - **[Variables](../flows/variables.md)** - Environment-specific workflow parameters

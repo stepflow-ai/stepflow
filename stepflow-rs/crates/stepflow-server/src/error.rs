@@ -106,6 +106,23 @@ impl From<ServerError> for ErrorResponse {
     }
 }
 
+/// Map execution errors to appropriate HTTP status codes
+fn execution_error_status_code(err: &stepflow_execution::ExecutionError) -> StatusCode {
+    use stepflow_execution::ExecutionError;
+    match err {
+        // Client errors (4xx)
+        ExecutionError::OverrideError => StatusCode::BAD_REQUEST,
+        ExecutionError::AnalysisError => StatusCode::BAD_REQUEST,
+        ExecutionError::MalformedReference { .. } => StatusCode::BAD_REQUEST,
+        ExecutionError::ExecutionNotFound(_) | ExecutionError::RunNotFound => StatusCode::NOT_FOUND,
+        ExecutionError::WorkflowNotFound(_) => StatusCode::NOT_FOUND,
+        ExecutionError::BlobNotFound { .. } => StatusCode::NOT_FOUND,
+        ExecutionError::StepNotFound { .. } => StatusCode::NOT_FOUND,
+        // Server errors (5xx) - default for everything else
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
 impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
     fn from(report: error_stack::Report<T>) -> ErrorResponse {
         let code = report
@@ -115,6 +132,11 @@ impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
                 report
                     .downcast_ref::<ServerError>()
                     .map(ServerError::status_code)
+            })
+            .or_else(|| {
+                report
+                    .downcast_ref::<stepflow_execution::ExecutionError>()
+                    .map(execution_error_status_code)
             })
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 

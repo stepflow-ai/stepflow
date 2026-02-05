@@ -13,11 +13,26 @@
 mod completion_notifier;
 mod environment_ext;
 mod error;
+mod execution_journal;
 mod in_memory;
+pub mod journal_compliance;
+mod lease_manager;
+mod lease_types;
+pub mod metadata_compliance;
+mod metadata_store;
+mod noop_lease_manager;
 mod state_store;
 
 pub use completion_notifier::RunCompletionNotifier;
-pub use environment_ext::StateStoreExt;
+pub use environment_ext::{ExecutionJournalExt, LeaseManagerExt, StateStoreExt};
 pub use error::{Result, StateError};
+pub use execution_journal::{
+    ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, RootJournalInfo, SequenceNumber,
+    SyncResult,
+};
 pub use in_memory::InMemoryStateStore;
+pub use lease_manager::{LeaseError, LeaseManager, LeaseResult};
+pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, OrphanedRun, RunRecoveryInfo};
+pub use metadata_store::MetadataStore;
+pub use noop_lease_manager::NoOpLeaseManager;
 pub use state_store::{CreateRunParams, StateStore, StateWriteOperation};

@@ -30,6 +30,7 @@
 mod error;
 mod executor;
 mod flow_executor;
+mod recovery;
 mod run_state;
 mod scheduler;
 mod state;
@@ -56,3 +57,6 @@ pub use task::{Task, TaskResult};
 
 // Step execution
 pub use step_runner::{StepMetadata, StepRunResult};
+
+// Recovery
+pub use recovery::{RecoveryResult, recover_pending_runs};

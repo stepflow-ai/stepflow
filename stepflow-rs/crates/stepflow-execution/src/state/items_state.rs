@@ -136,12 +136,6 @@ impl ItemsState {
         &mut self.items[item_index as usize]
     }
 
-    /// Mark a task as currently executing.
-    pub fn mark_executing(&mut self, task: Task) {
-        self.item_mut(task.item_index)
-            .mark_executing(task.step_index);
-    }
-
     /// Complete a task and record its result.
     ///
     /// Returns the set of newly unblocked step indices for this item.
@@ -181,7 +175,7 @@ impl ItemsState {
         let item = self.item(task.item_index);
         newly_unblocked
             .into_iter()
-            .filter(|step_idx| item.ready_steps().contains(*step_idx))
+            .filter(|step_idx| item.schedulable_steps().contains(*step_idx))
             .map(|step_idx| Task::new(self.run_id, task.item_index, step_idx))
             .collect()
     }
@@ -204,7 +198,7 @@ impl ItemsState {
     /// Used for deadlock detection: if not complete and no ready tasks
     /// (and nothing in-flight), we have a deadlock.
     pub fn has_ready_tasks(&self) -> bool {
-        self.items.iter().any(|item| !item.ready_steps().is_empty())
+        self.items.iter().any(|item| !item.schedulable_steps().is_empty())
     }
 
     /// Get all ready tasks across all items.
@@ -216,8 +210,8 @@ impl ItemsState {
             .iter()
             .enumerate()
             .flat_map(|(item_index, item)| {
-                let ready_steps: Vec<usize> = item.ready_steps().iter().collect();
-                ready_steps
+                let schedulable_steps: Vec<usize> = item.schedulable_steps().iter().collect();
+                schedulable_steps
                     .into_iter()
                     .map(move |step_index| Task::new(run_id, item_index as u32, step_index))
             })
@@ -243,21 +237,46 @@ impl ItemsState {
     /// output expression and marking must_execute steps. Updates the incomplete
     /// counter if the item becomes incomplete (has needed steps).
     pub fn initialize_item(&mut self, item_index: u32) -> Vec<Task> {
-        let item = self.item_mut(item_index);
-        let was_complete = item.is_complete();
+        let item = self.item(item_index);
         let flow = item.flow().clone();
 
-        // Evaluate output's needed_steps
-        let output_needs = flow.output().needed_steps(item);
-        for idx in output_needs.iter() {
-            item.add_or_update_needed(idx);
+        // Collect needed step indices by evaluating output expression and must_execute
+        let mut step_indices = Vec::new();
+
+        // From output expression
+        for idx in flow.output().needed_steps(item).iter() {
+            step_indices.push(idx);
         }
 
-        // Add must_execute steps
+        // From must_execute
         for (idx, step) in flow.steps().iter().enumerate() {
-            if step.must_execute() {
-                item.add_or_update_needed(idx);
+            if step.must_execute() && !step_indices.contains(&idx) {
+                step_indices.push(idx);
             }
+        }
+
+        // Delegate to the unified method
+        self.initialize_item_with_steps(item_index, &step_indices)
+    }
+
+    /// Initialize an item with specific needed steps.
+    ///
+    /// This is the unified method for setting up needed steps, used by both:
+    /// - Execution: after discovering steps via output expression and must_execute
+    /// - Recovery: with steps recorded in RunInitialized journal entry
+    ///
+    /// The method adds each step to the needed set and recursively discovers
+    /// dependencies, setting up the waiting_on relationships.
+    pub fn initialize_item_with_steps(
+        &mut self,
+        item_index: u32,
+        step_indices: &[usize],
+    ) -> Vec<Task> {
+        let item = self.item_mut(item_index);
+        let was_complete = item.is_complete();
+
+        for &step_idx in step_indices {
+            item.add_or_update_needed(step_idx);
         }
 
         // Update incomplete count if item became incomplete
@@ -267,7 +286,7 @@ impl ItemsState {
 
         // Return ready tasks for this item
         self.item(item_index)
-            .ready_steps()
+            .schedulable_steps()
             .iter()
             .map(|step_index| Task::new(self.run_id, item_index, step_index))
             .collect()
@@ -302,6 +321,32 @@ impl ItemsState {
         }
 
         newly_needed.iter().collect()
+    }
+
+    /// Get the needed steps for all items in a format suitable for journalling.
+    ///
+    /// Returns a vector of ItemSteps, one per item, containing the step indices
+    /// that are needed for that item.
+    pub fn needed_steps_for_journal(&self) -> Vec<stepflow_state::ItemSteps> {
+        (0..self.item_count())
+            .map(|item_index| stepflow_state::ItemSteps {
+                item_index,
+                step_indices: self.item(item_index).needed_step_indices(),
+            })
+            .collect()
+    }
+
+    // =========================================================================
+    // Recovery Methods
+    // =========================================================================
+
+    /// Apply a task completion from journal replay.
+    ///
+    /// This marks a step as completed with its result, without updating
+    /// dependency tracking. Used during recovery before `initialize_all()`.
+    pub fn apply_completed(&mut self, item_index: u32, step_index: usize, result: FlowResult) {
+        self.item_mut(item_index)
+            .apply_completed(step_index, result);
     }
 }
 
@@ -487,7 +532,6 @@ mod tests {
         assert_eq!(ready[0], Task::new(test_run_id(), 0, 0));
 
         // Complete step1
-        state.mark_executing(Task::new(test_run_id(), 0, 0));
         let newly_ready =
             state.complete_task_and_get_ready(Task::new(test_run_id(), 0, 0), success_result());
 

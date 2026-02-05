@@ -10,23 +10,28 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::{collections::HashMap, sync::Arc};
+//! StateStore trait combining MetadataStore with step-level operations.
+//!
+//! This module provides backward compatibility by combining the new `MetadataStore`
+//! trait with step-level operations that will eventually be replaced by journal-based
+//! recovery.
+
+use std::collections::HashMap;
 
 use bit_set::BitSet;
 use futures::future::{BoxFuture, FutureExt as _};
-use stepflow_core::status::{ExecutionStatus, StepStatus};
+use stepflow_core::status::StepStatus;
 use stepflow_core::{
     BlobData, BlobId, BlobType, FlowResult,
-    workflow::{Flow, ValueRef, WorkflowOverrides},
+    workflow::{ValueRef, WorkflowOverrides},
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::StateError;
+use crate::metadata_store::MetadataStore;
 
-use stepflow_dtos::{
-    ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo, StepResult,
-};
+use stepflow_dtos::{StepInfo, StepResult};
 
 /// Parameters for creating a new workflow run.
 ///
@@ -110,7 +115,10 @@ impl CreateRunParams {
     }
 }
 
-/// Write operations for async queuing
+/// Write operations for async queuing.
+///
+/// These operations are primarily for step-level results and will eventually
+/// be replaced by journal-based recording.
 #[derive(Debug)]
 pub enum StateWriteOperation {
     /// Create a new run record.
@@ -161,37 +169,24 @@ pub enum StateWriteOperation {
 
 /// Trait for storing and retrieving state data including blobs.
 ///
-/// This trait provides the foundation for both blob storage and future
-/// execution state persistence (journaling, checkpointing, etc.).
-pub trait StateStore: Send + Sync {
-    /// Store JSON data as a blob and return its content-based ID.
-    ///
-    /// The blob ID is generated as a SHA-256 hash of the JSON content,
-    /// providing deterministic IDs and automatic deduplication.
-    ///
-    /// # Arguments
-    /// * `data` - The JSON data to store as a blob
-    /// * `blob_type` - The type of blob being stored
-    ///
-    /// # Returns
-    /// The blob ID for the stored data
-    fn put_blob(
-        &self,
-        data: ValueRef,
-        blob_type: BlobType,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
-
-    /// Retrieve blob data with type information by blob ID.
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID to retrieve
-    ///
-    /// # Returns
-    /// The blob data with type information, or an error if not found
-    fn get_blob(
-        &self,
-        blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>>;
+/// This trait extends [`MetadataStore`] with step-level operations for backward
+/// compatibility. New code should prefer using `MetadataStore` directly where
+/// step-level details are not needed, as step-level state will eventually be
+/// recovered from the [`ExecutionJournal`](crate::ExecutionJournal) instead.
+///
+/// # Migration Path
+///
+/// The step-level methods (`get_step_result`, `list_step_results`, `initialize_run_steps`,
+/// `update_step_status`, `get_step_info_for_run`) are being migrated to journal-based
+/// recovery. During the transition:
+///
+/// 1. Existing code continues to use `StateStore` unchanged
+/// 2. New recovery code uses `ExecutionJournal` for step-level details
+/// 3. Eventually, step-level methods will be deprecated
+pub trait StateStore: MetadataStore + Send + Sync {
+    // =========================================================================
+    // Blob Helper Methods
+    // =========================================================================
 
     /// Retrieve blob data only if it matches the expected type.
     ///
@@ -226,7 +221,14 @@ pub trait StateStore: Send + Sync {
         .boxed()
     }
 
+    // =========================================================================
+    // Step-Level Operations (to be migrated to ExecutionJournal)
+    // =========================================================================
+
     /// Retrieve the result of a step execution by step index.
+    ///
+    /// **Note**: This method is being migrated to journal-based recovery.
+    /// New code should use `ExecutionJournal` for step-level details.
     ///
     /// # Arguments
     /// * `run_id` - The unique identifier for the workflow execution
@@ -242,6 +244,9 @@ pub trait StateStore: Send + Sync {
 
     /// List all step results for a workflow execution, ordered by step index.
     ///
+    /// **Note**: This method is being migrated to journal-based recovery.
+    /// New code should use `ExecutionJournal` for step-level details.
+    ///
     /// This is useful for workflow recovery and debugging to see which steps
     /// have completed and their results in workflow order.
     ///
@@ -255,110 +260,9 @@ pub trait StateStore: Send + Sync {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>>;
 
-    // Workflow Management Methods
-
-    /// Store a workflow as a blob and return its blob ID.
-    ///
-    /// # Arguments
-    /// * `workflow` - The workflow to store
-    ///
-    /// # Returns
-    /// The blob ID of the stored workflow
-    fn store_flow(
-        &self,
-        workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
-
-    /// Retrieve a workflow by its blob ID.
-    ///
-    /// # Arguments
-    /// * `flow_id` - The blob ID of the workflow
-    ///
-    /// # Returns
-    /// The workflow if found, or an error if not found
-    fn get_flow(
-        &self,
-        flow_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>>;
-
-    /// Create a new run record (idempotent).
-    ///
-    /// If a run with the same ID already exists, this is a no-op.
-    /// This allows callers to ensure a run exists without tracking
-    /// whether it was already created.
-    ///
-    /// # Arguments
-    /// * `params` - Parameters for creating the run
-    fn create_run(
-        &self,
-        params: CreateRunParams,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get workflow overrides for a run.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    ///
-    /// # Returns
-    /// The workflow overrides for the run (if any)
-    fn get_run_overrides(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>>;
-
-    /// Update the status of a run.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    /// * `status` - The new status
-    ///
-    /// # Returns
-    /// Success if the run was updated
-    fn update_run_status(
-        &self,
-        run_id: Uuid,
-        status: ExecutionStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Record the result of a single item in a multi-item run.
-    ///
-    /// This allows items to be persisted individually as they complete,
-    /// rather than waiting to collect all results.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    /// * `item_index` - The index of the item (0-based)
-    /// * `result` - The result of the item execution
-    fn record_item_result(
-        &self,
-        run_id: Uuid,
-        item_index: usize,
-        result: FlowResult,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get run details.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    ///
-    /// # Returns
-    /// The run details if found
-    fn get_run(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>>;
-
-    /// List runs with optional filtering.
-    ///
-    /// # Arguments
-    /// * `filters` - Optional filters for the query
-    ///
-    /// # Returns
-    /// A vector of run summaries
-    fn list_runs(
-        &self,
-        filters: &RunFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>>;
+    // =========================================================================
+    // Write Queue Operations
+    // =========================================================================
 
     /// Flush any pending write operations to persistent storage.
     ///
@@ -389,9 +293,14 @@ pub trait StateStore: Send + Sync {
     /// Success if the operation was queued successfully
     fn queue_write(&self, operation: StateWriteOperation) -> error_stack::Result<(), StateError>;
 
-    // Step Status Management
+    // =========================================================================
+    // Step Status Management (to be migrated to ExecutionJournal)
+    // =========================================================================
 
     /// Initialize step info for a run.
+    ///
+    /// **Note**: This method is being migrated to journal-based recovery.
+    /// New code should use `ExecutionJournal` for step-level details.
     ///
     /// This should be called when starting execution of a run to create
     /// initial step entries with their starting status.
@@ -402,6 +311,9 @@ pub trait StateStore: Send + Sync {
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Update the status of a single step.
+    ///
+    /// **Note**: This method is being migrated to journal-based recovery.
+    /// New code should use `ExecutionJournal` for step-level details.
     ///
     /// This operation may be queued and batched by the implementation for performance.
     /// Use `flush_pending_writes()` if immediate persistence is required.
@@ -418,43 +330,11 @@ pub trait StateStore: Send + Sync {
     );
 
     /// Get all step info for a run.
+    ///
+    /// **Note**: This method is being migrated to journal-based recovery.
+    /// New code should use `ExecutionJournal` for step-level details.
     fn get_step_info_for_run(
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, StateError>>;
-
-    // Item Result Management
-
-    /// Get all item results for a run.
-    ///
-    /// For single-item runs (item_count=1), returns a single item derived from run details.
-    /// For multi-item runs, returns results from the item_results table.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier
-    /// * `order` - How to order the results (by index or by completion time)
-    ///
-    /// # Returns
-    /// A vector of item results in the requested order
-    fn get_item_results(
-        &self,
-        run_id: Uuid,
-        order: ResultOrder,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>>;
-
-    // Run Completion
-
-    /// Wait for a run to reach a terminal status (Completed, Failed, or Cancelled).
-    ///
-    /// Returns immediately if the run is already in a terminal state.
-    /// Returns an error if the run is not found.
-    ///
-    /// This method uses efficient notification rather than polling where possible.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run identifier to wait for
-    fn wait_for_completion(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 }

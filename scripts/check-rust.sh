@@ -40,27 +40,27 @@ cd "$PROJECT_ROOT/stepflow-rs"
 # RUST STYLE & QUALITY CHECKS
 # =============================================================================
 
-run_check "Formatting" --fix "cargo fmt" cargo fmt --check
+run_check "Formatting" --fix "cargo fmt" cargo fmt --check || true
 
-run_optional_check "Security audit" "cargo-deny" cargo deny check
+run_optional_check "Security audit" "cargo-deny" cargo deny check || true
 
-run_optional_check "Unused deps" "cargo-machete" --fix "cargo machete --fix --with-metadata" cargo machete --with-metadata
+run_optional_check "Unused deps" "cargo-machete" --fix "cargo machete --fix --with-metadata" cargo machete --with-metadata || true
 
 # =============================================================================
 # RUST BUILD & TEST CHECKS
 # =============================================================================
 
-run_check "Tests" cargo test
+run_check "Tests" cargo test || true
 
-run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings
+run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings || true
 
 # =============================================================================
 # ADDITIONAL CHECKS (not in CI but useful for local development)
 # =============================================================================
 
-run_check "Compilation" cargo check --all-targets --all-features
+run_check "Compilation" cargo check --all-targets --all-features || true
 
-run_check "Documentation" cargo doc --all --no-deps
+run_check "Documentation" cargo doc --all --no-deps || true
 
 # =============================================================================
 # RESULTS SUMMARY

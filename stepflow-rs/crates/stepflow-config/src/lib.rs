@@ -22,7 +22,8 @@ use stepflow_mock::MockPlugin;
 use stepflow_plugin::routing::RoutingConfig;
 use stepflow_plugin::{DynPlugin, PluginConfig};
 use stepflow_protocol::StepflowPluginConfig;
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{ExecutionJournal, InMemoryStateStore, StateStore};
+use stepflow_state::{LeaseManager, NoOpLeaseManager};
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 use thiserror::Error;
 
@@ -50,6 +51,13 @@ pub struct StepflowConfig {
     /// State store configuration. If not specified, uses in-memory storage.
     #[serde(default)]
     pub state_store: StateStoreConfig,
+    /// Lease manager configuration for distributed coordination.
+    /// If not specified, uses no-op (single orchestrator mode).
+    #[serde(default)]
+    pub lease_manager: LeaseManagerConfig,
+    /// Recovery configuration for handling interrupted runs.
+    #[serde(default)]
+    pub recovery: RecoveryConfig,
 }
 
 impl Default for StepflowConfig {
@@ -67,6 +75,8 @@ impl Default for StepflowConfig {
             plugins,
             routing: RoutingConfig::default(),
             state_store: StateStoreConfig::default(),
+            lease_manager: LeaseManagerConfig::default(),
+            recovery: RecoveryConfig::default(),
         }
     }
 }
@@ -93,6 +103,121 @@ impl StateStoreConfig {
                     .change_context(ConfigError::Configuration)?;
                 Ok(Arc::new(store))
             }
+        }
+    }
+
+    /// Create both a StateStore and ExecutionJournal from this configuration.
+    ///
+    /// Both InMemoryStateStore and SqliteStateStore implement both traits,
+    /// so this returns Arc references to the same underlying store.
+    pub async fn create_stores(&self) -> Result<(Arc<dyn StateStore>, Arc<dyn ExecutionJournal>)> {
+        match self {
+            StateStoreConfig::InMemory => {
+                let store = Arc::new(InMemoryStateStore::new());
+                let journal: Arc<dyn ExecutionJournal> = store.clone();
+                Ok((store, journal))
+            }
+            StateStoreConfig::Sqlite(config) => {
+                let store = Arc::new(
+                    SqliteStateStore::new(config.clone())
+                        .await
+                        .change_context(ConfigError::Configuration)?,
+                );
+                let journal: Arc<dyn ExecutionJournal> = store.clone();
+                Ok((store, journal))
+            }
+        }
+    }
+}
+
+/// Configuration for the lease manager used in distributed deployments.
+///
+/// The lease manager handles run ownership in multi-orchestrator scenarios,
+/// ensuring only one orchestrator executes a given run at a time.
+#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[derive(Default)]
+pub enum LeaseManagerConfig {
+    /// No lease management (single orchestrator mode).
+    ///
+    /// This is the default for single-node deployments where there's no need
+    /// for distributed coordination. All lease requests succeed immediately.
+    #[default]
+    None,
+    // Future variants:
+    // /// etcd-based lease management for distributed deployments.
+    // Etcd(EtcdLeaseManagerConfig),
+}
+
+impl LeaseManagerConfig {
+    /// Create a LeaseManager instance from this configuration.
+    pub fn create_lease_manager(&self) -> Arc<dyn LeaseManager> {
+        match self {
+            LeaseManagerConfig::None => Arc::new(NoOpLeaseManager::new()),
+        }
+    }
+}
+
+/// Configuration for run recovery and orphan claiming.
+///
+/// Controls how the orchestrator handles interrupted runs on startup
+/// and during execution.
+#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryConfig {
+    /// Whether to enable periodic orphan claiming during execution.
+    ///
+    /// When enabled, the orchestrator will periodically check for orphaned
+    /// runs (from crashed orchestrators) and claim them for execution.
+    /// Default: true
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+
+    /// Interval in seconds between orphan check attempts.
+    ///
+    /// Only used when `enabled` is true. Lower values mean faster recovery
+    /// but more overhead. Default: 30 seconds.
+    #[serde(default = "default_check_interval_secs")]
+    pub check_interval_secs: u64,
+
+    /// Maximum number of runs to recover on startup.
+    ///
+    /// Limits how many interrupted runs are recovered when the orchestrator
+    /// starts. Set to 0 to disable startup recovery. Default: 100.
+    #[serde(default = "default_max_startup_recovery")]
+    pub max_startup_recovery: usize,
+
+    /// Maximum number of orphaned runs to claim per check interval.
+    ///
+    /// Limits how many runs are claimed in each periodic check to avoid
+    /// overwhelming a single orchestrator. Default: 10.
+    #[serde(default = "default_max_claims_per_check")]
+    pub max_claims_per_check: usize,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+fn default_check_interval_secs() -> u64 {
+    30
+}
+
+fn default_max_startup_recovery() -> usize {
+    100
+}
+
+fn default_max_claims_per_check() -> usize {
+    10
+}
+
+impl Default for RecoveryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_enabled(),
+            check_interval_secs: default_check_interval_secs(),
+            max_startup_recovery: default_max_startup_recovery(),
+            max_claims_per_check: default_max_claims_per_check(),
         }
     }
 }
@@ -166,8 +291,11 @@ impl StepflowConfig {
         use stepflow_plugin::StepflowEnvironmentBuilder;
         use stepflow_plugin::routing::PluginRouter;
 
-        // Create state store from configuration
-        let state_store = self.state_store.create_state_store().await?;
+        // Create state store and execution journal from configuration
+        let (state_store, execution_journal) = self.state_store.create_stores().await?;
+
+        // Create lease manager from configuration
+        let lease_manager = self.lease_manager.create_lease_manager();
 
         let working_directory = self
             .working_directory
@@ -195,6 +323,8 @@ impl StepflowConfig {
         // Create environment using the builder (this also initializes all plugins)
         let env = StepflowEnvironmentBuilder::new()
             .state_store(state_store)
+            .execution_journal(execution_journal)
+            .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)
             .build()

@@ -27,6 +27,18 @@ class StateStoreConfig1(Struct, kw_only=True):
     type: Literal['inMemory']
 
 
+class LeaseManagerConfig1(Struct, kw_only=True):
+    type: Literal['none']
+
+
+LeaseManagerConfig = Annotated[
+    LeaseManagerConfig1,
+    Meta(
+        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
+    ),
+]
+
+
 BuiltinPluginConfig = Any
 
 
@@ -282,6 +294,15 @@ class StepflowConfig(RoutingConfig, kw_only=True):
             StateStoreConfig,
             Meta(
                 description='State store configuration. If not specified, uses in-memory storage.'
+            ),
+        ]
+        | None
+    ) = None
+    leaseManager: (
+        Annotated[
+            LeaseManagerConfig,
+            Meta(
+                description='Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).'
             ),
         ]
         | None

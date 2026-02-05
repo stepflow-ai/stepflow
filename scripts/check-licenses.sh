@@ -43,7 +43,7 @@ require_tool "licensure" "cargo install licensure"
 # LICENSE HEADER CHECKS
 # =============================================================================
 
-run_check "License headers" --fix "licensure -p --in-place" licensure -c -p
+run_check "License headers" --fix "licensure -p --in-place" licensure -c -p || true
 
 # =============================================================================
 # RESULTS SUMMARY

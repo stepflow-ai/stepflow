@@ -16,7 +16,10 @@ use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
 
-use crate::{RunCompletionNotifier, StateStore, state_store::CreateRunParams};
+use crate::{
+    ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo, RunCompletionNotifier,
+    SequenceNumber, StateStore, state_store::CreateRunParams,
+};
 use stepflow_core::{
     FlowResult,
     blob::{BlobData, BlobId, BlobType},
@@ -89,6 +92,18 @@ impl RunState {
     }
 }
 
+/// Journal state for a single run.
+#[derive(Debug, Default)]
+struct JournalState {
+    /// Journal entries stored in order.
+    entries: Vec<JournalEntry>,
+    /// Checkpoint sequence number (entries at or before this are synced).
+    checkpoint: Option<SequenceNumber>,
+    /// Base sequence number (sequence of first entry in vec).
+    /// After compaction, this increases to reflect removed entries.
+    base_sequence: u64,
+}
+
 /// In-memory implementation of StateStore.
 ///
 /// This provides a simple, fast storage implementation suitable for
@@ -101,6 +116,9 @@ pub struct InMemoryStateStore {
     runs: DashMap<Uuid, RunState>,
     /// Notifier for run completion events
     completion_notifier: RunCompletionNotifier,
+    /// Map from root_run_id to journal state.
+    /// All events for an execution tree (parent + subflows) share the same journal.
+    journals: DashMap<Uuid, JournalState>,
 }
 
 impl InMemoryStateStore {
@@ -110,6 +128,7 @@ impl InMemoryStateStore {
             blobs: DashMap::new(),
             runs: DashMap::new(),
             completion_notifier: RunCompletionNotifier::new(),
+            journals: DashMap::new(),
         }
     }
 
@@ -223,7 +242,7 @@ impl Default for InMemoryStateStore {
     }
 }
 
-impl StateStore for InMemoryStateStore {
+impl MetadataStore for InMemoryStateStore {
     fn put_blob(
         &self,
         data: ValueRef,
@@ -260,62 +279,6 @@ impl StateStore for InMemoryStateStore {
         }
         .boxed()
     }
-
-    fn get_step_result(
-        &self,
-        run_id: Uuid,
-        step_idx: usize,
-    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
-        let run_id_str = run_id.to_string();
-
-        async move {
-            let run_state = self.runs.get(&run_id).ok_or_else(|| {
-                error_stack::report!(StateError::StepResultNotFoundByIndex {
-                    run_id: run_id_str.clone(),
-                    step_idx,
-                })
-            })?;
-
-            run_state
-                .execution
-                .step_results
-                .get(step_idx)
-                .and_then(|opt| opt.as_ref())
-                .map(|step_result| step_result.result().clone())
-                .ok_or_else(|| {
-                    error_stack::report!(StateError::StepResultNotFoundByIndex {
-                        run_id: run_id_str,
-                        step_idx,
-                    })
-                })
-        }
-        .boxed()
-    }
-
-    fn list_step_results(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
-        async move {
-            let run_state = match self.runs.get(&run_id) {
-                Some(state) => state,
-                None => return Ok(Vec::new()), // No execution found, return empty list
-            };
-
-            // Vec maintains natural ordering, so no sorting needed
-            let results: Vec<StepResult> = run_state
-                .execution
-                .step_results
-                .iter()
-                .filter_map(|opt| opt.as_ref().cloned())
-                .collect();
-
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    // Workflow Management Methods
 
     fn store_flow(
         &self,
@@ -362,16 +325,85 @@ impl StateStore for InMemoryStateStore {
         async move { Ok(()) }.boxed()
     }
 
-    fn get_run_overrides(
+    fn get_run(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
         async move {
             Ok(self
                 .runs
                 .get(&run_id)
-                .map(|run_state| run_state.details.overrides.clone())
-                .unwrap_or(None))
+                .map(|run_state| run_state.details.clone()))
+        }
+        .boxed()
+    }
+
+    fn list_runs(
+        &self,
+        filters: &RunFilters,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
+        let filters = filters.clone();
+
+        async move {
+            let mut results: Vec<RunSummary> = self
+                .runs
+                .iter()
+                .map(|entry| entry.details.summary.clone())
+                .filter(|exec| {
+                    // Apply status filter
+                    if let Some(ref status) = filters.status
+                        && &exec.status != status
+                    {
+                        return false;
+                    }
+
+                    // Apply workflow name filter
+                    if let Some(ref workflow_name) = filters.flow_name
+                        && exec.flow_name.as_ref() != Some(workflow_name)
+                    {
+                        return false;
+                    }
+
+                    // Apply root_run_id filter (get all runs in this tree)
+                    if let Some(root_run_id) = filters.root_run_id
+                        && exec.root_run_id != root_run_id
+                    {
+                        return false;
+                    }
+
+                    // Apply parent_run_id filter (get direct children of this parent)
+                    if let Some(parent_run_id) = filters.parent_run_id
+                        && exec.parent_run_id != Some(parent_run_id)
+                    {
+                        return false;
+                    }
+
+                    // Apply roots_only filter (get only top-level runs)
+                    if filters.roots_only == Some(true) && exec.parent_run_id.is_some() {
+                        return false;
+                    }
+
+                    true
+                })
+                .collect();
+
+            // Sort by creation time (newest first)
+            results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            // Apply pagination
+            if let Some(offset) = filters.offset {
+                if offset < results.len() {
+                    results = results[offset..].to_vec();
+                } else {
+                    results.clear();
+                }
+            }
+
+            if let Some(limit) = filters.limit {
+                results.truncate(limit);
+            }
+
+            Ok(results)
         }
         .boxed()
     }
@@ -401,6 +433,20 @@ impl StateStore for InMemoryStateStore {
             }
 
             Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_run_overrides(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>> {
+        async move {
+            Ok(self
+                .runs
+                .get(&run_id)
+                .map(|run_state| run_state.details.overrides.clone())
+                .unwrap_or(None))
         }
         .boxed()
     }
@@ -462,78 +508,186 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn get_run(
+    fn get_item_results(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
+        order: ResultOrder,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
         async move {
-            Ok(self
-                .runs
-                .get(&run_id)
-                .map(|run_state| run_state.details.clone()))
+            let run_state = match self.runs.get(&run_id) {
+                Some(state) => state,
+                None => return Ok(Vec::new()),
+            };
+
+            let item_count = run_state.details.summary.items.total;
+            let mut items: Vec<ItemResult> = (0..item_count)
+                .map(|idx| {
+                    let result = run_state.item_results.get(&idx).cloned();
+                    let status = match &result {
+                        Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
+                        Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
+                        None => ExecutionStatus::Running,
+                    };
+                    ItemResult {
+                        item_index: idx,
+                        status,
+                        result,
+                        completed_at: run_state.item_completed_at.get(&idx).copied(),
+                    }
+                })
+                .collect();
+
+            // Sort by completion time if requested
+            if order == ResultOrder::ByCompletion {
+                items.sort_by(|a, b| {
+                    match (&a.completed_at, &b.completed_at) {
+                        // Both have completion times - sort by time
+                        (Some(a_time), Some(b_time)) => a_time.cmp(b_time),
+                        // Items with completion time come first
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        // Neither has completion time - preserve index order
+                        (None, None) => a.item_index.cmp(&b.item_index),
+                    }
+                });
+            }
+
+            Ok(items)
         }
         .boxed()
     }
 
-    fn list_runs(
+    fn wait_for_completion(
         &self,
-        filters: &RunFilters,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
-        let filters = filters.clone();
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async move {
+            // Subscribe BEFORE checking status to avoid race condition where
+            // completion happens between status check and subscribe
+            let receiver = self.completion_notifier.subscribe();
 
+            // Now check if already complete
+            if let Some(run_state) = self.runs.get(&run_id) {
+                if matches!(
+                    run_state.details.summary.status,
+                    ExecutionStatus::Completed
+                        | ExecutionStatus::Failed
+                        | ExecutionStatus::Cancelled
+                ) {
+                    return Ok(());
+                }
+            } else {
+                return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+            }
+
+            // Wait for notification using the receiver we subscribed before status check
+            self.completion_notifier
+                .wait_for_completion_with_receiver(run_id, receiver)
+                .await;
+
+            // After receiving our notification, poll until we see the terminal status.
+            // We should only receive our run_id's notification once, so if the status
+            // isn't terminal yet (due to timing), just poll rather than waiting again.
+            loop {
+                if let Some(run_state) = self.runs.get(&run_id) {
+                    if matches!(
+                        run_state.details.summary.status,
+                        ExecutionStatus::Completed
+                            | ExecutionStatus::Failed
+                            | ExecutionStatus::Cancelled
+                    ) {
+                        return Ok(());
+                    }
+                } else {
+                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                }
+
+                // Brief yield to allow the status update to propagate
+                tokio::task::yield_now().await;
+            }
+        }
+        .boxed()
+    }
+
+    fn list_pending_runs(
+        &self,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
         async move {
             let mut results: Vec<RunSummary> = self
                 .runs
                 .iter()
                 .map(|entry| entry.details.summary.clone())
-                .filter(|exec| {
-                    // Apply status filter
-                    if let Some(ref status) = filters.status
-                        && &exec.status != status
-                    {
-                        return false;
-                    }
-
-                    // Apply workflow name filter
-                    if let Some(ref workflow_name) = filters.flow_name
-                        && exec.flow_name.as_ref() != Some(workflow_name)
-                    {
-                        return false;
-                    }
-
-                    // Apply root_run_id filter (get all runs in this tree)
-                    if let Some(root_run_id) = filters.root_run_id
-                        && exec.root_run_id != root_run_id
-                    {
-                        return false;
-                    }
-
-                    // Apply parent_run_id filter (get direct children of this parent)
-                    if let Some(parent_run_id) = filters.parent_run_id
-                        && exec.parent_run_id != Some(parent_run_id)
-                    {
-                        return false;
-                    }
-
-                    true
+                .filter(|summary| {
+                    // Non-terminal statuses that need recovery
+                    matches!(
+                        summary.status,
+                        ExecutionStatus::Running | ExecutionStatus::Paused
+                    )
                 })
                 .collect();
 
-            // Sort by creation time (newest first)
-            results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            // Sort by creation time (oldest first for recovery)
+            results.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
-            // Apply pagination
-            if let Some(offset) = filters.offset {
-                if offset < results.len() {
-                    results = results[offset..].to_vec();
-                } else {
-                    results.clear();
-                }
-            }
+            // Apply limit
+            results.truncate(limit);
 
-            if let Some(limit) = filters.limit {
-                results.truncate(limit);
-            }
+            Ok(results)
+        }
+        .boxed()
+    }
+}
+
+impl StateStore for InMemoryStateStore {
+    fn get_step_result(
+        &self,
+        run_id: Uuid,
+        step_idx: usize,
+    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
+        let run_id_str = run_id.to_string();
+
+        async move {
+            let run_state = self.runs.get(&run_id).ok_or_else(|| {
+                error_stack::report!(StateError::StepResultNotFoundByIndex {
+                    run_id: run_id_str.clone(),
+                    step_idx,
+                })
+            })?;
+
+            run_state
+                .execution
+                .step_results
+                .get(step_idx)
+                .and_then(|opt| opt.as_ref())
+                .map(|step_result| step_result.result().clone())
+                .ok_or_else(|| {
+                    error_stack::report!(StateError::StepResultNotFoundByIndex {
+                        run_id: run_id_str,
+                        step_idx,
+                    })
+                })
+        }
+        .boxed()
+    }
+
+    fn list_step_results(
+        &self,
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
+        async move {
+            let run_state = match self.runs.get(&run_id) {
+                Some(state) => state,
+                None => return Ok(Vec::new()), // No execution found, return empty list
+            };
+
+            // Vec maintains natural ordering, so no sorting needed
+            let results: Vec<StepResult> = run_state
+                .execution
+                .step_results
+                .iter()
+                .filter_map(|opt| opt.as_ref().cloned())
+                .collect();
 
             Ok(results)
         }
@@ -643,104 +797,175 @@ impl StateStore for InMemoryStateStore {
         }
         .boxed()
     }
+}
 
-    fn get_item_results(
+impl ExecutionJournal for InMemoryStateStore {
+    fn append(
         &self,
-        run_id: Uuid,
-        order: ResultOrder,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>> {
+        entry: JournalEntry,
+    ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, crate::StateError>> {
         async move {
-            let run_state = match self.runs.get(&run_id) {
-                Some(state) => state,
-                None => return Ok(Vec::new()),
-            };
-
-            let item_count = run_state.details.summary.items.total;
-            let mut items: Vec<ItemResult> = (0..item_count)
-                .map(|idx| {
-                    let result = run_state.item_results.get(&idx).cloned();
-                    let status = match &result {
-                        Some(FlowResult::Success(_)) => ExecutionStatus::Completed,
-                        Some(FlowResult::Failed(_)) => ExecutionStatus::Failed,
-                        None => ExecutionStatus::Running,
-                    };
-                    ItemResult {
-                        item_index: idx,
-                        status,
-                        result,
-                        completed_at: run_state.item_completed_at.get(&idx).copied(),
-                    }
-                })
-                .collect();
-
-            // Sort by completion time if requested
-            if order == ResultOrder::ByCompletion {
-                items.sort_by(|a, b| {
-                    match (&a.completed_at, &b.completed_at) {
-                        // Both have completion times - sort by time
-                        (Some(a_time), Some(b_time)) => a_time.cmp(b_time),
-                        // Items with completion time come first
-                        (Some(_), None) => std::cmp::Ordering::Less,
-                        (None, Some(_)) => std::cmp::Ordering::Greater,
-                        // Neither has completion time - preserve index order
-                        (None, None) => a.item_index.cmp(&b.item_index),
-                    }
-                });
-            }
-
-            Ok(items)
+            // Key by root_run_id so all events for an execution tree share one journal
+            let mut journal = self.journals.entry(entry.root_run_id).or_default();
+            // Sequence number is base + current length
+            let sequence = SequenceNumber::new(journal.base_sequence + journal.entries.len() as u64);
+            journal.entries.push(entry);
+            Ok(sequence)
         }
         .boxed()
     }
 
-    fn wait_for_completion(
+    fn read_from(
         &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        root_run_id: Uuid,
+        from_sequence: SequenceNumber,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, crate::StateError>>
+    {
         async move {
-            // Subscribe BEFORE checking status to avoid race condition where
-            // completion happens between status check and subscribe
-            let receiver = self.completion_notifier.subscribe();
+            let journal = match self.journals.get(&root_run_id) {
+                Some(j) => j,
+                None => return Ok(Vec::new()),
+            };
 
-            // Now check if already complete
-            if let Some(run_state) = self.runs.get(&run_id) {
-                if matches!(
-                    run_state.details.summary.status,
-                    ExecutionStatus::Completed
-                        | ExecutionStatus::Failed
-                        | ExecutionStatus::Cancelled
-                ) {
-                    return Ok(());
-                }
+            // Convert sequence number to vec index
+            let from_seq_val = from_sequence.value();
+            let start_idx = if from_seq_val >= journal.base_sequence {
+                (from_seq_val - journal.base_sequence) as usize
             } else {
-                return Err(error_stack::report!(StateError::RunNotFound { run_id }));
-            }
+                0 // Requested sequence was compacted away, start from beginning
+            };
 
-            // Wait for notification using the receiver we subscribed before status check
-            self.completion_notifier
-                .wait_for_completion_with_receiver(run_id, receiver)
-                .await;
+            let entries: Vec<_> = journal
+                .entries
+                .iter()
+                .enumerate()
+                .skip(start_idx)
+                .take(limit)
+                .map(|(idx, entry)| {
+                    // Convert vec index back to sequence number
+                    let seq = SequenceNumber::new(journal.base_sequence + idx as u64);
+                    (seq, entry.clone())
+                })
+                .collect();
 
-            // After receiving our notification, poll until we see the terminal status.
-            // We should only receive our run_id's notification once, so if the status
-            // isn't terminal yet (due to timing), just poll rather than waiting again.
-            loop {
-                if let Some(run_state) = self.runs.get(&run_id) {
-                    if matches!(
-                        run_state.details.summary.status,
-                        ExecutionStatus::Completed
-                            | ExecutionStatus::Failed
-                            | ExecutionStatus::Cancelled
-                    ) {
-                        return Ok(());
-                    }
+            Ok(entries)
+        }
+        .boxed()
+    }
+
+    fn latest_sequence(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
+        async move {
+            let result = self.journals.get(&root_run_id).and_then(|journal| {
+                if journal.entries.is_empty() {
+                    None
                 } else {
-                    return Err(error_stack::report!(StateError::RunNotFound { run_id }));
+                    // Latest sequence is base + (length - 1)
+                    Some(SequenceNumber::new(
+                        journal.base_sequence + (journal.entries.len() - 1) as u64,
+                    ))
+                }
+            });
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn checkpoint(
+        &self,
+        root_run_id: Uuid,
+        sequence: SequenceNumber,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        async move {
+            if let Some(mut journal) = self.journals.get_mut(&root_run_id) {
+                journal.checkpoint = Some(sequence);
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_checkpoint(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
+        async move {
+            let result = self
+                .journals
+                .get(&root_run_id)
+                .and_then(|journal| journal.checkpoint);
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn compact(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        async move {
+            if let Some(mut journal) = self.journals.get_mut(&root_run_id)
+                && let Some(checkpoint) = journal.checkpoint
+            {
+                // Only compact entries that exist in our vec
+                // Checkpoint sequence must be >= base_sequence to have entries to remove
+                if checkpoint.value() >= journal.base_sequence {
+                    // Calculate how many entries to remove (all entries before checkpoint)
+                    let entries_to_remove =
+                        (checkpoint.value() - journal.base_sequence) as usize;
+                    if entries_to_remove > 0 && entries_to_remove <= journal.entries.len() {
+                        journal.entries.drain(0..entries_to_remove);
+                        // Update base_sequence to reflect removed entries
+                        journal.base_sequence = checkpoint.value();
+                    }
+                }
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn list_active_roots(
+        &self,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, crate::StateError>> {
+        async move {
+            let mut infos = Vec::new();
+
+            for entry in self.journals.iter() {
+                let root_run_id = *entry.key();
+                let journal = entry.value();
+
+                if journal.entries.is_empty() {
+                    continue;
                 }
 
-                // Brief yield to allow the status update to propagate
-                tokio::task::yield_now().await;
+                // Latest sequence is base + (length - 1)
+                let latest_sequence = SequenceNumber::new(
+                    journal.base_sequence + (journal.entries.len() - 1) as u64,
+                );
+
+                // Count unsynced entries (entries after checkpoint)
+                let unsynced_count = match journal.checkpoint {
+                    Some(cp) => {
+                        // Unsynced = latest_sequence - checkpoint
+                        // (entries at checkpoint and before are synced)
+                        latest_sequence.value().saturating_sub(cp.value())
+                    }
+                    None => journal.entries.len() as u64,
+                };
+
+                infos.push(RootJournalInfo {
+                    root_run_id,
+                    latest_sequence,
+                    checkpoint_sequence: journal.checkpoint,
+                    unsynced_count,
+                });
             }
+
+            Ok(infos)
         }
         .boxed()
     }

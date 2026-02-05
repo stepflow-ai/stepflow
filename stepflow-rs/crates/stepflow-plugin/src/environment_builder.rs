@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{ExecutionJournal, InMemoryStateStore, LeaseManager, StateStore};
 
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
@@ -41,6 +41,8 @@ use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 /// ```
 pub struct StepflowEnvironmentBuilder {
     state_store: Option<Arc<dyn StateStore>>,
+    execution_journal: Option<Arc<dyn ExecutionJournal>>,
+    lease_manager: Option<Arc<dyn LeaseManager>>,
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
 }
@@ -56,6 +58,8 @@ impl StepflowEnvironmentBuilder {
     pub fn new() -> Self {
         Self {
             state_store: None,
+            execution_journal: None,
+            lease_manager: None,
             working_directory: None,
             plugin_router: None,
         }
@@ -64,6 +68,26 @@ impl StepflowEnvironmentBuilder {
     /// Set the state store.
     pub fn state_store(mut self, store: Arc<dyn StateStore>) -> Self {
         self.state_store = Some(store);
+        self
+    }
+
+    /// Set the execution journal for recovery.
+    ///
+    /// If not set, journalling is disabled. For implementations where
+    /// the state store also implements ExecutionJournal (like InMemoryStateStore
+    /// or SqliteStateStore), you can pass the same object as both.
+    pub fn execution_journal(mut self, journal: Arc<dyn ExecutionJournal>) -> Self {
+        self.execution_journal = Some(journal);
+        self
+    }
+
+    /// Set the lease manager for distributed run coordination.
+    ///
+    /// If not set, no lease management is performed (single-orchestrator mode).
+    /// For distributed deployments, use an implementation like etcd-based
+    /// lease management to coordinate run ownership across orchestrators.
+    pub fn lease_manager(mut self, manager: Arc<dyn LeaseManager>) -> Self {
+        self.lease_manager = Some(manager);
         self
     }
 
@@ -101,6 +125,12 @@ impl StepflowEnvironmentBuilder {
 
         let mut env = StepflowEnvironment::new();
         env.insert(state_store);
+        if let Some(journal) = self.execution_journal {
+            env.insert(journal);
+        }
+        if let Some(lease_manager) = self.lease_manager {
+            env.insert(lease_manager);
+        }
         env.insert(working_directory);
         env.insert(plugin_router);
 
@@ -121,13 +151,17 @@ impl StepflowEnvironmentBuilder {
     ///
     /// This creates an environment with an in-memory state store,
     /// current directory as working directory, and empty plugin router.
+    /// The in-memory state store is also used as the execution journal.
     pub async fn build_in_memory() -> Result<Arc<StepflowEnvironment>> {
         let plugin_router = PluginRouter::builder()
             .build()
             .change_context(PluginError::Initializing)?;
 
+        let store = Arc::new(InMemoryStateStore::new());
+
         Self::new()
-            .state_store(Arc::new(InMemoryStateStore::new()))
+            .state_store(store.clone())
+            .execution_journal(store)
             .working_directory(PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()
