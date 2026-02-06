@@ -33,7 +33,8 @@ use stepflow_core::{BlobId, GetRunParams, SubmitRunParams, status::ExecutionStat
 use stepflow_dtos::RunStatus;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    CreateRunParams, ExecutionJournalExt as _, JournalEntry, JournalEvent, StateStoreExt as _,
+    ActiveExecutionsExt as _, CreateRunParams, ExecutionJournalExt as _, JournalEntry,
+    JournalEvent, StateStoreExt as _,
 };
 use uuid::Uuid;
 
@@ -44,7 +45,7 @@ use uuid::Uuid;
 /// block until the run finishes.
 ///
 /// # Arguments
-/// * `env` - The stepflow environment containing state store and plugins
+/// * `env` - The stepflow environment containing state store, plugins, and active executions tracker
 /// * `flow` - The workflow to execute
 /// * `flow_id` - The blob ID of the flow
 /// * `inputs` - Input values for each item in the run
@@ -83,39 +84,31 @@ pub async fn submit_run(
         .change_context(ExecutionError::StateStoreError)?;
 
     // Journal: Record run creation
-    if let Some(journal) = env.execution_journal() {
-        let entry = JournalEntry::new(
-            run_id,
-            run_id, // For root runs, root_run_id == run_id
-            JournalEvent::RunCreated {
-                flow_id: flow_id.clone(),
-                inputs: inputs.clone(),
-                variables: params.variables.clone().unwrap_or_default(),
-                parent_run_id: None,
-            },
-        );
-        if let Err(e) = journal.append(entry).await {
-            log::warn!(
-                "Failed to write RunCreated journal entry for run {}: {:?}",
-                run_id,
-                e
-            );
-        }
-    }
+    let journal = env.execution_journal();
+    let entry = JournalEntry::new(
+        run_id,
+        run_id, // For root runs, root_run_id == run_id
+        JournalEvent::RunCreated {
+            flow_id: flow_id.clone(),
+            inputs: inputs.clone(),
+            variables: params.variables.clone().unwrap_or_default(),
+            parent_run_id: None,
+        },
+    );
+    journal
+        .append(entry)
+        .await
+        .change_context(ExecutionError::JournalError)?;
 
-    // Apply overrides to the flow if provided
-    let flow_with_overrides = if params.overrides.is_empty() {
-        flow.clone()
-    } else {
-        match apply_overrides(flow.clone(), &params.overrides) {
-            Ok(f) => f,
-            Err(e) => {
-                log::error!("Failed to apply overrides: {:?}", e);
-                let _ = state_store
-                    .update_run_status(run_id, ExecutionStatus::Failed)
-                    .await;
-                return Err(e.change_context(ExecutionError::OverrideError));
-            }
+    // Apply overrides to the flow (returns unchanged if empty)
+    let flow_with_overrides = match apply_overrides(flow.clone(), &params.overrides) {
+        Ok(f) => f,
+        Err(e) => {
+            log::error!("Failed to apply overrides: {:?}", e);
+            let _ = state_store
+                .update_run_status(run_id, ExecutionStatus::Failed)
+                .await;
+            return Err(e.change_context(ExecutionError::OverrideError));
         }
     };
 
@@ -132,7 +125,11 @@ pub async fn submit_run(
     // Spawn background task for execution using FlowExecutor
     let env_clone = env.clone();
 
-    tokio::spawn(async move {
+    // Get active executions tracker from environment
+    let active_executions = env.active_executions().clone();
+    let active_executions_for_cleanup = active_executions.clone();
+
+    let handle = tokio::spawn(async move {
         use stepflow_observability::fastrace::prelude::*;
 
         // Create span for run execution
@@ -148,7 +145,7 @@ pub async fn submit_run(
         async move {
             // Create FlowExecutor with the pre-built RunState
             let mut flow_executor =
-                match crate::flow_executor::FlowExecutorBuilder::new(env_clone.clone(), run_state)
+                match crate::FlowExecutorBuilder::new(env_clone.clone(), run_state)
                     .max_concurrency(max_concurrency)
                     .scheduler(Box::new(crate::DepthFirstScheduler::new()))
                     .build()
@@ -178,8 +175,14 @@ pub async fn submit_run(
             );
         }
         .in_span(run_span)
-        .await
+        .await;
+
+        // Remove ourselves from active executions tracking
+        active_executions_for_cleanup.remove(&run_id);
     });
+
+    // Track the execution
+    active_executions.track(run_id, handle);
 
     // Return current status (will be Running since we just spawned the task)
     get_run(env, run_id, GetRunParams::default()).await

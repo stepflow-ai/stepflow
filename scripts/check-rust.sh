@@ -39,6 +39,9 @@ cd "$PROJECT_ROOT/stepflow-rs"
 # =============================================================================
 # RUST STYLE & QUALITY CHECKS
 # =============================================================================
+# NOTE: Each check uses `|| true` to continue running all checks even when one fails.
+# Failures are tracked by run_check in FAILED_CHECKS array and reported via print_summary,
+# which returns the appropriate exit code at the end of the script.
 
 run_check "Formatting" --fix "cargo fmt" cargo fmt --check || true
 

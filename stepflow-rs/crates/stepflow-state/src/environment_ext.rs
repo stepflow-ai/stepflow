@@ -10,13 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Extension traits for StateStore, ExecutionJournal, and LeaseManager access in StepflowEnvironment.
+//! Extension traits for StateStore, ExecutionJournal, LeaseManager, and ActiveExecutions
+//! access in StepflowEnvironment.
 
 use std::sync::Arc;
 
 use stepflow_core::StepflowEnvironment;
 
-use crate::{ExecutionJournal, LeaseManager, StateStore};
+use crate::{ActiveExecutions, ExecutionJournal, LeaseManager, StateStore};
 
 /// Extension trait providing StateStore access for StepflowEnvironment.
 ///
@@ -67,13 +68,16 @@ impl StateStoreExt for StepflowEnvironment {
 pub trait ExecutionJournalExt {
     /// Get a reference to the execution journal.
     ///
-    /// Returns `None` if no journal was configured (e.g., journalling disabled).
-    fn execution_journal(&self) -> Option<&Arc<dyn ExecutionJournal>>;
+    /// # Panics
+    ///
+    /// Panics if execution journal was not set during environment construction.
+    fn execution_journal(&self) -> &Arc<dyn ExecutionJournal>;
 }
 
 impl ExecutionJournalExt for StepflowEnvironment {
-    fn execution_journal(&self) -> Option<&Arc<dyn ExecutionJournal>> {
+    fn execution_journal(&self) -> &Arc<dyn ExecutionJournal> {
         self.get::<Arc<dyn ExecutionJournal>>()
+            .expect("ExecutionJournal not set in environment")
     }
 }
 
@@ -105,6 +109,38 @@ pub trait LeaseManagerExt {
 impl LeaseManagerExt for StepflowEnvironment {
     fn lease_manager(&self) -> Option<&Arc<dyn LeaseManager>> {
         self.get::<Arc<dyn LeaseManager>>()
+    }
+}
+
+/// Extension trait providing ActiveExecutions access for StepflowEnvironment.
+///
+/// This trait allows crates that need to track running executions to import this
+/// extension and call `env.active_executions()` without requiring stepflow-core
+/// to have any knowledge of the ActiveExecutions type.
+///
+/// # Example
+///
+/// ```ignore
+/// use stepflow_state::ActiveExecutionsExt;
+///
+/// fn check_active_runs(env: &StepflowEnvironment) {
+///     let active = env.active_executions();
+///     println!("Currently running: {} executions", active.count());
+/// }
+/// ```
+pub trait ActiveExecutionsExt {
+    /// Get a reference to the active executions tracker.
+    ///
+    /// # Panics
+    ///
+    /// Panics if active executions was not set during environment construction.
+    fn active_executions(&self) -> &ActiveExecutions;
+}
+
+impl ActiveExecutionsExt for StepflowEnvironment {
+    fn active_executions(&self) -> &ActiveExecutions {
+        self.get::<ActiveExecutions>()
+            .expect("ActiveExecutions not set in environment")
     }
 }
 
@@ -142,14 +178,14 @@ mod tests {
 
         // Use the extension trait
         let retrieved = env.execution_journal();
-        assert!(retrieved.is_some());
-        assert!(Arc::strong_count(retrieved.unwrap()) >= 1);
+        assert!(Arc::strong_count(retrieved) >= 1);
     }
 
     #[test]
-    fn test_execution_journal_ext_returns_none_if_not_set() {
+    #[should_panic(expected = "ExecutionJournal not set")]
+    fn test_execution_journal_ext_panics_if_not_set() {
         let env = StepflowEnvironment::new();
-        assert!(env.execution_journal().is_none());
+        let _ = env.execution_journal();
     }
 
     #[test]
@@ -170,5 +206,23 @@ mod tests {
     fn test_lease_manager_ext_returns_none_if_not_set() {
         let env = StepflowEnvironment::new();
         assert!(env.lease_manager().is_none());
+    }
+
+    #[test]
+    fn test_active_executions_ext() {
+        let mut env = StepflowEnvironment::new();
+        let active = ActiveExecutions::new();
+        env.insert(active);
+
+        // Use the extension trait
+        let retrieved = env.active_executions();
+        assert!(retrieved.is_empty());
+    }
+
+    #[test]
+    #[should_panic(expected = "ActiveExecutions not set")]
+    fn test_active_executions_ext_panics_if_not_set() {
+        let env = StepflowEnvironment::new();
+        let _ = env.active_executions();
     }
 }

@@ -28,7 +28,7 @@ class StateStoreConfig1(Struct, kw_only=True):
 
 
 class LeaseManagerConfig1(Struct, kw_only=True):
-    type: Literal['none']
+    type: Literal['noOp']
 
 
 LeaseManagerConfig = Annotated[
@@ -37,6 +37,48 @@ LeaseManagerConfig = Annotated[
         description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
     ),
 ]
+
+
+class RecoveryConfig(Struct, kw_only=True):
+    enabled: (
+        Annotated[
+            bool,
+            Meta(
+                description='Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true'
+            ),
+        ]
+        | None
+    ) = None
+    checkIntervalSecs: (
+        Annotated[
+            int,
+            Meta(
+                description='Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
+    maxStartupRecovery: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
+    maxClaimsPerCheck: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
 
 
 BuiltinPluginConfig = Any
@@ -304,6 +346,13 @@ class StepflowConfig(RoutingConfig, kw_only=True):
             Meta(
                 description='Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).'
             ),
+        ]
+        | None
+    ) = None
+    recovery: (
+        Annotated[
+            RecoveryConfig,
+            Meta(description='Recovery configuration for handling interrupted runs.'),
         ]
         | None
     ) = None

@@ -29,14 +29,13 @@
 //! # Example
 //!
 //! ```ignore
-//! use stepflow_execution::recover_pending_runs;
+//! use stepflow_execution::recover_orphaned_runs;
 //!
-//! // On startup, recover any pending runs
-//! let recovered = recover_pending_runs(
-//!     &env,
-//!     &lease_manager,
+//! // On startup, recover any orphaned runs
+//! let recovered = recover_orphaned_runs(
+//!     &env,            // environment with LeaseManager and ActiveExecutions
 //!     orchestrator_id,
-//!     100, // max runs to recover
+//!     100,             // max runs to recover
 //! ).await?;
 //!
 //! println!("Recovered {} runs", recovered);
@@ -47,8 +46,8 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    ExecutionJournal, ExecutionJournalExt as _, LeaseManager, MetadataStore, OrchestratorId,
-    SequenceNumber, StateStoreExt as _,
+    ActiveExecutionsExt as _, ExecutionJournal, ExecutionJournalExt as _, LeaseManagerExt as _,
+    MetadataStore, OrchestratorId, SequenceNumber, StateStoreExt as _,
 };
 
 use crate::{ExecutionError, Result, RunState};
@@ -100,28 +99,29 @@ impl RecoveryResult {
 /// 2. For each run, loads the flow and replays journal events
 /// 3. Resumes execution from where it left off
 ///
+/// If no lease manager is configured (single-orchestrator mode), returns
+/// an empty result immediately since there's no distributed coordination.
+///
 /// # Arguments
-/// * `env` - The Stepflow environment
-/// * `lease_manager` - The lease manager for claiming runs
+/// * `env` - The Stepflow environment (must have ActiveExecutions configured)
 /// * `orchestrator_id` - This orchestrator's ID
 /// * `limit` - Maximum number of runs to recover
 ///
 /// # Returns
 /// A `RecoveryResult` describing what was recovered
-pub async fn recover_pending_runs(
+pub async fn recover_orphaned_runs(
     env: &Arc<StepflowEnvironment>,
-    lease_manager: &Arc<dyn LeaseManager>,
     orchestrator_id: OrchestratorId,
     limit: usize,
 ) -> Result<RecoveryResult> {
-    let state_store = env.state_store();
-    let journal = match env.execution_journal() {
-        Some(j) => j,
-        None => {
-            log::info!("No execution journal configured, skipping recovery");
-            return Ok(RecoveryResult::new());
-        }
+    // Get lease manager from environment - if not configured, no recovery needed
+    let Some(lease_manager) = env.lease_manager() else {
+        log::debug!("No lease manager configured, skipping recovery");
+        return Ok(RecoveryResult::new());
     };
+
+    let state_store = env.state_store();
+    let journal = env.execution_journal();
 
     // Claim runs for recovery
     let runs_to_recover = lease_manager
@@ -253,46 +253,37 @@ async fn recover_single_run(
         return Ok(());
     }
 
-    // Resume execution using FlowExecutor with the recovered state
-    let env_clone = env.clone();
+    // Build the FlowExecutor with the recovered state
+    let mut flow_executor = crate::FlowExecutorBuilder::new(env.clone(), run_state)
+        .skip_validation() // Already validated before crash
+        .scheduler(Box::new(crate::DepthFirstScheduler::new()))
+        .build()
+        .await
+        .change_context(ExecutionError::RecoveryFailed)?;
 
-    tokio::spawn(async move {
-        // Create FlowExecutor with the recovered state
-        // This preserves completed tasks and resumes from where we left off
-        let mut flow_executor =
-            match crate::flow_executor::FlowExecutorBuilder::new(env_clone.clone(), run_state)
-                .skip_validation() // Already validated before crash
-                .scheduler(Box::new(crate::DepthFirstScheduler::new()))
-                .build()
-                .await
-            {
-                Ok(executor) => executor,
-                Err(e) => {
-                    log::error!(
-                        "Failed to build FlowExecutor for recovered run {}: {:?}",
-                        run_id,
-                        e
-                    );
-                    let _ = env_clone
-                        .state_store()
-                        .update_run_status(run_id, stepflow_core::status::ExecutionStatus::Failed)
-                        .await;
-                    return;
-                }
-            };
+    // Get active executions tracker from environment and spawn the recovered run
+    let active_executions = env.active_executions().clone();
+    let root_run_id = flow_executor.root_run_id();
 
-        // Execute to completion
-        if let Err(e) = flow_executor.execute_to_completion().await {
-            log::error!("Recovered run {} failed during execution: {:?}", run_id, e);
-            return;
+    let handle = tokio::spawn(async move {
+        match flow_executor.execute_to_completion().await {
+            Ok(()) => {
+                log::info!(
+                    "Recovered run {} completed with {} items",
+                    run_id,
+                    flow_executor.state().item_count()
+                );
+            }
+            Err(e) => {
+                log::error!("Recovered run {} failed during execution: {:?}", run_id, e);
+            }
         }
-
-        log::info!(
-            "Recovered run {} completed with {} items",
-            run_id,
-            flow_executor.state().item_count()
-        );
+        // Remove from active executions on completion
+        active_executions.remove(&root_run_id);
     });
+
+    // Track the execution
+    env.active_executions().track(root_run_id, handle);
 
     Ok(())
 }

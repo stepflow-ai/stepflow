@@ -12,17 +12,15 @@
 
 use std::io::Read as _;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 
 use clap::Parser;
 use error_stack::{Report, ResultExt as _};
 use log::{info, warn};
-use stepflow_config::{RecoveryConfig, StepflowConfig};
-use stepflow_execution::recover_pending_runs;
+use stepflow_config::StepflowConfig;
+use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
-use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::{LeaseManager, LeaseManagerExt as _, OrchestratorId};
+use stepflow_server::{orphan_claiming_loop, shutdown_signal};
+use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -82,121 +80,6 @@ async fn load_config(config_path: Option<PathBuf>, config_stdin: bool) -> Result
     }
 }
 
-/// Background task that periodically checks for and claims orphaned runs.
-async fn orphan_claiming_loop(
-    env: Arc<StepflowEnvironment>,
-    lease_manager: Arc<dyn LeaseManager>,
-    orchestrator_id: OrchestratorId,
-    config: RecoveryConfig,
-    cancel_token: CancellationToken,
-) {
-    if !config.enabled {
-        info!("Periodic orphan claiming is disabled");
-        return;
-    }
-
-    let interval = Duration::from_secs(config.check_interval_secs);
-    info!(
-        "Starting orphan claiming loop: interval={}s, max_claims={}",
-        config.check_interval_secs, config.max_claims_per_check
-    );
-
-    // Check if the lease manager supports push-based orphan notification
-    if let Some(mut orphan_receiver) = lease_manager.watch_orphans() {
-        info!("Using push-based orphan notification");
-        loop {
-            tokio::select! {
-                _ = cancel_token.cancelled() => {
-                    info!("Orphan claiming loop cancelled (watch mode)");
-                    break;
-                }
-                Some(run_id) = orphan_receiver.recv() => {
-                    info!("Received orphan notification for run {}", run_id);
-                    // Claim and recover this specific orphan
-                    match recover_pending_runs(
-                        &env,
-                        &lease_manager,
-                        orchestrator_id.clone(),
-                        1, // Just this one run
-                    ).await {
-                        Ok(result) => {
-                            if result.recovered > 0 {
-                                info!("Recovered orphaned run {}", run_id);
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Failed to recover orphaned run {}: {:?}", run_id, e);
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        // Fall back to polling mode
-        info!("Using polling-based orphan detection");
-        let mut interval_timer = tokio::time::interval(interval);
-        interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-        loop {
-            tokio::select! {
-                _ = cancel_token.cancelled() => {
-                    info!("Orphan claiming loop cancelled (polling mode)");
-                    break;
-                }
-                _ = interval_timer.tick() => {
-                    match recover_pending_runs(
-                        &env,
-                        &lease_manager,
-                        orchestrator_id.clone(),
-                        config.max_claims_per_check,
-                    ).await {
-                        Ok(result) => {
-                            if result.recovered > 0 || result.failed > 0 {
-                                info!(
-                                    "Periodic recovery: {} recovered, {} failed",
-                                    result.recovered, result.failed
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Periodic orphan claiming failed: {:?}", e);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Wait for shutdown signal (Ctrl+C or SIGTERM).
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {
-            info!("Received Ctrl+C, initiating graceful shutdown");
-        }
-        _ = terminate => {
-            info!("Received SIGTERM, initiating graceful shutdown");
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -250,9 +133,8 @@ async fn main() {
                     orchestrator_id.as_str()
                 );
 
-                let recovery_result = recover_pending_runs(
+                let recovery_result = recover_orphaned_runs(
                     &executor,
-                    lease_manager,
                     orchestrator_id.clone(),
                     recovery_config.max_startup_recovery,
                 )
@@ -296,7 +178,14 @@ async fn main() {
         cancel_token.cancel();
         if let Some(task) = orphan_task {
             info!("Waiting for background tasks to complete...");
-            let _ = task.await;
+            match task.await {
+                Ok(()) => {
+                    info!("Orphan claiming task exited normally");
+                }
+                Err(e) => {
+                    warn!("Orphan claiming task panicked: {:?}", e);
+                }
+            }
         }
 
         // TODO: Release leases for any runs still in progress

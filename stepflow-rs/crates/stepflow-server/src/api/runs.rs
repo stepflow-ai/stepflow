@@ -488,7 +488,10 @@ pub async fn cancel_run(
 
     // Check if execution can be cancelled
     match execution.summary.status {
-        ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
+        ExecutionStatus::Completed
+        | ExecutionStatus::Failed
+        | ExecutionStatus::Cancelled
+        | ExecutionStatus::RecoveryFailed => {
             return Err(error_stack::report!(ServerError::ExecutionNotCancellable {
                 run_id,
                 status: execution.summary.status
@@ -546,7 +549,10 @@ pub async fn delete_run(
         ExecutionStatus::Running | ExecutionStatus::Paused => {
             return Err(error_stack::report!(ServerError::ExecutionStillRunning(run_id)).into());
         }
-        ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
+        ExecutionStatus::Completed
+        | ExecutionStatus::Failed
+        | ExecutionStatus::Cancelled
+        | ExecutionStatus::RecoveryFailed => {
             // TODO: Implement actual execution deletion logic
             // This should remove execution record and all associated step results
             // For now, this is a placeholder

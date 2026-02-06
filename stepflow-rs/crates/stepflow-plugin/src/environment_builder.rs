@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
-use stepflow_state::{ExecutionJournal, InMemoryStateStore, LeaseManager, StateStore};
+use stepflow_state::{
+    ActiveExecutions, ExecutionJournal, InMemoryStateStore, LeaseManager, NoOpJournal, StateStore,
+};
 
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
@@ -73,9 +75,10 @@ impl StepflowEnvironmentBuilder {
 
     /// Set the execution journal for recovery.
     ///
-    /// If not set, journalling is disabled. For implementations where
-    /// the state store also implements ExecutionJournal (like InMemoryStateStore
-    /// or SqliteStateStore), you can pass the same object as both.
+    /// If not set, a no-op journal is used (events are discarded).
+    /// For implementations where the state store also implements
+    /// ExecutionJournal (like InMemoryStateStore or SqliteStateStore),
+    /// you can pass the same object as both.
     pub fn execution_journal(mut self, journal: Arc<dyn ExecutionJournal>) -> Self {
         self.execution_journal = Some(journal);
         self
@@ -123,16 +126,22 @@ impl StepflowEnvironmentBuilder {
                 .attach_printable("plugin_router is required")
         })?;
 
+        // Use provided journal or default to no-op (discards events)
+        let journal: Arc<dyn ExecutionJournal> = self
+            .execution_journal
+            .unwrap_or_else(|| Arc::new(NoOpJournal::new()));
+
         let mut env = StepflowEnvironment::new();
         env.insert(state_store);
-        if let Some(journal) = self.execution_journal {
-            env.insert(journal);
-        }
+        env.insert(journal);
         if let Some(lease_manager) = self.lease_manager {
             env.insert(lease_manager);
         }
         env.insert(working_directory);
         env.insert(plugin_router);
+
+        // Always create ActiveExecutions for tracking running executions
+        env.insert(ActiveExecutions::new());
 
         let env = Arc::new(env);
 
