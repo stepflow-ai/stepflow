@@ -91,7 +91,10 @@ mod tests {
         assert_eq!(ExecutionStatus::Failed.to_string(), "failed");
         assert_eq!(ExecutionStatus::Cancelled.to_string(), "cancelled");
         assert_eq!(ExecutionStatus::Paused.to_string(), "paused");
-        assert_eq!(ExecutionStatus::RecoveryFailed.to_string(), "recoveryFailed");
+        assert_eq!(
+            ExecutionStatus::RecoveryFailed.to_string(),
+            "recoveryFailed"
+        );
     }
 
     #[test]

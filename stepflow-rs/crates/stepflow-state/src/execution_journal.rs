@@ -203,7 +203,6 @@ pub enum JournalEvent {
         /// The item result.
         result: FlowResult,
     },
-
     // Note: Subflow events are not needed as a separate category.
     // Subflows are tracked via their own RunCreated events with parent_run_id set.
     // Since all events for an execution tree share the same journal (keyed by root_run_id),

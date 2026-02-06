@@ -198,7 +198,9 @@ impl ItemsState {
     /// Used for deadlock detection: if not complete and no ready tasks
     /// (and nothing in-flight), we have a deadlock.
     pub fn has_ready_tasks(&self) -> bool {
-        self.items.iter().any(|item| !item.schedulable_steps().is_empty())
+        self.items
+            .iter()
+            .any(|item| !item.schedulable_steps().is_empty())
     }
 
     /// Get all ready tasks across all items.

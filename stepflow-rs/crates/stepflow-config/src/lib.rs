@@ -113,8 +113,8 @@ impl StepflowConfig {
 
     /// Create a StepflowEnvironment from this configuration
     pub async fn create_environment(self) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
-        use stepflow_plugin::routing::PluginRouter;
         use stepflow_plugin::StepflowEnvironmentBuilder;
+        use stepflow_plugin::routing::PluginRouter;
 
         // Create state store and execution journal from configuration
         let (state_store, execution_journal) = self.state_store.create_stores().await?;

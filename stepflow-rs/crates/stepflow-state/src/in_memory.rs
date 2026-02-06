@@ -880,8 +880,7 @@ impl ExecutionJournal for InMemoryStateStore {
                 }
 
                 // Latest sequence is length - 1
-                let latest_sequence =
-                    SequenceNumber::new((journal.entries.len() - 1) as u64);
+                let latest_sequence = SequenceNumber::new((journal.entries.len() - 1) as u64);
 
                 infos.push(RootJournalInfo {
                     root_run_id,

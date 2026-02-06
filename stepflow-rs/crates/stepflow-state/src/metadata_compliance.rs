@@ -271,7 +271,10 @@ impl MetadataComplianceTests {
 
         let result = store.get_blob(&fake_id).await;
 
-        assert!(result.is_err(), "get_blob with unknown ID should return error");
+        assert!(
+            result.is_err(),
+            "get_blob with unknown ID should return error"
+        );
     }
 
     // =========================================================================
@@ -425,7 +428,10 @@ impl MetadataComplianceTests {
             .await
             .expect("list_runs should succeed");
 
-        assert!(runs.is_empty(), "Should return empty list when no runs match");
+        assert!(
+            runs.is_empty(),
+            "Should return empty list when no runs match"
+        );
     }
 
     /// Test that list_runs filters by status correctly.
@@ -447,11 +453,21 @@ impl MetadataComplianceTests {
         store.create_run(params).await.unwrap();
 
         // Create run2 and run3 as subflows of run1 so we can filter by root_run_id
-        let params =
-            CreateRunParams::new_subflow(run2_id, flow_id.clone(), vec![ValueRef::new(json!({}))], run1_id, run1_id);
+        let params = CreateRunParams::new_subflow(
+            run2_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            run1_id,
+            run1_id,
+        );
         store.create_run(params).await.unwrap();
-        let params =
-            CreateRunParams::new_subflow(run3_id, flow_id.clone(), vec![ValueRef::new(json!({}))], run1_id, run1_id);
+        let params = CreateRunParams::new_subflow(
+            run3_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            run1_id,
+            run1_id,
+        );
         store.create_run(params).await.unwrap();
 
         // Update statuses
@@ -505,8 +521,13 @@ impl MetadataComplianceTests {
         // Create 4 more subflows under the same root
         for _ in 0..4 {
             let run_id = Uuid::now_v7();
-            let params =
-                CreateRunParams::new_subflow(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))], root_id, root_id);
+            let params = CreateRunParams::new_subflow(
+                run_id,
+                flow_id.clone(),
+                vec![ValueRef::new(json!({}))],
+                root_id,
+                root_id,
+            );
             store.create_run(params).await.unwrap();
         }
 
@@ -601,7 +622,11 @@ impl MetadataComplianceTests {
 
         // Create an unrelated root run (should not be returned)
         let other_root_id = Uuid::now_v7();
-        let params = CreateRunParams::new(other_root_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            other_root_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+        );
         store.create_run(params).await.unwrap();
 
         // List all runs under our root
@@ -618,7 +643,10 @@ impl MetadataComplianceTests {
         assert!(run_ids.contains(&root_id), "Should include root run");
         assert!(run_ids.contains(&sub1_id), "Should include first subflow");
         assert!(run_ids.contains(&sub2_id), "Should include second subflow");
-        assert!(!run_ids.contains(&other_root_id), "Should not include unrelated root");
+        assert!(
+            !run_ids.contains(&other_root_id),
+            "Should not include unrelated root"
+        );
     }
 
     /// Test finding direct children using parent_run_id filter.
@@ -682,7 +710,10 @@ impl MetadataComplianceTests {
         assert!(run_ids.contains(&child1_id), "Should include first child");
         assert!(run_ids.contains(&child2_id), "Should include second child");
         assert!(!run_ids.contains(&root_id), "Should not include root");
-        assert!(!run_ids.contains(&grandchild_id), "Should not include grandchild");
+        assert!(
+            !run_ids.contains(&grandchild_id),
+            "Should not include grandchild"
+        );
 
         // List children of child1 (should only be grandchild)
         let filters = RunFilters {
@@ -728,7 +759,7 @@ impl MetadataComplianceTests {
             grandchild_id,
             flow_id.clone(),
             vec![ValueRef::new(json!({}))],
-            root_id, // same root
+            root_id,  // same root
             child_id, // parent is child
         );
         store.create_run(params).await.unwrap();
@@ -749,7 +780,10 @@ impl MetadataComplianceTests {
 
         // Verify hierarchy relationships
         let grandchild_run = store.get_run(grandchild_id).await.unwrap().unwrap();
-        assert_eq!(grandchild_run.summary.root_run_id, root_id, "Grandchild should point to root");
+        assert_eq!(
+            grandchild_run.summary.root_run_id, root_id,
+            "Grandchild should point to root"
+        );
         assert_eq!(
             grandchild_run.summary.parent_run_id,
             Some(child_id),
@@ -770,10 +804,12 @@ impl MetadataComplianceTests {
         let root1_id = Uuid::now_v7();
         let root2_id = Uuid::now_v7();
 
-        let params = CreateRunParams::new(root1_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params =
+            CreateRunParams::new(root1_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
         store.create_run(params).await.unwrap();
 
-        let params = CreateRunParams::new(root2_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params =
+            CreateRunParams::new(root2_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
         store.create_run(params).await.unwrap();
 
         // Create subflows under root1
@@ -1060,12 +1096,14 @@ impl MetadataComplianceTests {
 /// Create a simple test flow with one step.
 fn create_test_flow() -> stepflow_core::workflow::Flow {
     FlowBuilder::test_flow()
-        .steps(vec![StepBuilder::new("step1")
-            .component("/mock/test")
-            .input(ValueExpr::Input {
-                input: Default::default(),
-            })
-            .build()])
+        .steps(vec![
+            StepBuilder::new("step1")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build(),
+        ])
         .output(ValueExpr::Step {
             step: "step1".to_string(),
             path: Default::default(),

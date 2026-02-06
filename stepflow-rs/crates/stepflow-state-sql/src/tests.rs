@@ -429,8 +429,10 @@ async fn test_journal_subflow_shared_journal() {
 async fn sqlite_journal_compliance() {
     use stepflow_state::journal_compliance::JournalComplianceTests;
 
-    JournalComplianceTests::run_all_isolated(|| async { SqliteStateStore::in_memory().await.unwrap() })
-        .await;
+    JournalComplianceTests::run_all_isolated(|| async {
+        SqliteStateStore::in_memory().await.unwrap()
+    })
+    .await;
 }
 
 // =========================================================================
@@ -441,6 +443,8 @@ async fn sqlite_journal_compliance() {
 async fn sqlite_metadata_compliance() {
     use stepflow_state::metadata_compliance::MetadataComplianceTests;
 
-    MetadataComplianceTests::run_all_isolated(|| async { SqliteStateStore::in_memory().await.unwrap() })
-        .await;
+    MetadataComplianceTests::run_all_isolated(|| async {
+        SqliteStateStore::in_memory().await.unwrap()
+    })
+    .await;
 }

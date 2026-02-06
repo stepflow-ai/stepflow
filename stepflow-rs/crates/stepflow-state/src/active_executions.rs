@@ -135,11 +135,7 @@ impl ActiveExecutions {
     /// Useful for graceful shutdown where you want to let in-progress work complete.
     pub async fn wait_for_all(&self) {
         // Collect handles to avoid holding the lock while awaiting
-        let handles: Vec<_> = self
-            .executions
-            .iter()
-            .map(|entry| *entry.key())
-            .collect();
+        let handles: Vec<_> = self.executions.iter().map(|entry| *entry.key()).collect();
 
         for root_run_id in handles {
             // Wait for each to complete by checking if it's still in the map

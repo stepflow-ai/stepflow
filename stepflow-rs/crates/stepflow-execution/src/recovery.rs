@@ -236,9 +236,9 @@ async fn recover_single_run(
     };
 
     // Apply events to reconstruct state
-    run_entries
-        .iter()
-        .for_each(|(_, entry)| { run_state.apply_event(&entry.event); });
+    run_entries.iter().for_each(|(_, entry)| {
+        run_state.apply_event(&entry.event);
+    });
 
     log::info!(
         "Replayed {} journal events for run {}, complete={}",

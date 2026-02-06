@@ -729,7 +729,6 @@ mod tests {
     use crate::flow_executor_builder::FlowExecutorBuilder;
     use crate::scheduler::{BreadthFirstScheduler, DepthFirstScheduler};
     use crate::testing::{MockExecutorBuilder, create_executor_with_behaviors, create_linear_flow};
-    use stepflow_state::StateStoreExt as _;
     use serde_json::json;
     use stepflow_core::status::ExecutionStatus;
     use stepflow_core::values::ValueRef;
@@ -737,6 +736,7 @@ mod tests {
     use stepflow_core::workflow::StepBuilder;
     use stepflow_core::{BlobId, ValueExpr};
     use stepflow_dtos::ResultOrder;
+    use stepflow_state::StateStoreExt as _;
 
     /// Helper to create a RunState for tests with a single input.
     fn create_run_state(flow: Arc<Flow>, flow_id: BlobId, input: ValueRef) -> RunState {

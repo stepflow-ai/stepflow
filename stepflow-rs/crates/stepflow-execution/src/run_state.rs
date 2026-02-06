@@ -743,7 +743,13 @@ mod tests {
         assert!(recovery_state.items_state().item(0).is_completed(0));
 
         // Both should have step 1 ready (since step 0 is complete)
-        assert!(exec_state.items_state().item(0).schedulable_steps().contains(1));
+        assert!(
+            exec_state
+                .items_state()
+                .item(0)
+                .schedulable_steps()
+                .contains(1)
+        );
         assert!(
             recovery_state
                 .items_state()
@@ -832,12 +838,20 @@ mod tests {
         );
 
         // Apply all events
-        events.iter().for_each(|e| { recovery_state.apply_event(e); });
+        events.iter().for_each(|e| {
+            recovery_state.apply_event(e);
+        });
 
         // After all events, both states should be equivalent
         assert!(recovery_state.is_complete());
         // No schedulable tasks when complete
-        assert!(recovery_state.items_state().item(0).schedulable_steps().is_empty());
+        assert!(
+            recovery_state
+                .items_state()
+                .item(0)
+                .schedulable_steps()
+                .is_empty()
+        );
 
         // Verify all steps are completed with correct results
         let exec_item = exec_state.items_state().item(0);
@@ -892,10 +906,17 @@ mod tests {
             inputs.clone(),
             HashMap::new(),
         );
-        events.iter().for_each(|e| { recovery_state.apply_event(e); });
+        events.iter().for_each(|e| {
+            recovery_state.apply_event(e);
+        });
 
         // After recovery, step2 should be schedulable (step1 completed, step2 unblocked)
-        let schedulable: Vec<_> = recovery_state.items_state().item(0).schedulable_steps().iter().collect();
+        let schedulable: Vec<_> = recovery_state
+            .items_state()
+            .item(0)
+            .schedulable_steps()
+            .iter()
+            .collect();
         assert_eq!(schedulable.len(), 1);
         assert_eq!(schedulable[0], 1); // step index 1
 

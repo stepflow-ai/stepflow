@@ -1350,8 +1350,7 @@ impl ExecutionJournal for SqliteStateStore {
             for row in rows {
                 let sequence = SequenceNumber::new(row.get::<i64, _>("sequence") as u64);
                 let run_id_str: String = row.get("run_id");
-                let run_id =
-                    Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
+                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
                 let timestamp_str: String = row.get("timestamp");
                 let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
                     .change_context(StateError::Internal)?

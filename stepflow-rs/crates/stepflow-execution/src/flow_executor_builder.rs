@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use stepflow_plugin::{subflow_channel, StepflowEnvironment};
+use stepflow_plugin::{StepflowEnvironment, subflow_channel};
 use stepflow_state::{CreateRunParams, StateStoreExt as _};
 
 use crate::flow_executor::FlowExecutor;

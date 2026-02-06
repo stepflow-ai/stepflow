@@ -27,7 +27,9 @@ mod state_store;
 
 pub use active_executions::ActiveExecutions;
 pub use completion_notifier::RunCompletionNotifier;
-pub use environment_ext::{ActiveExecutionsExt, ExecutionJournalExt, LeaseManagerExt, StateStoreExt};
+pub use environment_ext::{
+    ActiveExecutionsExt, ExecutionJournalExt, LeaseManagerExt, StateStoreExt,
+};
 pub use error::{Result, StateError};
 pub use execution_journal::{
     ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, RootJournalInfo, SequenceNumber,

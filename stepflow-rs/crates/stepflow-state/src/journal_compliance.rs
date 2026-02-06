@@ -192,13 +192,11 @@ impl JournalComplianceTests {
         assert_eq!(entries.len(), 5, "Should have 5 entries");
 
         // Verify order
-        for i in 0..entries.len() {
+        for (i, item) in entries.iter().enumerate() {
             assert_eq!(
-                entries[i].0.value(),
+                item.0.value(),
                 i as u64,
-                "Entry {} should have sequence {}",
-                i,
-                i
+                "Entry {i} should have sequence {i}"
             );
         }
     }
@@ -507,7 +505,11 @@ impl JournalComplianceTests {
             .read_from(root_run_id, SequenceNumber::new(0), 100)
             .await
             .expect("read_from should succeed");
-        assert_eq!(all_entries.len(), 4, "Should have 4 entries in shared journal");
+        assert_eq!(
+            all_entries.len(),
+            4,
+            "Should have 4 entries in shared journal"
+        );
 
         // Filter for parent events
         let parent_entries: Vec<_> = all_entries
@@ -528,7 +530,10 @@ impl JournalComplianceTests {
             .list_active_roots()
             .await
             .expect("list_active_roots should succeed");
-        let our_root = roots.iter().filter(|r| r.root_run_id == root_run_id).count();
+        let our_root = roots
+            .iter()
+            .filter(|r| r.root_run_id == root_run_id)
+            .count();
         assert_eq!(
             our_root, 1,
             "Should have exactly one root journal entry for this execution tree"
@@ -624,27 +629,66 @@ impl JournalComplianceTests {
         // since timestamps will differ)
         for (i, (_, entry)) in entries.iter().enumerate() {
             match (&entry.event, &events[i]) {
-                (JournalEvent::RunCreated { flow_id: f1, .. }, JournalEvent::RunCreated { flow_id: f2, .. }) => {
+                (
+                    JournalEvent::RunCreated { flow_id: f1, .. },
+                    JournalEvent::RunCreated { flow_id: f2, .. },
+                ) => {
                     assert_eq!(f1, f2, "RunCreated flow_id should match");
                 }
-                (JournalEvent::RunInitialized { needed_steps: n1 }, JournalEvent::RunInitialized { needed_steps: n2 }) => {
-                    assert_eq!(n1.len(), n2.len(), "RunInitialized needed_steps length should match");
+                (
+                    JournalEvent::RunInitialized { needed_steps: n1 },
+                    JournalEvent::RunInitialized { needed_steps: n2 },
+                ) => {
+                    assert_eq!(
+                        n1.len(),
+                        n2.len(),
+                        "RunInitialized needed_steps length should match"
+                    );
                 }
-                (JournalEvent::TaskCompleted { item_index: i1, step_index: s1, .. }, JournalEvent::TaskCompleted { item_index: i2, step_index: s2, .. }) => {
+                (
+                    JournalEvent::TaskCompleted {
+                        item_index: i1,
+                        step_index: s1,
+                        ..
+                    },
+                    JournalEvent::TaskCompleted {
+                        item_index: i2,
+                        step_index: s2,
+                        ..
+                    },
+                ) => {
                     assert_eq!(i1, i2, "TaskCompleted item_index should match");
                     assert_eq!(s1, s2, "TaskCompleted step_index should match");
                 }
-                (JournalEvent::StepsUnblocked { item_index: i1, step_indices: s1 }, JournalEvent::StepsUnblocked { item_index: i2, step_indices: s2 }) => {
+                (
+                    JournalEvent::StepsUnblocked {
+                        item_index: i1,
+                        step_indices: s1,
+                    },
+                    JournalEvent::StepsUnblocked {
+                        item_index: i2,
+                        step_indices: s2,
+                    },
+                ) => {
                     assert_eq!(i1, i2, "StepsUnblocked item_index should match");
                     assert_eq!(s1, s2, "StepsUnblocked step_indices should match");
                 }
-                (JournalEvent::ItemCompleted { item_index: i1, .. }, JournalEvent::ItemCompleted { item_index: i2, .. }) => {
+                (
+                    JournalEvent::ItemCompleted { item_index: i1, .. },
+                    JournalEvent::ItemCompleted { item_index: i2, .. },
+                ) => {
                     assert_eq!(i1, i2, "ItemCompleted item_index should match");
                 }
-                (JournalEvent::RunCompleted { status: s1 }, JournalEvent::RunCompleted { status: s2 }) => {
+                (
+                    JournalEvent::RunCompleted { status: s1 },
+                    JournalEvent::RunCompleted { status: s2 },
+                ) => {
                     assert_eq!(s1, s2, "RunCompleted status should match");
                 }
-                _ => panic!("Event type mismatch at index {}: got {:?}, expected {:?}", i, entry.event, events[i]),
+                _ => panic!(
+                    "Event type mismatch at index {}: got {:?}, expected {:?}",
+                    i, entry.event, events[i]
+                ),
             }
         }
     }
