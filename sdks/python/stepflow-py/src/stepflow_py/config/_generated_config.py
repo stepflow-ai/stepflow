@@ -48,7 +48,7 @@ class RecoveryConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = True
     checkIntervalSecs: (
         Annotated[
             int,
@@ -58,7 +58,7 @@ class RecoveryConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 30
     maxStartupRecovery: (
         Annotated[
             int,
@@ -68,7 +68,7 @@ class RecoveryConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 100
     maxClaimsPerCheck: (
         Annotated[
             int,
@@ -78,7 +78,7 @@ class RecoveryConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = 10
 
 
 BuiltinPluginConfig = Any

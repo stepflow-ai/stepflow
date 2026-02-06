@@ -97,11 +97,6 @@ impl RunState {
 struct JournalState {
     /// Journal entries stored in order.
     entries: Vec<JournalEntry>,
-    /// Checkpoint sequence number (entries at or before this are synced).
-    checkpoint: Option<SequenceNumber>,
-    /// Base sequence number (sequence of first entry in vec).
-    /// After compaction, this increases to reflect removed entries.
-    base_sequence: u64,
 }
 
 /// In-memory implementation of StateStore.
@@ -416,7 +411,10 @@ impl MetadataStore for InMemoryStateStore {
         async move {
             let is_terminal = matches!(
                 status,
-                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed
+                    | ExecutionStatus::Cancelled
+                    | ExecutionStatus::RecoveryFailed
             );
 
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
@@ -573,6 +571,7 @@ impl MetadataStore for InMemoryStateStore {
                     ExecutionStatus::Completed
                         | ExecutionStatus::Failed
                         | ExecutionStatus::Cancelled
+                        | ExecutionStatus::RecoveryFailed
                 ) {
                     return Ok(());
                 }
@@ -595,6 +594,7 @@ impl MetadataStore for InMemoryStateStore {
                         ExecutionStatus::Completed
                             | ExecutionStatus::Failed
                             | ExecutionStatus::Cancelled
+                            | ExecutionStatus::RecoveryFailed
                     ) {
                         return Ok(());
                     }
@@ -807,8 +807,8 @@ impl ExecutionJournal for InMemoryStateStore {
         async move {
             // Key by root_run_id so all events for an execution tree share one journal
             let mut journal = self.journals.entry(entry.root_run_id).or_default();
-            // Sequence number is base + current length
-            let sequence = SequenceNumber::new(journal.base_sequence + journal.entries.len() as u64);
+            // Sequence number is current length (0-indexed)
+            let sequence = SequenceNumber::new(journal.entries.len() as u64);
             journal.entries.push(entry);
             Ok(sequence)
         }
@@ -828,13 +828,7 @@ impl ExecutionJournal for InMemoryStateStore {
                 None => return Ok(Vec::new()),
             };
 
-            // Convert sequence number to vec index
-            let from_seq_val = from_sequence.value();
-            let start_idx = if from_seq_val >= journal.base_sequence {
-                (from_seq_val - journal.base_sequence) as usize
-            } else {
-                0 // Requested sequence was compacted away, start from beginning
-            };
+            let start_idx = from_sequence.value() as usize;
 
             let entries: Vec<_> = journal
                 .entries
@@ -843,8 +837,7 @@ impl ExecutionJournal for InMemoryStateStore {
                 .skip(start_idx)
                 .take(limit)
                 .map(|(idx, entry)| {
-                    // Convert vec index back to sequence number
-                    let seq = SequenceNumber::new(journal.base_sequence + idx as u64);
+                    let seq = SequenceNumber::new(idx as u64);
                     (seq, entry.clone())
                 })
                 .collect();
@@ -863,67 +856,11 @@ impl ExecutionJournal for InMemoryStateStore {
                 if journal.entries.is_empty() {
                     None
                 } else {
-                    // Latest sequence is base + (length - 1)
-                    Some(SequenceNumber::new(
-                        journal.base_sequence + (journal.entries.len() - 1) as u64,
-                    ))
+                    // Latest sequence is length - 1
+                    Some(SequenceNumber::new((journal.entries.len() - 1) as u64))
                 }
             });
             Ok(result)
-        }
-        .boxed()
-    }
-
-    fn checkpoint(
-        &self,
-        root_run_id: Uuid,
-        sequence: SequenceNumber,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        async move {
-            if let Some(mut journal) = self.journals.get_mut(&root_run_id) {
-                journal.checkpoint = Some(sequence);
-            }
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_checkpoint(
-        &self,
-        root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
-        async move {
-            let result = self
-                .journals
-                .get(&root_run_id)
-                .and_then(|journal| journal.checkpoint);
-            Ok(result)
-        }
-        .boxed()
-    }
-
-    fn compact(
-        &self,
-        root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        async move {
-            if let Some(mut journal) = self.journals.get_mut(&root_run_id)
-                && let Some(checkpoint) = journal.checkpoint
-            {
-                // Only compact entries that exist in our vec
-                // Checkpoint sequence must be >= base_sequence to have entries to remove
-                if checkpoint.value() >= journal.base_sequence {
-                    // Calculate how many entries to remove (all entries before checkpoint)
-                    let entries_to_remove =
-                        (checkpoint.value() - journal.base_sequence) as usize;
-                    if entries_to_remove > 0 && entries_to_remove <= journal.entries.len() {
-                        journal.entries.drain(0..entries_to_remove);
-                        // Update base_sequence to reflect removed entries
-                        journal.base_sequence = checkpoint.value();
-                    }
-                }
-            }
-            Ok(())
         }
         .boxed()
     }
@@ -942,26 +879,14 @@ impl ExecutionJournal for InMemoryStateStore {
                     continue;
                 }
 
-                // Latest sequence is base + (length - 1)
-                let latest_sequence = SequenceNumber::new(
-                    journal.base_sequence + (journal.entries.len() - 1) as u64,
-                );
-
-                // Count unsynced entries (entries after checkpoint)
-                let unsynced_count = match journal.checkpoint {
-                    Some(cp) => {
-                        // Unsynced = latest_sequence - checkpoint
-                        // (entries at checkpoint and before are synced)
-                        latest_sequence.value().saturating_sub(cp.value())
-                    }
-                    None => journal.entries.len() as u64,
-                };
+                // Latest sequence is length - 1
+                let latest_sequence =
+                    SequenceNumber::new((journal.entries.len() - 1) as u64);
 
                 infos.push(RootJournalInfo {
                     root_run_id,
                     latest_sequence,
-                    checkpoint_sequence: journal.checkpoint,
-                    unsynced_count,
+                    entry_count: journal.entries.len() as u64,
                 });
             }
 

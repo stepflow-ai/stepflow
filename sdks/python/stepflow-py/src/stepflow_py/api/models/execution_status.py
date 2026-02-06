@@ -36,6 +36,7 @@ class ExecutionStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     PAUSED = "paused"
+    RECOVERYFAILED = "recoveryFailed"
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:

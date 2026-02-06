@@ -4920,6 +4920,7 @@ dependencies = [
  "dashmap",
  "error-stack",
  "futures",
+ "log",
  "serde",
  "serde_json",
  "stepflow-core",

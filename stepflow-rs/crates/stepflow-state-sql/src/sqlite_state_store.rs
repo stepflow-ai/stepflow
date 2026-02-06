@@ -441,7 +441,9 @@ impl MetadataStore for SqliteStateStore {
                         "running" => ExecutionStatus::Running,
                         "completed" => ExecutionStatus::Completed,
                         "failed" => ExecutionStatus::Failed,
+                        "cancelled" => ExecutionStatus::Cancelled,
                         "paused" => ExecutionStatus::Paused,
+                        "recoveryFailed" => ExecutionStatus::RecoveryFailed,
                         _ => {
                             log::warn!("Unrecognized execution status: {status_str}");
                             ExecutionStatus::Running
@@ -571,6 +573,7 @@ impl MetadataStore for SqliteStateStore {
                     ExecutionStatus::Failed => "failed",
                     ExecutionStatus::Cancelled => "cancelled",
                     ExecutionStatus::Paused => "paused",
+                    ExecutionStatus::RecoveryFailed => "recoveryFailed",
                 };
                 conditions.push("r.status = ?".to_string());
                 bind_values.push(status_str.to_string());
@@ -633,7 +636,9 @@ impl MetadataStore for SqliteStateStore {
                     "running" => ExecutionStatus::Running,
                     "completed" => ExecutionStatus::Completed,
                     "failed" => ExecutionStatus::Failed,
+                    "cancelled" => ExecutionStatus::Cancelled,
                     "paused" => ExecutionStatus::Paused,
+                    "recoveryFailed" => ExecutionStatus::RecoveryFailed,
                     _ => ExecutionStatus::Running,
                 };
 
@@ -697,7 +702,10 @@ impl MetadataStore for SqliteStateStore {
         async move {
             let is_terminal = matches!(
                 status,
-                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed
+                    | ExecutionStatus::Cancelled
+                    | ExecutionStatus::RecoveryFailed
             );
 
             let sql = if is_terminal {
@@ -990,6 +998,7 @@ impl MetadataStore for SqliteStateStore {
                     "failed" => ExecutionStatus::Failed,
                     "cancelled" => ExecutionStatus::Cancelled,
                     "paused" => ExecutionStatus::Paused,
+                    "recoveryFailed" => ExecutionStatus::RecoveryFailed,
                     _ => ExecutionStatus::Running,
                 };
 
@@ -1291,8 +1300,8 @@ impl ExecutionJournal for SqliteStateStore {
             let timestamp = entry.timestamp.to_rfc3339();
 
             let insert_sql = r#"
-                INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data, synced)
-                VALUES (?, ?, ?, ?, ?, ?, 0)
+                INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data)
+                VALUES (?, ?, ?, ?, ?, ?)
             "#;
 
             sqlx::query(insert_sql)
@@ -1387,109 +1396,6 @@ impl ExecutionJournal for SqliteStateStore {
         .boxed()
     }
 
-    fn checkpoint(
-        &self,
-        root_run_id: Uuid,
-        sequence: SequenceNumber,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            // Checkpoints are keyed by root_run_id (one checkpoint per execution tree)
-            let sql = r#"
-                INSERT INTO journal_checkpoints (root_run_id, checkpoint_sequence, checkpointed_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(root_run_id) DO UPDATE SET
-                    checkpoint_sequence = excluded.checkpoint_sequence,
-                    checkpointed_at = excluded.checkpointed_at
-            "#;
-
-            let now = chrono::Utc::now().to_rfc3339();
-
-            sqlx::query(sql)
-                .bind(root_run_id.to_string())
-                .bind(sequence.value() as i64)
-                .bind(&now)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            // Mark entries up to checkpoint as synced
-            let mark_synced_sql = r#"
-                UPDATE journal_entries
-                SET synced = 1
-                WHERE root_run_id = ? AND sequence <= ?
-            "#;
-
-            sqlx::query(mark_synced_sql)
-                .bind(root_run_id.to_string())
-                .bind(sequence.value() as i64)
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn get_checkpoint(
-        &self,
-        root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            let sql = "SELECT checkpoint_sequence FROM journal_checkpoints WHERE root_run_id = ?";
-
-            let row = sqlx::query(sql)
-                .bind(root_run_id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            Ok(row.map(|r| SequenceNumber::new(r.get::<i64, _>("checkpoint_sequence") as u64)))
-        }
-        .boxed()
-    }
-
-    fn compact(
-        &self,
-        root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let pool = self.pool.clone();
-
-        async move {
-            // Get the checkpoint sequence for this root run
-            let checkpoint_sql =
-                "SELECT checkpoint_sequence FROM journal_checkpoints WHERE root_run_id = ?";
-
-            let row = sqlx::query(checkpoint_sql)
-                .bind(root_run_id.to_string())
-                .fetch_optional(&pool)
-                .await
-                .change_context(StateError::Internal)?;
-
-            if let Some(row) = row {
-                let checkpoint_seq: i64 = row.get("checkpoint_sequence");
-
-                // Delete entries before the checkpoint for this root run
-                let delete_sql =
-                    "DELETE FROM journal_entries WHERE root_run_id = ? AND sequence < ?";
-
-                sqlx::query(delete_sql)
-                    .bind(root_run_id.to_string())
-                    .bind(checkpoint_seq)
-                    .execute(&pool)
-                    .await
-                    .change_context(StateError::Internal)?;
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn list_active_roots(
         &self,
     ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, StateError>> {
@@ -1500,13 +1406,11 @@ impl ExecutionJournal for SqliteStateStore {
             // Group by root_run_id since all events for an execution tree share one journal.
             let sql = r#"
                 SELECT
-                    j.root_run_id,
-                    MAX(j.sequence) as latest_sequence,
-                    c.checkpoint_sequence,
-                    SUM(CASE WHEN j.synced = 0 THEN 1 ELSE 0 END) as unsynced_count
-                FROM journal_entries j
-                LEFT JOIN journal_checkpoints c ON j.root_run_id = c.root_run_id
-                GROUP BY j.root_run_id
+                    root_run_id,
+                    MAX(sequence) as latest_sequence,
+                    COUNT(*) as entry_count
+                FROM journal_entries
+                GROUP BY root_run_id
             "#;
 
             let rows = sqlx::query(sql)
@@ -1523,17 +1427,12 @@ impl ExecutionJournal for SqliteStateStore {
                 let latest_sequence =
                     SequenceNumber::new(row.get::<i64, _>("latest_sequence") as u64);
 
-                let checkpoint_sequence = row
-                    .get::<Option<i64>, _>("checkpoint_sequence")
-                    .map(|s| SequenceNumber::new(s as u64));
-
-                let unsynced_count = row.get::<i64, _>("unsynced_count") as u64;
+                let entry_count = row.get::<i64, _>("entry_count") as u64;
 
                 infos.push(RootJournalInfo {
                     root_run_id,
                     latest_sequence,
-                    checkpoint_sequence,
-                    unsynced_count,
+                    entry_count,
                 });
             }
 

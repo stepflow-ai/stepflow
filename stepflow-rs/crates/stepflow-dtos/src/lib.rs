@@ -55,6 +55,7 @@ impl ItemStatistics {
             ExecutionStatus::Failed => stats.failed = 1,
             ExecutionStatus::Cancelled => stats.cancelled = 1,
             ExecutionStatus::Paused => stats.running = 1, // Paused counts as running
+            ExecutionStatus::RecoveryFailed => stats.failed = 1, // Recovery failure counts as failed
         }
         stats
     }

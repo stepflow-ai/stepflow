@@ -205,10 +205,10 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
 /// (parent flow + all subflows) share a single journal with a unified sequence space.
 /// Each entry contains a `run_id` to identify which specific run the event belongs to.
 async fn create_journal_tables(pool: &SqlitePool) -> Result<(), StateError> {
-    let table_commands = vec![
-        // Journal entries for recovery - stores execution events.
-        // Keyed by (root_run_id, sequence) so all events for an execution tree
-        // share one journal with monotonically increasing sequence numbers.
+    // Journal entries for recovery - stores execution events.
+    // Keyed by (root_run_id, sequence) so all events for an execution tree
+    // share one journal with monotonically increasing sequence numbers.
+    sqlx::query(
         r#"
             CREATE TABLE IF NOT EXISTS journal_entries (
                 root_run_id TEXT NOT NULL,
@@ -217,42 +217,19 @@ async fn create_journal_tables(pool: &SqlitePool) -> Result<(), StateError> {
                 timestamp TEXT NOT NULL,
                 event_type TEXT NOT NULL,
                 event_data TEXT NOT NULL,
-                synced INTEGER DEFAULT 0,
                 PRIMARY KEY (root_run_id, sequence)
             )
         "#,
-        // Checkpoints for garbage collection - marks sync points.
-        // One checkpoint per root run (execution tree).
-        r#"
-            CREATE TABLE IF NOT EXISTS journal_checkpoints (
-                root_run_id TEXT PRIMARY KEY,
-                checkpoint_sequence INTEGER NOT NULL,
-                checkpointed_at TEXT NOT NULL
-            )
-        "#,
-    ];
+    )
+    .execute(pool)
+    .await
+    .change_context(StateError::Initialization)?;
 
-    for sql in table_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
-
-    // Create indexes for journal tables
-    let index_commands = vec![
-        // Index for finding unsynced entries (for sync_to_global)
-        "CREATE INDEX IF NOT EXISTS idx_journal_unsynced ON journal_entries(root_run_id, synced) WHERE synced = 0",
-        // Index for filtering by specific run_id within a journal
-        "CREATE INDEX IF NOT EXISTS idx_journal_run_id ON journal_entries(run_id)",
-    ];
-
-    for sql in index_commands {
-        sqlx::query(sql)
-            .execute(pool)
-            .await
-            .change_context(StateError::Initialization)?;
-    }
+    // Index for filtering by specific run_id within a journal
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_journal_run_id ON journal_entries(run_id)")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
 
     Ok(())
 }

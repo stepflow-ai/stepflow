@@ -68,14 +68,9 @@ impl JournalComplianceTests {
         Self::test_read_from_respects_limit(journal).await;
         Self::test_latest_sequence_empty(journal).await;
         Self::test_latest_sequence_after_append(journal).await;
-        Self::test_checkpoint_and_get(journal).await;
-        Self::test_checkpoint_update(journal).await;
-        Self::test_compact_removes_entries_before_checkpoint(journal).await;
-        Self::test_compact_without_checkpoint(journal).await;
         Self::test_list_active_roots_empty(journal).await;
         Self::test_list_active_roots_multiple(journal).await;
         Self::test_subflow_shared_journal(journal).await;
-        Self::test_unsynced_count_calculation(journal).await;
         Self::test_all_event_types_serialization(journal).await;
     }
 
@@ -105,14 +100,9 @@ impl JournalComplianceTests {
         Self::test_read_from_respects_limit(&factory().await).await;
         Self::test_latest_sequence_empty(&factory().await).await;
         Self::test_latest_sequence_after_append(&factory().await).await;
-        Self::test_checkpoint_and_get(&factory().await).await;
-        Self::test_checkpoint_update(&factory().await).await;
-        Self::test_compact_removes_entries_before_checkpoint(&factory().await).await;
-        Self::test_compact_without_checkpoint(&factory().await).await;
         Self::test_list_active_roots_empty(&factory().await).await;
         Self::test_list_active_roots_multiple(&factory().await).await;
         Self::test_subflow_shared_journal(&factory().await).await;
-        Self::test_unsynced_count_calculation(&factory().await).await;
         Self::test_all_event_types_serialization(&factory().await).await;
     }
 
@@ -358,202 +348,6 @@ impl JournalComplianceTests {
     }
 
     // =========================================================================
-    // checkpoint() and get_checkpoint() tests
-    // =========================================================================
-
-    /// Test checkpoint() and get_checkpoint() basic functionality.
-    ///
-    /// Contract: A checkpoint set via checkpoint() can be retrieved via get_checkpoint().
-    pub async fn test_checkpoint_and_get<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Initially no checkpoint
-        let checkpoint = journal
-            .get_checkpoint(root_run_id)
-            .await
-            .expect("get_checkpoint should succeed");
-        assert!(checkpoint.is_none(), "New journal should have no checkpoint");
-
-        // Append some entries
-        for i in 0..5 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            journal.append(entry).await.expect("append should succeed");
-        }
-
-        // Set checkpoint
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(3))
-            .await
-            .expect("checkpoint should succeed");
-
-        // Verify checkpoint
-        let checkpoint = journal
-            .get_checkpoint(root_run_id)
-            .await
-            .expect("get_checkpoint should succeed");
-        assert_eq!(
-            checkpoint,
-            Some(SequenceNumber::new(3)),
-            "Checkpoint should be at sequence 3"
-        );
-    }
-
-    /// Test that checkpoint() updates existing checkpoint.
-    ///
-    /// Contract: Subsequent checkpoint() calls update the stored checkpoint value.
-    pub async fn test_checkpoint_update<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Append entries
-        for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            journal.append(entry).await.expect("append should succeed");
-        }
-
-        // Set initial checkpoint
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(2))
-            .await
-            .expect("checkpoint should succeed");
-
-        let cp = journal
-            .get_checkpoint(root_run_id)
-            .await
-            .expect("get_checkpoint should succeed");
-        assert_eq!(cp, Some(SequenceNumber::new(2)));
-
-        // Update checkpoint
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(7))
-            .await
-            .expect("checkpoint should succeed");
-
-        let cp = journal
-            .get_checkpoint(root_run_id)
-            .await
-            .expect("get_checkpoint should succeed");
-        assert_eq!(
-            cp,
-            Some(SequenceNumber::new(7)),
-            "Checkpoint should be updated to 7"
-        );
-    }
-
-    // =========================================================================
-    // compact() tests
-    // =========================================================================
-
-    /// Test that compact() removes entries before the checkpoint.
-    ///
-    /// Contract: After compact(), entries with sequence < checkpoint are removed.
-    pub async fn test_compact_removes_entries_before_checkpoint<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Append entries
-        for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            journal.append(entry).await.expect("append should succeed");
-        }
-
-        // Set checkpoint at sequence 5
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(5))
-            .await
-            .expect("checkpoint should succeed");
-
-        // Compact
-        journal
-            .compact(root_run_id)
-            .await
-            .expect("compact should succeed");
-
-        // Read all remaining entries
-        let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
-            .await
-            .expect("read_from should succeed");
-
-        // Entries 0-4 should be removed, 5-9 should remain
-        assert_eq!(
-            entries.len(),
-            5,
-            "Should have 5 entries after compaction (seq 5-9)"
-        );
-        assert_eq!(
-            entries[0].0.value(),
-            5,
-            "First remaining entry should be seq 5"
-        );
-        assert_eq!(
-            entries[4].0.value(),
-            9,
-            "Last remaining entry should be seq 9"
-        );
-    }
-
-    /// Test that compact() does nothing without a checkpoint.
-    ///
-    /// Contract: If no checkpoint is set, compact() should not remove any entries.
-    pub async fn test_compact_without_checkpoint<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Append entries
-        for i in 0..5 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            journal.append(entry).await.expect("append should succeed");
-        }
-
-        // Compact without setting checkpoint
-        journal
-            .compact(root_run_id)
-            .await
-            .expect("compact should succeed");
-
-        // All entries should still be present
-        let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
-            .await
-            .expect("read_from should succeed");
-        assert_eq!(entries.len(), 5, "All entries should remain without checkpoint");
-    }
-
-    // =========================================================================
     // list_active_roots() tests
     // =========================================================================
 
@@ -617,12 +411,6 @@ impl JournalComplianceTests {
         );
         journal.append(entry).await.expect("append should succeed");
 
-        // Checkpoint root2 at sequence 2
-        journal
-            .checkpoint(root2, SequenceNumber::new(2))
-            .await
-            .expect("checkpoint should succeed");
-
         // List active roots
         let roots = journal
             .list_active_roots()
@@ -640,19 +428,15 @@ impl JournalComplianceTests {
 
         let root1_info = root1_info.unwrap();
         assert_eq!(root1_info.latest_sequence, SequenceNumber::new(2));
-        assert_eq!(root1_info.checkpoint_sequence, None);
-        assert_eq!(root1_info.unsynced_count, 3);
+        assert_eq!(root1_info.entry_count, 3);
 
         let root2_info = root2_info.unwrap();
         assert_eq!(root2_info.latest_sequence, SequenceNumber::new(4));
-        assert_eq!(root2_info.checkpoint_sequence, Some(SequenceNumber::new(2)));
-        // Entries 3, 4 are unsynced (checkpoint is at 2, meaning 0, 1, 2 are synced)
-        assert_eq!(root2_info.unsynced_count, 2);
+        assert_eq!(root2_info.entry_count, 5);
 
         let root3_info = root3_info.unwrap();
         assert_eq!(root3_info.latest_sequence, SequenceNumber::new(0));
-        assert_eq!(root3_info.checkpoint_sequence, None);
-        assert_eq!(root3_info.unsynced_count, 1);
+        assert_eq!(root3_info.entry_count, 1);
     }
 
     // =========================================================================
@@ -748,81 +532,6 @@ impl JournalComplianceTests {
         assert_eq!(
             our_root, 1,
             "Should have exactly one root journal entry for this execution tree"
-        );
-    }
-
-    // =========================================================================
-    // unsynced_count tests
-    // =========================================================================
-
-    /// Test that unsynced_count is calculated correctly.
-    ///
-    /// Contract: unsynced_count equals (total entries) - (entries at or before checkpoint).
-    pub async fn test_unsynced_count_calculation<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Add 10 entries (seq 0-9)
-        for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            journal.append(entry).await.expect("append should succeed");
-        }
-
-        // No checkpoint yet - all 10 should be unsynced
-        let roots = journal
-            .list_active_roots()
-            .await
-            .expect("list_active_roots should succeed");
-        let info = roots
-            .iter()
-            .find(|r| r.root_run_id == root_run_id)
-            .expect("Should find our root");
-        assert_eq!(info.unsynced_count, 10, "All entries should be unsynced");
-
-        // Checkpoint at seq 4 - entries 0-4 are synced (5 entries), 5-9 are unsynced (5 entries)
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(4))
-            .await
-            .expect("checkpoint should succeed");
-
-        let roots = journal
-            .list_active_roots()
-            .await
-            .expect("list_active_roots should succeed");
-        let info = roots
-            .iter()
-            .find(|r| r.root_run_id == root_run_id)
-            .expect("Should find our root");
-        assert_eq!(
-            info.unsynced_count, 5,
-            "5 entries should be unsynced after checkpoint at 4"
-        );
-
-        // Checkpoint at seq 9 - all entries synced
-        journal
-            .checkpoint(root_run_id, SequenceNumber::new(9))
-            .await
-            .expect("checkpoint should succeed");
-
-        let roots = journal
-            .list_active_roots()
-            .await
-            .expect("list_active_roots should succeed");
-        let info = roots
-            .iter()
-            .find(|r| r.root_run_id == root_run_id)
-            .expect("Should find our root");
-        assert_eq!(
-            info.unsynced_count, 0,
-            "0 entries should be unsynced after checkpoint at 9"
         );
     }
 

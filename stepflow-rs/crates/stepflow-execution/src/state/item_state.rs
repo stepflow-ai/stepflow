@@ -140,47 +140,50 @@ impl ItemState {
     }
 
     /// Add a step to the needed set.
+    #[cfg(test)]
     pub fn mark_needed(&mut self, step_index: usize) {
         self.needed.insert(step_index);
     }
 
-    /// Add a step as needed and recursively discover all transitively needed steps.
+    /// Add a step as needed and transitively discover all needed steps.
     ///
     /// Returns the set of newly discovered needed step indices.
     pub fn add_or_update_needed(&mut self, step_idx: usize) -> BitSet {
         let mut newly_needed = BitSet::new();
-        self.add_needed_recursive(step_idx, &mut newly_needed);
-        newly_needed
-    }
+        let mut worklist = vec![step_idx];
 
-    fn add_needed_recursive(&mut self, step_idx: usize, newly_needed: &mut BitSet) {
-        let is_new = !self.needed.contains(step_idx);
-        self.needed.insert(step_idx);
-        if is_new {
-            newly_needed.insert(step_idx);
-        }
+        while let Some(idx) = worklist.pop() {
+            // Mark as needed
+            let is_new = !self.needed.contains(idx);
+            self.needed.insert(idx);
+            if is_new {
+                newly_needed.insert(idx);
+            }
 
-        // Evaluate what this step needs
-        let step = self.flow.step(step_idx);
-        let deps = step.input.needed_steps(self);
+            // Evaluate what this step needs
+            let step = self.flow.step(idx);
+            let mut pending_deps = step.input.needed_steps(self);
 
-        // Only wait on deps that aren't already completed.
-        // This is important for recovery where some steps are marked completed
-        // before initialization runs.
-        let pending_deps: BitSet = deps.iter().filter(|&d| !self.is_completed(d)).collect();
+            // Only wait on deps that aren't already completed.
+            // This is important for recovery where some steps are marked completed
+            // before initialization runs.
+            pending_deps.difference_with(&self.completed);
 
-        if pending_deps.is_empty() {
-            self.clear_waiting(step_idx);
-        } else {
-            self.set_waiting(step_idx, pending_deps.clone());
+            if pending_deps.is_empty() {
+                self.clear_waiting(idx);
+            } else {
+                self.set_waiting(idx, pending_deps.clone());
 
-            // Recurse into pending deps
-            for dep_idx in pending_deps.iter() {
-                if !self.needed.contains(dep_idx) {
-                    self.add_needed_recursive(dep_idx, newly_needed);
+                // Queue unvisited deps for processing
+                for dep_idx in pending_deps.iter() {
+                    if !self.needed.contains(dep_idx) {
+                        worklist.push(dep_idx);
+                    }
                 }
             }
         }
+
+        newly_needed
     }
 
     /// Set what a step is waiting on for re-evaluation.
@@ -299,9 +302,9 @@ impl ItemState {
     /// Apply a task completion from journal replay.
     ///
     /// This marks a step as completed with its result, without updating
-    /// dependency tracking (waiters/waiting_on). This is used during recovery
-    /// where we first replay all completions, then re-initialize to set up
-    /// dependencies correctly.
+    /// dependency tracking. This is used during recovery where we first
+    /// replay all completions, then re-initialize to properly compute
+    /// which steps are now unblocked.
     ///
     /// Unlike `mark_completed`, this doesn't return newly unblocked steps
     /// since dependency tracking happens after all completions are applied.

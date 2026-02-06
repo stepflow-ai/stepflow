@@ -45,8 +45,12 @@ use crate::StateError;
 
 /// Sequence number for journal entries.
 ///
-/// Sequence numbers are monotonically increasing per run and are used to
-/// track replay position and checkpoints.
+/// Sequence numbers are monotonically increasing within each root run's journal
+/// and are used to track replay position during recovery.
+///
+/// Note: Sequence numbers don't need to start at 0. Implementations may use
+/// backend-specific offsets (e.g., Kafka offsets). Recovery should read from
+/// the first available sequence for a given root_run_id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SequenceNumber(pub u64);
 
@@ -89,19 +93,8 @@ pub struct RootJournalInfo {
     pub root_run_id: Uuid,
     /// The latest sequence number in the journal.
     pub latest_sequence: SequenceNumber,
-    /// The last checkpointed sequence number (if any).
-    pub checkpoint_sequence: Option<SequenceNumber>,
-    /// Count of entries that haven't been synced to MetadataStore.
-    pub unsynced_count: u64,
-}
-
-/// Result of syncing journal entries to MetadataStore.
-#[derive(Debug, Clone)]
-pub struct SyncResult {
-    /// Number of entries synced.
-    pub synced_count: u64,
-    /// The new checkpoint sequence number.
-    pub new_checkpoint: SequenceNumber,
+    /// Number of entries in the journal.
+    pub entry_count: u64,
 }
 
 /// A journal entry containing a timestamped execution event.
@@ -271,40 +264,6 @@ pub trait ExecutionJournal: Send + Sync {
         &self,
         root_run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>>;
-
-    /// Set a checkpoint marking entries as synced to MetadataStore.
-    ///
-    /// Entries before the checkpoint can be garbage collected via `compact()`.
-    ///
-    /// # Arguments
-    /// * `root_run_id` - The root run to checkpoint
-    /// * `sequence` - The sequence number to checkpoint at
-    fn checkpoint(
-        &self,
-        root_run_id: Uuid,
-        sequence: SequenceNumber,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Get the latest checkpoint for a root run's journal.
-    ///
-    /// # Arguments
-    /// * `root_run_id` - The root run to query
-    ///
-    /// # Returns
-    /// The checkpoint sequence number, or None if never checkpointed
-    fn get_checkpoint(
-        &self,
-        root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>>;
-
-    /// Remove journal entries before the checkpoint.
-    ///
-    /// This is used for garbage collection after entries have been
-    /// durably synced to MetadataStore.
-    ///
-    /// # Arguments
-    /// * `root_run_id` - The root run to compact
-    fn compact(&self, root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// List root runs with journal entries (for recovery).
     ///

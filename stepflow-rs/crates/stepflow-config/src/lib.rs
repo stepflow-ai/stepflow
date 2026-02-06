@@ -10,6 +10,16 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod lease_manager_config;
+mod recovery_config;
+mod state_store_config;
+mod supported_plugin;
+
+pub use lease_manager_config::LeaseManagerConfig;
+pub use recovery_config::RecoveryConfig;
+pub use state_store_config::StateStoreConfig;
+pub use supported_plugin::{SupportedPlugin, SupportedPluginConfig};
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -17,14 +27,7 @@ use error_stack::{Report, ResultExt as _};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
-use stepflow_components_mcp::McpPluginConfig;
-use stepflow_mock::MockPlugin;
 use stepflow_plugin::routing::RoutingConfig;
-use stepflow_plugin::{DynPlugin, PluginConfig};
-use stepflow_protocol::StepflowPluginConfig;
-use stepflow_state::{ExecutionJournal, InMemoryStateStore, StateStore};
-use stepflow_state::{LeaseManager, NoOpLeaseManager};
-use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -81,184 +84,6 @@ impl Default for StepflowConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-#[derive(Default)]
-pub enum StateStoreConfig {
-    /// In-memory state store (default, for testing and demos)
-    #[default]
-    InMemory,
-    /// SQLite-based persistent state store
-    Sqlite(SqliteStateStoreConfig),
-}
-
-impl StateStoreConfig {
-    /// Create a StateStore instance from this configuration
-    pub async fn create_state_store(&self) -> Result<Arc<dyn StateStore>> {
-        match self {
-            StateStoreConfig::InMemory => Ok(Arc::new(InMemoryStateStore::new())),
-            StateStoreConfig::Sqlite(config) => {
-                let store = SqliteStateStore::new(config.clone())
-                    .await
-                    .change_context(ConfigError::Configuration)?;
-                Ok(Arc::new(store))
-            }
-        }
-    }
-
-    /// Create both a StateStore and ExecutionJournal from this configuration.
-    ///
-    /// Both InMemoryStateStore and SqliteStateStore implement both traits,
-    /// so this returns Arc references to the same underlying store.
-    pub async fn create_stores(&self) -> Result<(Arc<dyn StateStore>, Arc<dyn ExecutionJournal>)> {
-        match self {
-            StateStoreConfig::InMemory => {
-                let store = Arc::new(InMemoryStateStore::new());
-                let journal: Arc<dyn ExecutionJournal> = store.clone();
-                Ok((store, journal))
-            }
-            StateStoreConfig::Sqlite(config) => {
-                let store = Arc::new(
-                    SqliteStateStore::new(config.clone())
-                        .await
-                        .change_context(ConfigError::Configuration)?,
-                );
-                let journal: Arc<dyn ExecutionJournal> = store.clone();
-                Ok((store, journal))
-            }
-        }
-    }
-}
-
-/// Configuration for the lease manager used in distributed deployments.
-///
-/// The lease manager handles run ownership in multi-orchestrator scenarios,
-/// ensuring only one orchestrator executes a given run at a time.
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-#[derive(Default)]
-pub enum LeaseManagerConfig {
-    /// No lease management (single orchestrator mode).
-    ///
-    /// This is the default for single-node deployments where there's no need
-    /// for distributed coordination. All lease requests succeed immediately.
-    #[default]
-    None,
-    // Future variants:
-    // /// etcd-based lease management for distributed deployments.
-    // Etcd(EtcdLeaseManagerConfig),
-}
-
-impl LeaseManagerConfig {
-    /// Create a LeaseManager instance from this configuration.
-    pub fn create_lease_manager(&self) -> Arc<dyn LeaseManager> {
-        match self {
-            LeaseManagerConfig::None => Arc::new(NoOpLeaseManager::new()),
-        }
-    }
-}
-
-/// Configuration for run recovery and orphan claiming.
-///
-/// Controls how the orchestrator handles interrupted runs on startup
-/// and during execution.
-#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RecoveryConfig {
-    /// Whether to enable periodic orphan claiming during execution.
-    ///
-    /// When enabled, the orchestrator will periodically check for orphaned
-    /// runs (from crashed orchestrators) and claim them for execution.
-    /// Default: true
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-
-    /// Interval in seconds between orphan check attempts.
-    ///
-    /// Only used when `enabled` is true. Lower values mean faster recovery
-    /// but more overhead. Default: 30 seconds.
-    #[serde(default = "default_check_interval_secs")]
-    pub check_interval_secs: u64,
-
-    /// Maximum number of runs to recover on startup.
-    ///
-    /// Limits how many interrupted runs are recovered when the orchestrator
-    /// starts. Set to 0 to disable startup recovery. Default: 100.
-    #[serde(default = "default_max_startup_recovery")]
-    pub max_startup_recovery: usize,
-
-    /// Maximum number of orphaned runs to claim per check interval.
-    ///
-    /// Limits how many runs are claimed in each periodic check to avoid
-    /// overwhelming a single orchestrator. Default: 10.
-    #[serde(default = "default_max_claims_per_check")]
-    pub max_claims_per_check: usize,
-}
-
-fn default_enabled() -> bool {
-    true
-}
-
-fn default_check_interval_secs() -> u64 {
-    30
-}
-
-fn default_max_startup_recovery() -> usize {
-    100
-}
-
-fn default_max_claims_per_check() -> usize {
-    10
-}
-
-impl Default for RecoveryConfig {
-    fn default() -> Self {
-        Self {
-            enabled: default_enabled(),
-            check_interval_secs: default_check_interval_secs(),
-            max_startup_recovery: default_max_startup_recovery(),
-            max_claims_per_check: default_max_claims_per_check(),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum SupportedPlugin {
-    Stepflow(StepflowPluginConfig),
-    Builtin(BuiltinPluginConfig),
-    Mock(MockPlugin),
-    Mcp(McpPluginConfig),
-}
-
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-pub struct SupportedPluginConfig {
-    #[serde(flatten)]
-    pub plugin: SupportedPlugin,
-}
-
-async fn create_plugin<P: PluginConfig>(
-    plugin: P,
-    working_directory: &Path,
-) -> Result<Box<DynPlugin<'static>>> {
-    plugin
-        .create_plugin(working_directory)
-        .await
-        .change_context(ConfigError::Configuration)
-}
-
-impl SupportedPluginConfig {
-    pub async fn instantiate(self, working_directory: &Path) -> Result<Box<DynPlugin<'static>>> {
-        let plugin = match self.plugin {
-            SupportedPlugin::Stepflow(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,
-        };
-        Ok(plugin)
-    }
-}
-
 impl StepflowConfig {
     /// Load configuration from a JSON string
     pub fn load_from_json(json: &str) -> Result<Self> {
@@ -288,8 +113,8 @@ impl StepflowConfig {
 
     /// Create a StepflowEnvironment from this configuration
     pub async fn create_environment(self) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
-        use stepflow_plugin::StepflowEnvironmentBuilder;
         use stepflow_plugin::routing::PluginRouter;
+        use stepflow_plugin::StepflowEnvironmentBuilder;
 
         // Create state store and execution journal from configuration
         let (state_store, execution_journal) = self.state_store.create_stores().await?;

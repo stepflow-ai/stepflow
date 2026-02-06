@@ -75,6 +75,8 @@ pub enum ExecutionError {
     OverrideError,
     #[error("recovery failed")]
     RecoveryFailed,
+    #[error("journal write failed")]
+    JournalError,
 }
 
 impl ExecutionError {
