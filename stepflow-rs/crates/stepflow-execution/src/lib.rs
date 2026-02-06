@@ -30,6 +30,8 @@
 mod error;
 mod executor;
 mod flow_executor;
+mod flow_executor_builder;
+mod recovery;
 mod run_state;
 mod scheduler;
 mod state;
@@ -42,7 +44,8 @@ pub(crate) mod testing;
 // Main exports
 pub use error::{ExecutionError, Result};
 pub use executor::{get_run, submit_run, wait_for_completion};
-pub use flow_executor::{FlowExecutor, FlowExecutorBuilder};
+pub use flow_executor::FlowExecutor;
+pub use flow_executor_builder::FlowExecutorBuilder;
 
 // State types
 pub use run_state::RunState;
@@ -56,3 +59,6 @@ pub use task::{Task, TaskResult};
 
 // Step execution
 pub use step_runner::{StepMetadata, StepRunResult};
+
+// Recovery
+pub use recovery::{RecoveryResult, recover_orphaned_runs};

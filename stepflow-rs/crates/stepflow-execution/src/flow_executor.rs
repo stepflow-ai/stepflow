@@ -20,16 +20,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::Utc;
-use error_stack::ResultExt as _;
 use futures::stream::{FuturesUnordered, StreamExt as _};
-use stepflow_core::status::StepStatus;
-use stepflow_core::values::ValueRef;
-use stepflow_core::workflow::{Flow, StepId, WorkflowOverrides, apply_overrides};
-use stepflow_core::{BlobId, FlowResult};
-use stepflow_dtos::{StepInfo, StepResult};
+use stepflow_core::FlowResult;
+use stepflow_core::workflow::StepId;
+use stepflow_dtos::StepResult;
 use stepflow_observability::RunInfoGuard;
-use stepflow_state::{CreateRunParams, StateStore, StateWriteOperation};
+use stepflow_state::{
+    CreateRunParams, ExecutionJournalExt as _, JournalEntry, JournalEvent, StateStore,
+    StateWriteOperation,
+};
 use uuid::Uuid;
 
 use crate::run_state::RunState;
@@ -38,7 +37,7 @@ use crate::state::ItemsState;
 use crate::step_runner::{StepRunResult, StepRunner};
 use crate::task::{Task, TaskResult};
 use crate::{ExecutionError, Result};
-use stepflow_plugin::{SubflowReceiver, SubflowRequest, SubflowSubmitter, subflow_channel};
+use stepflow_plugin::{SubflowReceiver, SubflowRequest, SubflowSubmitter};
 
 /// Executor for running workflows with one or more items.
 ///
@@ -53,15 +52,15 @@ use stepflow_plugin::{SubflowReceiver, SubflowRequest, SubflowSubmitter, subflow
 /// ```ignore
 /// let flow = Arc::new(flow);
 /// let inputs = vec![input1, input2, input3];
+/// let run_state = RunState::new(run_id, flow_id, flow, inputs, variables);
 ///
-/// let mut executor = FlowExecutorBuilder::new(stepflow, flow, flow_id, state_store)
-///     .inputs(inputs)
+/// let mut executor = FlowExecutorBuilder::new(env, run_state)
 ///     .max_concurrency(10)
 ///     .build()
 ///     .await?;
 ///
 /// executor.execute_to_completion().await?;
-/// let results = state_store
+/// let results = env.state_store()
 ///     .get_item_results(run_id, ResultOrder::ByIndex)
 ///     .await?;
 /// ```
@@ -89,6 +88,32 @@ pub struct FlowExecutor {
 }
 
 impl FlowExecutor {
+    /// Create a new FlowExecutor from builder components.
+    ///
+    /// This is used by [`FlowExecutorBuilder`] to construct the executor.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_from_builder(
+        env: Arc<stepflow_plugin::StepflowEnvironment>,
+        root_run_id: Uuid,
+        runs: HashMap<Uuid, RunState>,
+        scheduler: Box<dyn Scheduler>,
+        max_in_flight: usize,
+        state_store: Arc<dyn StateStore>,
+        submit_sender: SubflowSubmitter,
+        submit_receiver: SubflowReceiver,
+    ) -> Self {
+        Self {
+            env,
+            root_run_id,
+            runs,
+            scheduler,
+            max_in_flight,
+            state_store,
+            submit_sender,
+            submit_receiver,
+        }
+    }
+
     /// Get the root run ID for this execution tree.
     pub fn root_run_id(&self) -> Uuid {
         self.root_run_id
@@ -107,6 +132,21 @@ impl FlowExecutor {
     /// Get the root run state.
     fn root_run_state(&self) -> &RunState {
         self.runs.get(&self.root_run_id).expect("root run exists")
+    }
+
+    /// Write a journal entry.
+    ///
+    /// This is a fire-and-forget operation - journal write failures are logged
+    /// but don't halt execution. The journal is for recovery, not for correctness.
+    fn write_journal(&self, run_id: Uuid, event: JournalEvent) {
+        let root_run_id = self.root_run_id;
+        let journal = self.env.execution_journal().clone();
+        tokio::spawn(async move {
+            let entry = JournalEntry::new(run_id, root_run_id, event);
+            if let Err(e) = journal.append(entry).await {
+                log::error!("Failed to write journal entry for run {}: {:?}", run_id, e);
+            }
+        });
     }
 
     /// Get the subflow submitter for this executor.
@@ -187,15 +227,6 @@ impl FlowExecutor {
                 && let Some(tasks) = self.scheduler.select_next(max_to_start).into_tasks()
             {
                 for task in tasks.into_iter() {
-                    if let Some(run_state) = self.run_state_mut(task.run_id) {
-                        run_state.items_state_mut().mark_executing(task);
-                    }
-                    // Update step status to Running (best effort - don't fail if this fails)
-                    self.state_store.update_step_status(
-                        task.run_id,
-                        task.step_index,
-                        StepStatus::Running,
-                    );
                     let future = self.prepare_task_future(task)?;
                     in_flight.push(future);
                 }
@@ -260,6 +291,11 @@ impl FlowExecutor {
         // Store the run state
         self.runs.insert(run_id, run_state);
 
+        // Note: No separate SubflowSubmitted event needed - the subflow's RunCreated event
+        // (with parent_run_id set) identifies this as a subflow. Since all events for
+        // the execution tree share the same journal (keyed by root_run_id), the parent-child
+        // relationship is implicit in the journal structure.
+
         // Create the run record in the state store synchronously so results can be
         // retrieved later. This must complete before we send the response.
         let mut run_params = CreateRunParams::new_subflow(
@@ -287,13 +323,17 @@ impl FlowExecutor {
         );
 
         // Initialize the run and get ready tasks
-        let (initial_tasks, is_complete, item_count) = {
+        let (initial_tasks, is_complete, item_count, needed_steps) = {
             let run_state = self.run_state_mut(run_id).expect("run should exist");
             let initial_tasks = run_state.initialize_all();
             let is_complete = run_state.is_complete();
             let item_count = run_state.items_state().item_count();
-            (initial_tasks, is_complete, item_count)
+            let needed_steps = run_state.items_state().needed_steps_for_journal();
+            (initial_tasks, is_complete, item_count, needed_steps)
         };
+
+        // Journal: Record subflow initialization (on the subflow run)
+        self.write_journal(run_id, JournalEvent::RunInitialized { needed_steps });
 
         log::debug!(
             "Subflow initialized: run_id={}, initial_tasks={}",
@@ -406,68 +446,13 @@ impl FlowExecutor {
         for rid in run_ids {
             if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
+
+                // Journal: Record the needed steps for this run
+                let needed_steps = run_state.items_state().needed_steps_for_journal();
+                self.write_journal(rid, JournalEvent::RunInitialized { needed_steps });
             }
         }
 
-        // Keep track of root's initial tasks for step status initialization below
-        let root_initial_tasks: Vec<_> = initial_tasks
-            .iter()
-            .filter(|t| t.run_id == run_id)
-            .copied()
-            .collect();
-
-        // Initialize step status tracking in state store
-        // Use item 0's flow since all items share the same flow structure
-        let root_state = self.root_run_state();
-        if root_state.item_count() > 0 {
-            let item = root_state.items_state().item(0);
-            let flow = item.flow();
-            let now = Utc::now();
-
-            let step_infos: Vec<StepInfo> = flow
-                .steps()
-                .iter()
-                .enumerate()
-                .map(|(idx, step)| {
-                    // Determine initial status: steps with no dependencies start as Runnable
-                    let initial_status = if root_initial_tasks
-                        .iter()
-                        .any(|t| t.item_index == 0 && t.step_index == idx)
-                    {
-                        StepStatus::Runnable
-                    } else {
-                        StepStatus::Blocked
-                    };
-
-                    StepInfo {
-                        run_id,
-                        step_id: StepId::for_step(flow.clone(), idx),
-                        component: step.component.clone(),
-                        status: initial_status,
-                        created_at: now,
-                        updated_at: now,
-                    }
-                })
-                .collect();
-
-            // Initialize step tracking metadata in the state store.
-            //
-            // This is best-effort: if it fails, the run still executes correctly and
-            // step results are still recorded. Only the pre-execution step metadata
-            // (component names, initial status) would be missing from queries. This
-            // is cosmetic information for observability, not critical for correctness.
-            if let Err(e) = self
-                .state_store
-                .initialize_run_steps(run_id, &step_infos)
-                .await
-            {
-                log::warn!(
-                    "Failed to initialize step tracking for run {}: {:?}",
-                    run_id,
-                    e
-                );
-            }
-        }
         self.scheduler.notify_new_tasks(&initial_tasks);
 
         // Run until complete or deadlock
@@ -507,6 +492,15 @@ impl FlowExecutor {
         } else {
             stepflow_core::status::ExecutionStatus::Completed
         };
+
+        // Journal: Record run completion
+        self.write_journal(
+            run_id,
+            JournalEvent::RunCompleted {
+                status: final_status,
+            },
+        );
+
         if let Err(e) = self
             .state_store
             .update_run_status(run_id, final_status)
@@ -593,14 +587,6 @@ impl FlowExecutor {
         let result = task_result.step.result.clone();
         let run_id = task.run_id;
 
-        // Update step status based on result
-        let step_status = match &result {
-            FlowResult::Success(_) => StepStatus::Completed,
-            FlowResult::Failed(_) => StepStatus::Failed,
-        };
-        self.state_store
-            .update_step_status(run_id, task.step_index, step_status);
-
         // Update state and get newly ready tasks
         let new_tasks = if let Some(run_state) = self.run_state_mut(run_id) {
             run_state
@@ -611,10 +597,33 @@ impl FlowExecutor {
             Vec::new()
         };
 
-        // Mark newly ready steps as Runnable in state store
+        // Journal: Record task completion
+        self.write_journal(
+            run_id,
+            JournalEvent::TaskCompleted {
+                item_index: task.item_index,
+                step_index: task.step_index,
+                result: result.clone(),
+            },
+        );
+
+        // Journal: Record newly unblocked steps (grouped by item)
+        // Group new_tasks by item_index for efficient journalling
+        let mut unblocked_by_item: HashMap<u32, Vec<usize>> = HashMap::new();
         for new_task in &new_tasks {
-            self.state_store
-                .update_step_status(run_id, new_task.step_index, StepStatus::Runnable);
+            unblocked_by_item
+                .entry(new_task.item_index)
+                .or_default()
+                .push(new_task.step_index);
+        }
+        for (item_index, step_indices) in unblocked_by_item {
+            self.write_journal(
+                run_id,
+                JournalEvent::StepsUnblocked {
+                    item_index,
+                    step_indices,
+                },
+            );
         }
 
         // Notify scheduler
@@ -714,182 +723,43 @@ impl FlowExecutor {
     }
 }
 
-/// Builder for creating an FlowExecutor with common configurations.
-pub struct FlowExecutorBuilder {
-    env: Arc<stepflow_plugin::StepflowEnvironment>,
-    run_id: Option<Uuid>,
-    flow: Arc<Flow>,
-    flow_id: BlobId,
-    inputs: Vec<ValueRef>,
-    variables: HashMap<String, ValueRef>,
-    overrides: Option<WorkflowOverrides>,
-    scheduler: Option<Box<dyn Scheduler>>,
-    max_concurrency: usize,
-    state_store: Arc<dyn StateStore>,
-    skip_validation: bool,
-}
-
-impl FlowExecutorBuilder {
-    /// Create a new builder.
-    pub fn new(
-        env: Arc<stepflow_plugin::StepflowEnvironment>,
-        flow: Arc<Flow>,
-        flow_id: BlobId,
-        state_store: Arc<dyn StateStore>,
-    ) -> Self {
-        Self {
-            env,
-            run_id: None,
-            flow,
-            flow_id,
-            inputs: Vec::new(),
-            variables: HashMap::new(),
-            overrides: None,
-            scheduler: None,
-            max_concurrency: 10,
-            state_store,
-            skip_validation: false,
-        }
-    }
-
-    /// Skip workflow validation during build.
-    ///
-    /// Use this when resuming an execution where the flow was already validated,
-    /// or when validation was performed externally.
-    pub fn skip_validation(mut self) -> Self {
-        self.skip_validation = true;
-        self
-    }
-
-    /// Set the run ID (default: generate new UUID).
-    pub fn run_id(mut self, run_id: Uuid) -> Self {
-        self.run_id = Some(run_id);
-        self
-    }
-
-    /// Set a single input (convenience for single-item runs).
-    pub fn input(mut self, input: ValueRef) -> Self {
-        self.inputs = vec![input];
-        self
-    }
-
-    /// Set multiple inputs for batch execution.
-    pub fn inputs(mut self, inputs: Vec<ValueRef>) -> Self {
-        self.inputs = inputs;
-        self
-    }
-
-    /// Set workflow variables.
-    pub fn variables(mut self, variables: HashMap<String, ValueRef>) -> Self {
-        self.variables = variables;
-        self
-    }
-
-    /// Set workflow overrides.
-    pub fn overrides(mut self, overrides: WorkflowOverrides) -> Self {
-        self.overrides = Some(overrides);
-        self
-    }
-
-    /// Set the scheduler (default: DepthFirstScheduler).
-    pub fn scheduler(mut self, scheduler: Box<dyn Scheduler>) -> Self {
-        self.scheduler = Some(scheduler);
-        self
-    }
-
-    /// Set maximum concurrency (default: 10).
-    pub fn max_concurrency(mut self, max: usize) -> Self {
-        self.max_concurrency = max;
-        self
-    }
-
-    /// Build the executor.
-    ///
-    /// This validates the workflow (unless `skip_validation()` was called) and
-    /// ensures a run record exists in the state store (idempotent).
-    pub async fn build(self) -> Result<FlowExecutor> {
-        // Validate workflow unless skipped
-        if !self.skip_validation {
-            let diagnostics = stepflow_analysis::validate(&self.flow)
-                .change_context(ExecutionError::AnalysisError)?;
-
-            if diagnostics.has_fatal() {
-                let fatal = diagnostics.num_fatal;
-                let error = diagnostics.num_error;
-                return Err(error_stack::report!(ExecutionError::AnalysisError)
-                    .attach_printable(format!(
-                        "Workflow validation failed with {fatal} fatal and {error} error diagnostics"
-                    )));
-            }
-        }
-
-        let run_id = self.run_id.unwrap_or_else(Uuid::now_v7);
-
-        // Apply overrides if provided
-        let flow = if let Some(overrides) = &self.overrides {
-            apply_overrides(self.flow.clone(), overrides)
-                .change_context(ExecutionError::OverrideError)?
-        } else {
-            self.flow.clone()
-        };
-
-        // Ensure run record exists (idempotent - no-op if already created)
-        let mut run_params =
-            CreateRunParams::new(run_id, self.flow_id.clone(), self.inputs.clone());
-        run_params.workflow_name = self.flow.name().map(|s| s.to_string());
-        if let Some(ref o) = self.overrides {
-            run_params.overrides = o.clone();
-        }
-        self.state_store
-            .create_run(run_params)
-            .await
-            .change_context(ExecutionError::StateError)?;
-
-        // Default scheduler
-        let scheduler = self
-            .scheduler
-            .unwrap_or_else(|| Box::new(crate::scheduler::DepthFirstScheduler::new()));
-
-        // Create submit channel for subflow submission
-        // Buffer size matches max_concurrency to avoid blocking during high concurrency
-        let (submit_sender, submit_receiver) = subflow_channel(self.max_concurrency, run_id);
-
-        // Create RunState for the root run
-        let run_state = RunState::new(
-            run_id,
-            self.flow_id.clone(),
-            flow,
-            self.inputs,
-            self.variables,
-        );
-
-        let mut runs = HashMap::new();
-        runs.insert(run_id, run_state);
-
-        Ok(FlowExecutor {
-            env: self.env,
-            root_run_id: run_id,
-            runs,
-            scheduler,
-            max_in_flight: self.max_concurrency,
-            state_store: self.state_store,
-            submit_sender,
-            submit_receiver,
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::flow_executor_builder::FlowExecutorBuilder;
     use crate::scheduler::{BreadthFirstScheduler, DepthFirstScheduler};
     use crate::testing::{MockExecutorBuilder, create_executor_with_behaviors, create_linear_flow};
     use serde_json::json;
-    use stepflow_core::ValueExpr;
     use stepflow_core::status::ExecutionStatus;
+    use stepflow_core::values::ValueRef;
+    use stepflow_core::workflow::Flow;
     use stepflow_core::workflow::StepBuilder;
+    use stepflow_core::{BlobId, ValueExpr};
     use stepflow_dtos::ResultOrder;
     use stepflow_state::StateStoreExt as _;
+
+    /// Helper to create a RunState for tests with a single input.
+    fn create_run_state(flow: Arc<Flow>, flow_id: BlobId, input: ValueRef) -> RunState {
+        let run_id = Uuid::now_v7();
+        RunState::new(run_id, flow_id, flow, vec![input], HashMap::new())
+    }
+
+    /// Helper to create a RunState for tests with multiple inputs.
+    fn create_run_state_batch(flow: Arc<Flow>, flow_id: BlobId, inputs: Vec<ValueRef>) -> RunState {
+        let run_id = Uuid::now_v7();
+        RunState::new(run_id, flow_id, flow, inputs, HashMap::new())
+    }
+
+    /// Helper to create a RunState for tests with variables.
+    fn create_run_state_with_vars(
+        flow: Arc<Flow>,
+        flow_id: BlobId,
+        input: ValueRef,
+        variables: HashMap<String, ValueRef>,
+    ) -> RunState {
+        let run_id = Uuid::now_v7();
+        RunState::new(run_id, flow_id, flow, vec![input], variables)
+    }
 
     #[tokio::test]
     async fn test_single_item_execution() {
@@ -899,16 +769,14 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, input);
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -931,16 +799,14 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -967,19 +833,14 @@ mod tests {
         // Test with depth-first
         let executor_df = MockExecutorBuilder::new().build().await;
         let state_store_df = executor_df.state_store();
-        let mut items_executor_df = FlowExecutorBuilder::new(
-            executor_df.clone(),
-            flow.clone(),
-            flow_id.clone(),
-            state_store_df.clone(),
-        )
-        .inputs(inputs.clone())
-        .scheduler(Box::new(DepthFirstScheduler::new()))
-        .build()
-        .await
-        .unwrap();
+        let run_state_df = create_run_state_batch(flow.clone(), flow_id.clone(), inputs.clone());
+        let run_id_df = run_state_df.run_id();
+        let mut items_executor_df = FlowExecutorBuilder::new(executor_df.clone(), run_state_df)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
 
-        let run_id_df = items_executor_df.run_id();
         items_executor_df.execute_to_completion().await.unwrap();
         let results_df = state_store_df
             .get_item_results(run_id_df, ResultOrder::ByIndex)
@@ -989,19 +850,14 @@ mod tests {
         // Test with breadth-first
         let executor_bf = MockExecutorBuilder::new().build().await;
         let state_store_bf = executor_bf.state_store();
-        let mut items_executor_bf = FlowExecutorBuilder::new(
-            executor_bf.clone(),
-            flow.clone(),
-            flow_id,
-            state_store_bf.clone(),
-        )
-        .inputs(inputs)
-        .scheduler(Box::new(BreadthFirstScheduler::new()))
-        .build()
-        .await
-        .unwrap();
+        let run_state_bf = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id_bf = run_state_bf.run_id();
+        let mut items_executor_bf = FlowExecutorBuilder::new(executor_bf.clone(), run_state_bf)
+            .scheduler(Box::new(BreadthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
 
-        let run_id_bf = items_executor_bf.run_id();
         items_executor_bf.execute_to_completion().await.unwrap();
         let results_bf = state_store_bf
             .get_item_results(run_id_bf, ResultOrder::ByIndex)
@@ -1044,15 +900,14 @@ mod tests {
             ValueRef::new(json!({"x": 3})), // Will succeed
         ];
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
 
-        let run_id = items_executor.run_id();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1102,15 +957,13 @@ mod tests {
             ValueRef::new(json!({"x": 3})), // Will succeed
         ];
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .scheduler(Box::new(BreadthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(BreadthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1145,16 +998,14 @@ mod tests {
         let inputs: Vec<_> = (1..=10).map(|i| ValueRef::new(json!({"x": i}))).collect();
 
         // Execute with max_in_flight = 5
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .max_concurrency(5)
-                .scheduler(Box::new(BreadthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .max_concurrency(5)
+            .scheduler(Box::new(BreadthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1189,16 +1040,14 @@ mod tests {
         let inputs: Vec<_> = (1..=5).map(|i| ValueRef::new(json!({"x": i}))).collect();
 
         // Execute with max_in_flight = 1 (effectively sequential)
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .max_concurrency(1)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .max_concurrency(1)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1220,15 +1069,14 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, vec![]);
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(vec![])
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
-        let run_id = items_executor.run_id();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1268,14 +1116,13 @@ mod tests {
             ValueRef::new(json!({"x": 3})),
         ];
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .inputs(inputs)
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state_batch(flow.clone(), flow_id, inputs);
+        let run_id = run_state.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
-        let run_id = items_executor.run_id();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1298,15 +1145,14 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, input);
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
-        let run_id = items_executor.run_id();
         items_executor.execute_to_completion().await.unwrap();
         let results = state_store
             .get_item_results(run_id, ResultOrder::ByIndex)
@@ -1328,15 +1174,13 @@ mod tests {
         let input = ValueRef::new(json!({"x": 1}));
 
         let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, input);
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
 
         // Initialize and get initial tasks
         items_executor.scheduler.reset();
@@ -1384,16 +1228,15 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, input);
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(input)
-                .scheduler(Box::new(DepthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .scheduler(Box::new(DepthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
 
-        let run_id = items_executor.run_id();
         items_executor.execute_to_completion().await.unwrap();
 
         let results = state_store
@@ -1435,17 +1278,15 @@ mod tests {
 
         let executor = create_executor_with_behaviors(behaviors).await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, ValueRef::new(json!({"x": 1})));
+        let run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .max_concurrency(2) // Allow parallel execution of B and C
-                .scheduler(Box::new(BreadthFirstScheduler::new()))
-                .build()
-                .await
-                .unwrap();
-
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .max_concurrency(2) // Allow parallel execution of B and C
+            .scheduler(Box::new(BreadthFirstScheduler::new()))
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
 
         let results = state_store
@@ -1490,13 +1331,10 @@ mod tests {
         let flow_id = BlobId::from_flow(&flow).unwrap();
 
         let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, ValueRef::new(json!({})));
 
         // Build should fail due to validation
-        let result = FlowExecutorBuilder::new(executor, flow, flow_id, state_store)
-            .input(ValueRef::new(json!({})))
-            .build()
-            .await;
+        let result = FlowExecutorBuilder::new(executor, run_state).build().await;
 
         assert!(result.is_err());
     }
@@ -1534,11 +1372,10 @@ mod tests {
         let flow_id = BlobId::from_flow(&flow).unwrap();
 
         let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id, ValueRef::new(json!({})));
 
         // Build should succeed with skip_validation
-        let result = FlowExecutorBuilder::new(executor, flow, flow_id, state_store)
-            .input(ValueRef::new(json!({})))
+        let result = FlowExecutorBuilder::new(executor, run_state)
             .skip_validation()
             .build()
             .await;
@@ -1598,15 +1435,18 @@ mod tests {
         let mut variables = HashMap::new();
         variables.insert("api_key".to_string(), ValueRef::new(json!("secret123")));
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .variables(variables)
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state_with_vars(
+            flow.clone(),
+            flow_id,
+            ValueRef::new(json!({"x": 1})),
+            variables,
+        );
+        let run_id = run_state.run_id();
 
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
         items_executor.execute_to_completion().await.unwrap();
 
         let results = state_store
@@ -1655,14 +1495,14 @@ mod tests {
         let state_store = executor.state_store().clone();
 
         // No variables provided - should use default
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(ValueRef::new(json!({})))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state(flow.clone(), flow_id, ValueRef::new(json!({})));
+        let run_id = run_state.run_id();
 
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
+
         items_executor.execute_to_completion().await.unwrap();
 
         let results = state_store
@@ -1704,14 +1544,14 @@ mod tests {
         let state_store = executor.state_store().clone();
 
         // No variables provided - should fail on missing variable
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id, state_store.clone())
-                .input(ValueRef::new(json!({})))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state(flow.clone(), flow_id, ValueRef::new(json!({})));
+        let run_id = run_state.run_id();
 
-        let run_id = items_executor.run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
+
         items_executor.execute_to_completion().await.unwrap();
 
         let results = state_store
@@ -1745,14 +1585,16 @@ mod tests {
         let flow_id = BlobId::from_flow(&flow).unwrap();
 
         let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store().clone();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Create a subflow request manually
         let subflow_run_id = Uuid::now_v7();
@@ -1799,15 +1641,17 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
+        let main_run_id = run_state.run_id();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
-
-        let main_run_id = items_executor.root_run_id();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Submit a subflow BEFORE starting execution
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -1882,13 +1726,12 @@ mod tests {
         let main_input = json!({"wait": true});
         let (env, signal) = create_env_with_wait_signal(main_input.clone()).await;
         let state_store = env.state_store().clone();
+        let run_state = create_run_state(flow.clone(), flow_id.clone(), ValueRef::new(main_input));
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(env, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(main_input))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(env, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Get the submit sender to send subflow requests via channel
         let submit_sender = items_executor.submit_sender().clone();
@@ -1947,13 +1790,16 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Submit an EMPTY subflow (0 items)
         let subflow_run_id = Uuid::now_v7();
@@ -2018,14 +1864,17 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .max_concurrency(1) // Only 1 slot - this was the trigger for the deadlock
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .max_concurrency(1) // Only 1 slot - this was the trigger for the deadlock
+            .build()
+            .await
+            .unwrap();
 
         // Submit a subflow BEFORE starting - this will be processed in the first
         // loop iteration when we also start the main flow task.
@@ -2101,13 +1950,16 @@ mod tests {
 
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Submit a subflow with 3 items
         let subflow_run_id = Uuid::now_v7();
@@ -2176,12 +2028,15 @@ mod tests {
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Submit a subflow
         let subflow_run_id = Uuid::now_v7();
@@ -2235,12 +2090,15 @@ mod tests {
         let executor = MockExecutorBuilder::new().build().await;
         let state_store = executor.state_store().clone();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         let root_run_id = items_executor.root_run_id();
 
@@ -2296,14 +2154,16 @@ mod tests {
         let flow_id = BlobId::from_flow(&flow).unwrap();
 
         let executor = MockExecutorBuilder::new().build().await;
-        let state_store = executor.state_store().clone();
 
-        let mut items_executor =
-            FlowExecutorBuilder::new(executor, flow.clone(), flow_id.clone(), state_store.clone())
-                .input(ValueRef::new(json!({"x": 1})))
-                .build()
-                .await
-                .unwrap();
+        let run_state = create_run_state(
+            flow.clone(),
+            flow_id.clone(),
+            ValueRef::new(json!({"x": 1})),
+        );
+        let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
+            .build()
+            .await
+            .unwrap();
 
         // Generate a run_id that we'll use for both submissions
         let subflow_run_id = Uuid::now_v7();

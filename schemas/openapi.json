@@ -253,6 +253,18 @@
             }
           },
           {
+            "name": "rootsOnly",
+            "in": "query",
+            "description": "Filter to only root runs (runs where parent_run_id is None)",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "maxDepth",
             "in": "query",
             "description": "Maximum depth for hierarchy queries (0 = root only)",
@@ -875,7 +887,8 @@
           "completed",
           "failed",
           "cancelled",
-          "paused"
+          "paused",
+          "recoveryFailed"
         ]
       },
       "Flow": {
@@ -1327,6 +1340,13 @@
             ],
             "format": "uuid",
             "description": "Filter to direct children of this parent run"
+          },
+          "rootsOnly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Filter to only root runs (runs where parent_run_id is None)"
           },
           "maxDepth": {
             "type": [

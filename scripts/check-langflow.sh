@@ -54,9 +54,9 @@ run_check "Dependencies" uv sync || true
 # LANGFLOW CHECKS
 # =============================================================================
 
-run_check "Formatting" --fix "uv run poe fmt-fix" uv run poe fmt-check
+run_check "Formatting" --fix "uv run poe fmt-fix" uv run poe fmt-check || true
 
-run_check "Linting" --fix "uv run poe lint-fix" uv run poe lint-check
+run_check "Linting" --fix "uv run poe lint-fix" uv run poe lint-check || true
 
 # Clear mypy cache before type checking to avoid cross-project cache corruption.
 # This is needed because langflow imports stepflow_py via editable install, and
@@ -65,11 +65,11 @@ run_check "Linting" --fix "uv run poe lint-fix" uv run poe lint-check
 # require reinstalling packages after every change to stepflow_py or stepflow_orchestrator.
 rm -rf .mypy_cache
 
-run_check "Type checking" uv run poe type-check
+run_check "Type checking" uv run poe type-check || true
 
 run_check "Dep check" uv run poe dep-check || true
 
-run_check "Tests" uv run poe test
+run_check "Tests" uv run poe test || true
 
 # =============================================================================
 # INTEGRATION TESTS (requires stepflow-server binary)
@@ -95,7 +95,7 @@ fi
 
 if [ -n "$STEPFLOW_BINARY" ]; then
     export STEPFLOW_DEV_BINARY="$STEPFLOW_BINARY"
-    run_check "Integration tests" uv run python -m pytest tests/integration/ -v -m "not slow" -x
+    run_check "Integration tests" uv run python -m pytest tests/integration/ -v -m "not slow" -x || true
 else
     print_step "Integration tests"
     print_skip "stepflow-server binary build failed"

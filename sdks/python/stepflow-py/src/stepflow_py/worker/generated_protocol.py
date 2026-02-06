@@ -206,6 +206,7 @@ class ExecutionStatus(Enum):
     failed = 'failed'
     cancelled = 'cancelled'
     paused = 'paused'
+    recoveryFailed = 'recoveryFailed'
 
 
 class FlowError(Struct, kw_only=True):

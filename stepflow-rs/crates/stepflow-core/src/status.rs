@@ -26,6 +26,8 @@ pub enum ExecutionStatus {
     Cancelled,
     /// Execution is paused (debug mode)
     Paused,
+    /// Execution failed during recovery after orchestrator restart
+    RecoveryFailed,
 }
 
 impl ExecutionStatus {
@@ -36,6 +38,7 @@ impl ExecutionStatus {
             ExecutionStatus::Failed => "failed",
             ExecutionStatus::Cancelled => "cancelled",
             ExecutionStatus::Paused => "paused",
+            ExecutionStatus::RecoveryFailed => "recoveryFailed",
         }
     }
 }
@@ -88,6 +91,10 @@ mod tests {
         assert_eq!(ExecutionStatus::Failed.to_string(), "failed");
         assert_eq!(ExecutionStatus::Cancelled.to_string(), "cancelled");
         assert_eq!(ExecutionStatus::Paused.to_string(), "paused");
+        assert_eq!(
+            ExecutionStatus::RecoveryFailed.to_string(),
+            "recoveryFailed"
+        );
     }
 
     #[test]

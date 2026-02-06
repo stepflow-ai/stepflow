@@ -780,7 +780,8 @@
         "completed",
         "failed",
         "cancelled",
-        "paused"
+        "paused",
+        "recoveryFailed"
       ]
     },
     "FlowResult": {

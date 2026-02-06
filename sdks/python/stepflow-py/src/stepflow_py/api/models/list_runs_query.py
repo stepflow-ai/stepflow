@@ -23,7 +23,7 @@ import pprint
 import re  # noqa: F401
 from typing import Annotated, Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
 from stepflow_py.api.models.execution_status import ExecutionStatus
 
@@ -49,6 +49,11 @@ class ListRunsQuery(BaseModel):
         description="Filter to direct children of this parent run",
         alias="parentRunId",
     )
+    roots_only: StrictBool | None = Field(
+        default=None,
+        description="Filter to only root runs (runs where parent_run_id is None)",
+        alias="rootsOnly",
+    )
     max_depth: Annotated[int, Field(strict=True, ge=0)] | None = Field(
         default=None,
         description="Maximum depth for hierarchy queries (0 = root only)",
@@ -65,6 +70,7 @@ class ListRunsQuery(BaseModel):
         "flowName",
         "rootRunId",
         "parentRunId",
+        "rootsOnly",
         "maxDepth",
         "limit",
         "offset",
@@ -127,6 +133,11 @@ class ListRunsQuery(BaseModel):
         if self.parent_run_id is None and "parent_run_id" in self.model_fields_set:
             _dict["parentRunId"] = None
 
+        # set to None if roots_only (nullable) is None
+        # and model_fields_set contains the field
+        if self.roots_only is None and "roots_only" in self.model_fields_set:
+            _dict["rootsOnly"] = None
+
         # set to None if max_depth (nullable) is None
         # and model_fields_set contains the field
         if self.max_depth is None and "max_depth" in self.model_fields_set:
@@ -159,6 +170,7 @@ class ListRunsQuery(BaseModel):
                 "flowName": obj.get("flowName"),
                 "rootRunId": obj.get("rootRunId"),
                 "parentRunId": obj.get("parentRunId"),
+                "rootsOnly": obj.get("rootsOnly"),
                 "maxDepth": obj.get("maxDepth"),
                 "limit": obj.get("limit"),
                 "offset": obj.get("offset"),

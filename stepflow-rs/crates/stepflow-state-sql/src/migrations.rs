@@ -25,6 +25,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply journal tables migration
+    apply_migration(pool, "002_create_journal_tables", || {
+        create_journal_tables(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -189,6 +195,41 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
             .await
             .change_context(StateError::Initialization)?;
     }
+
+    Ok(())
+}
+
+/// Create journal tables for write-ahead logging and recovery.
+///
+/// Journals are keyed by `root_run_id`, meaning all events for an execution tree
+/// (parent flow + all subflows) share a single journal with a unified sequence space.
+/// Each entry contains a `run_id` to identify which specific run the event belongs to.
+async fn create_journal_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    // Journal entries for recovery - stores execution events.
+    // Keyed by (root_run_id, sequence) so all events for an execution tree
+    // share one journal with monotonically increasing sequence numbers.
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS journal_entries (
+                root_run_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                run_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_data TEXT NOT NULL,
+                PRIMARY KEY (root_run_id, sequence)
+            )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    // Index for filtering by specific run_id within a journal
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_journal_run_id ON journal_entries(run_id)")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
 
     Ok(())
 }

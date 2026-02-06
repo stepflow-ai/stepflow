@@ -55,6 +55,7 @@ impl ItemStatistics {
             ExecutionStatus::Failed => stats.failed = 1,
             ExecutionStatus::Cancelled => stats.cancelled = 1,
             ExecutionStatus::Paused => stats.running = 1, // Paused counts as running
+            ExecutionStatus::RecoveryFailed => stats.failed = 1, // Recovery failure counts as failed
         }
         stats
     }
@@ -117,6 +118,8 @@ pub struct RunFilters {
     pub root_run_id: Option<Uuid>,
     /// Filter to direct children of this parent run.
     pub parent_run_id: Option<Uuid>,
+    /// Filter to only root runs (runs where parent_run_id is None).
+    pub roots_only: Option<bool>,
     /// Maximum depth for hierarchy queries (0 = root only).
     pub max_depth: Option<u32>,
     pub limit: Option<usize>,
