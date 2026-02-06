@@ -42,7 +42,7 @@ data:
     # Initialize OpenSearch index with proper mappings for document ingestion
 
     OPENSEARCH_URL="${OPENSEARCH_URL:-http://localhost:9200}"
-    INDEX_NAME="${INDEX_NAME:-documents}"
+    INDEX_NAME="${INDEX_NAME:-stepflow-documents}"
 
     echo "Waiting for OpenSearch to be ready..."
     until curl -s "$OPENSEARCH_URL" > /dev/null 2>&1; do

@@ -1,0 +1,4 @@
+CONNECTOR_TYPE: "wikipedia"
+OWNER: "stepflow-demo"
+OWNER_NAME: "Stepflow Demo"
+OWNER_EMAIL: "demo@stepflow.ai"

@@ -65,6 +65,11 @@ def serve(
         DOCLING_SERVE_URL: URL of the docling-serve instance
         DOCLING_SERVE_API_KEY: Optional API key for authentication
     """
+    # Initialize observability (tracing, logging) before starting server
+    from stepflow_py.worker.observability import setup_observability
+
+    setup_observability()
+
     try:
         click.echo("Starting Docling component server...", err=True)
         click.echo(f"  docling-serve URL: {docling_url}", err=True)

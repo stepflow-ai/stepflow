@@ -231,10 +231,10 @@ class DoclingServeClient:
             # Try to apply OpenTelemetry instrumentation
             try:
                 from opentelemetry.instrumentation.httpx import (
-                    HTTPXClientInstrumentation,
+                    HTTPXClientInstrumentor,
                 )
 
-                HTTPXClientInstrumentation().instrument_client(self._client)
+                HTTPXClientInstrumentor().instrument_client(self._client)
             except ImportError:
                 logger.debug("OpenTelemetry httpx instrumentation not available")
 

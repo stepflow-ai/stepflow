@@ -497,9 +497,18 @@ class StepflowServer:
                 },
             ):
                 # Parse input using component's input type
-                input_value: Any = msgspec.convert(
-                    params.input, type=component.input_type
-                )
+                # Handle types that msgspec doesn't support (dict, Any, object)
+                # by passing through the input as-is
+                try:
+                    input_value: Any = msgspec.convert(
+                        params.input, type=component.input_type
+                    )
+                except TypeError as type_err:
+                    if "is not supported" in str(type_err):
+                        # Type not supported by msgspec, pass through as-is
+                        input_value = params.input
+                    else:
+                        raise
 
                 logger.info(
                     f"Executing component {params.component} (attempt {params.attempt})"

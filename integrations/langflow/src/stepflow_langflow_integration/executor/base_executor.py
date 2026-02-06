@@ -172,8 +172,9 @@ class BaseExecutor(ABC):
                 # Direct value
                 parameters[key] = field
 
-        # Override with runtime inputs
-        parameters.update(runtime_inputs)
+        # Override with runtime inputs (deserialize Langflow types)
+        for key, value in runtime_inputs.items():
+            parameters[key] = self.type_converter.deserialize_to_langflow_type(value)
 
         # Resolve environment variables for load_from_db fields
         parameters = self._resolve_env_variables(parameters, template)

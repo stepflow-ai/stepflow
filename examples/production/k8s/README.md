@@ -205,6 +205,24 @@ The server configuration is stored in `k8s/stepflow/server/configmap.yaml`. Key 
 
 All services are configured via environment variables in their deployment manifests. Sensitive values (API keys, passwords) are referenced from the `stepflow-secrets` secret.
 
+### Logging Configuration
+
+Stepflow components support configurable logging via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPFLOW_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warning`, `error` |
+| `STEPFLOW_LOG_DESTINATION` | `otlp` | Where to send logs: `stderr`, `otlp`, or comma-separated |
+| `STEPFLOW_OTLP_ENDPOINT` | - | OTLP collector endpoint for traces and logs |
+
+**Important:** Setting `STEPFLOW_LOG_LEVEL=debug` generates verbose output that can exceed Loki's gRPC message size limits (4MB default). Use `info` level in production to avoid log ingestion failures.
+
+To change log level at runtime:
+```bash
+kubectl set env deployment/docling-worker -n stepflow -c stepflow-docling STEPFLOW_LOG_LEVEL=info
+kubectl set env deployment/langflow-worker -n stepflow STEPFLOW_LOG_LEVEL=info
+```
+
 ## Infrastructure Services vs. Routed Components
 
 This deployment distinguishes between two types of services:

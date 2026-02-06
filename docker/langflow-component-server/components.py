@@ -21,7 +21,6 @@ using the Langflow integration.
 """
 
 import argparse
-import asyncio
 import logging
 import os
 import uuid
@@ -42,6 +41,11 @@ logger.info(f"Component server starting with instance ID: {INSTANCE_ID}")
 
 def main():
     """Main entry point for HTTP server mode."""
+    # Initialize observability (tracing, logging) before anything else
+    from stepflow_py.worker.observability import setup_observability
+
+    setup_observability()
+
     parser = argparse.ArgumentParser(description="Langflow Component Server")
     parser.add_argument(
         "--http",
@@ -85,17 +89,15 @@ def main():
 
     if args.http:
         # Run HTTP server
-        asyncio.run(
-            server.serve(
-                host=args.host,
-                port=args.port,
-                workers=args.workers,
-                backlog=args.backlog,
-                timeout_keep_alive=args.timeout_keep_alive,
-            )
+        server.run(
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            backlog=args.backlog,
+            timeout_keep_alive=args.timeout_keep_alive,
         )
     else:
-        # Run STDIO server
+        # Run STDIO server (same as HTTP but with defaults)
         server.run()
 
 

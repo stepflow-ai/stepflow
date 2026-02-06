@@ -16,11 +16,10 @@
 # Provides HTTP-based component execution for Stepflow workflows
 # Build context: repository root (stepflow/)
 #
-# Uses langflowai/langflow:latest as base - Langflow is fast-moving and we need
-# frequent testing against latest stable for our integration points.
+# Uses langflowai/langflow:1.7.1 as base to match project dependencies
 
 # Stage 1: Dependency installation (cached layer)
-FROM langflowai/langflow:latest AS deps
+FROM langflowai/langflow:1.7.1 AS deps
 
 WORKDIR /app
 
@@ -28,7 +27,7 @@ WORKDIR /app
 USER root
 
 # Copy dependency files first for better layer caching
-COPY sdks/python/pyproject.toml /tmp/stepflow-py/pyproject.toml
+COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
 COPY integrations/langflow/pyproject.toml /tmp/stepflow-langflow/pyproject.toml
 
 # Install dependencies only (no source code yet)
@@ -58,7 +57,7 @@ RUN uv pip install --python /app/.venv/bin/python \
 FROM deps AS runtime
 
 # Copy stepflow-py SDK source
-COPY sdks/python /tmp/stepflow-py
+COPY sdks/python/stepflow-py /tmp/stepflow-py
 
 # Copy langflow integration source
 COPY integrations/langflow /tmp/stepflow-langflow
@@ -66,8 +65,8 @@ COPY integrations/langflow /tmp/stepflow-langflow
 # Install stepflow-py from local copy with HTTP support (no deps - already installed)
 RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/stepflow-py[http]
 
-# Install lfx-nightly (required by langflow components)
-RUN uv pip install --python /app/.venv/bin/python "lfx-nightly==0.1.12.dev39"
+# Install lfx (required by langflow components)
+RUN uv pip install --python /app/.venv/bin/python "lfx==0.2.1"
 
 # Install langflow integration (skip deps - already installed above)
 RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/stepflow-langflow

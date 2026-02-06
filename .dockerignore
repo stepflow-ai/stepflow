@@ -1,0 +1,38 @@
+# Virtual environments
+**/.venv
+**/venv
+**/__pycache__
+
+# Cache directories
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+**/*.swp
+
+# Build artifacts
+**/dist
+**/build
+**/*.egg-info
+**/target
+
+# Documentation
+docs
+
+# Test data and fixtures (keep test code, exclude large fixtures)
+**/tests/fixtures/large
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Lock files (not needed in container)
+**/uv.lock
+**/poetry.lock

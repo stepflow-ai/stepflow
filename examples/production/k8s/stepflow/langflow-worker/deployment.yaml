@@ -135,3 +135,12 @@ spec:
           value: "deployment.environment=kubernetes,service.namespace=stepflow"
         - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
           value: "true"
+        # Workflow configuration variables (for SecretInput components)
+        - name: CONNECTOR_TYPE
+          value: "wikipedia"
+        - name: OWNER
+          value: "stepflow-demo"
+        - name: OWNER_NAME
+          value: "Stepflow Demo"
+        - name: OWNER_EMAIL
+          value: "demo@stepflow.ai"

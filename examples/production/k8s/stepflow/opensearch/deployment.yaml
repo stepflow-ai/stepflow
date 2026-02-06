@@ -33,7 +33,7 @@ spec:
     spec:
       containers:
       - name: opensearch
-        image: opensearchproject/opensearch:2.11.1
+        image: opensearch-jvector:latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http

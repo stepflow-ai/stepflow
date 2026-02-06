@@ -91,6 +91,11 @@ def main():
 
     import nest_asyncio  # type: ignore
 
+    # Initialize observability (tracing, logging) before starting server
+    from stepflow_py.worker.observability import setup_observability
+
+    setup_observability()
+
     nest_asyncio.apply()
     # Start the HTTP server - this handles all the asyncio setup correctly
     asyncio.run(server.run())
