@@ -89,9 +89,17 @@ impl ActiveExecutions {
         let executions = self.executions.clone();
         let handle = tokio::spawn(async move {
             future.await;
+            // No .await after remove() - task completes atomically after remove returns,
+            // preventing any gap between cleanup and is_finished() becoming true.
             executions.remove(&root_run_id);
         });
-        self.executions.insert(root_run_id, handle);
+        // Hold entry lock to prevent race with task's remove().
+        // If task finished before we get here, is_finished() is true and we skip insert.
+        // If task is still running, its remove() blocks on this lock until we release.
+        let entry = self.executions.entry(root_run_id);
+        if !handle.is_finished() {
+            entry.insert(handle);
+        }
     }
 
     /// Check if a run is currently being executed.
@@ -129,33 +137,6 @@ impl ActiveExecutions {
 
         log::info!("Shutdown: cancelled {} active executions", count);
         count
-    }
-
-    /// Wait for all active executions to complete.
-    ///
-    /// This does not cancel any executions - it just waits for them to finish.
-    /// Useful for graceful shutdown where you want to let in-progress work complete.
-    ///
-    /// Note: This drains the execution map, so new executions spawned after
-    /// calling this method will not be waited for.
-    pub async fn wait_for_all(&self) {
-        // Drain all handles from the map to await them without busy-waiting.
-        // The handles auto-remove themselves on completion, but draining here
-        // ensures we get ownership for awaiting.
-        let handles: Vec<JoinHandle<()>> = self
-            .executions
-            .iter()
-            .map(|entry| *entry.key())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter_map(|key| self.executions.remove(&key).map(|(_, h)| h))
-            .collect();
-
-        // Await all handles without polling
-        for handle in handles {
-            // Ignore errors (task panic or cancellation)
-            let _ = handle.await;
-        }
     }
 }
 

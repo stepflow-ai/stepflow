@@ -322,6 +322,9 @@ impl FlowExecutor {
             return Ok(());
         }
 
+        // Clone variables before moving into RunState (needed for journal event)
+        let variables = request.variables.clone();
+
         // Create the subflow's RunState
         let run_state = RunState::new_subflow(
             run_id,
@@ -336,10 +339,23 @@ impl FlowExecutor {
         // Store the run state
         self.runs.insert(run_id, run_state);
 
-        // Note: No separate SubflowSubmitted event needed - the subflow's RunCreated event
-        // (with parent_run_id set) identifies this as a subflow. Since all events for
-        // the execution tree share the same journal (keyed by root_run_id), the parent-child
-        // relationship is implicit in the journal structure.
+        // Journal: Record subflow creation and flush to ensure durability.
+        // The parent_run_id field identifies this as a subflow. All events for the
+        // execution tree share the same journal (keyed by root_run_id).
+        self.write_journal(
+            run_id,
+            JournalEvent::RunCreated {
+                flow_id: request.flow_id.clone(),
+                inputs: request.inputs.clone(),
+                variables,
+                parent_run_id: Some(parent_run_id),
+            },
+        )
+        .await?;
+        self.journal
+            .flush(self.root_run_id)
+            .await
+            .change_context(ExecutionError::JournalError)?;
 
         // Create the run record in the state store so results can be retrieved later.
         let mut run_params = CreateRunParams::new_subflow(

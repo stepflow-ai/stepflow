@@ -556,34 +556,6 @@ impl MetadataStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn list_pending_runs(
-        &self,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
-        async move {
-            let mut results: Vec<RunSummary> = self
-                .runs
-                .iter()
-                .map(|entry| entry.details.summary.clone())
-                .filter(|summary| {
-                    // Non-terminal statuses that need recovery
-                    matches!(
-                        summary.status,
-                        ExecutionStatus::Running | ExecutionStatus::Paused
-                    )
-                })
-                .collect();
-
-            // Sort by creation time (oldest first for recovery)
-            results.sort_by(|a, b| a.created_at.cmp(&b.created_at));
-
-            // Apply limit
-            results.truncate(limit);
-
-            Ok(results)
-        }
-        .boxed()
-    }
 }
 
 impl ExecutionJournal for InMemoryStateStore {

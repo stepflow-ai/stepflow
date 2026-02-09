@@ -19,7 +19,7 @@ use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutions, BlobStore, ExecutionJournal, InMemoryStateStore, LeaseManager, MetadataStore,
-    NoOpJournal,
+    NoOpJournal, NoOpLeaseManager,
 };
 
 use crate::routing::PluginRouter;
@@ -99,9 +99,10 @@ impl StepflowEnvironmentBuilder {
 
     /// Set the lease manager for distributed run coordination.
     ///
-    /// If not set, no lease management is performed (single-orchestrator mode).
-    /// For distributed deployments, use an implementation like etcd-based
-    /// lease management to coordinate run ownership across orchestrators.
+    /// If not set, a `NoOpLeaseManager` is used which always grants leases
+    /// (single-orchestrator mode). For distributed deployments, use an
+    /// implementation like etcd-based lease management to coordinate run
+    /// ownership across orchestrators.
     pub fn lease_manager(mut self, manager: Arc<dyn LeaseManager>) -> Self {
         self.lease_manager = Some(manager);
         self
@@ -149,13 +150,16 @@ impl StepflowEnvironmentBuilder {
             .execution_journal
             .unwrap_or_else(|| Arc::new(NoOpJournal::new()));
 
+        // Use provided lease manager or default to no-op (single-orchestrator mode)
+        let lease_manager: Arc<dyn LeaseManager> = self
+            .lease_manager
+            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new()));
+
         let mut env = StepflowEnvironment::new();
         env.insert(metadata_store);
         env.insert(blob_store);
         env.insert(journal);
-        if let Some(lease_manager) = self.lease_manager {
-            env.insert(lease_manager);
-        }
+        env.insert(lease_manager);
         env.insert(working_directory);
         env.insert(plugin_router);
 

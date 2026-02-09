@@ -22,7 +22,7 @@ use log::{info, warn};
 use stepflow_config::RecoveryConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::{LeaseManager, OrchestratorId};
+use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use tokio_util::sync::CancellationToken;
 
 /// Background task that periodically checks for and claims orphaned runs.
@@ -34,7 +34,6 @@ use tokio_util::sync::CancellationToken;
 /// The task respects the cancellation token for graceful shutdown.
 pub async fn orphan_claiming_loop(
     env: Arc<StepflowEnvironment>,
-    lease_manager: Arc<dyn LeaseManager>,
     orchestrator_id: OrchestratorId,
     config: RecoveryConfig,
     cancel_token: CancellationToken,
@@ -43,6 +42,8 @@ pub async fn orphan_claiming_loop(
         info!("Periodic orphan claiming is disabled");
         return;
     }
+
+    let lease_manager = env.lease_manager();
 
     let interval = Duration::from_secs(config.check_interval_secs);
     info!(
@@ -64,6 +65,10 @@ pub async fn orphan_claiming_loop(
 }
 
 /// Run the orphan claiming loop in push-based mode.
+///
+/// Push notifications are treated as wake-up signals indicating orphans may be available.
+/// We don't target the specific notified run because it may have already been claimed
+/// by another orchestrator by the time we process the notification.
 async fn run_push_mode(
     env: &Arc<StepflowEnvironment>,
     orchestrator_id: &OrchestratorId,
@@ -76,9 +81,9 @@ async fn run_push_mode(
                 info!("Orphan claiming loop cancelled (watch mode)");
                 break;
             }
-            Some(run_id) = orphan_receiver.recv() => {
-                info!("Received orphan notification for run {}", run_id);
-                handle_orphan_recovery(env, orchestrator_id, run_id, 1).await;
+            Some(_notified_run_id) = orphan_receiver.recv() => {
+                // Notification is a wake-up signal; claim whatever orphans are available
+                handle_orphan_recovery(env, orchestrator_id).await;
             }
         }
     }
@@ -108,31 +113,23 @@ async fn run_polling_mode(
     }
 }
 
-/// Handle recovery triggered by orphan notification.
+/// Handle recovery triggered by orphan notification (push mode).
 ///
-/// Note: The `notified_run_id` is used as a wake-up signal. We claim and recover
-/// whatever orphaned runs are available, which may or may not include the notified
-/// run (it could have been claimed by another orchestrator already).
-async fn handle_orphan_recovery(
-    env: &Arc<StepflowEnvironment>,
-    orchestrator_id: &OrchestratorId,
-    notified_run_id: uuid::Uuid,
-    limit: usize,
-) {
-    match recover_orphaned_runs(env, orchestrator_id.clone(), limit).await {
+/// Attempts to claim and recover one orphaned run. The notification serves as a
+/// wake-up signal; we recover whatever orphan is available, not necessarily the
+/// one that triggered the notification.
+async fn handle_orphan_recovery(env: &Arc<StepflowEnvironment>, orchestrator_id: &OrchestratorId) {
+    match recover_orphaned_runs(env, orchestrator_id.clone(), 1).await {
         Ok(result) => {
             if result.recovered > 0 {
                 info!(
-                    "Recovered {} orphaned run(s) after notification for run {}",
-                    result.recovered, notified_run_id
+                    "Recovered {} orphaned run(s): {:?}",
+                    result.recovered, result.recovered_run_ids
                 );
             }
         }
         Err(e) => {
-            warn!(
-                "Orphan recovery failed after notification for run {}: {:?}",
-                notified_run_id, e
-            );
+            warn!("Orphan recovery failed: {:?}", e);
         }
     }
 }

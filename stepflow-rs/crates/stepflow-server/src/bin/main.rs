@@ -20,7 +20,7 @@ use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
 use stepflow_server::{orphan_claiming_loop, shutdown_signal};
-use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
+use stepflow_state::OrchestratorId;
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -124,43 +124,36 @@ async fn main() {
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
 
-        // Start background orphan claiming task if lease manager is available
-        let orphan_task = if let Some(lease_manager) = executor.lease_manager() {
-            // Recover pending runs on startup
-            if recovery_config.max_startup_recovery > 0 {
-                info!(
-                    "Recovering pending runs with orchestrator_id={}",
-                    orchestrator_id.as_str()
-                );
+        // Recover pending runs on startup
+        if recovery_config.max_startup_recovery > 0 {
+            info!(
+                "Recovering pending runs with orchestrator_id={}",
+                orchestrator_id.as_str()
+            );
 
-                let recovery_result = recover_orphaned_runs(
-                    &executor,
-                    orchestrator_id.clone(),
-                    recovery_config.max_startup_recovery,
-                )
-                .await
-                .change_context(ServerError::RecoveryError)?;
-
-                if recovery_result.recovered > 0 || recovery_result.failed > 0 {
-                    info!(
-                        "Startup recovery complete: {} recovered, {} failed",
-                        recovery_result.recovered, recovery_result.failed
-                    );
-                }
-            }
-
-            // Start background orphan claiming loop
-            let task = tokio::spawn(orphan_claiming_loop(
-                executor.clone(),
-                lease_manager.clone(),
+            let recovery_result = recover_orphaned_runs(
+                &executor,
                 orchestrator_id.clone(),
-                recovery_config,
-                cancel_token.clone(),
-            ));
-            Some(task)
-        } else {
-            None
-        };
+                recovery_config.max_startup_recovery,
+            )
+            .await
+            .change_context(ServerError::RecoveryError)?;
+
+            if recovery_result.recovered > 0 || recovery_result.failed > 0 {
+                info!(
+                    "Startup recovery complete: {} recovered, {} failed",
+                    recovery_result.recovered, recovery_result.failed
+                );
+            }
+        }
+
+        // Start background orphan claiming loop (handles missing lease manager internally)
+        let orphan_task = tokio::spawn(orphan_claiming_loop(
+            executor.clone(),
+            orchestrator_id.clone(),
+            recovery_config,
+            cancel_token.clone(),
+        ));
 
         // Run server until shutdown signal
         tokio::select! {
@@ -176,15 +169,13 @@ async fn main() {
 
         // Graceful shutdown: cancel background task and wait for it
         cancel_token.cancel();
-        if let Some(task) = orphan_task {
-            info!("Waiting for background tasks to complete...");
-            match task.await {
-                Ok(()) => {
-                    info!("Orphan claiming task exited normally");
-                }
-                Err(e) => {
-                    warn!("Orphan claiming task panicked: {:?}", e);
-                }
+        info!("Waiting for background tasks to complete...");
+        match orphan_task.await {
+            Ok(()) => {
+                info!("Orphan claiming task exited normally");
+            }
+            Err(e) => {
+                warn!("Orphan claiming task panicked: {:?}", e);
             }
         }
 

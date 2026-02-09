@@ -15,7 +15,7 @@ Key concepts:
 
 ## Configuration File Structure
 
-Stepflow configuration files use YAML format with snake_case field names:
+Stepflow configuration files use YAML format with camelCase field names:
 
 ```yaml
 plugins:
@@ -36,9 +36,9 @@ routes:
 
 storageConfig:
   type: sqlite
-  database_url: "sqlite:workflow_state.db"
-  auto_migrate: true
-  max_connections: 10
+  databaseUrl: "sqlite:workflow_state.db"
+  autoMigrate: true
+  maxConnections: 10
 ```
 
 ### Environment Variable Substitution
@@ -227,18 +227,18 @@ storageConfig:
 ```yaml
 storageConfig:
   type: sqlite
-  database_url: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
-  auto_migrate: true
-  max_connections: 10
+  databaseUrl: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
+  autoMigrate: true
+  maxConnections: 10
 ```
 
 **Parameters:**
-- **`database_url`**: SQLite connection string
+- **`databaseUrl`**: SQLite connection string
   - File path: `"sqlite:path/to/database.db"`
   - File path with create mode: `"sqlite:path/to/database.db?mode=rwc"` (creates file if it doesn't exist)
   - In-memory: `"sqlite::memory:"`
-- **`auto_migrate`** (optional): Automatically create/update database schema [default: true]
-- **`max_connections`** (optional): Connection pool size [default: 10]
+- **`autoMigrate`** (optional): Automatically create/update database schema [default: true]
+- **`maxConnections`** (optional): Connection pool size [default: 10]
 
 ## Example: Development and Production {#example-dev-prod}
 
@@ -323,9 +323,9 @@ routes:
 
 storageConfig:
   type: sqlite
-  database_url: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
-  auto_migrate: true
-  max_connections: 20
+  databaseUrl: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
+  autoMigrate: true
+  maxConnections: 20
 ```
 
 </TabItem>

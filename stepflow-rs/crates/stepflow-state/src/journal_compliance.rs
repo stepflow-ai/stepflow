@@ -169,7 +169,8 @@ impl JournalComplianceTests {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append entries
+        // Append entries and track returned sequence numbers
+        let mut appended_seqs = Vec::new();
         for i in 0..5 {
             let entry = JournalEntry::new(
                 run_id,
@@ -180,24 +181,31 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            let seq = journal.append(entry).await.expect("append should succeed");
+            appended_seqs.push(seq);
         }
 
-        // Read all entries
+        // Read all entries starting from the first appended sequence
         let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
+            .read_from(root_run_id, appended_seqs[0], 100)
             .await
             .expect("read_from should succeed");
 
         assert_eq!(entries.len(), 5, "Should have 5 entries");
 
-        // Verify order
-        for (i, item) in entries.iter().enumerate() {
+        // Verify entries are strictly increasing and match appended sequences
+        for (i, (seq, _)) in entries.iter().enumerate() {
             assert_eq!(
-                item.0.value(),
-                i as u64,
-                "Entry {i} should have sequence {i}"
+                *seq, appended_seqs[i],
+                "Entry {i} should have sequence {:?}, got {:?}",
+                appended_seqs[i], seq
             );
+            if i > 0 {
+                assert!(
+                    *seq > entries[i - 1].0,
+                    "Sequences must be strictly increasing"
+                );
+            }
         }
     }
 
@@ -208,7 +216,8 @@ impl JournalComplianceTests {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append 10 entries
+        // Append 10 entries and track sequence numbers
+        let mut appended_seqs = Vec::new();
         for i in 0..10 {
             let entry = JournalEntry::new(
                 run_id,
@@ -219,18 +228,25 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            let seq = journal.append(entry).await.expect("append should succeed");
+            appended_seqs.push(seq);
         }
 
-        // Read from sequence 5
+        // Read from the 6th sequence (index 5)
         let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(5), 100)
+            .read_from(root_run_id, appended_seqs[5], 100)
             .await
             .expect("read_from should succeed");
 
-        assert_eq!(entries.len(), 5, "Should have 5 entries (seq 5-9)");
-        assert_eq!(entries[0].0.value(), 5, "First entry should be sequence 5");
-        assert_eq!(entries[4].0.value(), 9, "Last entry should be sequence 9");
+        assert_eq!(entries.len(), 5, "Should have 5 entries (indices 5-9)");
+        assert_eq!(
+            entries[0].0, appended_seqs[5],
+            "First entry should match 6th appended sequence"
+        );
+        assert_eq!(
+            entries[4].0, appended_seqs[9],
+            "Last entry should match 10th appended sequence"
+        );
     }
 
     /// Test that read_from() respects the limit parameter.
@@ -240,7 +256,8 @@ impl JournalComplianceTests {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append 10 entries
+        // Append 10 entries and track sequence numbers
+        let mut appended_seqs = Vec::new();
         for i in 0..10 {
             let entry = JournalEntry::new(
                 run_id,
@@ -251,22 +268,23 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            let seq = journal.append(entry).await.expect("append should succeed");
+            appended_seqs.push(seq);
         }
 
         // Read with limit of 3
         let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 3)
+            .read_from(root_run_id, appended_seqs[0], 3)
             .await
             .expect("read_from should succeed");
 
         assert_eq!(entries.len(), 3, "Should have exactly 3 entries");
-        assert_eq!(entries[0].0.value(), 0);
-        assert_eq!(entries[2].0.value(), 2);
+        assert_eq!(entries[0].0, appended_seqs[0], "First entry should match");
+        assert_eq!(entries[2].0, appended_seqs[2], "Third entry should match");
 
         // Read with limit of 0
         let entries = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 0)
+            .read_from(root_run_id, appended_seqs[0], 0)
             .await
             .expect("read_from should succeed");
         assert!(entries.is_empty(), "Limit 0 should return empty vec");
@@ -320,7 +338,8 @@ impl JournalComplianceTests {
             "latest_sequence should match first append"
         );
 
-        // Append more entries
+        // Append more entries, tracking the last one
+        let mut last_seq = seq1;
         for i in 1..5 {
             let entry = JournalEntry::new(
                 run_id,
@@ -331,7 +350,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            last_seq = journal.append(entry).await.expect("append should succeed");
         }
 
         let latest = journal
@@ -340,8 +359,8 @@ impl JournalComplianceTests {
             .expect("latest_sequence should succeed");
         assert_eq!(
             latest,
-            Some(SequenceNumber::new(4)),
-            "latest_sequence should be 4 after 5 appends"
+            Some(last_seq),
+            "latest_sequence should match last appended sequence"
         );
     }
 
@@ -371,7 +390,8 @@ impl JournalComplianceTests {
         let root2 = Uuid::now_v7();
         let root3 = Uuid::now_v7();
 
-        // Add entries to each
+        // Add entries to each, tracking the last sequence for each root
+        let mut root1_last_seq = None;
         for i in 0..3 {
             let entry = JournalEntry::new(
                 root1,
@@ -382,9 +402,10 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            root1_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
         }
 
+        let mut root2_last_seq = None;
         for i in 0..5 {
             let entry = JournalEntry::new(
                 root2,
@@ -395,7 +416,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            journal.append(entry).await.expect("append should succeed");
+            root2_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
         }
 
         let entry = JournalEntry::new(
@@ -407,7 +428,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        journal.append(entry).await.expect("append should succeed");
+        let root3_last_seq = journal.append(entry).await.expect("append should succeed");
 
         // List active roots
         let roots = journal
@@ -425,15 +446,26 @@ impl JournalComplianceTests {
         assert!(root3_info.is_some(), "root3 should be in list");
 
         let root1_info = root1_info.unwrap();
-        assert_eq!(root1_info.latest_sequence, SequenceNumber::new(2));
+        assert_eq!(
+            root1_info.latest_sequence,
+            root1_last_seq.unwrap(),
+            "root1 latest_sequence should match last appended"
+        );
         assert_eq!(root1_info.entry_count, 3);
 
         let root2_info = root2_info.unwrap();
-        assert_eq!(root2_info.latest_sequence, SequenceNumber::new(4));
+        assert_eq!(
+            root2_info.latest_sequence,
+            root2_last_seq.unwrap(),
+            "root2 latest_sequence should match last appended"
+        );
         assert_eq!(root2_info.entry_count, 5);
 
         let root3_info = root3_info.unwrap();
-        assert_eq!(root3_info.latest_sequence, SequenceNumber::new(0));
+        assert_eq!(
+            root3_info.latest_sequence, root3_last_seq,
+            "root3 latest_sequence should match last appended"
+        );
         assert_eq!(root3_info.entry_count, 1);
     }
 

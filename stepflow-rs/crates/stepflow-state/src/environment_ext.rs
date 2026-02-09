@@ -124,22 +124,22 @@ impl ExecutionJournalExt for StepflowEnvironment {
 /// use stepflow_state::LeaseManagerExt;
 ///
 /// async fn acquire_lease(env: &StepflowEnvironment, run_id: Uuid) {
-///     if let Some(lease_manager) = env.lease_manager() {
-///         lease_manager.acquire_lease(run_id, orchestrator_id, ttl).await.unwrap();
-///     }
+///     env.lease_manager().acquire_lease(run_id, orchestrator_id, ttl).await.unwrap();
 /// }
 /// ```
 pub trait LeaseManagerExt {
     /// Get a reference to the lease manager.
     ///
-    /// Returns `None` if no lease manager was configured (e.g., single-orchestrator mode
-    /// without distributed coordination).
-    fn lease_manager(&self) -> Option<&Arc<dyn LeaseManager>>;
+    /// # Panics
+    ///
+    /// Panics if lease manager was not set during environment construction.
+    fn lease_manager(&self) -> &Arc<dyn LeaseManager>;
 }
 
 impl LeaseManagerExt for StepflowEnvironment {
-    fn lease_manager(&self) -> Option<&Arc<dyn LeaseManager>> {
+    fn lease_manager(&self) -> &Arc<dyn LeaseManager> {
         self.get::<Arc<dyn LeaseManager>>()
+            .expect("LeaseManager not set in environment")
     }
 }
 
@@ -229,14 +229,14 @@ mod tests {
 
         // Use the extension trait
         let retrieved = env.lease_manager();
-        assert!(retrieved.is_some());
-        assert!(Arc::strong_count(retrieved.unwrap()) >= 1);
+        assert!(Arc::strong_count(retrieved) >= 1);
     }
 
     #[test]
-    fn test_lease_manager_ext_returns_none_if_not_set() {
+    #[should_panic(expected = "LeaseManager not set")]
+    fn test_lease_manager_ext_panics_if_not_set() {
         let env = StepflowEnvironment::new();
-        assert!(env.lease_manager().is_none());
+        let _ = env.lease_manager();
     }
 
     #[test]

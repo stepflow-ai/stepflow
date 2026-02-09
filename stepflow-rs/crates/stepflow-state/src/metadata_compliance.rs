@@ -89,10 +89,6 @@ impl MetadataComplianceTests {
         Self::test_item_results_single_item(store).await;
         Self::test_item_results_multiple_items(store).await;
         Self::test_item_results_ordering_by_index(store).await;
-
-        // Recovery tests
-        Self::test_list_pending_runs(store).await;
-        Self::test_list_pending_runs_excludes_terminal(store).await;
     }
 
     /// Run all compliance tests with a fresh store for each test.
@@ -139,10 +135,6 @@ impl MetadataComplianceTests {
         Self::test_item_results_single_item(&factory().await).await;
         Self::test_item_results_multiple_items(&factory().await).await;
         Self::test_item_results_ordering_by_index(&factory().await).await;
-
-        // Recovery tests
-        Self::test_list_pending_runs(&factory().await).await;
-        Self::test_list_pending_runs_excludes_terminal(&factory().await).await;
     }
 
     // =========================================================================
@@ -1027,75 +1019,6 @@ impl MetadataComplianceTests {
         assert_eq!(results[0].item_index, 0);
         assert_eq!(results[1].item_index, 1);
         assert_eq!(results[2].item_index, 2);
-    }
-
-    // =========================================================================
-    // Recovery Tests
-    // =========================================================================
-
-    /// Test that list_pending_runs returns runs in non-terminal states.
-    ///
-    /// Contract: list_pending_runs returns runs with Running status.
-    pub async fn test_list_pending_runs<M: MetadataStore + BlobStore>(store: &M) {
-        let flow = Arc::new(create_test_flow());
-        let flow_id = store.store_flow(flow).await.unwrap();
-
-        // Create a running run
-        let run_id = Uuid::now_v7();
-        let params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({}))]);
-        store.create_run(params).await.unwrap();
-
-        // List pending runs
-        let pending = store
-            .list_pending_runs(100)
-            .await
-            .expect("list_pending_runs should succeed");
-
-        // Should include our running run
-        let found = pending.iter().any(|r| r.run_id == run_id);
-        assert!(found, "list_pending_runs should include our Running run");
-    }
-
-    /// Test that list_pending_runs excludes terminal states.
-    ///
-    /// Contract: list_pending_runs does not return Completed, Failed, or Cancelled runs.
-    pub async fn test_list_pending_runs_excludes_terminal<M: MetadataStore + BlobStore>(store: &M) {
-        let flow = Arc::new(create_test_flow());
-        let flow_id = store.store_flow(flow).await.unwrap();
-
-        // Create runs with various statuses
-        let running_id = Uuid::now_v7();
-        let completed_id = Uuid::now_v7();
-        let failed_id = Uuid::now_v7();
-
-        for run_id in [running_id, completed_id, failed_id] {
-            let params =
-                CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-            store.create_run(params).await.unwrap();
-        }
-
-        // Update statuses
-        store
-            .update_run_status(completed_id, ExecutionStatus::Completed)
-            .await
-            .unwrap();
-        store
-            .update_run_status(failed_id, ExecutionStatus::Failed)
-            .await
-            .unwrap();
-
-        // List pending runs
-        let pending = store.list_pending_runs(100).await.unwrap();
-
-        // Should include running run
-        let has_running = pending.iter().any(|r| r.run_id == running_id);
-        assert!(has_running, "Should include Running run");
-
-        // Should NOT include completed or failed runs
-        let has_completed = pending.iter().any(|r| r.run_id == completed_id);
-        let has_failed = pending.iter().any(|r| r.run_id == failed_id);
-        assert!(!has_completed, "Should not include Completed run");
-        assert!(!has_failed, "Should not include Failed run");
     }
 }
 

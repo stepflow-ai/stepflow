@@ -167,22 +167,4 @@ pub trait MetadataStore: Send + Sync {
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    // =========================================================================
-    // Recovery Support
-    // =========================================================================
-
-    /// List runs that are in a pending (non-terminal) state.
-    ///
-    /// This is used during recovery to find runs that may need to be resumed.
-    /// Returns runs with status Pending or Running.
-    ///
-    /// # Arguments
-    /// * `limit` - Maximum number of runs to return
-    ///
-    /// # Returns
-    /// A vector of run summaries for pending runs
-    fn list_pending_runs(
-        &self,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>>;
 }

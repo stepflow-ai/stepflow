@@ -84,7 +84,8 @@ pub async fn submit_run(
         .await
         .change_context(ExecutionError::StateStoreError)?;
 
-    // Journal: Record run creation
+    // Journal: Record run creation and flush to ensure durability before execution.
+    // This ensures recovery can always find at least the RunCreated event.
     let journal = env.execution_journal();
     let entry = JournalEntry::new(
         run_id,
@@ -98,6 +99,10 @@ pub async fn submit_run(
     );
     journal
         .append(entry)
+        .await
+        .change_context(ExecutionError::JournalError)?;
+    journal
+        .flush(run_id)
         .await
         .change_context(ExecutionError::JournalError)?;
 

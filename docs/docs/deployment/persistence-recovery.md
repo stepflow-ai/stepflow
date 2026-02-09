@@ -18,31 +18,41 @@ flowchart TB
     end
 
     subgraph Storage["Storage Layer"]
-        Meta[MetadataStore<br/>Global State]
+        Meta[MetadataStore<br/>Run State]
+        Blob[BlobStore<br/>Content Storage]
         Journal[ExecutionJournal<br/>Local WAL]
         Lease[LeaseManager<br/>Coordination]
     end
 
     Exec -->|"record results"| Meta
+    Exec -->|"store data"| Blob
     Exec -->|"log events"| Journal
     Recovery -->|"replay events"| Journal
     Recovery -->|"claim runs"| Lease
-    Recovery -->|"load flow"| Meta
+    Recovery -->|"load flow"| Blob
 ```
 
 | Trait | Purpose | Scope |
 |-------|---------|-------|
-| **MetadataStore** | Durable storage of runs, results, and blobs | Global (shared across orchestrators) |
+| **MetadataStore** | Durable storage of runs and results | Global (shared across orchestrators) |
+| **BlobStore** | Content-addressed data storage | Global (shared across orchestrators) |
 | **ExecutionJournal** | Write-ahead log of execution events | Local (per-orchestrator, for recovery) |
 | **LeaseManager** | Run ownership coordination | Global (for distributed deployments) |
 
 ## MetadataStore
 
-The MetadataStore handles durable storage of workflow state that needs to be accessible across orchestrator instances:
+The MetadataStore handles durable storage of workflow execution state:
 
-- **Blobs**: Content-addressed data storage (inputs, outputs, flow definitions)
 - **Runs**: Workflow execution records with status and metadata
 - **Item Results**: Per-item outputs for batch workflows
+
+## BlobStore
+
+The BlobStore provides content-addressed storage for immutable data:
+
+- **Flow Definitions**: Workflow YAML/JSON stored by content hash
+- **Inputs/Outputs**: Step inputs and outputs for inspection and debugging
+- **Data Blobs**: Arbitrary JSON data stored by components
 
 ```yaml
 # SQLite configuration (recommended for single-node)
@@ -106,7 +116,7 @@ sequenceDiagram
     Note over Orch: CRASH
 
     Note over Orch: Recovery on Restart
-    Orch->>Meta: list_pending_runs()
+    Orch->>Meta: list_runs(status=Running)
     Orch->>Journal: read_from(root_run_id, seq=0)
     Note over Orch: Filter by run_id, replay events
     Note over Orch: Resume execution
@@ -229,7 +239,7 @@ When receiving SIGTERM (e.g., during Kubernetes pod termination), the server:
 | State | Source | Notes |
 |-------|--------|-------|
 | Flow definition | MetadataStore | Immutable, content-addressed |
-| Run inputs/variables | MetadataStore | Stored at run creation |
+| Run inputs/variables | ExecutionJournal | Extracted from RunCreated event |
 | Completed tasks | ExecutionJournal | Replayed to reconstruct state |
 | In-flight tasks | ExecutionJournal | Re-executed after recovery |
 | Item results | MetadataStore | Already persisted |
@@ -319,12 +329,6 @@ If you anticipate needing multiple orchestrators:
 
 ```rust
 trait MetadataStore {
-    // Blob storage
-    fn put_blob(data, blob_type) -> BlobId;
-    fn get_blob(blob_id) -> BlobData;
-    fn store_flow(workflow) -> BlobId;
-    fn get_flow(flow_id) -> Option<Flow>;
-
     // Run management
     fn create_run(params);
     fn get_run(run_id) -> Option<RunDetails>;
@@ -334,9 +338,20 @@ trait MetadataStore {
     // Results
     fn record_item_result(run_id, item_index, result);
     fn get_item_results(run_id, order) -> Vec<ItemResult>;
+}
+```
 
-    // Recovery
-    fn list_pending_runs(limit) -> Vec<RunSummary>;
+### BlobStore Methods
+
+```rust
+trait BlobStore {
+    // Content-addressed storage
+    fn put_blob(data, blob_type) -> BlobId;
+    fn get_blob(blob_id) -> Option<BlobData>;
+
+    // Flow-specific helpers
+    fn store_flow(workflow) -> BlobId;
+    fn get_flow(flow_id) -> Option<Flow>;
 }
 ```
 

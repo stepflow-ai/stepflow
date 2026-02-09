@@ -18,6 +18,7 @@ mod error;
 mod execution_journal;
 mod in_memory;
 pub mod journal_compliance;
+pub mod lease_compliance;
 mod lease_manager;
 mod lease_types;
 pub mod metadata_compliance;

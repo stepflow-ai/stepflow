@@ -47,7 +47,7 @@ use error_stack::ResultExt as _;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, BlobStoreExt as _, ExecutionJournal, ExecutionJournalExt as _,
-    LeaseManagerExt as _, MetadataStore, MetadataStoreExt as _, OrchestratorId, SequenceNumber,
+    LeaseManagerExt as _, MetadataStoreExt as _, OrchestratorId, SequenceNumber,
 };
 
 use crate::{ExecutionError, Result, RunState};
@@ -100,9 +100,6 @@ impl RecoveryResult {
 /// 2. For each run, loads the flow and replays journal events
 /// 3. Resumes execution from where it left off
 ///
-/// If no lease manager is configured (single-orchestrator mode), returns
-/// an empty result immediately since there's no distributed coordination.
-///
 /// # Arguments
 /// * `env` - The Stepflow environment (must have ActiveExecutions configured)
 /// * `orchestrator_id` - This orchestrator's ID
@@ -115,23 +112,13 @@ pub async fn recover_orphaned_runs(
     orchestrator_id: OrchestratorId,
     limit: usize,
 ) -> Result<RecoveryResult> {
-    // Get lease manager from environment - if not configured, no recovery needed
-    let Some(lease_manager) = env.lease_manager() else {
-        log::debug!("No lease manager configured, skipping recovery");
-        return Ok(RecoveryResult::new());
-    };
-
-    let state_store = env.metadata_store();
+    let lease_manager = env.lease_manager();
+    let metadata_store = env.metadata_store().clone();
     let journal = env.execution_journal();
 
     // Claim runs for recovery
     let runs_to_recover = lease_manager
-        .claim_for_recovery(
-            orchestrator_id.clone(),
-            &(state_store.clone() as Arc<dyn MetadataStore>),
-            journal,
-            limit,
-        )
+        .claim_for_recovery(orchestrator_id.clone(), &metadata_store, journal, limit)
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
@@ -226,9 +213,27 @@ async fn recover_single_run(
             .attach_printable("No journal entries found for this run"));
     }
 
+    // Extract inputs and variables from the RunCreated event in the journal.
+    // This is the authoritative source - RunRecoveryInfo may have incomplete data.
+    let (inputs, variables, parent_run_id) = run_entries
+        .iter()
+        .find_map(|(_, entry)| match &entry.event {
+            stepflow_state::JournalEvent::RunCreated {
+                inputs,
+                variables,
+                parent_run_id,
+                ..
+            } => Some((inputs.clone(), variables.clone(), *parent_run_id)),
+            _ => None,
+        })
+        .ok_or_else(|| {
+            error_stack::report!(ExecutionError::RecoveryFailed)
+                .attach_printable("No RunCreated event found in journal")
+        })?;
+
     // Create RunState and apply events to reconstruct state
     // This validates that the journal can be replayed and counts ready tasks
-    let mut run_state = if let Some(parent_run_id) = recovery_info.parent_run_id {
+    let mut run_state = if let Some(parent_run_id) = parent_run_id {
         // Subflow
         RunState::new_subflow(
             run_id,
@@ -236,8 +241,8 @@ async fn recover_single_run(
             recovery_info.root_run_id,
             parent_run_id,
             flow.clone(),
-            recovery_info.inputs.clone(),
-            recovery_info.variables.clone(),
+            inputs,
+            variables,
         )
     } else {
         // Top-level run
@@ -245,8 +250,8 @@ async fn recover_single_run(
             run_id,
             recovery_info.flow_id.clone(),
             flow.clone(),
-            recovery_info.inputs.clone(),
-            recovery_info.variables.clone(),
+            inputs,
+            variables,
         )
     };
 
