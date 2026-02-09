@@ -134,12 +134,25 @@ impl FlowExecutor {
     /// # Arguments
     /// * `active_executions` - The tracker to register with
     pub fn spawn(mut self, active_executions: &stepflow_state::ActiveExecutions) {
+        use stepflow_observability::fastrace::prelude::*;
         let run_id = self.root_run_id;
-        active_executions.spawn(run_id, async move {
+
+        let run_span_context =
+            SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default());
+
+        let run_span = Span::root("run_execution", run_span_context)
+            .with_property(|| ("run_id", run_id.to_string()))
+            .with_property(|| ("max_in_flight", self.max_in_flight.to_string()));
+
+        // Spawn the executor with tracing
+        let future = async move {
             if let Err(e) = self.execute_to_completion().await {
                 log::error!("Run {} failed: {:?}", run_id, e);
             }
-        });
+        }
+        .in_span(run_span);
+
+        active_executions.spawn(run_id, future);
     }
 
     /// Get a reference to a run state by run ID.
@@ -382,22 +395,17 @@ impl FlowExecutor {
                     "Truly empty subflow (0 items), marking as completed: run_id={}",
                     run_id
                 );
-                let state_store = self.metadata_store.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = state_store
-                        .update_run_status(
-                            run_id,
-                            stepflow_core::status::ExecutionStatus::Completed,
-                        )
-                        .await
-                    {
-                        log::error!(
-                            "Failed to update empty subflow status for run {}: {:?}",
-                            run_id,
-                            e
-                        );
-                    }
-                });
+                if let Err(e) = self
+                    .metadata_store
+                    .update_run_status(run_id, stepflow_core::status::ExecutionStatus::Completed)
+                    .await
+                {
+                    log::error!(
+                        "Failed to update empty subflow status for run {}: {:?}",
+                        run_id,
+                        e
+                    );
+                }
             } else {
                 // Subflow with items but 0 steps: record item results (state store notifies on completion)
                 log::debug!(
@@ -405,27 +413,23 @@ impl FlowExecutor {
                     item_count,
                     run_id
                 );
-                let results: Vec<_> = (0..item_count)
-                    .map(|i| self.resolve_item_output(run_id, i))
-                    .collect();
-                let state_store = self.metadata_store.clone();
-                tokio::spawn(async move {
-                    for (item_index, result) in results.into_iter().enumerate() {
-                        // No steps executed, so step_statuses is empty
-                        if let Err(e) = state_store
-                            .record_item_result(run_id, item_index, result, Vec::new())
-                            .await
-                        {
-                            log::error!(
-                                "Failed to record empty subflow item result for run {} item {}: {:?}",
-                                run_id,
-                                item_index,
-                                e
-                            );
-                        }
+                for item_index in 0..item_count {
+                    let result = self.resolve_item_output(run_id, item_index);
+                    // No steps executed, so step_statuses is empty
+                    if let Err(e) = self
+                        .metadata_store
+                        .record_item_result(run_id, item_index as usize, result, Vec::new())
+                        .await
+                    {
+                        log::error!(
+                            "Failed to record empty subflow item result for run {} item {}: {:?}",
+                            run_id,
+                            item_index,
+                            e
+                        );
                     }
-                    // State store's record_item_result will notify waiters when status becomes terminal
-                });
+                }
+                // State store's record_item_result will notify waiters when status becomes terminal
             }
         }
 
@@ -453,7 +457,7 @@ impl FlowExecutor {
     /// to retrieve the results.
     ///
     /// Tasks are executed concurrently up to `max_in_flight` at a time.
-    pub async fn execute_to_completion(&mut self) -> Result<()> {
+    async fn execute_to_completion(&mut self) -> Result<()> {
         let run_id = self.root_run_id;
         let flow_id = self.root_run_state().flow_id().clone();
 
@@ -686,46 +690,44 @@ impl FlowExecutor {
             // The state store will notify waiters when results are recorded.
             if run_id != self.root_run_id {
                 let item_count = items_state.item_count();
-                // Collect results and step statuses before spawning, as items_state won't be available
-                let items_data: Vec<_> = (0..item_count)
-                    .map(|i| {
-                        let result = self.resolve_item_output(run_id, i);
-                        let step_statuses = items_state.get_item_step_statuses(i);
-                        (result, step_statuses)
-                    })
-                    .collect();
-                let state_store = self.metadata_store.clone();
                 let final_status = if has_failures {
                     stepflow_core::status::ExecutionStatus::Failed
                 } else {
                     stepflow_core::status::ExecutionStatus::Completed
                 };
-                tokio::spawn(async move {
-                    for (item_index, (result, step_statuses)) in items_data.into_iter().enumerate()
+
+                // Record item results directly (no spawn needed since complete_task is async)
+                for item_index in 0..item_count {
+                    let result = self.resolve_item_output(run_id, item_index);
+                    let step_statuses = items_state.get_item_step_statuses(item_index);
+                    if let Err(e) = self
+                        .metadata_store
+                        .record_item_result(run_id, item_index as usize, result, step_statuses)
+                        .await
                     {
-                        if let Err(e) = state_store
-                            .record_item_result(run_id, item_index, result, step_statuses)
-                            .await
-                        {
-                            log::error!(
-                                "Failed to record subflow item result for run {} item {}: {:?}",
-                                run_id,
-                                item_index,
-                                e
-                            );
-                        }
-                    }
-                    // record_item_result triggers completion notification via state store
-                    // when the last result is recorded and status becomes terminal.
-                    // We also update the run status explicitly to ensure notification.
-                    if let Err(e) = state_store.update_run_status(run_id, final_status).await {
                         log::error!(
-                            "Failed to update subflow run status for {}: {:?}",
+                            "Failed to record subflow item result for run {} item {}: {:?}",
                             run_id,
+                            item_index,
                             e
                         );
                     }
-                });
+                }
+
+                // record_item_result triggers completion notification via state store
+                // when the last result is recorded and status becomes terminal.
+                // We also update the run status explicitly to ensure notification.
+                if let Err(e) = self
+                    .metadata_store
+                    .update_run_status(run_id, final_status)
+                    .await
+                {
+                    log::error!(
+                        "Failed to update subflow run status for {}: {:?}",
+                        run_id,
+                        e
+                    );
+                }
             }
             // Root runs are handled in execute_to_completion
         }

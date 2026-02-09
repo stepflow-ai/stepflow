@@ -34,7 +34,6 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub struct SubmitRunParams {
     pub max_concurrency: Option<usize>,
-    pub parent_context: Option<stepflow_observability::fastrace::prelude::SpanContext>,
     /// Step overrides to apply during execution. Empty means no overrides.
     pub overrides: WorkflowOverrides,
     pub variables: Option<HashMap<String, ValueRef>>,

@@ -124,7 +124,7 @@ pub async fn submit_run(
     );
 
     // Build FlowExecutor before spawning - handle errors synchronously
-    let mut flow_executor = match crate::FlowExecutorBuilder::new(env.clone(), run_state)
+    let flow_executor = match crate::FlowExecutorBuilder::new(env.clone(), run_state)
         .max_concurrency(max_concurrency)
         .scheduler(Box::new(crate::DepthFirstScheduler::new()))
         .build()
@@ -140,28 +140,8 @@ pub async fn submit_run(
         }
     };
 
-    // Set up tracing context for the spawned execution
-    use stepflow_observability::fastrace::prelude::*;
-
-    let run_span_context = params
-        .parent_context
-        .unwrap_or_else(|| SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default()));
-
-    let run_span = Span::root("run_execution", run_span_context)
-        .with_property(|| ("run_id", run_id.to_string()))
-        .with_property(|| ("item_count", item_count.to_string()))
-        .with_property(|| ("max_concurrency", max_concurrency.to_string()));
-
-    // Spawn the executor with tracing
-    env.active_executions().spawn(run_id, async move {
-        async move {
-            if let Err(e) = flow_executor.execute_to_completion().await {
-                log::error!("Run {} failed: {:?}", run_id, e);
-            }
-        }
-        .in_span(run_span)
-        .await;
-    });
+    // Spawn the flow executor and register with active executions.
+    flow_executor.spawn(env.active_executions());
 
     // Return current status (will be Running since we just spawned the task)
     get_run(env, run_id, GetRunParams::default()).await

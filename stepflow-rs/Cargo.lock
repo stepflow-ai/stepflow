@@ -4728,7 +4728,6 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "similar-asserts",
- "stepflow-observability",
  "thiserror 2.0.18",
  "utoipa",
 ]
