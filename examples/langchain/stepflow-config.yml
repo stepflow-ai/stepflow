@@ -23,5 +23,5 @@ routes:
     - plugin: langchain
     - plugin: builtin
 
-stateStore:
+storageConfig:
   type: inMemory

@@ -36,5 +36,5 @@ routes:
     - plugin: builtin
 
 # Optional: Configure state storage
-stateStore:
+storageConfig:
   type: inMemory

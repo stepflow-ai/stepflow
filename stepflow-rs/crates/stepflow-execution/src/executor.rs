@@ -26,13 +26,16 @@
 
 use std::sync::Arc;
 
-use crate::{ExecutionError, Result};
+use crate::{ExecutionError, Result, RunState};
 use error_stack::ResultExt as _;
-use stepflow_core::workflow::{Flow, ValueRef};
+use stepflow_core::workflow::{Flow, ValueRef, apply_overrides};
 use stepflow_core::{BlobId, GetRunParams, SubmitRunParams, status::ExecutionStatus};
 use stepflow_dtos::RunStatus;
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::{CreateRunParams, StateStoreExt as _};
+use stepflow_state::{
+    ActiveExecutionsExt as _, BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _,
+    JournalEntry, JournalEvent, MetadataStoreExt as _,
+};
 use uuid::Uuid;
 
 /// Submit a run for execution.
@@ -42,7 +45,7 @@ use uuid::Uuid;
 /// block until the run finishes.
 ///
 /// # Arguments
-/// * `env` - The stepflow environment containing state store and plugins
+/// * `env` - The stepflow environment containing state store, plugins, and active executions tracker
 /// * `flow` - The workflow to execute
 /// * `flow_id` - The blob ID of the flow
 /// * `inputs` - Input values for each item in the run
@@ -58,13 +61,14 @@ pub async fn submit_run(
     params: SubmitRunParams,
 ) -> Result<RunStatus> {
     let run_id = Uuid::now_v7();
-    let state_store = env.state_store();
+    let state_store = env.metadata_store();
     let item_count = inputs.len();
     let max_concurrency = params.max_concurrency.unwrap_or(item_count);
 
     // Ensure the flow is stored as a blob
     let flow_value = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
-    state_store
+    let blob_store = env.blob_store();
+    blob_store
         .put_blob(flow_value, stepflow_core::BlobType::Flow)
         .await
         .change_context(ExecutionError::StateStoreError)?;
@@ -80,83 +84,83 @@ pub async fn submit_run(
         .await
         .change_context(ExecutionError::StateStoreError)?;
 
-    // Spawn background task for execution using FlowExecutor
-    let env_clone = env.clone();
-    let flow_clone = flow.clone();
-    let flow_id_clone = flow_id.clone();
-    let overrides_clone = params.overrides.clone();
-    let variables_clone = params.variables.clone();
-    let inputs_clone = inputs.clone();
-    let state_store_clone = state_store.clone();
+    // Journal: Record run creation
+    let journal = env.execution_journal();
+    let entry = JournalEntry::new(
+        run_id,
+        run_id, // For root runs, root_run_id == run_id
+        JournalEvent::RunCreated {
+            flow_id: flow_id.clone(),
+            inputs: inputs.clone(),
+            variables: params.variables.clone().unwrap_or_default(),
+            parent_run_id: None,
+        },
+    );
+    journal
+        .append(entry)
+        .await
+        .change_context(ExecutionError::JournalError)?;
 
-    tokio::spawn(async move {
-        use stepflow_observability::fastrace::prelude::*;
+    // Apply overrides to the flow (returns unchanged if empty)
+    let flow_with_overrides = match apply_overrides(flow.clone(), &params.overrides) {
+        Ok(f) => f,
+        Err(e) => {
+            log::error!("Failed to apply overrides: {:?}", e);
+            let _ = state_store
+                .update_run_status(run_id, ExecutionStatus::Failed)
+                .await;
+            return Err(e.change_context(ExecutionError::OverrideError));
+        }
+    };
 
-        // Create span for run execution
-        let run_span_context = params.parent_context.unwrap_or_else(|| {
-            SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default())
-        });
+    // Create RunState for this run
+    let variables = params.variables.clone().unwrap_or_default();
+    let run_state = RunState::new(
+        run_id,
+        flow_id.clone(),
+        flow_with_overrides,
+        inputs.clone(),
+        variables,
+    );
 
-        let run_span = Span::root("run_execution", run_span_context)
-            .with_property(|| ("run_id", run_id.to_string()))
-            .with_property(|| ("item_count", item_count.to_string()))
-            .with_property(|| ("max_concurrency", max_concurrency.to_string()));
+    // Build FlowExecutor before spawning - handle errors synchronously
+    let mut flow_executor = match crate::FlowExecutorBuilder::new(env.clone(), run_state)
+        .max_concurrency(max_concurrency)
+        .scheduler(Box::new(crate::DepthFirstScheduler::new()))
+        .build()
+        .await
+    {
+        Ok(executor) => executor,
+        Err(e) => {
+            log::error!("Failed to build FlowExecutor: {:?}", e);
+            let _ = state_store
+                .update_run_status(run_id, ExecutionStatus::Failed)
+                .await;
+            return Err(e);
+        }
+    };
 
+    // Set up tracing context for the spawned execution
+    use stepflow_observability::fastrace::prelude::*;
+
+    let run_span_context = params
+        .parent_context
+        .unwrap_or_else(|| SpanContext::new(TraceId(Uuid::now_v7().as_u128()), SpanId::default()));
+
+    let run_span = Span::root("run_execution", run_span_context)
+        .with_property(|| ("run_id", run_id.to_string()))
+        .with_property(|| ("item_count", item_count.to_string()))
+        .with_property(|| ("max_concurrency", max_concurrency.to_string()));
+
+    // Spawn the executor with tracing
+    env.active_executions().spawn(run_id, async move {
         async move {
-            // Create FlowExecutor for this run
-            let flow_executor_result = crate::flow_executor::FlowExecutorBuilder::new(
-                env_clone.clone(),
-                flow_clone,
-                flow_id_clone,
-                state_store_clone.clone(),
-            )
-            .run_id(run_id)
-            .inputs(inputs_clone)
-            .max_concurrency(max_concurrency);
-
-            // Apply overrides if not empty
-            let flow_executor_result = if !overrides_clone.is_empty() {
-                flow_executor_result.overrides(overrides_clone)
-            } else {
-                flow_executor_result
-            };
-
-            // Apply variables if provided
-            let flow_executor_result = if let Some(variables) = variables_clone {
-                flow_executor_result.variables(variables)
-            } else {
-                flow_executor_result
-            };
-
-            // Use depth-first scheduler for now (completes items faster)
-            let flow_executor_result =
-                flow_executor_result.scheduler(Box::new(crate::DepthFirstScheduler::new()));
-
-            let mut flow_executor = match flow_executor_result.build().await {
-                Ok(executor) => executor,
-                Err(e) => {
-                    log::error!("Failed to build FlowExecutor: {:?}", e);
-                    let _ = state_store_clone
-                        .update_run_status(run_id, ExecutionStatus::Failed)
-                        .await;
-                    return;
-                }
-            };
-
-            // Execute all items (handles result recording and status update internally)
             if let Err(e) = flow_executor.execute_to_completion().await {
-                log::error!("FlowExecutor failed: {:?}", e);
-                // Status already updated by execute_to_completion on error path
-                return;
+                log::error!("Run {} failed: {:?}", run_id, e);
             }
-
-            log::info!(
-                "Run {run_id} execution completed with {} items",
-                flow_executor.state().item_count()
-            );
         }
         .in_span(run_span)
-        .await
+        .await;
     });
 
     // Return current status (will be Running since we just spawned the task)
@@ -175,7 +179,7 @@ pub async fn submit_run(
 /// # Returns
 /// Ok(()) when the run completes, or an error if the run is not found
 pub async fn wait_for_completion(env: &Arc<StepflowEnvironment>, run_id: Uuid) -> Result<()> {
-    env.state_store()
+    env.metadata_store()
         .wait_for_completion(run_id)
         .await
         .change_context(ExecutionError::StateStoreError)
@@ -195,7 +199,7 @@ pub async fn get_run(
     run_id: Uuid,
     params: GetRunParams,
 ) -> Result<RunStatus> {
-    let state_store = env.state_store();
+    let state_store = env.metadata_store();
 
     let details = state_store
         .get_run(run_id)
@@ -235,29 +239,32 @@ mod tests {
 
         // Create blob through executor context
         let blob_id = executor
-            .state_store()
+            .blob_store()
             .put_blob(value_ref, stepflow_core::BlobType::Data)
             .await
             .unwrap();
 
         // Retrieve blob through executor context
-        let retrieved = executor.state_store().get_blob(&blob_id).await.unwrap();
+        let retrieved = executor.blob_store().get_blob(&blob_id).await.unwrap();
 
         // Verify data matches
         assert_eq!(retrieved.data().as_ref(), &test_data);
     }
 
     #[tokio::test]
-    async fn test_executor_with_custom_state_store() {
+    async fn test_executor_with_custom_metadata_store() {
         use std::path::PathBuf;
         use stepflow_plugin::routing::PluginRouter;
-        use stepflow_state::{InMemoryStateStore, StateStore};
+        use stepflow_state::{BlobStore, InMemoryStateStore, MetadataStore};
 
-        // Create executor with custom state store
-        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+        // Create executor with custom metadata store
+        let store = Arc::new(InMemoryStateStore::new());
+        let metadata_store: Arc<dyn MetadataStore> = store.clone();
+        let blob_store: Arc<dyn BlobStore> = store;
         let plugin_router = PluginRouter::builder().build().unwrap();
         let executor = StepflowEnvironmentBuilder::new()
-            .state_store(state_store.clone())
+            .metadata_store(metadata_store)
+            .blob_store(blob_store.clone())
             .working_directory(PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()
@@ -267,7 +274,7 @@ mod tests {
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});
         let blob_id = executor
-            .state_store()
+            .blob_store()
             .put_blob(
                 ValueRef::new(test_data.clone()),
                 stepflow_core::BlobType::Data,
@@ -275,12 +282,12 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify we can retrieve through the direct state store
-        let retrieved_direct = state_store.get_blob(&blob_id).await.unwrap();
+        // Verify we can retrieve through the direct blob store
+        let retrieved_direct = blob_store.get_blob(&blob_id).await.unwrap();
         assert_eq!(retrieved_direct.data().as_ref(), &test_data);
 
         // And through the executor context
-        let retrieved_executor = executor.state_store().get_blob(&blob_id).await.unwrap();
+        let retrieved_executor = executor.blob_store().get_blob(&blob_id).await.unwrap();
         assert_eq!(retrieved_executor.data().as_ref(), &test_data);
     }
 }

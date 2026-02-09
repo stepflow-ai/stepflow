@@ -38,6 +38,7 @@ from stepflow_py.api.models.flow_schema import FlowSchema
 from stepflow_py.api.models.health_query import HealthQuery
 from stepflow_py.api.models.health_response import HealthResponse
 from stepflow_py.api.models.input_ref import InputRef
+from stepflow_py.api.models.item_details import ItemDetails
 from stepflow_py.api.models.item_result import ItemResult
 from stepflow_py.api.models.item_statistics import ItemStatistics
 from stepflow_py.api.models.list_components_query import ListComponentsQuery
@@ -61,6 +62,7 @@ from stepflow_py.api.models.step_override import StepOverride
 from stepflow_py.api.models.step_ref import StepRef
 from stepflow_py.api.models.step_run_response import StepRunResponse
 from stepflow_py.api.models.step_status import StepStatus
+from stepflow_py.api.models.step_status_info import StepStatusInfo
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
 from stepflow_py.api.models.store_flow_response import StoreFlowResponse
 from stepflow_py.api.models.test_case import TestCase

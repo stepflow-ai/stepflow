@@ -25,7 +25,7 @@ use stepflow_observability::{
     init_observability,
 };
 use stepflow_plugin::{DynPlugin, StepflowEnvironment, StepflowEnvironmentBuilder};
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{BlobStore, InMemoryStateStore, MetadataStore};
 use tower::{Service as _, ServiceExt};
 
 static INIT_TEST_LOGGING: std::sync::Once = std::sync::Once::new();
@@ -62,7 +62,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     use stepflow_core::FlowError;
     use stepflow_mock::MockComponentBehavior;
 
-    let state_store = Arc::new(InMemoryStateStore::new());
+    let store = Arc::new(InMemoryStateStore::new());
+    let metadata_store: Arc<dyn MetadataStore> = store.clone();
+    let blob_store: Arc<dyn BlobStore> = store;
 
     // Build the plugin router
     let mut plugin_router_builder = stepflow_plugin::routing::PluginRouter::builder();
@@ -149,9 +151,9 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
     let plugin_router = plugin_router_builder.build().unwrap();
-    let state_store: Arc<dyn StateStore> = state_store;
     let executor = StepflowEnvironmentBuilder::new()
-        .state_store(state_store)
+        .metadata_store(metadata_store)
+        .blob_store(blob_store)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()
@@ -442,17 +444,17 @@ async fn test_create_run_with_invalid_overrides() {
         .call(create_run_request)
         .await
         .unwrap();
-    // With late binding, invalid overrides are stored but don't cause immediate API errors
-    // They would be ignored during execution if they reference non-existent steps
-    assert_eq!(response.status(), StatusCode::OK);
+    // Overrides are validated upfront - referencing non-existent steps returns Bad Request
+    // This provides better UX by catching typos in step names immediately
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let run_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let error_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    // Should still get a valid run ID even with invalid overrides
-    assert!(run_response["runId"].as_str().is_some());
+    // Error response should contain information about the failure
+    assert!(error_response["message"].as_str().is_some());
 }
 
 #[tokio::test]
@@ -723,7 +725,7 @@ async fn test_run_details() {
     assert_eq!(details_response["runId"], run_id);
     assert_eq!(details_response["flowId"], flow_id);
     assert_eq!(details_response["status"], "completed");
-    assert!(details_response["inputs"].is_array());
+    assert!(details_response["itemDetails"].is_array());
 
     // Get run flow
     let flow_request = Request::builder()

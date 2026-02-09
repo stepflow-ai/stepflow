@@ -23,9 +23,11 @@ use std::sync::Arc;
 use bit_set::BitSet;
 use stepflow_core::{
     FlowResult,
+    status::StepStatus,
     values::{Secrets, StepContext, ValueRef},
     workflow::{Flow, VariableSchema},
 };
+use stepflow_dtos::StepStatusInfo;
 
 /// Step index mapping for execution tracking.
 ///
@@ -71,13 +73,15 @@ impl StepIndex {
 /// Tracks which steps have completed, which are waiting on dependencies,
 /// and caches step results. Each item can have its own flow, supporting
 /// nested flow evaluation where sub-flows are added as new items.
+///
+/// Note: This struct tracks workflow graph state (what CAN run based on
+/// dependencies), not runtime state (what IS running). The executor/scheduler
+/// separately tracks which tasks are currently in-flight to prevent double-scheduling.
 pub struct ItemState {
     /// The flow definition for this item.
     flow: Arc<Flow>,
     /// Step index mapping for ID <-> index lookups.
     step_index: Arc<StepIndex>,
-    /// For each step, whether it is currently executing.
-    executing: BitSet,
     /// For each step, whether it has completed execution.
     completed: BitSet,
     /// Cached results for completed steps.
@@ -111,7 +115,6 @@ impl ItemState {
         Self {
             flow,
             step_index,
-            executing: BitSet::with_capacity(num_steps),
             completed: BitSet::with_capacity(num_steps),
             results: vec![None; num_steps],
             needed: BitSet::with_capacity(num_steps),
@@ -139,45 +142,50 @@ impl ItemState {
     }
 
     /// Add a step to the needed set.
-    pub fn mark_needed(&mut self, step_index: usize) {
+    #[cfg(test)]
+    fn mark_needed(&mut self, step_index: usize) {
         self.needed.insert(step_index);
     }
 
-    /// Add a step as needed and recursively discover all transitively needed steps.
+    /// Add a step as needed and transitively discover all needed steps.
     ///
     /// Returns the set of newly discovered needed step indices.
     pub fn add_or_update_needed(&mut self, step_idx: usize) -> BitSet {
         let mut newly_needed = BitSet::new();
-        self.add_needed_recursive(step_idx, &mut newly_needed);
-        newly_needed
-    }
+        let mut worklist = vec![step_idx];
 
-    fn add_needed_recursive(&mut self, step_idx: usize, newly_needed: &mut BitSet) {
-        let is_new = !self.needed.contains(step_idx);
-        self.needed.insert(step_idx);
-        if is_new {
-            newly_needed.insert(step_idx);
-        }
+        while let Some(idx) = worklist.pop() {
+            // Mark as needed
+            let is_new = !self.needed.contains(idx);
+            self.needed.insert(idx);
+            if is_new {
+                newly_needed.insert(idx);
+            }
 
-        // Evaluate what this step needs
-        let step = self.flow.step(step_idx);
-        let deps = step.input.needed_steps(self);
+            // Evaluate what this step needs
+            let step = self.flow.step(idx);
+            let mut pending_deps = step.input.needed_steps(self);
 
-        if deps.is_empty() {
-            self.clear_waiting(step_idx);
-        } else {
-            self.set_waiting(step_idx, deps.clone());
+            // Only wait on deps that aren't already completed.
+            // This is important for recovery where some steps are marked completed
+            // before initialization runs.
+            pending_deps.difference_with(&self.completed);
 
-            // Recurse into deps that aren't completed
-            for dep_idx in deps.iter() {
-                if self.is_completed(dep_idx) {
-                    continue;
-                }
-                if !self.needed.contains(dep_idx) {
-                    self.add_needed_recursive(dep_idx, newly_needed);
+            if pending_deps.is_empty() {
+                self.clear_waiting(idx);
+            } else {
+                self.set_waiting(idx, pending_deps.clone());
+
+                // Queue unvisited deps for processing
+                for dep_idx in pending_deps.iter() {
+                    if !self.needed.contains(dep_idx) {
+                        worklist.push(dep_idx);
+                    }
                 }
             }
         }
+
+        newly_needed
     }
 
     /// Set what a step is waiting on for re-evaluation.
@@ -203,17 +211,10 @@ impl ItemState {
         self.waiting_on[step].clear();
     }
 
-    /// Mark a step as currently executing.
-    pub fn mark_executing(&mut self, step: usize) {
-        self.executing.insert(step);
-    }
-
     /// Mark a step as completed with its result.
     ///
     /// Returns the set of steps that became newly unblocked.
     pub fn mark_completed(&mut self, step: usize, result: FlowResult) -> BitSet {
-        self.executing.remove(step);
-
         if !self.completed.insert(step) {
             log::warn!("Step {step} already completed");
             return BitSet::new();
@@ -236,16 +237,19 @@ impl ItemState {
         newly_unblocked
     }
 
-    /// Get the set of steps that are ready to execute.
+    /// Get the set of steps that are schedulable for execution.
     ///
-    /// A step is ready if it is needed, not executing, not completed,
-    /// and has no waiting dependencies.
-    pub fn ready_steps(&self) -> BitSet {
-        let mut ready = self.needed.clone();
-        ready.difference_with(&self.executing);
-        ready.difference_with(&self.completed);
+    /// A step is schedulable if it is needed, not completed, and all of its
+    /// needed dependencies are available -- it is not waiting on anything.
+    ///
+    /// Note: This does not track in-flight tasks. The executor/scheduler
+    /// must separately track which tasks are currently executing to prevent
+    /// double-scheduling.
+    pub fn schedulable_steps(&self) -> BitSet {
+        let mut schedulable = self.needed.clone();
+        schedulable.difference_with(&self.completed);
 
-        ready
+        schedulable
             .iter()
             .filter(|&step| self.waiting_on[step].is_empty())
             .collect()
@@ -271,6 +275,13 @@ impl ItemState {
         self.needed.contains(step)
     }
 
+    /// Get all needed step indices as a vector.
+    ///
+    /// This is used for journalling to record which steps are needed for this item.
+    pub fn needed_step_indices(&self) -> Vec<usize> {
+        self.needed.iter().collect()
+    }
+
     /// Check if a step has completed execution.
     pub fn is_completed(&self, step: usize) -> bool {
         self.completed.contains(step)
@@ -284,6 +295,57 @@ impl ItemState {
     /// Get a reference to the input value.
     pub fn input(&self) -> &ValueRef {
         &self.input
+    }
+
+    /// Get step status information for all needed steps.
+    ///
+    /// Returns step status info for each step that was needed for this item.
+    /// This is used when recording item results to include step status summary.
+    pub fn get_step_statuses(&self) -> Vec<StepStatusInfo> {
+        let steps = self.flow.steps();
+        self.needed
+            .iter()
+            .map(|step_idx| {
+                let step = &steps[step_idx];
+                let status = if self.completed.contains(step_idx) {
+                    // Step completed - check if it succeeded or failed
+                    match self.results.get(step_idx).and_then(|r| r.as_ref()) {
+                        Some(FlowResult::Success(_)) => StepStatus::Completed,
+                        Some(FlowResult::Failed(_)) => StepStatus::Failed,
+                        None => StepStatus::Completed, // Completed but result not stored (shouldn't happen)
+                    }
+                } else {
+                    // Step not completed - it's either blocked or runnable
+                    if self.waiting_on[step_idx].is_empty() {
+                        StepStatus::Runnable
+                    } else {
+                        StepStatus::Blocked
+                    }
+                };
+                StepStatusInfo {
+                    step_id: step.id.clone(),
+                    status,
+                }
+            })
+            .collect()
+    }
+
+    // =========================================================================
+    // Recovery Methods
+    // =========================================================================
+
+    /// Apply a task completion from journal replay.
+    ///
+    /// This marks a step as completed with its result, without updating
+    /// dependency tracking. This is used during recovery where we first
+    /// replay all completions, then re-initialize to properly compute
+    /// which steps are now unblocked.
+    ///
+    /// Unlike `mark_completed`, this doesn't return newly unblocked steps
+    /// since dependency tracking happens after all completions are applied.
+    pub fn apply_completed(&mut self, step_index: usize, result: FlowResult) {
+        self.completed.insert(step_index);
+        self.results[step_index] = Some(result);
     }
 }
 
@@ -370,20 +432,20 @@ mod tests {
     }
 
     #[test]
-    fn test_ready_steps_basic() {
+    fn test_schedulable_steps_basic() {
         let flow = Arc::new(create_flow(&["step1", "step2"]));
         let mut state = create_item_state_with_all_needed(flow);
 
         // Both steps should be ready
-        assert_bitset_eq(&state.ready_steps(), &[0, 1]);
+        assert_bitset_eq(&state.schedulable_steps(), &[0, 1]);
 
         // Complete step1
         state.mark_completed(0, success_result());
-        assert_bitset_eq(&state.ready_steps(), &[1]);
+        assert_bitset_eq(&state.schedulable_steps(), &[1]);
 
         // Complete step2
         state.mark_completed(1, success_result());
-        assert_bitset_eq(&state.ready_steps(), &[]);
+        assert_bitset_eq(&state.schedulable_steps(), &[]);
     }
 
     #[test]
@@ -398,7 +460,7 @@ mod tests {
         state.set_waiting(2, waiting);
 
         // Only step1 and step2 should be ready
-        assert_bitset_eq(&state.ready_steps(), &[0, 1]);
+        assert_bitset_eq(&state.schedulable_steps(), &[0, 1]);
 
         // Complete step1 - step3 still waiting on step2
         let newly_unblocked = state.mark_completed(0, success_result());
@@ -409,21 +471,7 @@ mod tests {
         assert_bitset_eq(&newly_unblocked, &[2]);
 
         // step3 should now be ready
-        assert_bitset_eq(&state.ready_steps(), &[2]);
-    }
-
-    #[test]
-    fn test_executing_excluded_from_ready() {
-        let flow = Arc::new(create_flow(&["step1", "step2"]));
-        let mut state = create_item_state_with_all_needed(flow);
-
-        assert_bitset_eq(&state.ready_steps(), &[0, 1]);
-
-        state.mark_executing(0);
-        assert_bitset_eq(&state.ready_steps(), &[1]);
-
-        state.mark_executing(1);
-        assert_bitset_eq(&state.ready_steps(), &[]);
+        assert_bitset_eq(&state.schedulable_steps(), &[2]);
     }
 
     #[test]
@@ -536,6 +584,6 @@ mod tests {
         assert!(newly_needed.contains(1));
 
         // step1 should be ready (no deps), step2 should be waiting
-        assert_bitset_eq(&state.ready_steps(), &[0]);
+        assert_bitset_eq(&state.schedulable_steps(), &[0]);
     }
 }

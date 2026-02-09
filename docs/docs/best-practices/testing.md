@@ -182,7 +182,7 @@ plugins:
     command: "mock-server"
     args: ["--config", "test/http-mocks.json"]
 
-stateStore:
+storageConfig:
   type: inMemory  # Use in-memory store for tests
 
 # Test-specific settings

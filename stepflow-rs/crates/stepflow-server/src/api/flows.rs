@@ -22,7 +22,7 @@ use stepflow_core::{
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::StateStoreExt as _;
+use stepflow_state::BlobStoreExt as _;
 use utoipa::ToSchema;
 
 use crate::error::ErrorResponse;
@@ -93,9 +93,9 @@ pub async fn store_flow(
     // Only store the flow if no fatal diagnostics and not dry_run
     let stored = if !diagnostics.has_fatal() && !req.dry_run {
         // Store the flow as a blob
-        let state_store = executor.state_store();
+        let blob_store = executor.blob_store();
         let flow_data = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
-        state_store
+        blob_store
             .put_blob(flow_data, BlobType::Flow)
             .await
             .map_err(|_| ErrorResponse {
@@ -132,10 +132,10 @@ pub async fn get_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(flow_id): Path<BlobId>,
 ) -> Result<Json<FlowResponse>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let blob_store = executor.blob_store();
 
     // Retrieve the flow from the blob store
-    let blob_data = state_store
+    let blob_data = blob_store
         .get_blob(&flow_id)
         .await
         .map_err(|_| ErrorResponse {

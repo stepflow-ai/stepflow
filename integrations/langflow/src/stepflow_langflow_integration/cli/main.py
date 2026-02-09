@@ -350,7 +350,7 @@ routes:
   "/builtin/{{*component}}":
     - plugin: builtin
 
-stateStore:
+storageConfig:
   type: inMemory
 """
             click.echo("🚀 Using real Langflow UDF execution")

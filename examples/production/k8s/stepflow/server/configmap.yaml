@@ -47,5 +47,5 @@ data:
         - plugin: builtin
 
     # State store configuration (using in-memory for demo)
-    stateStore:
+    storageConfig:
       type: inMemory

@@ -74,7 +74,7 @@ routes:
 
 # State store configuration
 # Using in-memory for demo; production should use SQLite or external store
-stateStore:
+storageConfig:
   type: inMemory
   # For production, consider:
   # type: sqlite

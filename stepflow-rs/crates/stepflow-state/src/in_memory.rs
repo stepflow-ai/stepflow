@@ -16,50 +16,21 @@ use futures::future::{BoxFuture, FutureExt as _};
 use std::{collections::HashMap, sync::Arc};
 use stepflow_core::status::ExecutionStatus;
 
-use crate::{RunCompletionNotifier, StateStore, state_store::CreateRunParams};
+use crate::{
+    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo,
+    RunCompletionNotifier, SequenceNumber, state_store::CreateRunParams,
+};
 use stepflow_core::{
     FlowResult,
     blob::{BlobData, BlobId, BlobType},
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
 use stepflow_dtos::{
-    ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary, StepInfo,
-    StepResult,
+    ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
 use uuid::Uuid;
 
 use crate::StateError;
-
-/// Execution-specific state storage for a single workflow execution.
-#[derive(Debug)]
-struct ExecutionState {
-    /// Vector of step results indexed by step index
-    /// None indicates the step hasn't completed yet
-    step_results: Vec<Option<StepResult>>,
-    /// Map from step_id to step_index for O(1) lookup by ID
-    step_id_to_index: HashMap<String, usize>,
-}
-
-impl ExecutionState {
-    fn new(capacity: usize) -> Self {
-        Self {
-            step_results: (0..capacity).map(|_| None).collect(),
-            step_id_to_index: HashMap::new(),
-        }
-    }
-
-    fn ensure_capacity(&mut self, step_idx: usize) {
-        if step_idx >= self.step_results.len() {
-            self.step_results.resize_with(step_idx + 1, || None);
-        }
-    }
-}
-
-impl Default for ExecutionState {
-    fn default() -> Self {
-        Self::new(0)
-    }
-}
 
 /// Combined state for a workflow run.
 /// Groups all run-related data together under a single key.
@@ -69,12 +40,10 @@ struct RunState {
     details: RunDetails,
     /// Item results by item index
     item_results: HashMap<usize, FlowResult>,
+    /// Per-item step statuses by item index
+    item_step_statuses: HashMap<usize, Vec<stepflow_dtos::StepStatusInfo>>,
     /// Per-item completion timestamps
     item_completed_at: HashMap<usize, chrono::DateTime<chrono::Utc>>,
-    /// Execution state (step results and ID mappings)
-    execution: ExecutionState,
-    /// Step information by step index
-    steps: HashMap<usize, StepInfo>,
 }
 
 impl RunState {
@@ -82,14 +51,20 @@ impl RunState {
         Self {
             details,
             item_results: HashMap::new(),
+            item_step_statuses: HashMap::new(),
             item_completed_at: HashMap::new(),
-            execution: ExecutionState::default(),
-            steps: HashMap::new(),
         }
     }
 }
 
-/// In-memory implementation of StateStore.
+/// Journal state for a single run.
+#[derive(Debug, Default)]
+struct JournalState {
+    /// Journal entries stored in order.
+    entries: Vec<JournalEntry>,
+}
+
+/// In-memory implementation of MetadataStore, BlobStore, and ExecutionJournal.
 ///
 /// This provides a simple, fast storage implementation suitable for
 /// single-process execution. Uses DashMap for concurrent access with
@@ -101,6 +76,9 @@ pub struct InMemoryStateStore {
     runs: DashMap<Uuid, RunState>,
     /// Notifier for run completion events
     completion_notifier: RunCompletionNotifier,
+    /// Map from root_run_id to journal state.
+    /// All events for an execution tree (parent + subflows) share the same journal.
+    journals: DashMap<Uuid, JournalState>,
 }
 
 impl InMemoryStateStore {
@@ -110,6 +88,7 @@ impl InMemoryStateStore {
             blobs: DashMap::new(),
             runs: DashMap::new(),
             completion_notifier: RunCompletionNotifier::new(),
+            journals: DashMap::new(),
         }
     }
 
@@ -126,7 +105,21 @@ impl InMemoryStateStore {
     fn create_run_sync(&self, params: CreateRunParams) {
         let now = chrono::Utc::now();
         let item_count = params.item_count();
-        let inputs = params.inputs.clone();
+
+        // Build item_details from inputs
+        let item_details: Vec<ItemDetails> = params
+            .inputs
+            .iter()
+            .enumerate()
+            .map(|(idx, input)| ItemDetails {
+                item_index: idx as u32,
+                input: input.clone(),
+                status: ExecutionStatus::Running,
+                steps: Vec::new(),
+                completed_at: None,
+            })
+            .collect();
+
         let execution_details = RunDetails {
             summary: RunSummary {
                 run_id: params.run_id,
@@ -143,7 +136,7 @@ impl InMemoryStateStore {
                 root_run_id: params.root_run_id,
                 parent_run_id: params.parent_run_id,
             },
-            inputs,
+            item_details: Some(item_details),
             overrides: if params.overrides.is_empty() {
                 None
             } else {
@@ -156,65 +149,6 @@ impl InMemoryStateStore {
             .entry(params.run_id)
             .or_insert_with(|| RunState::new(execution_details));
     }
-
-    /// Record the result of a step execution (private implementation method).
-    ///
-    /// This operation is executed synchronously since it's in-memory with no I/O cost.
-    fn record_step_result(&self, run_id: Uuid, step_result: StepResult) {
-        let step_idx = step_result.step_index();
-
-        // Get or create the run state and modify it
-        let mut entry = self.runs.entry(run_id).or_insert_with(|| {
-            // This shouldn't happen in normal operation, but handle it gracefully
-            RunState::new(RunDetails {
-                summary: RunSummary {
-                    run_id,
-                    flow_id: BlobId::new("0".repeat(64)).unwrap(),
-                    flow_name: None,
-                    status: ExecutionStatus::Running,
-                    items: ItemStatistics::single(ExecutionStatus::Running),
-                    created_at: chrono::Utc::now(),
-                    completed_at: None,
-                    root_run_id: run_id,
-                    parent_run_id: None,
-                },
-                inputs: vec![ValueRef::new(serde_json::Value::Null)],
-                overrides: None,
-            })
-        });
-
-        // Ensure the vector has enough capacity
-        entry.execution.ensure_capacity(step_idx);
-
-        // Update the step_id_to_index mapping for fast lookup by ID
-        entry
-            .execution
-            .step_id_to_index
-            .insert(step_result.step_id().to_string(), step_idx);
-
-        // Store the result at the step index
-        entry.execution.step_results[step_idx] = Some(step_result);
-    }
-
-    /// Update multiple steps to the same status (private implementation method).
-    ///
-    /// This operation is executed synchronously since it's in-memory with no I/O cost.
-    fn update_step_statuses(
-        &self,
-        run_id: Uuid,
-        status: stepflow_core::status::StepStatus,
-        step_indices: bit_set::BitSet,
-    ) {
-        if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-            let now = chrono::Utc::now();
-            for step_index in step_indices.iter() {
-                if let Some(step_info) = run_state.steps.get_mut(&step_index) {
-                    step_info.status = status;
-                    step_info.updated_at = now;
-                }
-            }
-        }
-    }
 }
 
 impl Default for InMemoryStateStore {
@@ -223,7 +157,7 @@ impl Default for InMemoryStateStore {
     }
 }
 
-impl StateStore for InMemoryStateStore {
+impl BlobStore for InMemoryStateStore {
     fn put_blob(
         &self,
         data: ValueRef,
@@ -261,62 +195,6 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn get_step_result(
-        &self,
-        run_id: Uuid,
-        step_idx: usize,
-    ) -> BoxFuture<'_, error_stack::Result<FlowResult, StateError>> {
-        let run_id_str = run_id.to_string();
-
-        async move {
-            let run_state = self.runs.get(&run_id).ok_or_else(|| {
-                error_stack::report!(StateError::StepResultNotFoundByIndex {
-                    run_id: run_id_str.clone(),
-                    step_idx,
-                })
-            })?;
-
-            run_state
-                .execution
-                .step_results
-                .get(step_idx)
-                .and_then(|opt| opt.as_ref())
-                .map(|step_result| step_result.result().clone())
-                .ok_or_else(|| {
-                    error_stack::report!(StateError::StepResultNotFoundByIndex {
-                        run_id: run_id_str,
-                        step_idx,
-                    })
-                })
-        }
-        .boxed()
-    }
-
-    fn list_step_results(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepResult>, StateError>> {
-        async move {
-            let run_state = match self.runs.get(&run_id) {
-                Some(state) => state,
-                None => return Ok(Vec::new()), // No execution found, return empty list
-            };
-
-            // Vec maintains natural ordering, so no sorting needed
-            let results: Vec<StepResult> = run_state
-                .execution
-                .step_results
-                .iter()
-                .filter_map(|opt| opt.as_ref().cloned())
-                .collect();
-
-            Ok(results)
-        }
-        .boxed()
-    }
-
-    // Workflow Management Methods
-
     fn store_flow(
         &self,
         workflow: Arc<Flow>,
@@ -353,7 +231,9 @@ impl StateStore for InMemoryStateStore {
         }
         .boxed()
     }
+}
 
+impl MetadataStore for InMemoryStateStore {
     fn create_run(
         &self,
         params: CreateRunParams,
@@ -362,115 +242,36 @@ impl StateStore for InMemoryStateStore {
         async move { Ok(()) }.boxed()
     }
 
-    fn get_run_overrides(
-        &self,
-        run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>> {
-        async move {
-            Ok(self
-                .runs
-                .get(&run_id)
-                .map(|run_state| run_state.details.overrides.clone())
-                .unwrap_or(None))
-        }
-        .boxed()
-    }
-
-    fn update_run_status(
-        &self,
-        run_id: Uuid,
-        status: ExecutionStatus,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        async move {
-            let is_terminal = matches!(
-                status,
-                ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled
-            );
-
-            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                run_state.details.summary.status = status;
-
-                if is_terminal {
-                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
-                }
-            }
-
-            // Notify waiters if the run reached a terminal status
-            if is_terminal {
-                self.completion_notifier.notify_completion(run_id);
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
-    fn record_item_result(
-        &self,
-        run_id: Uuid,
-        item_index: usize,
-        result: FlowResult,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        async move {
-            let mut run_completed = false;
-
-            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                let now = chrono::Utc::now();
-
-                // Check if this item was previously not recorded (running)
-                let was_running = !run_state.item_results.contains_key(&item_index);
-
-                // Update the result and record completion time
-                run_state.item_results.insert(item_index, result.clone());
-                run_state.item_completed_at.insert(item_index, now);
-
-                // Update item statistics
-                if was_running {
-                    run_state.details.summary.items.running =
-                        run_state.details.summary.items.running.saturating_sub(1);
-                }
-                match result {
-                    FlowResult::Success(_) => {
-                        run_state.details.summary.items.completed += 1;
-                    }
-                    FlowResult::Failed(_) => {
-                        run_state.details.summary.items.failed += 1;
-                    }
-                }
-
-                // Check if all items are complete
-                if run_state.details.summary.items.running == 0 {
-                    // Determine overall status based on item outcomes
-                    let status = if run_state.details.summary.items.failed > 0 {
-                        ExecutionStatus::Failed
-                    } else {
-                        ExecutionStatus::Completed
-                    };
-                    run_state.details.summary.status = status;
-                    run_state.details.summary.completed_at = Some(now);
-                    run_completed = true;
-                }
-            }
-
-            // Notify waiters if the run completed
-            if run_completed {
-                self.completion_notifier.notify_completion(run_id);
-            }
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn get_run(
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
         async move {
-            Ok(self
-                .runs
-                .get(&run_id)
-                .map(|run_state| run_state.details.clone()))
+            Ok(self.runs.get(&run_id).map(|run_state| {
+                let mut details = run_state.details.clone();
+                // Populate item_details with step statuses and results from storage
+                if let Some(ref mut item_details) = details.item_details {
+                    for item in item_details.iter_mut() {
+                        let idx = item.item_index as usize;
+                        // Update steps from stored step_statuses
+                        if let Some(step_statuses) = run_state.item_step_statuses.get(&idx) {
+                            item.steps = step_statuses.clone();
+                        }
+                        // Update status from stored result
+                        if let Some(result) = run_state.item_results.get(&idx) {
+                            item.status = match result {
+                                FlowResult::Success(_) => ExecutionStatus::Completed,
+                                FlowResult::Failed(_) => ExecutionStatus::Failed,
+                            };
+                        }
+                        // Update completed_at from stored timestamp
+                        if let Some(completed_at) = run_state.item_completed_at.get(&idx) {
+                            item.completed_at = Some(*completed_at);
+                        }
+                    }
+                }
+                details
+            }))
         }
         .boxed()
     }
@@ -515,6 +316,11 @@ impl StateStore for InMemoryStateStore {
                         return false;
                     }
 
+                    // Apply roots_only filter (get only top-level runs)
+                    if filters.roots_only == Some(true) && exec.parent_run_id.is_some() {
+                        return false;
+                    }
+
                     true
                 })
                 .collect();
@@ -540,106 +346,109 @@ impl StateStore for InMemoryStateStore {
         .boxed()
     }
 
-    // Step Status Management
-
-    fn initialize_run_steps(
+    fn update_run_status(
         &self,
-        run_id: uuid::Uuid,
-        steps: &[StepInfo],
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        let steps = steps.to_vec();
-
+        run_id: Uuid,
+        status: ExecutionStatus,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
-            // Create a map from step_index to StepInfo for this run
-            let mut run_steps = HashMap::new();
-            for step in steps {
-                run_steps.insert(step.step_index(), step);
-            }
+            let is_terminal = matches!(
+                status,
+                ExecutionStatus::Completed
+                    | ExecutionStatus::Failed
+                    | ExecutionStatus::Cancelled
+                    | ExecutionStatus::RecoveryFailed
+            );
 
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                run_state.steps = run_steps;
+                run_state.details.summary.status = status;
+
+                if is_terminal {
+                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
+                }
             }
+
+            // Notify waiters if the run reached a terminal status
+            if is_terminal {
+                self.completion_notifier.notify_completion(run_id);
+            }
+
             Ok(())
         }
         .boxed()
     }
 
-    fn update_step_status(
+    fn get_run_overrides(
         &self,
-        run_id: uuid::Uuid,
-        step_index: usize,
-        status: stepflow_core::status::StepStatus,
-    ) {
-        // For in-memory store, execute synchronously
-        if let Some(mut run_state) = self.runs.get_mut(&run_id)
-            && let Some(step_info) = run_state.steps.get_mut(&step_index)
-        {
-            step_info.status = status;
-            step_info.updated_at = chrono::Utc::now();
-        }
-    }
-
-    fn queue_write(
-        &self,
-        operation: crate::StateWriteOperation,
-    ) -> error_stack::Result<(), crate::StateError> {
-        // For in-memory store, process operations immediately since there's no I/O cost
-        match operation {
-            crate::StateWriteOperation::CreateRun { params } => {
-                self.create_run_sync(params);
-                Ok(())
-            }
-            crate::StateWriteOperation::RecordStepResult {
-                run_id,
-                step_result,
-            } => {
-                self.record_step_result(run_id, step_result);
-                Ok(())
-            }
-            crate::StateWriteOperation::UpdateStepStatuses {
-                run_id,
-                status,
-                step_indices,
-            } => {
-                self.update_step_statuses(run_id, status, step_indices);
-                Ok(())
-            }
-            crate::StateWriteOperation::Flush {
-                run_id: _,
-                completion_notify,
-            } => {
-                // For in-memory store, all writes are immediate, so nothing to flush
-                let _ = completion_notify.send(Ok(()));
-                Ok(())
-            }
-        }
-    }
-
-    fn flush_pending_writes(
-        &self,
-        _run_id: uuid::Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        // For in-memory store, all writes are immediate, so nothing to flush
-        async move { Ok(()) }.boxed()
-    }
-
-    fn get_step_info_for_run(
-        &self,
-        run_id: uuid::Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<StepInfo>, crate::StateError>> {
+        run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<WorkflowOverrides>, StateError>> {
         async move {
-            let step_infos = self
+            Ok(self
                 .runs
                 .get(&run_id)
-                .map(|run_state| {
-                    let mut steps: Vec<StepInfo> = run_state.steps.values().cloned().collect();
-                    // Sort by step_index for consistent ordering
-                    steps.sort_by_key(|step| step.step_index());
-                    steps
-                })
-                .unwrap_or_default();
+                .map(|run_state| run_state.details.overrides.clone())
+                .unwrap_or(None))
+        }
+        .boxed()
+    }
 
-            Ok(step_infos)
+    fn record_item_result(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        result: FlowResult,
+        step_statuses: Vec<stepflow_dtos::StepStatusInfo>,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async move {
+            let mut run_completed = false;
+
+            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+                let now = chrono::Utc::now();
+
+                // Check if this item was previously not recorded (running)
+                let was_running = !run_state.item_results.contains_key(&item_index);
+
+                // Update the result, step statuses, and record completion time
+                run_state.item_results.insert(item_index, result.clone());
+                run_state
+                    .item_step_statuses
+                    .insert(item_index, step_statuses);
+                run_state.item_completed_at.insert(item_index, now);
+
+                // Update item statistics
+                if was_running {
+                    run_state.details.summary.items.running =
+                        run_state.details.summary.items.running.saturating_sub(1);
+                }
+                match result {
+                    FlowResult::Success(_) => {
+                        run_state.details.summary.items.completed += 1;
+                    }
+                    FlowResult::Failed(_) => {
+                        run_state.details.summary.items.failed += 1;
+                    }
+                }
+
+                // Check if all items are complete
+                if run_state.details.summary.items.running == 0 {
+                    // Determine overall status based on item outcomes
+                    let status = if run_state.details.summary.items.failed > 0 {
+                        ExecutionStatus::Failed
+                    } else {
+                        ExecutionStatus::Completed
+                    };
+                    run_state.details.summary.status = status;
+                    run_state.details.summary.completed_at = Some(now);
+                    run_completed = true;
+                }
+            }
+
+            // Notify waiters if the run completed
+            if run_completed {
+                self.completion_notifier.notify_completion(run_id);
+            }
+
+            Ok(())
         }
         .boxed()
     }
@@ -709,6 +518,7 @@ impl StateStore for InMemoryStateStore {
                     ExecutionStatus::Completed
                         | ExecutionStatus::Failed
                         | ExecutionStatus::Cancelled
+                        | ExecutionStatus::RecoveryFailed
                 ) {
                     return Ok(());
                 }
@@ -731,6 +541,7 @@ impl StateStore for InMemoryStateStore {
                         ExecutionStatus::Completed
                             | ExecutionStatus::Failed
                             | ExecutionStatus::Cancelled
+                            | ExecutionStatus::RecoveryFailed
                     ) {
                         return Ok(());
                     }
@@ -741,6 +552,139 @@ impl StateStore for InMemoryStateStore {
                 // Brief yield to allow the status update to propagate
                 tokio::task::yield_now().await;
             }
+        }
+        .boxed()
+    }
+
+    fn list_pending_runs(
+        &self,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RunSummary>, StateError>> {
+        async move {
+            let mut results: Vec<RunSummary> = self
+                .runs
+                .iter()
+                .map(|entry| entry.details.summary.clone())
+                .filter(|summary| {
+                    // Non-terminal statuses that need recovery
+                    matches!(
+                        summary.status,
+                        ExecutionStatus::Running | ExecutionStatus::Paused
+                    )
+                })
+                .collect();
+
+            // Sort by creation time (oldest first for recovery)
+            results.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+            // Apply limit
+            results.truncate(limit);
+
+            Ok(results)
+        }
+        .boxed()
+    }
+}
+
+impl ExecutionJournal for InMemoryStateStore {
+    fn append(
+        &self,
+        entry: JournalEntry,
+    ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, crate::StateError>> {
+        async move {
+            // Key by root_run_id so all events for an execution tree share one journal
+            let mut journal = self.journals.entry(entry.root_run_id).or_default();
+            // Sequence number is current length (0-indexed)
+            let sequence = SequenceNumber::new(journal.entries.len() as u64);
+            journal.entries.push(entry);
+            Ok(sequence)
+        }
+        .boxed()
+    }
+
+    fn flush(
+        &self,
+        _root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        // In-memory journal has no buffering - all writes are immediate
+        async move { Ok(()) }.boxed()
+    }
+
+    fn read_from(
+        &self,
+        root_run_id: Uuid,
+        from_sequence: SequenceNumber,
+        limit: usize,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, crate::StateError>>
+    {
+        async move {
+            let journal = match self.journals.get(&root_run_id) {
+                Some(j) => j,
+                None => return Ok(Vec::new()),
+            };
+
+            let start_idx = from_sequence.value() as usize;
+
+            let entries: Vec<_> = journal
+                .entries
+                .iter()
+                .enumerate()
+                .skip(start_idx)
+                .take(limit)
+                .map(|(idx, entry)| {
+                    let seq = SequenceNumber::new(idx as u64);
+                    (seq, entry.clone())
+                })
+                .collect();
+
+            Ok(entries)
+        }
+        .boxed()
+    }
+
+    fn latest_sequence(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
+        async move {
+            let result = self.journals.get(&root_run_id).and_then(|journal| {
+                if journal.entries.is_empty() {
+                    None
+                } else {
+                    // Latest sequence is length - 1
+                    Some(SequenceNumber::new((journal.entries.len() - 1) as u64))
+                }
+            });
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn list_active_roots(
+        &self,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, crate::StateError>> {
+        async move {
+            let mut infos = Vec::new();
+
+            for entry in self.journals.iter() {
+                let root_run_id = *entry.key();
+                let journal = entry.value();
+
+                if journal.entries.is_empty() {
+                    continue;
+                }
+
+                // Latest sequence is length - 1
+                let latest_sequence = SequenceNumber::new((journal.entries.len() - 1) as u64);
+
+                infos.push(RootJournalInfo {
+                    root_run_id,
+                    latest_sequence,
+                    entry_count: journal.entries.len() as u64,
+                });
+            }
+
+            Ok(infos)
         }
         .boxed()
     }
@@ -820,163 +764,5 @@ mod tests {
         // All IDs are valid SHA-256 hashes
         assert_eq!(id1.as_str().len(), 64);
         assert_eq!(id3.as_str().len(), 64);
-    }
-
-    #[tokio::test]
-    async fn test_step_result_storage() {
-        use stepflow_core::workflow::{StepId, ValueRef};
-
-        let store = InMemoryStateStore::new();
-        let run_id = Uuid::now_v7();
-
-        // Test data
-        let step1_result =
-            FlowResult::Success(ValueRef::new(serde_json::json!({"output":"hello"})));
-        let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
-
-        // Record step results with StepId
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step1".to_string(), 0), step1_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step2".to_string(), 1), step2_result.clone()),
-        );
-
-        // Retrieve by index
-        let retrieved_by_idx_0 = store.get_step_result(run_id, 0).await.unwrap();
-        let retrieved_by_idx_1 = store.get_step_result(run_id, 1).await.unwrap();
-        assert_eq!(retrieved_by_idx_0, step1_result);
-        assert_eq!(retrieved_by_idx_1, step2_result);
-
-        // List all step results (should be ordered by index)
-        let all_results = store.list_step_results(run_id).await.unwrap();
-        assert_eq!(all_results.len(), 2);
-        assert_eq!(
-            all_results[0],
-            StepResult::new(StepId::new("step1".to_string(), 0), step1_result)
-        );
-        assert_eq!(
-            all_results[1],
-            StepResult::new(StepId::new("step2".to_string(), 1), step2_result)
-        );
-
-        // Non-existent step should return error
-        let result_by_idx = store.get_step_result(run_id, 99).await;
-        assert!(result_by_idx.is_err());
-
-        // Different execution ID should return empty list
-        let other_run_id = Uuid::now_v7();
-        let other_results = store.list_step_results(other_run_id).await.unwrap();
-        assert!(other_results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_step_result_overwrite() {
-        use stepflow_core::workflow::{StepId, ValueRef};
-
-        let store = InMemoryStateStore::new();
-        let run_id = Uuid::now_v7();
-
-        // Record initial result
-        let initial_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":1})));
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step1".to_string(), 0), initial_result),
-        );
-
-        // Overwrite with new result
-        let new_result = FlowResult::Success(ValueRef::new(serde_json::json!({"attempt":2})));
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step1".to_string(), 0), new_result.clone()),
-        );
-
-        // Should retrieve the new result by index
-        let retrieved_by_idx = store.get_step_result(run_id, 0).await.unwrap();
-
-        assert_eq!(retrieved_by_idx, new_result);
-
-        // Should still only have one entry for this step
-        let all_results = store.list_step_results(run_id).await.unwrap();
-        assert_eq!(all_results.len(), 1);
-        assert_eq!(
-            all_results[0],
-            StepResult::new(StepId::new("step1".to_string(), 0), new_result)
-        );
-    }
-
-    #[tokio::test]
-    async fn test_step_result_ordering() {
-        use stepflow_core::workflow::StepId;
-
-        let store = InMemoryStateStore::new();
-        let run_id = Uuid::now_v7();
-
-        // Insert steps out of order to test ordering
-        let step2_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":2})));
-        let step0_result = FlowResult::Success(ValueRef::new(serde_json::json!({"step":0})));
-        let step1_result = FlowResult::Success(ValueRef::new(serde_json::json!(null)));
-
-        // Record in non-sequential order
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step2".to_string(), 2), step2_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step0".to_string(), 0), step0_result.clone()),
-        );
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step1".to_string(), 1), step1_result.clone()),
-        );
-
-        // List should return results ordered by step index
-        let all_results = store.list_step_results(run_id).await.unwrap();
-        assert_eq!(all_results.len(), 3);
-        assert_eq!(
-            all_results[0],
-            StepResult::new(StepId::new("step0".to_string(), 0), step0_result)
-        );
-        assert_eq!(
-            all_results[1],
-            StepResult::new(StepId::new("step1".to_string(), 1), step1_result)
-        );
-        assert_eq!(
-            all_results[2],
-            StepResult::new(StepId::new("step2".to_string(), 2), step2_result)
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execution_eviction() {
-        use stepflow_core::workflow::StepId;
-
-        let store = InMemoryStateStore::new();
-        let run_id = Uuid::now_v7();
-
-        // Store some step results
-        let step_result = FlowResult::Success(ValueRef::new(serde_json::json!({"output":"test"})));
-        store.record_step_result(
-            run_id,
-            StepResult::new(StepId::new("step1".to_string(), 0), step_result.clone()),
-        );
-
-        // Verify the result exists
-        let retrieved = store.get_step_result(run_id, 0).await.unwrap();
-        assert_eq!(retrieved, step_result);
-
-        // Evict the execution
-        store.evict_execution(run_id);
-
-        // Verify the result no longer exists
-        let result = store.get_step_result(run_id, 0).await;
-        assert!(result.is_err());
-
-        // Verify list returns empty
-        let all_results = store.list_step_results(run_id).await.unwrap();
-        assert!(all_results.is_empty());
     }
 }

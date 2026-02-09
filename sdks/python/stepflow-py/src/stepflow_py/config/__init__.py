@@ -40,25 +40,26 @@ from stepflow_py.config._generated_config import (
     # Routing configuration
     RoutingConfig,
     SqliteStateStoreConfig,
-    # State store configuration
-    StateStoreConfig,
     StepflowPluginConfig,
     StepflowTransport,
+    # Storage configuration
+    StorageConfig,
+    StoreConfig,
     # Plugin configuration (generated, but some are incomplete)
     SupportedPlugin,
     SupportedPluginConfig,
-)
-from stepflow_py.config._generated_config import (
-    StateStoreConfig1 as InMemoryStateStoreConfig,
-)
-from stepflow_py.config._generated_config import (
-    StateStoreConfig2 as SqliteStateStoreConfigTagged,
 )
 from stepflow_py.config._generated_config import (
     StepflowTransport1 as SubprocessTransport,
 )
 from stepflow_py.config._generated_config import (
     StepflowTransport2 as RemoteTransport,
+)
+from stepflow_py.config._generated_config import (
+    StoreConfig1 as InMemoryStoreConfig,
+)
+from stepflow_py.config._generated_config import (
+    StoreConfig2 as SqliteStoreConfig,
 )
 
 # ============================================================================
@@ -142,22 +143,23 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 "/builtin/{*component}": [RouteRule(plugin="builtin")],
                 "/python/{*component}": [RouteRule(plugin="python")],
             },
-            stateStore=InMemoryStateStoreConfig(type="inMemory"),
+            storageConfig=InMemoryStoreConfig(type="inMemory"),
         )
     """
 
     plugins: dict[str, PluginConfig]
     workingDirectory: str | None = None
-    stateStore: StateStoreConfig | None = None
+    storageConfig: StorageConfig | None = None
 
 
 __all__ = [
     # Main config
     "StepflowConfig",
-    # State store
-    "StateStoreConfig",
-    "InMemoryStateStoreConfig",
-    "SqliteStateStoreConfigTagged",
+    # Storage config
+    "StorageConfig",
+    "StoreConfig",
+    "InMemoryStoreConfig",
+    "SqliteStoreConfig",
     "SqliteStateStoreConfig",
     # Routing
     "RoutingConfig",

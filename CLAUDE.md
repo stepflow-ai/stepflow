@@ -101,7 +101,7 @@ routes:
   "/{*component}":
     - plugin: builtin
 
-stateStore:
+storageConfig:
   type: sqlite
   databaseUrl: "sqlite:workflow_state.db"
   autoMigrate: true
@@ -125,17 +125,17 @@ Routes map component paths to plugins. Rules are evaluated in order, first match
 
 **Advanced**: Routes support input-based conditions. See schema for details.
 
-### State Stores
+### Storage Configuration
 
 **In-Memory** (default):
 ```yaml
-stateStore:
+storageConfig:
   type: inMemory
 ```
 
 **SQLite**:
 ```yaml
-stateStore:
+storageConfig:
   type: sqlite
   databaseUrl: "sqlite:workflow_state.db"  # or ":memory:"
   autoMigrate: true

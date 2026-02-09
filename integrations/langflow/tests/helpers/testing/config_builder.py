@@ -83,7 +83,7 @@ class StepflowConfigBuilder:
                 "/langflow/{*component}": [{"plugin": "langflow"}],
                 "/builtin/{*component}": [{"plugin": "builtin"}],
             },
-            "stateStore": {"type": "inMemory"},
+            "storageConfig": {"type": "inMemory"},
         }
 
     def _load_env_vars(self, current_dir: Path) -> dict[str, str]:
@@ -330,7 +330,7 @@ class StepflowConfigBuilder:
         Returns:
             Self for method chaining
         """
-        self._config["stateStore"] = {
+        self._config["storageConfig"] = {
             "type": "sqlite",
             "databaseUrl": f"sqlite:{database_path}",
             "autoMigrate": auto_migrate,

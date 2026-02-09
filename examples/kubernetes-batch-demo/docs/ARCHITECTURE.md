@@ -248,7 +248,7 @@ routes:
   "/{*component}":
     - plugin: builtin
 
-stateStore:
+storageConfig:
   type: inMemory
 ```
 

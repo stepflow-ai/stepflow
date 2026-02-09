@@ -23,8 +23,58 @@ from typing import Annotated, Any, ClassVar, Dict, List, Literal
 from msgspec import Meta, Struct
 
 
-class StateStoreConfig1(Struct, kw_only=True):
-    type: Literal['inMemory']
+class LeaseManagerConfig1(Struct, kw_only=True):
+    type: Literal['noOp']
+
+
+LeaseManagerConfig = Annotated[
+    LeaseManagerConfig1,
+    Meta(
+        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
+    ),
+]
+
+
+class RecoveryConfig(Struct, kw_only=True):
+    enabled: (
+        Annotated[
+            bool,
+            Meta(
+                description='Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true'
+            ),
+        ]
+        | None
+    ) = True
+    checkIntervalSecs: (
+        Annotated[
+            int,
+            Meta(
+                description='Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = 30
+    maxStartupRecovery: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = 100
+    maxClaimsPerCheck: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = 10
 
 
 BuiltinPluginConfig = Any
@@ -118,17 +168,14 @@ JsonPath = Annotated[
 ]
 
 
+class StoreConfig1(Struct, kw_only=True):
+    type: Literal['inMemory']
+
+
 class SqliteStateStoreConfig(Struct, kw_only=True):
     databaseUrl: str
     maxConnections: Annotated[int, Meta(ge=0)] | None = None
     autoMigrate: bool | None = None
-
-
-class StateStoreConfig2(SqliteStateStoreConfig, kw_only=True):
-    type: Literal['sqlite']
-
-
-StateStoreConfig = StateStoreConfig1 | StateStoreConfig2
 
 
 class SupportedPlugin2(Struct, kw_only=True):
@@ -178,6 +225,34 @@ class InputCondition(Struct, kw_only=True):
     value: Annotated[
         Value, Meta(description='Value to match against (equality comparison)')
     ]
+
+
+class StoreConfig2(SqliteStateStoreConfig, kw_only=True):
+    type: Literal['sqlite']
+
+
+StoreConfig = Annotated[
+    StoreConfig1 | StoreConfig2,
+    Meta(
+        description='Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery'
+    ),
+]
+
+
+class StorageConfig1(Struct, kw_only=True):
+    metadata: Annotated[
+        StoreConfig, Meta(description='Configuration for the metadata store')
+    ]
+    blobs: StoreConfig | None = None
+    journal: StoreConfig | None = None
+
+
+StorageConfig = Annotated[
+    StorageConfig1 | StoreConfig,
+    Meta(
+        description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).'
+    ),
+]
 
 
 class StepflowPluginConfig(Struct, kw_only=True):
@@ -277,12 +352,28 @@ class StepflowConfig(RoutingConfig, kw_only=True):
         ]
         | None
     ) = None
-    stateStore: (
+    storageConfig: (
         Annotated[
-            StateStoreConfig,
+            StorageConfig,
             Meta(
-                description='State store configuration. If not specified, uses in-memory storage.'
+                description='Storage configuration. If not specified, uses in-memory storage.'
             ),
+        ]
+        | None
+    ) = None
+    leaseManager: (
+        Annotated[
+            LeaseManagerConfig,
+            Meta(
+                description='Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).'
+            ),
+        ]
+        | None
+    ) = None
+    recovery: (
+        Annotated[
+            RecoveryConfig,
+            Meta(description='Recovery configuration for handling interrupted runs.'),
         ]
         | None
     ) = None

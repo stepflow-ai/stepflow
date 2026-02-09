@@ -34,7 +34,7 @@ routes:
   "/{*component}":
     - plugin: builtin
 
-state_store:
+storageConfig:
   type: sqlite
   database_url: "sqlite:workflow_state.db"
   auto_migrate: true
@@ -214,7 +214,7 @@ Stepflow supports multiple backends for storing workflow execution state and blo
 ### In-Memory State Store (Default)
 
 ```yaml
-state_store:
+storageConfig:
   type: in_memory
 ```
 
@@ -225,7 +225,7 @@ state_store:
 ### SQLite State Store
 
 ```yaml
-state_store:
+storageConfig:
   type: sqlite
   database_url: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
   auto_migrate: true
@@ -290,7 +290,7 @@ routes:
   "/{*component}":
     - plugin: builtin
 
-state_store:
+storageConfig:
   type: in_memory
 ```
 
@@ -321,7 +321,7 @@ routes:
   "/{*component}":
     - plugin: builtin
 
-state_store:
+storageConfig:
   type: sqlite
   database_url: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
   auto_migrate: true

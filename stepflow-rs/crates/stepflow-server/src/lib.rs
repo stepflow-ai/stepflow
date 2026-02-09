@@ -17,6 +17,8 @@
 
 mod api;
 pub mod error;
+mod orphan_recovery;
+mod shutdown;
 mod startup;
 
 // Explicit exports from api module
@@ -24,3 +26,7 @@ pub use api::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowRe
 
 // Startup configuration
 pub use startup::{AppConfig, start_server};
+
+// Server lifecycle
+pub use orphan_recovery::orphan_claiming_loop;
+pub use shutdown::shutdown_signal;

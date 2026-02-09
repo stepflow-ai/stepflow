@@ -28,7 +28,7 @@ import pytest_asyncio
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
-    InMemoryStateStoreConfig,
+    InMemoryStoreConfig,
     RouteRule,
     StepflowConfig,
     StepflowSubprocessPluginConfig,
@@ -71,7 +71,7 @@ def integration_config():
             "/builtin/{*component}": [RouteRule(plugin="builtin")],
             "/python/{*component}": [RouteRule(plugin="python")],
         },
-        stateStore=InMemoryStateStoreConfig(type="inMemory"),
+        storageConfig=InMemoryStoreConfig(type="inMemory"),
     )
 
 
