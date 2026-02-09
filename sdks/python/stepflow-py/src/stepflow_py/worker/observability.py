@@ -200,7 +200,9 @@ def setup_observability(config: ObservabilityConfig | None = None) -> None:
         # Setup httpx instrumentation for automatic trace propagation
         # This instruments all httpx clients to create spans and propagate context
         try:
-            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+            from opentelemetry.instrumentation.httpx import (  # type: ignore[import-not-found]
+                HTTPXClientInstrumentor,
+            )
 
             HTTPXClientInstrumentor().instrument()
             logger.info("OpenTelemetry httpx instrumentation enabled")

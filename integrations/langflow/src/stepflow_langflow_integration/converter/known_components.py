@@ -38,7 +38,8 @@ class KnownComponent:
         str  # Full module path, e.g., "lfx.components.docling.DoclingInlineComponent"
     )
     description: str = ""
-    # Alternative module paths that are functionally equivalent (e.g., custom_components variants)
+    # Alternative module paths that are functionally equivalent
+    # (e.g., custom_components variants)
     aliases: tuple[str, ...] = ()
 
 
@@ -103,7 +104,7 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
     "0e2d6fe67a26": KnownComponent(
         code_hash="0e2d6fe67a26",
         module="lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent",
-        description="Embedding Model - generate embeddings using OpenAI, Ollama, or IBM watsonx.ai",
+        description="Embedding Model - generate embeddings using OpenAI/Ollama",
         aliases=("custom_components.embedding_model",),
     ),
     # Add more known components here as needed
@@ -138,9 +139,7 @@ def lookup_known_component(
             )
             return None
         # Module is a known alias, proceed with the known component
-        logger.info(
-            f"Code hash {code_hash} using alias {module} -> {known.module}"
-        )
+        logger.info(f"Code hash {code_hash} using alias {module} -> {known.module}")
 
     return known
 
