@@ -469,7 +469,7 @@ steps:
     input:
       ollama_base_url:
         $literal: "http://localhost:11434"
-  mustExecute: true
+  mustExecute: false
   metadata: {}
 - id: langflow_DoclingRemote-Dp3PX
   component: /langflow/core/lfx/components/docling/docling_remote/DoclingRemoteComponent
@@ -1653,7 +1653,7 @@ steps:
         $literal: "placeholder"
       project_id:
         $literal: "placeholder"
-  mustExecute: true
+  mustExecute: false
   metadata: {}
 - id: langflow_SecretInput-Iqtxd_blob
   component: /builtin/put_blob

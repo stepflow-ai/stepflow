@@ -35,7 +35,7 @@ metadata:
     app: docling-worker
     component: document-processing
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: docling-worker
@@ -48,7 +48,7 @@ spec:
       containers:
       # Stepflow component server - handles incoming requests
       - name: stepflow-docling
-        image: localhost/stepflow-docling:latest
+        image: localhost/stepflow-docling:v14
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -121,18 +121,24 @@ spec:
           protocol: TCP
         resources:
           # Document processing is CPU-intensive
-          # Adjust based on workload and cluster capacity
+          # Increased limits for better throughput with parallel workloads
           requests:
-            cpu: 500m
-            memory: 1Gi
+            cpu: 1000m
+            memory: 2Gi
           limits:
-            cpu: 2000m
-            memory: 4Gi
+            cpu: 4000m
+            memory: 6Gi
         env:
         # Thread contention prevention - critical for containerized deployments
         # Without this, OMP may spawn too many threads causing performance degradation
         - name: OMP_NUM_THREADS
           value: "4"
+        # Increase sync conversion timeout from default 120s to 300s (5 minutes)
+        # Large PDFs (e.g., ML papers like BERT, ResNet) can exceed the default timeout
+        # causing HTTP 504 Gateway Timeout errors. See:
+        # https://github.com/docling-project/docling-serve/issues/380
+        - name: DOCLING_SERVE_MAX_SYNC_WAIT
+          value: "300"
         # Docling-serve v1.10.0 OpenTelemetry configuration
         - name: DOCLING_SERVE_OTEL_ENABLE_METRICS
           value: "true"
