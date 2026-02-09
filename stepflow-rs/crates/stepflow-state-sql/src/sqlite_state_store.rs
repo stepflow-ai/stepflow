@@ -831,7 +831,6 @@ impl MetadataStore for SqliteStateStore {
         }
         .boxed()
     }
-
 }
 
 impl ExecutionJournal for SqliteStateStore {

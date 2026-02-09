@@ -24,7 +24,9 @@ use stepflow_core::workflow::{Flow, FlowBuilder, StepBuilder};
 use stepflow_core::{FlowResult, StepflowEnvironment, ValueExpr};
 use stepflow_mock::{MockComponentBehavior, MockPlugin};
 use stepflow_plugin::StepflowEnvironmentBuilder;
-use stepflow_state::{BlobStore, InMemoryStateStore, MetadataStore, MetadataStoreExt as _};
+use stepflow_state::{
+    BlobStore, ExecutionJournal, InMemoryStateStore, MetadataStore, MetadataStoreExt as _,
+};
 
 /// Builder for creating a mock [`StepflowEnvironment`] for testing.
 ///
@@ -119,10 +121,12 @@ impl MockExecutorBuilder {
 
         let store = Arc::new(InMemoryStateStore::new());
         let metadata_store: Arc<dyn MetadataStore> = store.clone();
-        let blob_store: Arc<dyn BlobStore> = store;
+        let blob_store: Arc<dyn BlobStore> = store.clone();
+        let journal: Arc<dyn ExecutionJournal> = store;
         StepflowEnvironmentBuilder::new()
             .metadata_store(metadata_store)
             .blob_store(blob_store)
+            .execution_journal(journal)
             .working_directory(std::path::PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()
@@ -346,10 +350,12 @@ pub async fn create_executor_with_behaviors(
 
     let store = Arc::new(InMemoryStateStore::new());
     let metadata_store: Arc<dyn MetadataStore> = store.clone();
-    let blob_store: Arc<dyn BlobStore> = store;
+    let blob_store: Arc<dyn BlobStore> = store.clone();
+    let journal: Arc<dyn ExecutionJournal> = store;
     StepflowEnvironmentBuilder::new()
         .metadata_store(metadata_store)
         .blob_store(blob_store)
+        .execution_journal(journal)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()
@@ -422,10 +428,12 @@ pub async fn create_env_with_wait_signal(
 
     let store = Arc::new(InMemoryStateStore::new());
     let metadata_store: Arc<dyn MetadataStore> = store.clone();
-    let blob_store: Arc<dyn BlobStore> = store;
+    let blob_store: Arc<dyn BlobStore> = store.clone();
+    let journal: Arc<dyn ExecutionJournal> = store;
     let env = StepflowEnvironmentBuilder::new()
         .metadata_store(metadata_store)
         .blob_store(blob_store)
+        .execution_journal(journal)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()

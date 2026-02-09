@@ -555,7 +555,6 @@ impl MetadataStore for InMemoryStateStore {
         }
         .boxed()
     }
-
 }
 
 impl ExecutionJournal for InMemoryStateStore {

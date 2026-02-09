@@ -166,5 +166,4 @@ pub trait MetadataStore: Send + Sync {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
 }

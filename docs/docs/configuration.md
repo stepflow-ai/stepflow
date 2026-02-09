@@ -215,7 +215,7 @@ Stepflow supports multiple backends for storing workflow execution state and blo
 
 ```yaml
 storageConfig:
-  type: in_memory
+  type: inMemory
 ```
 
 - Fast access, no persistence
@@ -291,7 +291,7 @@ routes:
     - plugin: builtin
 
 storageConfig:
-  type: in_memory
+  type: inMemory
 ```
 
 </TabItem>

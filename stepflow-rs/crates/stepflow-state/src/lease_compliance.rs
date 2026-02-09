@@ -305,10 +305,7 @@ impl LeaseComplianceTests {
 
         // Find our orchestrator
         let our_orch = orchestrators.iter().find(|o| o.id == orch_id);
-        assert!(
-            our_orch.is_some(),
-            "Our orchestrator should be in the list"
-        );
+        assert!(our_orch.is_some(), "Our orchestrator should be in the list");
 
         let our_orch = our_orch.unwrap();
         assert_eq!(
