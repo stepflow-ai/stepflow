@@ -15,34 +15,72 @@
 # Dockerfile for Python Component Server
 # Provides HTTP-based component execution for Stepflow workflows
 
-FROM python:3.12-slim
+# Stage 1: Dependency installation (cached layer)
+FROM python:3.12-slim AS deps
 
-WORKDIR /app
+WORKDIR /build
 
 # Install uv for fast Python package management
 RUN pip install --no-cache-dir uv
 
-# Copy local stepflow-py SDK (build context is repo root)
-COPY sdks/python /tmp/stepflow-py
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install stepflow-py from local copy with HTTP support
-RUN uv pip install --system /tmp/stepflow-py[http]
+# Copy dependency file for layer caching
+COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
 
-# Copy component server code (build context is repo root)
+# Install stepflow-py dependencies (cached unless pyproject.toml changes)
+RUN uv pip install --python /opt/venv/bin/python \
+    msgspec>=0.19.0 \
+    jsonschema>=4.17.0 \
+    pydantic>=2.0.0 \
+    aiohttp>=3.9.0 \
+    aiohttp-retry>=2.8.0 \
+    python-dateutil>=2.8.2 \
+    typing-extensions>=4.7.1 \
+    urllib3>=2.0.0 \
+    fastapi>=0.104.1 \
+    uvicorn>=0.24.0 \
+    sse-starlette>=1.6.5
+
+
+# Stage 2: Application code (changes frequently, but deps layer is cached)
+FROM deps AS builder
+
+# Copy stepflow-py SDK source
+COPY sdks/python/stepflow-py /tmp/stepflow-py
+
+# Install stepflow-py from local copy with HTTP support (no deps - already installed)
+RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-py[http]
+
+# Clean up source copies
+RUN rm -rf /tmp/stepflow-py
+
+
+# Stage 3: Minimal runtime image (no build tools)
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy component server code
 COPY examples/kubernetes-batch-demo/docker/components.py /app/
 
 # Create non-root user
-RUN useradd -m -u 1000 stepflow && \
-    chown -R stepflow:stepflow /app
-
+RUN useradd -m -u 1000 stepflow \
+    && chown -R stepflow:stepflow /app
 USER stepflow
 
 # Expose HTTP port
 EXPOSE 8080
 
-# Health check
+# Health check - using urllib (no external deps needed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # Run component server in HTTP mode
 CMD ["python", "components.py", "--http"]

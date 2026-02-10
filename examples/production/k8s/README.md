@@ -112,14 +112,51 @@ From the repository root:
 # Build core Stepflow images
 podman build -t localhost/stepflow-server:latest -f docker/Dockerfile.server .
 podman build -t localhost/stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
-podman build -t localhost/langflow-worker:latest -f docker/langflow-worker/Dockerfile .
+podman build -t localhost/langflow-worker:latest -f docker/langflow-component-server/Dockerfile .
 
-# Build docling worker (from integrations/docling)
-podman build -t localhost/stepflow-docling:v14 -f integrations/docling/Dockerfile integrations/docling
+# Build docling worker
+podman build -t localhost/stepflow-docling:v14 -f docker/docling-worker/Dockerfile .
 
 # Build OpenSearch with jvector plugin
 podman build -t localhost/opensearch-jvector:latest -f examples/production/k8s/stepflow/opensearch/Dockerfile examples/production/k8s/stepflow/opensearch
 ```
+
+#### Dockerfile Build Patterns
+
+The worker Dockerfiles use a **3-stage build pattern** for cache efficiency and smaller images:
+
+```mermaid
+flowchart LR
+    subgraph Stage1["Stage 1: deps"]
+        D1["Install uv"]
+        D2["Create venv"]
+        D3["Install dependencies"]
+    end
+
+    subgraph Stage2["Stage 2: builder"]
+        B1["Copy source code"]
+        B2["Install packages<br/>(--no-deps)"]
+        B3["Cleanup /tmp"]
+    end
+
+    subgraph Stage3["Stage 3: runtime"]
+        R1["Copy venv only"]
+        R2["Create user"]
+        R3["Set entrypoint"]
+    end
+
+    Stage1 --> Stage2 --> Stage3
+```
+
+**Key optimizations:**
+- **Layer caching**: Dependencies in `deps` stage are cached unless `pyproject.toml` changes
+- **Minimal runtime**: Final image has no build tools (gcc, uv), only the Python venv
+- **Source cleanup**: `/tmp` source copies are removed before creating runtime image
+- **Stdlib healthchecks**: Use `urllib.request` instead of external `requests` package
+
+This pattern is used in:
+- `docker/langflow-component-server/Dockerfile` (langflow worker)
+- `docker/docling-worker/Dockerfile` (docling worker)
 
 ### 2. Create Kind Cluster
 

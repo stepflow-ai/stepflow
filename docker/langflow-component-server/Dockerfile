@@ -53,7 +53,7 @@ RUN uv pip install --python /app/.venv/bin/python \
     opensearch-py>=2.8.0
 
 
-# Stage 2: Application code (changes frequently)
+# Stage 2: Application code (changes frequently, but deps layer is cached)
 FROM deps AS runtime
 
 # Copy stepflow-py SDK source
@@ -70,6 +70,9 @@ RUN uv pip install --python /app/.venv/bin/python "lfx==0.2.1"
 
 # Install langflow integration (skip deps - already installed above)
 RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/stepflow-langflow
+
+# Clean up source copies to reduce image size
+RUN rm -rf /tmp/stepflow-py /tmp/stepflow-langflow
 
 # Copy component server entry point
 COPY docker/langflow-component-server/components.py /app/

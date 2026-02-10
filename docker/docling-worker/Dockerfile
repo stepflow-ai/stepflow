@@ -19,28 +19,27 @@
 # This image runs alongside docling-serve in the same pod (sidecar pattern).
 # It provides Stepflow component endpoints that route to the local docling-serve.
 
-# Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+# Stage 1: Dependency installation (cached layer)
+# Dependencies are installed first so this layer is cached unless pyproject.toml changes
+FROM python:3.11-slim AS deps
 
 WORKDIR /build
 
-# Install build dependencies
+# Install build dependencies and uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for fast package management
-RUN pip install --no-cache-dir uv
-
-# Copy dependency files first for better layer caching
-COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
-COPY integrations/docling/pyproject.toml /tmp/stepflow-docling/pyproject.toml
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install core dependencies (stepflow-py + stepflow-docling deps)
+# Copy dependency files first for better layer caching
+COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
+COPY integrations/docling/pyproject.toml /tmp/stepflow-docling/pyproject.toml
+
+# Install core dependencies (this layer is cached unless pyproject.toml files change)
 RUN uv pip install --python /opt/venv/bin/python \
     # stepflow-docling deps
     httpx>=0.25.0 \
@@ -67,17 +66,8 @@ RUN uv pip install --python /opt/venv/bin/python \
     opentelemetry-instrumentation-httpx>=0.48b0
 
 
-# Stage 2: Runtime image
-FROM python:3.11-slim AS runtime
-
-WORKDIR /app
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Install uv for package installation
-RUN pip install --no-cache-dir uv
+# Stage 2: Application code (changes frequently, but deps layer is cached)
+FROM deps AS builder
 
 # Copy stepflow-py SDK source
 COPY sdks/python/stepflow-py /tmp/stepflow-py
@@ -91,12 +81,22 @@ RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-py[http
 # Install stepflow-docling (no deps - already installed)
 RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-docling
 
-# Clean up source copies
+# Clean up source copies (keep venv clean)
 RUN rm -rf /tmp/stepflow-py /tmp/stepflow-docling
 
+
+# Stage 3: Minimal runtime image (no build tools)
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Copy virtual environment from builder (includes all installed packages)
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Create non-root user
-RUN useradd --create-home --uid 1000 appuser
-RUN chown -R appuser:appuser /app
+RUN useradd --create-home --uid 1000 appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 # Environment variables for docling-serve sidecar

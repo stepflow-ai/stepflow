@@ -24,16 +24,12 @@ import logging
 from typing import Any
 
 from stepflow_py.worker import StepflowContext, StepflowServer
+from stepflow_py.worker.observability import setup_observability
 
 from .core_executor import CoreExecutor
 from .custom_code_executor import CustomCodeExecutor
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    force=True,  # Override any existing configuration
-)
+logger = logging.getLogger(__name__)
 
 
 class StepflowLangflowServer:
@@ -94,6 +90,13 @@ class StepflowLangflowServer:
     def run(self, *args, **kwargs) -> None:
         """Run the component server."""
         import os
+
+        # Initialize observability (tracing, logging) before anything else
+        # This is done here rather than at import time to ensure it's always
+        # initialized regardless of how the server is started
+        setup_observability()
+
+        logger.info("Langflow component server starting")
 
         # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()

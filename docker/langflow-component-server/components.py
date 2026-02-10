@@ -41,10 +41,8 @@ logger.info(f"Component server starting with instance ID: {INSTANCE_ID}")
 
 def main():
     """Main entry point for HTTP server mode."""
-    # Initialize observability (tracing, logging) before anything else
-    from stepflow_py.worker.observability import setup_observability
-
-    setup_observability()
+    # Note: Observability (tracing, logging) is initialized by StepflowLangflowServer.run()
+    # to ensure it's always set up regardless of deployment environment.
 
     parser = argparse.ArgumentParser(description="Langflow Component Server")
     parser.add_argument(
