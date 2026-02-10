@@ -109,10 +109,16 @@ async fn main() {
         let config = load_config(args.config, args.config_stdin).await?;
         let recovery_config = config.recovery.clone();
 
-        // Create executor/environment
+        // Bind the server port early so blob API URL can be auto-configured
+        // before plugins are initialized (which sends the URL to component workers)
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))
+            .await
+            .change_context(ServerError::ServerError)
+            .attach_printable("Failed to bind HTTP server port")?;
+
+        // Create executor/environment (auto-configures blob API URL from bound port)
         info!("Creating Stepflow executor from configuration");
-        let executor = config
-            .create_environment()
+        let executor = stepflow_server::create_environment(config, &listener)
             .await
             .change_context(ServerError::ExecutorError)
             .attach_printable("Failed to create executor from configuration")?;
@@ -157,7 +163,7 @@ async fn main() {
 
         // Run server until shutdown signal
         tokio::select! {
-            result = stepflow_server::start_server(args.port, executor.clone()) => {
+            result = stepflow_server::start_server(listener, executor.clone()) => {
                 result
                     .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
                     .change_context(ServerError::ServerError)?;
