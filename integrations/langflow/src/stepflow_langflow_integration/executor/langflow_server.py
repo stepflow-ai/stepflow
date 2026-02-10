@@ -93,12 +93,28 @@ class StepflowLangflowServer:
 
     def run(self, *args, **kwargs) -> None:
         """Run the component server."""
+        import os
+
         # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
         import nest_asyncio  # type: ignore
 
         nest_asyncio.apply()
+
+        # Ensure Langflow services (especially DatabaseService) are properly
+        # initialized when a database URL is configured. Without this, the lfx
+        # service manager may not register langflow's DatabaseServiceFactory due
+        # to platform-dependent import ordering, causing memory/message queries
+        # to silently fall back to NoopDatabaseService.
+        if os.environ.get("LANGFLOW_DATABASE_URL"):
+            from langflow.services.utils import (
+                initialize_services,
+                teardown_services,
+            )
+
+            asyncio.run(teardown_services())
+            asyncio.run(initialize_services())
 
         asyncio.run(self.server.run(*args, **kwargs))
 

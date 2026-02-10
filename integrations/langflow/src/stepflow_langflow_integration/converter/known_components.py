@@ -38,6 +38,9 @@ class KnownComponent:
         str  # Full module path, e.g., "lfx.components.docling.DoclingInlineComponent"
     )
     description: str = ""
+    # Alternative module paths that are functionally equivalent
+    # (e.g., custom_components variants)
+    aliases: tuple[str, ...] = ()
 
 
 # Mapping of code_hash -> KnownComponent
@@ -79,6 +82,14 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
         module="lfx.components.docling.docling_remote.DoclingRemoteComponent",
         description="Docling remote processing via docling-serve API",
     ),
+    # Custom "Docling Serve" variant used in production workflows
+    # Same class as DoclingRemoteComponent but with workflow-specific customizations
+    "5723576d00e5": KnownComponent(
+        code_hash="5723576d00e5",
+        module="lfx.components.docling.docling_remote.DoclingRemoteComponent",
+        description="Docling Serve (custom variant of DoclingRemoteComponent)",
+        aliases=("custom_components.docling_serve",),
+    ),
     "397fa38f89d7": KnownComponent(
         code_hash="397fa38f89d7",
         module="lfx.components.docling.chunk_docling_document.ChunkDoclingDocumentComponent",
@@ -88,6 +99,13 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
         code_hash="4de16ddd37ac",
         module="lfx.components.docling.export_docling_document.ExportDoclingDocumentComponent",
         description="Export DoclingDocument to markdown, html or other formats",
+    ),
+    # EmbeddingModel component (lfx)
+    "0e2d6fe67a26": KnownComponent(
+        code_hash="0e2d6fe67a26",
+        module="lfx.components.models_and_agents.embedding_model.EmbeddingModelComponent",
+        description="Embedding Model - generate embeddings using OpenAI/Ollama",
+        aliases=("custom_components.embedding_model",),
     ),
     # Add more known components here as needed
 }
@@ -110,14 +128,18 @@ def lookup_known_component(
     if known is None:
         return None
 
-    # If module provided, verify it matches
+    # If module provided, verify it matches (or is a known alias)
     if module is not None and known.module != module:
-        # Hash collision or outdated mapping - log warning and return None
-        logger.warning(
-            f"Code hash {code_hash} matches known component {known.module} "
-            f"but workflow specifies {module}. Using custom_code executor."
-        )
-        return None
+        # Check if module is a known alias
+        if module not in known.aliases:
+            # Hash collision or outdated mapping - log warning and return None
+            logger.warning(
+                f"Code hash {code_hash} matches known component {known.module} "
+                f"but workflow specifies {module}. Using custom_code executor."
+            )
+            return None
+        # Module is a known alias, proceed with the known component
+        logger.info(f"Code hash {code_hash} using alias {module} -> {known.module}")
 
     return known
 

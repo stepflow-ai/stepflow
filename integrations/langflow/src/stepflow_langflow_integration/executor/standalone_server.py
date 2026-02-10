@@ -88,10 +88,28 @@ def main():
     - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-workerthon)
     """
     import asyncio
+    import os
 
     import nest_asyncio  # type: ignore
 
+    # Initialize observability (tracing, logging) before starting server
+    from stepflow_py.worker.observability import setup_observability
+
+    setup_observability()
+
     nest_asyncio.apply()
+
+    # Ensure Langflow services (especially DatabaseService) are properly
+    # initialized when a database URL is configured. Without this, the lfx
+    # service manager may not register langflow's DatabaseServiceFactory due
+    # to platform-dependent import ordering, causing memory/message queries
+    # to silently fall back to NoopDatabaseService.
+    if os.environ.get("LANGFLOW_DATABASE_URL"):
+        from langflow.services.utils import initialize_services, teardown_services
+
+        asyncio.run(teardown_services())
+        asyncio.run(initialize_services())
+
     # Start the HTTP server - this handles all the asyncio setup correctly
     asyncio.run(server.run())
 

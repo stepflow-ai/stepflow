@@ -1,6 +1,8 @@
 excludes:
   - docs/.*
   - stepflow-ui/.*
+  - examples/production/k8s/articles/.*
+  - examples/production/k8s/arxiv-pdfs/.*
   - sdks/python/stepflow-api/.*
   - sdks/python/stepflow-py/src/stepflow_py/api/.*
   - .*\.ya?ml

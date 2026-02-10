@@ -80,6 +80,9 @@ htmlcov/
 target
 TODO.md
 
+examples/production/k8s/articles
+examples/production/k8s/arxiv-pdfs
+
 # force tracking of CLA signatures
 !.github/cla-signatures.json
 .claude

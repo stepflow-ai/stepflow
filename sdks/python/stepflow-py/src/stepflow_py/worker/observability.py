@@ -197,6 +197,18 @@ def setup_observability(config: ObservabilityConfig | None = None) -> None:
             f"endpoint={config.otlp_endpoint}"
         )
 
+        # Setup httpx instrumentation for automatic trace propagation
+        # This instruments all httpx clients to create spans and propagate context
+        try:
+            from opentelemetry.instrumentation.httpx import (  # type: ignore[import-not-found]
+                HTTPXClientInstrumentor,
+            )
+
+            HTTPXClientInstrumentor().instrument()
+            logger.info("OpenTelemetry httpx instrumentation enabled")
+        except ImportError:
+            logger.debug("OpenTelemetry httpx instrumentation not available")
+
         # Setup OTLP logging if "otlp" destination is specified
         if "otlp" in config.log_destinations and OTLP_LOGGING_AVAILABLE:
             logger_provider = LoggerProvider(resource=resource)

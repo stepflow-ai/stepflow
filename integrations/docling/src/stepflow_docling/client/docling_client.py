@@ -35,7 +35,8 @@ from stepflow_docling.exceptions import (
 logger = logging.getLogger(__name__)
 
 # Default timeout for document processing (can be slow for large documents)
-DEFAULT_TIMEOUT = 120.0
+# Should match DOCLING_SERVE_MAX_SYNC_WAIT on the server side
+DEFAULT_TIMEOUT = 300.0
 DEFAULT_POLL_INTERVAL = 2.0
 DEFAULT_MAX_POLL_ATTEMPTS = 60
 
@@ -231,10 +232,10 @@ class DoclingServeClient:
             # Try to apply OpenTelemetry instrumentation
             try:
                 from opentelemetry.instrumentation.httpx import (
-                    HTTPXClientInstrumentation,
+                    HTTPXClientInstrumentor,
                 )
 
-                HTTPXClientInstrumentation().instrument_client(self._client)
+                HTTPXClientInstrumentor().instrument_client(self._client)
             except ImportError:
                 logger.debug("OpenTelemetry httpx instrumentation not available")
 

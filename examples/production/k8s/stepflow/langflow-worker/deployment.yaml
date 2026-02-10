@@ -21,7 +21,7 @@ metadata:
     app: langflow-worker
     component: langflow-integration
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: langflow-worker
@@ -111,6 +111,9 @@ spec:
               name: stepflow-secrets
               key: opensearch-password
               optional: true
+        # OpenSearch connection pool - increase for parallel workloads
+        - name: OPENSEARCH_MAX_CONNECTIONS
+          value: "20"
         # Docling document processing service
         - name: DOCLING_SERVE_URL
           value: "http://docling-serve.stepflow.svc.cluster.local:5001"
@@ -135,3 +138,12 @@ spec:
           value: "deployment.environment=kubernetes,service.namespace=stepflow"
         - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
           value: "true"
+        # Workflow configuration variables (for SecretInput components)
+        - name: CONNECTOR_TYPE
+          value: "wikipedia"
+        - name: OWNER
+          value: "stepflow-demo"
+        - name: OWNER_NAME
+          value: "Stepflow Demo"
+        - name: OWNER_EMAIL
+          value: "demo@stepflow.ai"
