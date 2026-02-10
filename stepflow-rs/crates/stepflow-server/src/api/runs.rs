@@ -443,7 +443,11 @@ pub async fn get_run_steps(
                 error_stack::report!(ServerError::InvalidRequest(format!(
                     "Item index {} out of bounds (run has {} items)",
                     item_index,
-                    execution.item_details.as_ref().map(|i| i.len()).unwrap_or(0)
+                    execution
+                        .item_details
+                        .as_ref()
+                        .map(|i| i.len())
+                        .unwrap_or(0)
                 )))
             })?
     } else {
@@ -492,7 +496,9 @@ fn aggregate_step_statuses(
 
     for item in items {
         for step in &item.steps {
-            let current = aggregated.entry(step.step_id.clone()).or_insert(step.status);
+            let current = aggregated
+                .entry(step.step_id.clone())
+                .or_insert(step.status);
             // Update if new status has higher precedence (is "worse")
             if status_precedence(step.status) > status_precedence(*current) {
                 *current = step.status;

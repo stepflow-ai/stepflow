@@ -323,12 +323,14 @@ mod tests {
     /// Helper to create a simple test flow.
     fn create_test_flow() -> stepflow_core::workflow::Flow {
         FlowBuilder::test_flow()
-            .steps(vec![StepBuilder::new("step0")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build()])
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
             .output(ValueExpr::Step {
                 step: "step0".to_string(),
                 path: Default::default(),
