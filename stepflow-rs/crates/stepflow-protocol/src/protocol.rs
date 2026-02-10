@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod blobs;
 mod components;
 mod flows;
 mod initialization;
@@ -21,7 +20,6 @@ mod methods;
 mod observability;
 
 // Re-export core protocol types
-pub(crate) use blobs::*;
 pub(crate) use components::*;
 pub(crate) use flows::*;
 pub(crate) use initialization::*;

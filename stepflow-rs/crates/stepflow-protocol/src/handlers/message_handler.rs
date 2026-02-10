@@ -16,7 +16,6 @@ use std::sync::{Arc, LazyLock};
 use stepflow_plugin::RunContext;
 use tokio::sync::mpsc;
 
-use super::blob_handlers::{GetBlobHandler, PutBlobHandler};
 use super::flow_handlers::{GetRunHandler, SubmitRunHandler};
 use crate::error::TransportError;
 use crate::protocol::{Method, MethodRequest};
@@ -53,8 +52,6 @@ pub struct MessageHandlerRegistry {
 
 static INCOMING_HANDLERS: LazyLock<MessageHandlerRegistry> = LazyLock::new(|| {
     let mut registry = MessageHandlerRegistry::new();
-    registry.register_method(Method::BlobsGet, Box::new(GetBlobHandler));
-    registry.register_method(Method::BlobsPut, Box::new(PutBlobHandler));
     registry.register_method(Method::RunsSubmit, Box::new(SubmitRunHandler));
     registry.register_method(Method::RunsGet, Box::new(GetRunHandler));
     registry

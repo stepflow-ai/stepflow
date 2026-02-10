@@ -118,12 +118,13 @@ impl BlobData {
 }
 
 /// Type of blob stored in the blob store.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BlobType {
     /// A workflow/flow definition
     Flow,
     /// Generic data blob
+    #[default]
     Data,
 }
 

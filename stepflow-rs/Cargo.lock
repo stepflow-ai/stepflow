@@ -4575,6 +4575,7 @@ dependencies = [
 name = "stepflow-cli"
 version = "0.9.0"
 dependencies = [
+ "axum",
  "clap",
  "clap-markdown",
  "error-stack",

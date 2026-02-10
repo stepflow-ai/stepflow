@@ -25,6 +25,20 @@ use stepflow_state::{
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
+/// Wrapper type for the blob API URL stored in the environment.
+///
+/// This is used to store the URL that workers should use for direct HTTP blob access.
+/// When set, workers will use `GET {url}/{blob_id}` and `POST {url}` for blob operations.
+#[derive(Debug, Clone)]
+pub struct BlobApiUrl(pub Option<String>);
+
+impl BlobApiUrl {
+    /// Get the blob API URL if configured.
+    pub fn url(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
 /// Builder for constructing a StepflowEnvironment.
 ///
 /// This builder ensures all required resources are set before
@@ -49,6 +63,7 @@ pub struct StepflowEnvironmentBuilder {
     lease_manager: Option<Arc<dyn LeaseManager>>,
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
+    blob_api_url: Option<String>,
 }
 
 impl Default for StepflowEnvironmentBuilder {
@@ -67,6 +82,7 @@ impl StepflowEnvironmentBuilder {
             lease_manager: None,
             working_directory: None,
             plugin_router: None,
+            blob_api_url: None,
         }
     }
 
@@ -120,6 +136,20 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the blob API URL for workers.
+    ///
+    /// When set, workers will use direct HTTP requests to this URL for blob operations.
+    ///
+    /// This URL must be the base blobs collection endpoint. Workers will:
+    /// - `POST {url}` to create a blob
+    /// - `GET {url}/{blob_id}` to fetch a blob
+    ///
+    /// Example: `http://localhost:7840/api/v1/blobs` or `http://blob-service/api/v1/blobs`
+    pub fn blob_api_url(mut self, url: Option<String>) -> Self {
+        self.blob_api_url = url;
+        self
+    }
+
     /// Build the environment, initializing all plugins.
     ///
     /// This is async because plugin initialization may require async operations
@@ -162,6 +192,9 @@ impl StepflowEnvironmentBuilder {
         env.insert(lease_manager);
         env.insert(working_directory);
         env.insert(plugin_router);
+
+        // Store blob API URL for workers
+        env.insert(BlobApiUrl(self.blob_api_url));
 
         // Always create ActiveExecutions for tracking running executions
         env.insert(ActiveExecutions::new());

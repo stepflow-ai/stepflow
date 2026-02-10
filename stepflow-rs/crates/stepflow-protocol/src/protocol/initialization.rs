@@ -19,12 +19,31 @@ use super::{ObservabilityContext, ProtocolMethod, ProtocolNotification};
 
 /// Sent from Stepflow to the component server to begin the initialization process.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
     /// Maximum version of the protocol being used by the Stepflow runtime.
     pub runtime_protocol_version: u32,
     /// Observability context for tracing initialization (trace context only, no flow/run).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
+    /// Runtime capabilities provided to the component server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<RuntimeCapabilities>,
+}
+
+/// Runtime capabilities advertised by the Stepflow runtime during initialization.
+///
+/// Component servers can use these capabilities to access runtime services.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeCapabilities {
+    /// Base URL for the Blob HTTP API.
+    ///
+    /// When provided, component servers should use direct HTTP requests
+    /// (`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations
+    /// instead of SSE bidirectional protocol.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blob_api_url: Option<String>,
 }
 
 /// Sent from the component server back to Stepflow with the result of initialization.

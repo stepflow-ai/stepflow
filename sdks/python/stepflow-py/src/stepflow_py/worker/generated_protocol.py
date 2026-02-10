@@ -43,8 +43,6 @@ class Method(Enum):
     components_info = 'components/info'
     components_execute = 'components/execute'
     components_infer_schema = 'components/infer_schema'
-    blobs_put = 'blobs/put'
-    blobs_get = 'blobs/get'
     runs_submit = 'runs/submit'
     runs_get = 'runs/get'
 
@@ -98,6 +96,18 @@ class Notification(Struct, kw_only=True):
     ) = '2.0'
     params: (
         Annotated[Any, Meta(description='The parameters for the notification.')] | None
+    ) = None
+
+
+class RuntimeCapabilities(Struct, kw_only=True):
+    blobApiUrl: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Base URL for the Blob HTTP API.\n\nWhen provided, component servers should use direct HTTP requests\n(`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations\ninstead of SSE bidirectional protocol.'
+            ),
+        ]
+        | None
     ) = None
 
 
@@ -164,20 +174,6 @@ class ComponentInferSchemaParams(Struct, kw_only=True):
 
 class ComponentInferSchemaResult(Struct, kw_only=True):
     output_schema: Schema | None = None
-
-
-class BlobType(Enum):
-    flow = 'flow'
-    data = 'data'
-
-
-class GetBlobResult(Struct, kw_only=True):
-    data: Value
-    blob_type: BlobType
-
-
-class PutBlobResult(Struct, kw_only=True):
-    blob_id: BlobId
 
 
 class OverrideType(Enum):
@@ -291,7 +287,7 @@ class ObservabilityContext(Struct, kw_only=True):
 
 
 class InitializeParams(Struct, kw_only=True):
-    runtime_protocol_version: Annotated[
+    runtimeProtocolVersion: Annotated[
         int,
         Meta(
             description='Maximum version of the protocol being used by the Stepflow runtime.',
@@ -299,6 +295,7 @@ class InitializeParams(Struct, kw_only=True):
         ),
     ]
     observability: ObservabilityContext | None = None
+    capabilities: RuntimeCapabilities | None = None
 
 
 class ComponentExecuteParams(Struct, kw_only=True):
@@ -337,17 +334,6 @@ class ListComponentsResult(Struct, kw_only=True):
     components: Annotated[
         List[ComponentInfo], Meta(description='A list of all available components.')
     ]
-
-
-class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
-    observability: ObservabilityContext | None = None
-
-
-class PutBlobParams(Struct, kw_only=True):
-    data: Value
-    blob_type: BlobType
-    observability: ObservabilityContext | None = None
 
 
 class StepOverride(Struct, kw_only=True):

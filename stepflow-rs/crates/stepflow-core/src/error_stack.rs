@@ -11,17 +11,20 @@
 // the License.
 
 /// A single entry in an error stack for detailed error reporting
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ErrorStackEntry {
+    /// The error message
     pub error: String,
+    /// Additional context attached to this error
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub attachments: Vec<String>,
+    /// Backtrace if available
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backtrace: Option<String>,
 }
 
 /// Error stack information for detailed system error debugging
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ErrorStack {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub stack: Vec<ErrorStackEntry>,

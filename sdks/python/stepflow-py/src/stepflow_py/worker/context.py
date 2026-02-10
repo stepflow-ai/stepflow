@@ -19,19 +19,16 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from stepflow_py.api.models import Flow
+from stepflow_py.api.models.blob_type import BlobType
 from stepflow_py.worker.generated_protocol import (
-    BlobType,
     FlowResultFailed,
     FlowResultSuccess,
-    GetBlobResult,
     GetRunProtocolParams,
     Message,
     Method,
     MethodError,
     MethodSuccess,
     ObservabilityContext,
-    PutBlobParams,
-    PutBlobResult,
     ResultOrder,
     RunStatusProtocol,
     SubmitRunProtocolParams,
@@ -56,21 +53,25 @@ class StepflowContext:
         self,
         outgoing_queue: asyncio.Queue,
         message_decoder: MessageDecoder[asyncio.Future[Message]],
+        http_client: Any,
         session_id: str | None = None,
         step_id: str | None = None,
         run_id: str | None = None,
         flow_id: str | None = None,
         attempt: int = 1,
         observability: ObservabilityContext | None = None,
+        blob_api_url: str | None = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
+        self._http_client = http_client
         self._session_id = session_id
         self._step_id = step_id
         self._run_id = run_id
         self._flow_id = flow_id
         self._attempt = attempt
         self._observability = observability
+        self._blob_api_url = blob_api_url
 
     def current_observability_context(self) -> ObservabilityContext | None:
         """Get the current observability context for bidirectional requests.
@@ -131,7 +132,7 @@ class StepflowContext:
                 f"Unexpected response type: {type(response_message)} {response_message}"
             )
 
-    async def put_blob(self, data: Any, blob_type: BlobType = BlobType.data) -> str:
+    async def put_blob(self, data: Any, blob_type: BlobType = BlobType.DATA) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
         Args:
@@ -140,8 +141,17 @@ class StepflowContext:
 
         Returns:
             The blob ID (SHA-256 hash) for the stored data
+
+        Raises:
+            RuntimeError: If blob API URL was not provided during initialization
         """
         from stepflow_py.worker.observability import get_tracer
+
+        if not self._blob_api_url:
+            raise RuntimeError(
+                "Blob API URL not configured. "
+                "Ensure the orchestrator is configured with blobApi.url"
+            )
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -150,13 +160,13 @@ class StepflowContext:
                 "blob_type": blob_type.value,
             },
         ):
-            params = PutBlobParams(
-                data=data,
-                blob_type=blob_type,
-                observability=self.current_observability_context(),
+            resp = await self._http_client.post(
+                self._blob_api_url,
+                json={"data": data, "blobType": blob_type.value},
             )
-            response = await self._send_request(Method.blobs_put, params, PutBlobResult)
-            return response.blob_id
+            resp.raise_for_status()
+            blob_id: str = resp.json()["blobId"]
+            return blob_id
 
     async def get_blob(self, blob_id: str) -> Any:
         """Retrieve JSON data by blob ID.
@@ -166,9 +176,17 @@ class StepflowContext:
 
         Returns:
             The JSON data associated with the blob ID
+
+        Raises:
+            RuntimeError: If blob API URL was not provided during initialization
         """
-        from stepflow_py.worker.generated_protocol import GetBlobParams
         from stepflow_py.worker.observability import get_tracer
+
+        if not self._blob_api_url:
+            raise RuntimeError(
+                "Blob API URL not configured. "
+                "Ensure the orchestrator is configured with blobApi.url"
+            )
 
         tracer = get_tracer(__name__)
         with tracer.start_as_current_span(
@@ -177,11 +195,9 @@ class StepflowContext:
                 "blob_id": blob_id,
             },
         ):
-            params = GetBlobParams(
-                blob_id=blob_id, observability=self.current_observability_context()
-            )
-            response = await self._send_request(Method.blobs_get, params, GetBlobResult)
-            return response.data
+            resp = await self._http_client.get(f"{self._blob_api_url}/{blob_id}")
+            resp.raise_for_status()
+            return resp.json()["data"]
 
     @property
     def session_id(self) -> str | None:
@@ -227,7 +243,7 @@ class StepflowContext:
         flow_dict = flow.model_dump()
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
 
         # Delegate to evaluate_flow_by_id for the actual evaluation
         return await self.evaluate_flow_by_id(flow_id, input, overrides=overrides)
@@ -282,7 +298,7 @@ class StepflowContext:
         flow_dict = flow.model_dump()
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
 
         # Delegate to submit_run_by_id
         return await self.submit_run_by_id(
@@ -403,7 +419,7 @@ class StepflowContext:
         flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.flow)
+        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
 
         # Delegate to evaluate_run_by_id
         return await self.evaluate_run_by_id(

@@ -442,7 +442,7 @@ def test_requires_context():
                 jsonrpc="2.0",
                 id="test1",
                 method=Method.initialize,
-                params=InitializeParams(runtime_protocol_version=1),
+                params=InitializeParams(runtimeProtocolVersion=1),
             ),
             "expected": False,
         },

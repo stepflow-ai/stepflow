@@ -16,6 +16,7 @@ doctest = false
 workspace = true
 
 [dependencies]
+axum.workspace = true
 clap.workspace = true
 error-stack.workspace = true
 rustyline.workspace = true

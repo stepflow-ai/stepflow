@@ -13,6 +13,95 @@
     "version": "0.9.0"
   },
   "paths": {
+    "/blobs": {
+      "post": {
+        "tags": [
+          "Blob"
+        ],
+        "summary": "Store a blob and return its content-based ID",
+        "operationId": "store_blob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoreBlobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Blob stored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoreBlobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/blobs/{blob_id}": {
+      "get": {
+        "tags": [
+          "Blob"
+        ],
+        "summary": "Get a blob by its ID",
+        "operationId": "get_blob",
+        "parameters": [
+          {
+            "name": "blob_id",
+            "in": "path",
+            "description": "Blob ID to retrieve",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blob retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetBlobResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Blob not found"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/components": {
       "get": {
         "tags": [
@@ -628,6 +717,14 @@
         "type": "string",
         "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string."
       },
+      "BlobType": {
+        "type": "string",
+        "description": "Type of blob stored in the blob store.",
+        "enum": [
+          "flow",
+          "data"
+        ]
+      },
       "Component": {
         "type": "string",
         "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
@@ -861,6 +958,60 @@
             "fail": "#/components/schemas/OnErrorFail",
             "retry": "#/components/schemas/OnErrorRetry",
             "useDefault": "#/components/schemas/OnErrorDefault"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response structure.\n\nServer handlers should return this, but usually it is better to create it\nby returning an `error_stack::Report<ServerError>` and using the automatic\nconversion to `ErrorResponse`.\n\nOther `error_stack::Report` types will automatically convert to internal errors.",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "HTTP status code (e.g., 400, 404, 500)",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorStackEntry"
+            },
+            "description": "Detailed error stack for debugging"
+          }
+        }
+      },
+      "ErrorStackEntry": {
+        "type": "object",
+        "description": "A single entry in an error stack for detailed error reporting",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The error message"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional context attached to this error"
+          },
+          "backtrace": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Backtrace if available"
           }
         }
       },
@@ -1150,6 +1301,29 @@
             "propertyNames": {
               "type": "string"
             }
+          }
+        }
+      },
+      "GetBlobResponse": {
+        "type": "object",
+        "description": "Response when retrieving a blob",
+        "required": [
+          "data",
+          "blobType",
+          "blobId"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Value",
+            "description": "The blob data"
+          },
+          "blobType": {
+            "$ref": "#/components/schemas/BlobType",
+            "description": "The blob type"
+          },
+          "blobId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The blob ID (for confirmation)"
           }
         }
       },
@@ -1762,6 +1936,36 @@
           }
         }
       },
+      "StoreBlobRequest": {
+        "type": "object",
+        "description": "Request to store a blob",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Value",
+            "description": "The JSON data to store"
+          },
+          "blobType": {
+            "$ref": "#/components/schemas/BlobType",
+            "description": "The type of blob (data or flow). Defaults to \"data\"."
+          }
+        }
+      },
+      "StoreBlobResponse": {
+        "type": "object",
+        "description": "Response when a blob is stored",
+        "required": [
+          "blobId"
+        ],
+        "properties": {
+          "blobId": {
+            "$ref": "#/components/schemas/BlobId",
+            "description": "The content-based blob ID (SHA-256 hash)"
+          }
+        }
+      },
       "StoreFlowRequest": {
         "type": "object",
         "description": "Request to store a flow",
@@ -2029,6 +2233,10 @@
     }
   },
   "tags": [
+    {
+      "name": "Blob",
+      "description": "Blob API endpoints"
+    },
     {
       "name": "Component",
       "description": "Component API endpoints"

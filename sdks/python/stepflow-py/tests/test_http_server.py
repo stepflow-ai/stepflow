@@ -16,7 +16,6 @@
 
 import asyncio
 import json
-import uuid
 
 import msgspec
 import pytest
@@ -255,7 +254,7 @@ class SSEEventHelper:
             result: The result data to send back
 
         Raises:
-            httpx.HTTPStatusError: If the response status indicates an error
+            AssertionError: If the response status indicates an error (with details)
         """
         method_response = {"jsonrpc": "2.0", "id": request_id, "result": result}
         post_response = await self.server_helper._httpx_client.post(
@@ -263,7 +262,9 @@ class SSEEventHelper:
             json=method_response,
             headers=POST_HEADERS,
         )
-        post_response.raise_for_status()
+        assert post_response.is_success, (
+            f"Response failed with {post_response.status_code}: {post_response.text}"
+        )
 
 
 @pytest.fixture(scope="session")
@@ -295,20 +296,82 @@ def core_server():
     async def context_component(
         input: ContextInput, context: StepflowContext
     ) -> ContextOutput:
-        """A component that uses Context for bidirectional communication."""
+        """A component that uses Context for HTTP blob operations."""
         blob_id = await context.put_blob(input.data)
         return ContextOutput(
             result=f"Processed with context: {input.data}",
             blob_id=blob_id,
         )
 
+    # Define message types for bidirectional SSE test
+    class BidirectionalInput(msgspec.Struct):
+        value: int
+        run_id: str
+
+    class BidirectionalOutput(msgspec.Struct):
+        result: str
+        item_count: int
+
+    @server.component
+    async def bidirectional_component(
+        input: BidirectionalInput, context: StepflowContext
+    ) -> BidirectionalOutput:
+        """A component that makes outgoing SSE calls for bidirectional communication.
+
+        This uses the runs/get method to make an outgoing SSE call, which is
+        responded to by the test harness.
+        """
+        # Make an outgoing call via SSE using runs/get
+        run_status = await context.get_run(input.run_id)
+
+        return BidirectionalOutput(
+            result=run_status.status,
+            item_count=run_status.items.total,
+        )
+
     return server
+
+
+# In-memory blob storage for tests
+_test_blob_storage: dict[str, dict] = {}
 
 
 @pytest.fixture(scope="session")
 def http_app(core_server):
     """Create FastAPI app with test components for testing."""
-    return create_test_app(core_server)
+    import hashlib
+
+    from fastapi.responses import JSONResponse
+
+    app = create_test_app(core_server)
+
+    # Add mock blob API endpoints for testing
+    @app.post("/blobs")
+    async def store_blob(request: dict):
+        """Mock blob storage endpoint."""
+        data = request.get("data")
+        blob_type = request.get("blobType", "data")
+        # Generate blob ID from content hash
+        content_str = json.dumps(data, sort_keys=True)
+        blob_id = hashlib.sha256(content_str.encode()).hexdigest()
+        _test_blob_storage[blob_id] = {"data": data, "blobType": blob_type}
+        return JSONResponse(content={"blobId": blob_id})
+
+    @app.get("/blobs/{blob_id}")
+    async def get_blob(blob_id: str):
+        """Mock blob retrieval endpoint."""
+        if blob_id not in _test_blob_storage:
+            return JSONResponse(content={"error": "Blob not found"}, status_code=404)
+        blob = _test_blob_storage[blob_id]
+        return JSONResponse(
+            content={
+                "data": blob["data"],
+                "blobType": blob["blobType"],
+                "blobId": blob_id,
+            }
+        )
+
+    return app
 
 
 @pytest_asyncio.fixture
@@ -316,6 +379,8 @@ async def test_server(http_app, core_server):
     """Create a ServerHelper instance with live server automatically started."""
     server = ServerHelper(http_app, core_server)
     await server._start_live_server()
+    # Configure blob API URL to point to our mock endpoints
+    core_server._blob_api_url = f"{server.url}/blobs"
     try:
         yield server
     finally:
@@ -461,7 +526,12 @@ async def test_components_list(test_server):
 
     components = result["result"]["components"]
 
-    expected_components = ["/simple_component", "/context_component", "/udf"]
+    expected_components = [
+        "/simple_component",
+        "/context_component",
+        "/bidirectional_component",
+        "/udf",
+    ]
     try:
         import langchain_core  # noqa: F401
 
@@ -583,13 +653,18 @@ async def test_context_component_without_streaming(test_server):
 
 
 @pytest.mark.asyncio
-async def test_bidirectional(test_server):
-    """Test bidirectional component communication with SSE."""
+async def test_http_blob_api(test_server):
+    """Test context component with HTTP blob API.
+
+    This test verifies that components using StepflowContext can store blobs
+    via the HTTP Blob API during execution. The blob operations happen over
+    HTTP (not SSE), so we only receive the final result via SSE.
+    """
 
     async with test_server.stream_request(
         Method.components_execute,
         component="/context_component",
-        input_data={"data": "test bidirectional"},
+        input_data={"data": "test blob data"},
     ) as response:
         # Should return streaming response
         assert response.status_code == 200
@@ -598,19 +673,8 @@ async def test_bidirectional(test_server):
         # Create SSE event helper
         sse_events = test_server.sse_events(response)
 
-        # First, we should get the blob put. Verify that.
-        blob_put = await sse_events.next()
-        assert blob_put is not None, "Should receive blobs/put request"
-        assert blob_put["jsonrpc"] == "2.0"
-        assert blob_put["method"] == "blobs/put"
-        assert "id" in blob_put
-        assert blob_put["params"]["data"] == "test bidirectional"
-
-        # Send the response to blob put.
-        blob_response_id = str(uuid.uuid4())
-        await sse_events.post_response(blob_put["id"], {"blob_id": blob_response_id})
-
-        # Then we should get the final response. Verify that.
+        # With HTTP blob API, the component makes HTTP calls directly,
+        # so we only receive the final response via SSE (no intermediate blobs/put)
         final_response = await sse_events.next()
         assert final_response is not None, "Should receive final component response"
         assert final_response["jsonrpc"] == "2.0"
@@ -618,9 +682,77 @@ async def test_bidirectional(test_server):
         assert "result" in final_response
         assert (
             final_response["result"]["output"]["result"]
-            == "Processed with context: test bidirectional"
+            == "Processed with context: test blob data"
         )
-        assert final_response["result"]["output"]["blob_id"] == blob_response_id
+        # Blob ID should be a SHA-256 hash (64 hex chars)
+        blob_id = final_response["result"]["output"]["blob_id"]
+        assert len(blob_id) == 64, "Blob ID should be SHA-256 hash"
+        assert all(c in "0123456789abcdef" for c in blob_id), "Blob ID should be hex"
+
+        # Verify the blob was stored in our mock storage
+        assert blob_id in _test_blob_storage
+        assert _test_blob_storage[blob_id]["data"] == "test blob data"
+
+        # Verify the stream is closed (no more events)
+        next_event = await sse_events.next()
+        assert next_event is None, "Should not receive any more events"
+
+
+@pytest.mark.asyncio
+async def test_bidirectional_sse(test_server):
+    """Test bidirectional SSE communication with runs/get method.
+
+    This test verifies that components can make outgoing SSE calls to the
+    orchestrator and receive responses. The component calls context.get_run()
+    which sends a runs/get request over SSE, and the test responds to it.
+    """
+
+    async with test_server.stream_request(
+        Method.components_execute,
+        component="/bidirectional_component",
+        input_data={"value": 42, "run_id": "test-run-for-bidir"},
+    ) as response:
+        # Should return streaming response
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+
+        # Create SSE event helper
+        sse_events = test_server.sse_events(response)
+
+        # First, we should receive the runs/get request from the component
+        runs_get_request = await sse_events.next()
+        assert runs_get_request is not None, "Should receive runs/get request"
+        assert runs_get_request["jsonrpc"] == "2.0"
+        assert runs_get_request["method"] == "runs/get"
+        assert "id" in runs_get_request
+        assert runs_get_request["params"]["runId"] == "test-run-for-bidir"
+
+        # Send response to the runs/get request (must match RunStatusProtocol schema)
+        await sse_events.post_response(
+            runs_get_request["id"],
+            {
+                "runId": "test-run-for-bidir",
+                "flowId": "test-flow-id-blob",
+                "status": "completed",
+                "items": {
+                    "total": 5,
+                    "completed": 5,
+                    "running": 0,
+                    "failed": 0,
+                    "cancelled": 0,
+                },
+                "createdAt": "2024-01-15T10:30:00Z",
+            },
+        )
+
+        # Then we should receive the final component response
+        final_response = await sse_events.next()
+        assert final_response is not None, "Should receive final component response"
+        assert final_response["jsonrpc"] == "2.0"
+        assert final_response["id"] == "components_execute-test"
+        assert "result" in final_response
+        assert final_response["result"]["output"]["result"] == "completed"
+        assert final_response["result"]["output"]["item_count"] == 5
 
         # Verify the stream is closed (no more events)
         next_event = await sse_events.next()

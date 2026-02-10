@@ -11,7 +11,9 @@
 // the License.
 
 use axum::Router;
+use error_stack::ResultExt as _;
 use std::sync::Arc;
+use stepflow_config::{ConfigError, StepflowConfig};
 use stepflow_plugin::StepflowEnvironment;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -80,13 +82,44 @@ impl AppConfig {
     }
 }
 
+/// Create a [`StepflowEnvironment`] from config, auto-configuring the blob API URL
+/// from the listener's bound port if needed.
+///
+/// This ensures component workers receive the blob API URL during plugin
+/// initialization. Both the CLI and HTTP server use this to avoid duplicating
+/// the blob URL setup logic.
+pub async fn create_environment(
+    mut config: StepflowConfig,
+    listener: &tokio::net::TcpListener,
+) -> error_stack::Result<Arc<StepflowEnvironment>, ConfigError> {
+    let port = listener
+        .local_addr()
+        .change_context(ConfigError::Configuration)
+        .attach_printable("Failed to get listener address")?
+        .port();
+
+    if config.blob_api.enabled && config.blob_api.url.is_none() {
+        config.blob_api.url = Some(format!("http://127.0.0.1:{port}/api/v1/blobs"));
+        log::info!(
+            "Blob API URL auto-configured: {}",
+            config.blob_api.url.as_ref().unwrap()
+        );
+    } else {
+        log::debug!(
+            "Blob API configuration: enabled={}, url={:?}",
+            config.blob_api.enabled,
+            config.blob_api.url
+        );
+    }
+
+    config.create_environment().await
+}
+
 /// Start the HTTP server using axum + utoipa
 pub async fn start_server(
-    port: u16,
+    listener: tokio::net::TcpListener,
     env: Arc<StepflowEnvironment>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Bind first to get the actual port (important when port=0 for auto-assign)
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     let actual_port = listener.local_addr()?.port();
 
     // Create the app with the actual port

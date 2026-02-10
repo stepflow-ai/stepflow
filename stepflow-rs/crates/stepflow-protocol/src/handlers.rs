@@ -10,7 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-mod blob_handlers;
 mod flow_handlers;
 mod handle_method_call;
 mod message_handler;

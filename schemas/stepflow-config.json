@@ -39,6 +39,10 @@
         "recovery": {
           "$ref": "#/$defs/RecoveryConfig",
           "description": "Recovery configuration for handling interrupted runs."
+        },
+        "blobApi": {
+          "$ref": "#/$defs/BlobApiConfig",
+          "description": "Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use."
         }
       }
     }
@@ -161,6 +165,25 @@
           "description": "Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.",
           "default": 10,
           "minimum": 0
+        }
+      }
+    },
+    "BlobApiConfig": {
+      "type": "object",
+      "description": "Configuration for the Blob HTTP API.\n\nThis controls whether the orchestrator serves blob API endpoints and what URL\nworkers should use to access the blob API.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the orchestrator serves blob API endpoints.\n\nSet to `false` when running a separate blob service.\nDefault: `true`",
+          "default": true
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "URL workers use to access the blob API.\n\nIf not set, defaults to `http://localhost:{port}/api/v1/blobs` where `{port}`\nis the server's bound port.\n\nThis value should be the base blobs endpoint URL. Workers will:\n- `POST {url}` to create blobs\n- `GET {url}/{blob_id}` to fetch blobs\n\nExamples:\n- Local dev: omit (auto-detected)\n- K8s with orchestrator blobs: `http://orchestrator-service/api/v1/blobs`\n- K8s with separate blob service: `http://blob-service/api/v1/blobs`",
+          "default": null
         }
       }
     },

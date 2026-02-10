@@ -31,8 +31,6 @@ from .generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
-    GetBlobParams,
-    GetBlobResult,
     GetRunProtocolParams,
     Initialized,
     InitializeParams,
@@ -45,8 +43,6 @@ from .generated_protocol import (
     MethodRequest,
     MethodSuccess,
     Notification,
-    PutBlobParams,
-    PutBlobResult,
     RequestId,
     RunStatusProtocol,
     SubmitRunProtocolParams,
@@ -216,10 +212,6 @@ def _decode_params_for_method(method: Method, params_raw: Raw):
         return msgspec.json.decode(params_raw, type=ComponentInfoParams)
     elif method == Method.components_execute:
         return msgspec.json.decode(params_raw, type=ComponentExecuteParams)
-    elif method == Method.blobs_get:
-        return msgspec.json.decode(params_raw, type=GetBlobParams)
-    elif method == Method.blobs_put:
-        return msgspec.json.decode(params_raw, type=PutBlobParams)
     elif method == Method.runs_submit:
         return msgspec.json.decode(params_raw, type=SubmitRunProtocolParams)
     elif method == Method.runs_get:
@@ -238,10 +230,6 @@ def _get_result_type_for_method(method: Method) -> type:
         return ComponentInfoResult
     elif method == Method.components_execute:
         return ComponentExecuteResult
-    elif method == Method.blobs_get:
-        return GetBlobResult
-    elif method == Method.blobs_put:
-        return PutBlobResult
     elif method == Method.runs_submit:
         return RunStatusProtocol
     elif method == Method.runs_get:

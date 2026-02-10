@@ -237,18 +237,37 @@ cargo run -- validate --flow=production.yaml --config=prod-config.yml
 - When debugging execution issues
 - After modifying plugin configurations
 
-## Bidirectional Communication & Blob Support
+## Blob Storage
 
-The protocol supports bidirectional communication allowing components to make calls back to the stepflow runtime.
+Stepflow provides content-addressed blob storage for JSON data. Blobs are identified by SHA-256 hashes of their content.
 
-**From stepflow to components**:
-- `initialize`: Initialize component server
-- `component_info`: Get component schema
-- `component_execute`: Execute component
+### Blob HTTP API
 
-**From components to stepflow**:
-- `blob_store`: Store JSON data, returns content-based ID
-- `blob_get`: Retrieve JSON data by blob ID
+Workers access blobs via HTTP API endpoints:
+- `POST /api/v1/blobs` - Store a blob, returns `{ "blobId": "<sha256>" }`
+- `GET /api/v1/blobs/{blob_id}` - Retrieve a blob by ID
+
+### Blob API Configuration
+
+Configure how workers access the blob API in `stepflow-config.yml`:
+
+```yaml
+# Local dev (default) - orchestrator serves blob endpoints
+# No configuration needed, uses defaults
+
+# K8s with orchestrator serving blobs
+blobApi:
+  url: "http://orchestrator-service/api/v1/blobs"
+
+# K8s with separate blob service
+blobApi:
+  enabled: false  # Orchestrator doesn't serve blob endpoints
+  url: "http://blob-service/api/v1/blobs"
+```
+
+**Configuration fields**:
+- `blobApi.enabled` (default: `true`) - Whether orchestrator serves blob HTTP endpoints
+- `blobApi.url` (optional) - URL workers use for blob operations. When set, passed to workers during initialization
 
 ### Python SDK Example
 
@@ -266,7 +285,7 @@ server = StepflowServer()
 
 @server.component
 async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
-    # Store data as a blob
+    # Store data as a blob (uses HTTP API when configured)
     blob_id = await context.put_blob(input.data)
     return MyOutput(blob_id=blob_id)
 
@@ -276,6 +295,19 @@ asyncio.run(server.run())
 ```
 
 See `sdks/python/CLAUDE.md` for more Python SDK patterns.
+
+## Bidirectional Communication
+
+The protocol supports bidirectional communication allowing components to make calls back to the stepflow runtime during execution.
+
+**From stepflow to components**:
+- `initialize`: Initialize component server (includes `RuntimeCapabilities` with blob API URL)
+- `component_info`: Get component schema
+- `component_execute`: Execute component
+
+**From components to stepflow** (via SSE channel):
+- `runs/submit`: Submit a nested run
+- `runs/get`: Get run status
 
 ## ICLA (Individual Contributor License Agreement)
 
