@@ -60,6 +60,7 @@ class StepflowContext:
         attempt: int = 1,
         observability: ObservabilityContext | None = None,
         blob_api_url: str | None = None,
+        http_client: Any = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
@@ -70,15 +71,17 @@ class StepflowContext:
         self._attempt = attempt
         self._observability = observability
         self._blob_api_url = blob_api_url
-        self._http_client: Any = None  # Lazy-initialized httpx.AsyncClient
+        # Use shared client if provided, otherwise will be lazily created
+        self._http_client: Any = http_client
+        self._owns_http_client = http_client is None
 
     async def aclose(self) -> None:
-        """Close any HTTP client resources held by this context.
+        """Close any HTTP client resources owned by this context.
 
-        This should be called when the StepflowContext is no longer needed
-        to release network connections and file descriptors.
+        This only closes the client if it was created by this context
+        (not passed in from a shared pool).
         """
-        if self._http_client is not None:
+        if self._http_client is not None and self._owns_http_client:
             await self._http_client.aclose()
             self._http_client = None
 

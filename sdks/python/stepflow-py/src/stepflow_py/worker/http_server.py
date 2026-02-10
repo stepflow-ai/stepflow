@@ -73,6 +73,21 @@ class _HttpServerContext:
         self.server = server
         self.instance_id = instance_id
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
+        self._http_client: Any = None  # Shared httpx.AsyncClient for blob operations
+
+    async def get_http_client(self) -> Any:
+        """Get or create the shared HTTP client for blob operations."""
+        if self._http_client is None:
+            import httpx
+
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        """Close the shared HTTP client."""
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
 
     def create_error_response(
         self,
@@ -162,6 +177,9 @@ class _HttpServerContext:
                     run_id = observability.run_id
                     flow_id = observability.flow_id
 
+                # Get shared HTTP client for blob operations
+                http_client = await self.get_http_client()
+
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
                     message_decoder=self.message_decoder,
@@ -172,6 +190,7 @@ class _HttpServerContext:
                     attempt=attempt,
                     observability=observability,
                     blob_api_url=self.server.blob_api_url,
+                    http_client=http_client,
                 )
                 return StreamingResponse(
                     self.execute_with_streaming_context(
@@ -367,7 +386,11 @@ async def run_http_server(
         timeout_keep_alive=timeout_keep_alive,
     )
     uvicorn_server = _StepflowUvicornServer(config)
-    await uvicorn_server.serve()
+    try:
+        await uvicorn_server.serve()
+    finally:
+        # Clean up shared HTTP client on shutdown
+        await ctx.close()
 
 
 def create_test_app(server: StepflowServer, instance_id: str | None = None) -> FastAPI:
