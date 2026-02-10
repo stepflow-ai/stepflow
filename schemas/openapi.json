@@ -43,6 +43,16 @@
           },
           "400": {
             "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -78,6 +88,16 @@
           },
           "404": {
             "description": "Blob not found"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -938,6 +958,60 @@
             "fail": "#/components/schemas/OnErrorFail",
             "retry": "#/components/schemas/OnErrorRetry",
             "useDefault": "#/components/schemas/OnErrorDefault"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Error response structure.\n\nServer handlers should return this, but usually it is better to create it\nby returning an `error_stack::Report<ServerError>` and using the automatic\nconversion to `ErrorResponse`.\n\nOther `error_stack::Report` types will automatically convert to internal errors.",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "HTTP status code (e.g., 400, 404, 500)",
+            "minimum": 0
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ErrorStackEntry"
+            },
+            "description": "Detailed error stack for debugging"
+          }
+        }
+      },
+      "ErrorStackEntry": {
+        "type": "object",
+        "description": "A single entry in an error stack for detailed error reporting",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "The error message"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional context attached to this error"
+          },
+          "backtrace": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Backtrace if available"
           }
         }
       },

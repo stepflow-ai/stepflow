@@ -61,7 +61,8 @@ pub struct GetBlobResponse {
     request_body = StoreBlobRequest,
     responses(
         (status = 200, description = "Blob stored successfully", body = StoreBlobResponse),
-        (status = 400, description = "Invalid request")
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = crate::api::BLOB_TAG,
 )]
@@ -91,7 +92,8 @@ pub async fn store_blob(
     ),
     responses(
         (status = 200, description = "Blob retrieved successfully", body = GetBlobResponse),
-        (status = 404, description = "Blob not found")
+        (status = 404, description = "Blob not found"),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = crate::api::BLOB_TAG,
 )]

@@ -23,14 +23,18 @@ use uuid::Uuid;
 /// conversion to `ErrorResponse`.
 ///
 /// Other `error_stack::Report` types will automatically convert to internal errors.
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ErrorResponse {
+    /// HTTP status code (e.g., 400, 404, 500)
     #[serde(
         serialize_with = "serialize_status_code",
         deserialize_with = "deserialize_status_code"
     )]
+    #[schema(value_type = u16)]
     pub code: StatusCode,
+    /// Human-readable error message
     pub message: String,
+    /// Detailed error stack for debugging
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub stack: Vec<ErrorStackEntry>,
 }

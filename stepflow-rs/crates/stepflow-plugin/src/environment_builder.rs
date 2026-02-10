@@ -138,10 +138,13 @@ impl StepflowEnvironmentBuilder {
 
     /// Set the blob API URL for workers.
     ///
-    /// When set, workers will use direct HTTP requests to this URL for blob operations
-    /// instead of the SSE bidirectional protocol.
+    /// When set, workers will use direct HTTP requests to this URL for blob operations.
     ///
-    /// Example: `http://localhost:7840/api/v1` or `http://blob-service/api/v1`
+    /// This URL must be the base blobs collection endpoint. Workers will:
+    /// - `POST {url}` to create a blob
+    /// - `GET {url}/{blob_id}` to fetch a blob
+    ///
+    /// Example: `http://localhost:7840/api/v1/blobs` or `http://blob-service/api/v1/blobs`
     pub fn blob_api_url(mut self, url: Option<String>) -> Self {
         self.blob_api_url = url;
         self

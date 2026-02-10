@@ -28,13 +28,17 @@ pub struct BlobApiConfig {
 
     /// URL workers use to access the blob API.
     ///
-    /// If not set, defaults to `http://localhost:{port}/api/v1` where `{port}`
+    /// If not set, defaults to `http://localhost:{port}/api/v1/blobs` where `{port}`
     /// is the server's bound port.
+    ///
+    /// This value should be the base blobs endpoint URL. Workers will:
+    /// - `POST {url}` to create blobs
+    /// - `GET {url}/{blob_id}` to fetch blobs
     ///
     /// Examples:
     /// - Local dev: omit (auto-detected)
-    /// - K8s with orchestrator blobs: `http://orchestrator-service/api/v1`
-    /// - K8s with separate blob service: `http://blob-service/api/v1`
+    /// - K8s with orchestrator blobs: `http://orchestrator-service/api/v1/blobs`
+    /// - K8s with separate blob service: `http://blob-service/api/v1/blobs`
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 }

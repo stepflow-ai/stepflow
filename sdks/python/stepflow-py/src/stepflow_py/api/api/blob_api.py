@@ -92,6 +92,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
             "404": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -154,6 +155,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
             "404": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -216,6 +218,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
             "404": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -327,6 +330,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
             "400": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -389,6 +393,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
             "400": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -451,6 +456,7 @@ class BlobApi:
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
             "400": None,
+            "500": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout

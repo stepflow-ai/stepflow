@@ -72,6 +72,24 @@ class StepflowContext:
         self._blob_api_url = blob_api_url
         self._http_client: Any = None  # Lazy-initialized httpx.AsyncClient
 
+    async def aclose(self) -> None:
+        """Close any HTTP client resources held by this context.
+
+        This should be called when the StepflowContext is no longer needed
+        to release network connections and file descriptors.
+        """
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
+
+    async def __aenter__(self) -> StepflowContext:
+        """Allow StepflowContext to be used as an async context manager."""
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        """Ensure resources are cleaned up when exiting an async with block."""
+        await self.aclose()
+
     def current_observability_context(self) -> ObservabilityContext | None:
         """Get the current observability context for bidirectional requests.
 

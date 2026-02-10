@@ -27,6 +27,8 @@ from stepflow_py.api.models.diagnostic import Diagnostic
 from stepflow_py.api.models.diagnostic_level import DiagnosticLevel
 from stepflow_py.api.models.diagnostics import Diagnostics
 from stepflow_py.api.models.error_action import ErrorAction
+from stepflow_py.api.models.error_response import ErrorResponse
+from stepflow_py.api.models.error_stack_entry import ErrorStackEntry
 from stepflow_py.api.models.example_input import ExampleInput
 from stepflow_py.api.models.execution_status import ExecutionStatus
 from stepflow_py.api.models.flow import Flow
