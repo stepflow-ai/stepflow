@@ -15,6 +15,8 @@
 //! This module provides a comprehensive set of tests that any `MetadataStore` implementation
 //! must pass. Use these tests to verify your implementation conforms to the trait contract.
 //!
+//! Note: Blob storage tests are in `blob_compliance::BlobStoreComplianceTests`.
+//!
 //! # Usage
 //!
 //! In your implementation's test module:
@@ -25,9 +27,9 @@
 //!     use stepflow_state::metadata_compliance::MetadataComplianceTests;
 //!
 //!     #[tokio::test]
-//!     async fn compliance_blob_round_trip() {
+//!     async fn compliance_create_run() {
 //!         let store = MyStateStore::new().await.unwrap();
-//!         MetadataComplianceTests::test_blob_round_trip(&store).await;
+//!         MetadataComplianceTests::test_create_run(&store).await;
 //!     }
 //!
 //!     // ... or run all tests at once:
@@ -43,10 +45,9 @@ use std::future::Future;
 use std::sync::Arc;
 
 use serde_json::json;
-use stepflow_core::blob::BlobType;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
-use stepflow_core::{BlobId, FlowResult, ValueExpr};
+use stepflow_core::{FlowResult, ValueExpr};
 use stepflow_dtos::ResultOrder;
 use uuid::Uuid;
 
@@ -63,14 +64,9 @@ impl MetadataComplianceTests {
     ///
     /// This is a convenience method that runs every test in the suite.
     /// Tests are run sequentially and will panic on the first failure.
+    ///
+    /// Note: Blob storage tests are in `BlobStoreComplianceTests`.
     pub async fn run_all<M: MetadataStore + BlobStore>(store: &M) {
-        // Blob tests
-        Self::test_blob_round_trip(store).await;
-        Self::test_blob_deduplication(store).await;
-        Self::test_blob_types(store).await;
-        Self::test_flow_round_trip(store).await;
-        Self::test_get_nonexistent_blob(store).await;
-
         // Run management tests
         Self::test_create_run(store).await;
         Self::test_create_run_idempotent(store).await;
@@ -97,6 +93,8 @@ impl MetadataComplianceTests {
     /// isolation between tests. Use this when tests may interfere with each other
     /// due to shared state.
     ///
+    /// Note: Blob storage tests are in `BlobStoreComplianceTests`.
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -110,13 +108,6 @@ impl MetadataComplianceTests {
         F: Fn() -> Fut,
         Fut: Future<Output = M>,
     {
-        // Blob tests
-        Self::test_blob_round_trip(&factory().await).await;
-        Self::test_blob_deduplication(&factory().await).await;
-        Self::test_blob_types(&factory().await).await;
-        Self::test_flow_round_trip(&factory().await).await;
-        Self::test_get_nonexistent_blob(&factory().await).await;
-
         // Run management tests
         Self::test_create_run(&factory().await).await;
         Self::test_create_run_idempotent(&factory().await).await;
@@ -135,138 +126,6 @@ impl MetadataComplianceTests {
         Self::test_item_results_single_item(&factory().await).await;
         Self::test_item_results_multiple_items(&factory().await).await;
         Self::test_item_results_ordering_by_index(&factory().await).await;
-    }
-
-    // =========================================================================
-    // Blob Storage Tests
-    // =========================================================================
-
-    /// Test that blob data can be stored and retrieved correctly.
-    ///
-    /// Contract: put_blob followed by get_blob returns the same data.
-    pub async fn test_blob_round_trip<M: MetadataStore + BlobStore>(store: &M) {
-        let data = ValueRef::new(json!({"key": "value", "number": 42}));
-
-        let blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
-            .await
-            .expect("put_blob should succeed");
-
-        let retrieved = store
-            .get_blob(&blob_id)
-            .await
-            .expect("get_blob should succeed");
-
-        assert_eq!(
-            retrieved.data().as_ref(),
-            data.as_ref(),
-            "Retrieved data should match stored data"
-        );
-        assert_eq!(
-            retrieved.blob_type(),
-            BlobType::Data,
-            "Retrieved blob type should match"
-        );
-    }
-
-    /// Test that storing the same data twice returns the same blob ID.
-    ///
-    /// Contract: Blob IDs are content-addressed, so identical content produces identical IDs.
-    pub async fn test_blob_deduplication<M: MetadataStore + BlobStore>(store: &M) {
-        let data = ValueRef::new(json!({"dedup": "test", "value": 123}));
-
-        let blob_id1 = store
-            .put_blob(data.clone(), BlobType::Data)
-            .await
-            .expect("first put_blob should succeed");
-
-        let blob_id2 = store
-            .put_blob(data.clone(), BlobType::Data)
-            .await
-            .expect("second put_blob should succeed");
-
-        assert_eq!(
-            blob_id1, blob_id2,
-            "Same content should produce same blob ID (deduplication)"
-        );
-    }
-
-    /// Test that blob types are preserved correctly.
-    ///
-    /// Contract: The blob type specified during put_blob is returned by get_blob.
-    pub async fn test_blob_types<M: MetadataStore + BlobStore>(store: &M) {
-        let data = ValueRef::new(json!({"test": "blob_types"}));
-
-        // Store as Data type
-        let data_blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
-            .await
-            .expect("put_blob Data should succeed");
-
-        let data_blob = store
-            .get_blob(&data_blob_id)
-            .await
-            .expect("get_blob should succeed");
-
-        assert_eq!(data_blob.blob_type(), BlobType::Data);
-
-        // Store different content as Flow type
-        let flow_data = ValueRef::new(json!({"flow": "definition"}));
-        let flow_blob_id = store
-            .put_blob(flow_data.clone(), BlobType::Flow)
-            .await
-            .expect("put_blob Flow should succeed");
-
-        let flow_blob = store
-            .get_blob(&flow_blob_id)
-            .await
-            .expect("get_blob should succeed");
-
-        assert_eq!(flow_blob.blob_type(), BlobType::Flow);
-    }
-
-    /// Test that workflows can be stored and retrieved via store_flow/get_flow.
-    ///
-    /// Contract: store_flow followed by get_flow returns the same workflow structure.
-    pub async fn test_flow_round_trip<M: MetadataStore + BlobStore>(store: &M) {
-        let flow = Arc::new(create_test_flow());
-
-        let flow_id = store
-            .store_flow(flow.clone())
-            .await
-            .expect("store_flow should succeed");
-
-        let retrieved = store
-            .get_flow(&flow_id)
-            .await
-            .expect("get_flow should succeed")
-            .expect("Flow should exist");
-
-        // Compare key properties
-        assert_eq!(
-            retrieved.steps().len(),
-            flow.steps().len(),
-            "Flow should have same number of steps"
-        );
-        assert_eq!(
-            retrieved.steps()[0].id,
-            flow.steps()[0].id,
-            "Step IDs should match"
-        );
-    }
-
-    /// Test that getting a non-existent blob returns an error.
-    ///
-    /// Contract: get_blob with an unknown ID returns an error (not found).
-    pub async fn test_get_nonexistent_blob<M: MetadataStore + BlobStore>(store: &M) {
-        let fake_id = BlobId::from_content(&ValueRef::new(json!({"nonexistent": true}))).unwrap();
-
-        let result = store.get_blob(&fake_id).await;
-
-        assert!(
-            result.is_err(),
-            "get_blob with unknown ID should return error"
-        );
     }
 
     // =========================================================================

@@ -13,7 +13,7 @@
 use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use stepflow_core::status::ExecutionStatus;
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
 use stepflow_core::{
     FlowResult,
     blob::{BlobData, BlobId, BlobType},
-    workflow::{Flow, ValueRef, WorkflowOverrides},
+    workflow::{ValueRef, WorkflowOverrides},
 };
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
@@ -176,61 +176,22 @@ impl BlobStore for InMemoryStateStore {
         .boxed()
     }
 
-    fn get_blob(
+    fn get_blob_opt(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
         let blob_id_str = blob_id.as_str().to_string();
 
         async move {
-            self.blobs
+            Ok(self
+                .blobs
                 .get(&blob_id_str)
-                .map(|entry| entry.value().clone())
-                .ok_or_else(|| {
-                    error_stack::report!(StateError::BlobNotFound {
-                        blob_id: blob_id_str.clone()
-                    })
-                })
+                .map(|entry| entry.value().clone()))
         }
         .boxed()
     }
 
-    fn store_flow(
-        &self,
-        workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        async move {
-            // Serialize the workflow as blob data
-            let flow_data = ValueRef::new(serde_json::to_value(workflow.as_ref()).unwrap());
-
-            // Store as a blob with Flow type
-            self.put_blob(flow_data, BlobType::Flow).await
-        }
-        .boxed()
-    }
-
-    fn get_flow(
-        &self,
-        flow_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
-        let flow_id = flow_id.clone();
-
-        async move {
-            // Try to get the blob data directly
-            match self.blobs.get(flow_id.as_str()) {
-                Some(blob_data) => {
-                    // Use the typed accessor
-                    if let Some(flow) = blob_data.as_flow() {
-                        Ok(Some(flow.clone()))
-                    } else {
-                        Ok(None) // Not a flow blob
-                    }
-                }
-                None => Ok(None), // Blob not found
-            }
-        }
-        .boxed()
-    }
+    // Note: store_flow and get_flow use default implementations from the trait
 }
 
 impl MetadataStore for InMemoryStateStore {

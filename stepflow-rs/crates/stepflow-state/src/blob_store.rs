@@ -17,6 +17,7 @@
 
 use std::sync::Arc;
 
+use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::{
     BlobData, BlobId, BlobType,
@@ -49,6 +50,26 @@ pub trait BlobStore: Send + Sync {
 
     /// Retrieve blob data with type information by blob ID.
     ///
+    /// Implementors should return `Ok(None)` when the blob is not found,
+    /// reserving `Err` for actual failures (connection issues, etc.).
+    ///
+    /// # Arguments
+    /// * `blob_id` - The blob ID to retrieve
+    ///
+    /// # Returns
+    /// * `Ok(Some(data))` - The blob was found
+    /// * `Ok(None)` - The blob was not found
+    /// * `Err(e)` - An actual error occurred
+    fn get_blob_opt(
+        &self,
+        blob_id: &BlobId,
+    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>>;
+
+    /// Retrieve blob data, returning an error if not found.
+    ///
+    /// This is a convenience method that calls `get_blob_opt` and converts
+    /// `None` to a `BlobNotFound` error.
+    ///
     /// # Arguments
     /// * `blob_id` - The blob ID to retrieve
     ///
@@ -57,9 +78,22 @@ pub trait BlobStore: Send + Sync {
     fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            self.get_blob_opt(&blob_id).await?.ok_or_else(|| {
+                error_stack::report!(StateError::BlobNotFound {
+                    blob_id: blob_id.to_string(),
+                })
+            })
+        }
+        .boxed()
+    }
 
     /// Store a workflow as a blob and return its blob ID.
+    ///
+    /// This is a convenience method that serializes the workflow to JSON
+    /// and stores it using `put_blob` with `BlobType::Flow`.
     ///
     /// # Arguments
     /// * `workflow` - The workflow to store
@@ -69,19 +103,44 @@ pub trait BlobStore: Send + Sync {
     fn store_flow(
         &self,
         workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        async move {
+            let flow_data = ValueRef::new(
+                serde_json::to_value(workflow.as_ref())
+                    .change_context(StateError::Serialization)?,
+            );
+            self.put_blob(flow_data, BlobType::Flow).await
+        }
+        .boxed()
+    }
 
     /// Retrieve a workflow by its blob ID.
+    ///
+    /// This is a convenience method that retrieves the blob using `get_blob_of_type`
+    /// and deserializes it as a Flow.
     ///
     /// # Arguments
     /// * `flow_id` - The blob ID of the workflow
     ///
     /// # Returns
-    /// The workflow if found, or None if not found
+    /// The workflow if found, or None if not found or not a Flow type
     fn get_flow(
         &self,
         flow_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
+        let flow_id = flow_id.clone();
+        async move {
+            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
+                Some(blob_data) => {
+                    let flow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
+                        .change_context(StateError::Serialization)?;
+                    Ok(Some(Arc::new(flow)))
+                }
+                None => Ok(None),
+            }
+        }
+        .boxed()
+    }
 
     /// Retrieve blob data only if it matches the expected type.
     ///
@@ -98,19 +157,9 @@ pub trait BlobStore: Send + Sync {
     ) -> BoxFuture<'a, error_stack::Result<Option<BlobData>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
-            match self.get_blob(&blob_id).await {
-                Ok(blob_data) => {
-                    if blob_data.blob_type() == expected_type {
-                        Ok(Some(blob_data))
-                    } else {
-                        Ok(None)
-                    }
-                }
-                Err(e) => {
-                    // Check if it's a "not found" error - if so, return None instead of error
-                    // For now, we'll just propagate all errors
-                    Err(e)
-                }
+            match self.get_blob_opt(&blob_id).await? {
+                Some(blob_data) if blob_data.blob_type() == expected_type => Ok(Some(blob_data)),
+                _ => Ok(None),
             }
         }
         .boxed()
