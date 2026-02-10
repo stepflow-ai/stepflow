@@ -40,6 +40,7 @@ from stepflow_py.worker.generated_protocol import (
     ComponentInfoResult,
     ComponentListParams,
     Error,
+    InitializeParams,
     InitializeResult,
     ListComponentsResult,
     Message,
@@ -105,6 +106,7 @@ class StepflowServer:
         self._components: dict[str, ComponentEntry] = {}
         self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
         self._initialized = False
+        self._blob_api_url: str | None = None
 
         # Add LangChain registry functionality if available
         if _HAS_LANGCHAIN:
@@ -113,6 +115,11 @@ class StepflowServer:
         if include_builtins:
             # Register the UDF component
             self.component(udf)
+
+    @property
+    def blob_api_url(self) -> str | None:
+        """Get the blob API URL if provided during initialization."""
+        return self._blob_api_url
 
     def is_initialized(self) -> bool:
         """Check if the server is initialized."""
@@ -354,6 +361,11 @@ class StepflowServer:
 
     async def _handle_initialize(self, request: MethodRequest) -> MethodResponse:
         """Handle the initialize method."""
+        # Extract blob API URL from capabilities if provided
+        if isinstance(request.params, InitializeParams):
+            if request.params.capabilities is not None:
+                self._blob_api_url = request.params.capabilities.blobApiUrl
+
         # Return protocol version
         result = InitializeResult(server_protocol_version=1)
 

@@ -101,6 +101,18 @@ class Notification(Struct, kw_only=True):
     ) = None
 
 
+class RuntimeCapabilities(Struct, kw_only=True):
+    blobApiUrl: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Base URL for the Blob HTTP API.\n\nWhen provided, component servers should use direct HTTP requests\n(`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations\ninstead of SSE bidirectional protocol.'
+            ),
+        ]
+        | None
+    ) = None
+
+
 BlobId = Annotated[
     str,
     Meta(
@@ -291,7 +303,7 @@ class ObservabilityContext(Struct, kw_only=True):
 
 
 class InitializeParams(Struct, kw_only=True):
-    runtime_protocol_version: Annotated[
+    runtimeProtocolVersion: Annotated[
         int,
         Meta(
             description='Maximum version of the protocol being used by the Stepflow runtime.',
@@ -299,6 +311,7 @@ class InitializeParams(Struct, kw_only=True):
         ),
     ]
     observability: ObservabilityContext | None = None
+    capabilities: RuntimeCapabilities | None = None
 
 
 class ComponentExecuteParams(Struct, kw_only=True):

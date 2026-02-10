@@ -77,6 +77,27 @@ class RecoveryConfig(Struct, kw_only=True):
     ) = 10
 
 
+class BlobApiConfig(Struct, kw_only=True):
+    enabled: (
+        Annotated[
+            bool,
+            Meta(
+                description='Whether the orchestrator serves blob API endpoints.\n\nSet to `false` when running a separate blob service.\nDefault: `true`'
+            ),
+        ]
+        | None
+    ) = None
+    url: (
+        Annotated[
+            str | None,
+            Meta(
+                description="URL workers use to access the blob API.\n\nIf not set, defaults to `http://localhost:{port}/api/v1` where `{port}`\nis the server's bound port.\n\nExamples:\n- Local dev: omit (auto-detected)\n- K8s with orchestrator blobs: `http://orchestrator-service/api/v1`\n- K8s with separate blob service: `http://blob-service/api/v1`"
+            ),
+        ]
+        | None
+    ) = None
+
+
 BuiltinPluginConfig = Any
 
 
@@ -374,6 +395,15 @@ class StepflowConfig(RoutingConfig, kw_only=True):
         Annotated[
             RecoveryConfig,
             Meta(description='Recovery configuration for handling interrupted runs.'),
+        ]
+        | None
+    ) = None
+    blobApi: (
+        Annotated[
+            BlobApiConfig,
+            Meta(
+                description='Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use.'
+            ),
         ]
         | None
     ) = None

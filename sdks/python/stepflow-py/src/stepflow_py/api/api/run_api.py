@@ -1512,6 +1512,12 @@ class RunApi:
     async def get_run_steps(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Item index for multi-item runs. If not specified, aggregates across all items."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1527,6 +1533,8 @@ class RunApi:
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1551,6 +1559,7 @@ class RunApi:
 
         _param = self._get_run_steps_serialize(
             run_id=run_id,
+            item_index=item_index,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1576,6 +1585,12 @@ class RunApi:
     async def get_run_steps_with_http_info(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Item index for multi-item runs. If not specified, aggregates across all items."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1591,6 +1606,8 @@ class RunApi:
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1615,6 +1632,7 @@ class RunApi:
 
         _param = self._get_run_steps_serialize(
             run_id=run_id,
+            item_index=item_index,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1640,6 +1658,12 @@ class RunApi:
     async def get_run_steps_without_preload_content(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Item index for multi-item runs. If not specified, aggregates across all items."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1655,6 +1679,8 @@ class RunApi:
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -1679,6 +1705,7 @@ class RunApi:
 
         _param = self._get_run_steps_serialize(
             run_id=run_id,
+            item_index=item_index,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -1699,6 +1726,7 @@ class RunApi:
     def _get_run_steps_serialize(
         self,
         run_id,
+        item_index,
         _request_auth,
         _content_type,
         _headers,
@@ -1721,6 +1749,9 @@ class RunApi:
         if run_id is not None:
             _path_params["run_id"] = run_id
         # process the query parameters
+        if item_index is not None:
+            _query_params.append(("item_index", item_index))
+
         # process the header parameters
         # process the form parameters
         # process the body parameter

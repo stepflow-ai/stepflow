@@ -62,6 +62,7 @@ class StepflowContext:
         flow_id: str | None = None,
         attempt: int = 1,
         observability: ObservabilityContext | None = None,
+        blob_api_url: str | None = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
@@ -71,6 +72,8 @@ class StepflowContext:
         self._flow_id = flow_id
         self._attempt = attempt
         self._observability = observability
+        self._blob_api_url = blob_api_url
+        self._http_client: Any = None  # Lazy-initialized httpx.AsyncClient
 
     def current_observability_context(self) -> ObservabilityContext | None:
         """Get the current observability context for bidirectional requests.
@@ -131,6 +134,14 @@ class StepflowContext:
                 f"Unexpected response type: {type(response_message)} {response_message}"
             )
 
+    async def _get_http_client(self) -> Any:
+        """Get or create the HTTP client for blob operations."""
+        if self._http_client is None:
+            import httpx
+
+            self._http_client = httpx.AsyncClient(timeout=30.0)
+        return self._http_client
+
     async def put_blob(self, data: Any, blob_type: BlobType = BlobType.data) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
@@ -150,13 +161,30 @@ class StepflowContext:
                 "blob_type": blob_type.value,
             },
         ):
-            params = PutBlobParams(
-                data=data,
-                blob_type=blob_type,
-                observability=self.current_observability_context(),
-            )
-            response = await self._send_request(Method.blobs_put, params, PutBlobResult)
-            return response.blob_id
+            if self._blob_api_url:
+                return await self._put_blob_http(data, blob_type)
+            return await self._put_blob_sse(data, blob_type)
+
+    async def _put_blob_http(self, data: Any, blob_type: BlobType) -> str:
+        """Store blob via HTTP API."""
+        client = await self._get_http_client()
+        resp = await client.post(
+            self._blob_api_url,
+            json={"data": data, "blobType": blob_type.value},
+        )
+        resp.raise_for_status()
+        blob_id: str = resp.json()["blobId"]
+        return blob_id
+
+    async def _put_blob_sse(self, data: Any, blob_type: BlobType) -> str:
+        """Store blob via SSE bidirectional protocol (fallback)."""
+        params = PutBlobParams(
+            data=data,
+            blob_type=blob_type,
+            observability=self.current_observability_context(),
+        )
+        response = await self._send_request(Method.blobs_put, params, PutBlobResult)
+        return response.blob_id
 
     async def get_blob(self, blob_id: str) -> Any:
         """Retrieve JSON data by blob ID.
@@ -167,7 +195,6 @@ class StepflowContext:
         Returns:
             The JSON data associated with the blob ID
         """
-        from stepflow_py.worker.generated_protocol import GetBlobParams
         from stepflow_py.worker.observability import get_tracer
 
         tracer = get_tracer(__name__)
@@ -177,11 +204,26 @@ class StepflowContext:
                 "blob_id": blob_id,
             },
         ):
-            params = GetBlobParams(
-                blob_id=blob_id, observability=self.current_observability_context()
-            )
-            response = await self._send_request(Method.blobs_get, params, GetBlobResult)
-            return response.data
+            if self._blob_api_url:
+                return await self._get_blob_http(blob_id)
+            return await self._get_blob_sse(blob_id)
+
+    async def _get_blob_http(self, blob_id: str) -> Any:
+        """Retrieve blob via HTTP API."""
+        client = await self._get_http_client()
+        resp = await client.get(f"{self._blob_api_url}/{blob_id}")
+        resp.raise_for_status()
+        return resp.json()["data"]
+
+    async def _get_blob_sse(self, blob_id: str) -> Any:
+        """Retrieve blob via SSE bidirectional protocol (fallback)."""
+        from stepflow_py.worker.generated_protocol import GetBlobParams
+
+        params = GetBlobParams(
+            blob_id=blob_id, observability=self.current_observability_context()
+        )
+        response = await self._send_request(Method.blobs_get, params, GetBlobResult)
+        return response.data
 
     @property
     def session_id(self) -> str | None:

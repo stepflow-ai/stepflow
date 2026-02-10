@@ -171,6 +171,7 @@ class _HttpServerContext:
                     flow_id=flow_id,
                     attempt=attempt,
                     observability=observability,
+                    blob_api_url=self.server.blob_api_url,
                 )
                 return StreamingResponse(
                     self.execute_with_streaming_context(

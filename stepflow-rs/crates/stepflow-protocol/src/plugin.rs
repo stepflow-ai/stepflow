@@ -22,7 +22,8 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
+    BlobApiUrl, DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext,
+    StepflowEnvironment,
 };
 use tokio::sync::RwLock;
 
@@ -30,7 +31,7 @@ use crate::error::TransportError;
 use crate::http::{HttpClient, HttpClientHandle};
 use crate::protocol::{
     ComponentExecuteParams, ComponentInfoParams, ComponentListParams, InitializeParams,
-    Initialized, ObservabilityContext,
+    Initialized, ObservabilityContext, RuntimeCapabilities,
 };
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
@@ -142,12 +143,26 @@ impl PluginConfig for StepflowPluginConfig {
 
 pub struct StepflowPlugin {
     state: RwLock<StepflowPluginState>,
+    /// Blob API URL to pass to workers during initialization.
+    /// Set during ensure_initialized from the environment.
+    blob_api_url: RwLock<Option<String>>,
 }
 
 impl StepflowPlugin {
     fn new(state: StepflowPluginState) -> Self {
         Self {
             state: RwLock::new(state),
+            blob_api_url: RwLock::new(None),
+        }
+    }
+
+    /// Create RuntimeCapabilities from the stored blob API URL.
+    async fn create_capabilities(&self) -> Option<RuntimeCapabilities> {
+        let url = self.blob_api_url.read().await.clone();
+        if url.is_some() {
+            Some(RuntimeCapabilities { blob_api_url: url })
+        } else {
+            None
         }
     }
 }
@@ -237,6 +252,9 @@ impl StepflowPlugin {
         let observability = ObservabilityContext::from_current_span();
         let handle = client.handle();
 
+        // Reuse capabilities from initial initialization
+        let capabilities = self.create_capabilities().await;
+
         handle
             .method(
                 &InitializeParams {
@@ -246,6 +264,7 @@ impl StepflowPlugin {
                     } else {
                         None
                     },
+                    capabilities,
                 },
                 None, // No run context for initialization (no bidirectional)
             )
@@ -315,16 +334,24 @@ impl StepflowPlugin {
 }
 
 impl Plugin for StepflowPlugin {
-    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
+    async fn ensure_initialized(&self, env: &Arc<StepflowEnvironment>) -> Result<()> {
         // Check if already initialized - this makes the method idempotent
         if self.client_handle().await.is_ok() {
             return Ok(());
+        }
+
+        // Store blob API URL from environment for use in initialization and restarts
+        if let Some(blob_api_url) = env.get::<BlobApiUrl>() {
+            *self.blob_api_url.write().await = blob_api_url.url().map(|s| s.to_string());
         }
 
         let client = self.create_client().await?;
 
         // Create observability context for initialization (trace only, no flow/run)
         let observability = ObservabilityContext::from_current_span();
+
+        // Create capabilities with blob API URL
+        let capabilities = self.create_capabilities().await;
 
         client
             .method(
@@ -335,6 +362,7 @@ impl Plugin for StepflowPlugin {
                     } else {
                         None
                     },
+                    capabilities,
                 },
                 None, // No run context for initialization (no bidirectional)
             )

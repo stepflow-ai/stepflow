@@ -17,11 +17,13 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+mod blobs;
 mod components;
 mod flows;
 mod health;
 mod runs;
 
+const BLOB_TAG: &str = "Blob";
 const COMPONENT_TAG: &str = "Component";
 const FLOW_TAG: &str = "Flow";
 const RUN_TAG: &str = "Run";
@@ -37,12 +39,15 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         version = env!("CARGO_PKG_VERSION")
     ),
     tags(
+        (name = BLOB_TAG, description = "Blob API endpoints"),
         (name = COMPONENT_TAG, description = "Component API endpoints"),
         (name = FLOW_TAG, description = "Flow API endpoints"),
         (name = RUN_TAG, description = "Run API endpoints")
     ),
     paths(
         health::health_check,
+        blobs::store_blob,
+        blobs::get_blob,
         components::list_components,
         runs::create_run,
         runs::get_run,
@@ -57,6 +62,9 @@ pub use runs::{CreateRunRequest, CreateRunResponse};
         flows::delete_flow,
     ),
     components(schemas(
+        blobs::StoreBlobRequest,
+        blobs::StoreBlobResponse,
+        blobs::GetBlobResponse,
         components::ListComponentsResponse,
         components::ListComponentsQuery,
         health::HealthQuery,
@@ -88,6 +96,8 @@ struct StepflowApi;
 pub fn create_api_router() -> OpenApiRouter<Arc<StepflowEnvironment>> {
     OpenApiRouter::with_openapi(StepflowApi::openapi())
         .routes(routes!(health::health_check))
+        .routes(routes!(blobs::store_blob))
+        .routes(routes!(blobs::get_blob))
         .routes(routes!(components::list_components))
         .routes(routes!(runs::create_run))
         .routes(routes!(runs::get_run))

@@ -19,7 +19,7 @@ pub mod routing;
 mod subflow;
 
 pub use context::RunContext;
-pub use environment_builder::StepflowEnvironmentBuilder;
+pub use environment_builder::{BlobApiUrl, StepflowEnvironmentBuilder};
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
 pub use plugin::{DynPlugin, Plugin, PluginConfig};

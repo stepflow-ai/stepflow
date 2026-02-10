@@ -10,11 +10,13 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod blob_api_config;
 mod lease_manager_config;
 mod recovery_config;
 mod storage_config;
 mod supported_plugin;
 
+pub use blob_api_config::BlobApiConfig;
 pub use lease_manager_config::LeaseManagerConfig;
 pub use recovery_config::RecoveryConfig;
 pub use storage_config::{StorageConfig, StoreConfig, Stores};
@@ -61,6 +63,10 @@ pub struct StepflowConfig {
     /// Recovery configuration for handling interrupted runs.
     #[serde(default)]
     pub recovery: RecoveryConfig,
+    /// Blob API configuration.
+    /// Controls whether the orchestrator serves blob endpoints and the URL workers use.
+    #[serde(default)]
+    pub blob_api: BlobApiConfig,
 }
 
 impl Default for StepflowConfig {
@@ -80,6 +86,7 @@ impl Default for StepflowConfig {
             storage_config: StorageConfig::default(),
             lease_manager: LeaseManagerConfig::default(),
             recovery: RecoveryConfig::default(),
+            blob_api: BlobApiConfig::default(),
         }
     }
 }
@@ -153,6 +160,7 @@ impl StepflowConfig {
             .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)
+            .blob_api_url(self.blob_api.url)
             .build()
             .await
             .change_context(ConfigError::Configuration)?;
