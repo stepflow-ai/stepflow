@@ -53,6 +53,7 @@ class StepflowContext:
         self,
         outgoing_queue: asyncio.Queue,
         message_decoder: MessageDecoder[asyncio.Future[Message]],
+        http_client: Any,
         session_id: str | None = None,
         step_id: str | None = None,
         run_id: str | None = None,
@@ -60,10 +61,10 @@ class StepflowContext:
         attempt: int = 1,
         observability: ObservabilityContext | None = None,
         blob_api_url: str | None = None,
-        http_client: Any = None,
     ):
         self._outgoing_queue = outgoing_queue
         self._message_decoder = message_decoder
+        self._http_client = http_client
         self._session_id = session_id
         self._step_id = step_id
         self._run_id = run_id
@@ -71,27 +72,6 @@ class StepflowContext:
         self._attempt = attempt
         self._observability = observability
         self._blob_api_url = blob_api_url
-        # Use shared client if provided, otherwise will be lazily created
-        self._http_client: Any = http_client
-        self._owns_http_client = http_client is None
-
-    async def aclose(self) -> None:
-        """Close any HTTP client resources owned by this context.
-
-        This only closes the client if it was created by this context
-        (not passed in from a shared pool).
-        """
-        if self._http_client is not None and self._owns_http_client:
-            await self._http_client.aclose()
-            self._http_client = None
-
-    async def __aenter__(self) -> StepflowContext:
-        """Allow StepflowContext to be used as an async context manager."""
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        """Ensure resources are cleaned up when exiting an async with block."""
-        await self.aclose()
 
     def current_observability_context(self) -> ObservabilityContext | None:
         """Get the current observability context for bidirectional requests.
@@ -152,14 +132,6 @@ class StepflowContext:
                 f"Unexpected response type: {type(response_message)} {response_message}"
             )
 
-    async def _get_http_client(self) -> Any:
-        """Get or create the HTTP client for blob operations."""
-        if self._http_client is None:
-            import httpx
-
-            self._http_client = httpx.AsyncClient(timeout=30.0)
-        return self._http_client
-
     async def put_blob(self, data: Any, blob_type: BlobType = BlobType.DATA) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
@@ -188,8 +160,7 @@ class StepflowContext:
                 "blob_type": blob_type.value,
             },
         ):
-            client = await self._get_http_client()
-            resp = await client.post(
+            resp = await self._http_client.post(
                 self._blob_api_url,
                 json={"data": data, "blobType": blob_type.value},
             )
@@ -224,8 +195,7 @@ class StepflowContext:
                 "blob_id": blob_id,
             },
         ):
-            client = await self._get_http_client()
-            resp = await client.get(f"{self._blob_api_url}/{blob_id}")
+            resp = await self._http_client.get(f"{self._blob_api_url}/{blob_id}")
             resp.raise_for_status()
             return resp.json()["data"]
 

@@ -183,6 +183,7 @@ class _HttpServerContext:
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
                     message_decoder=self.message_decoder,
+                    http_client=http_client,
                     session_id=None,
                     step_id=step_id,
                     run_id=run_id,
@@ -190,7 +191,6 @@ class _HttpServerContext:
                     attempt=attempt,
                     observability=observability,
                     blob_api_url=self.server.blob_api_url,
-                    http_client=http_client,
                 )
                 return StreamingResponse(
                     self.execute_with_streaming_context(
