@@ -384,3 +384,17 @@ async fn sqlite_metadata_compliance() {
     })
     .await;
 }
+
+// =========================================================================
+// BlobStore Compliance Tests
+// =========================================================================
+
+#[tokio::test]
+async fn sqlite_blob_compliance() {
+    use stepflow_state::blob_compliance::BlobStoreComplianceTests;
+
+    BlobStoreComplianceTests::run_all_isolated(|| async {
+        SqliteStateStore::in_memory().await.unwrap()
+    })
+    .await;
+}

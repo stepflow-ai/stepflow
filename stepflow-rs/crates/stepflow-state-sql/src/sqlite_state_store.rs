@@ -10,16 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::sync::Arc;
-
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::{
-    BlobData, BlobId, BlobType, FlowResult,
-    workflow::{Flow, ValueRef},
-};
+use stepflow_core::{BlobData, BlobId, BlobType, FlowResult, workflow::ValueRef};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
@@ -193,10 +188,10 @@ impl BlobStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_blob(
+    fn get_blob_opt(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<BlobData, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
             let sql = "SELECT data, blob_type FROM blobs WHERE id = ?";
@@ -207,11 +202,9 @@ impl BlobStore for SqliteStateStore {
                 .await
                 .change_context(StateError::Internal)?;
 
-            let row = row.ok_or_else(|| {
-                error_stack::report!(StateError::BlobNotFound {
-                    blob_id: blob_id.as_str().to_string(),
-                })
-            })?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
 
             let json_str: String = row.get("data");
             let value: serde_json::Value =
@@ -231,41 +224,12 @@ impl BlobStore for SqliteStateStore {
 
             let blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
                 .change_context(StateError::Internal)?;
-            Ok(blob_data)
+            Ok(Some(blob_data))
         }
         .boxed()
     }
 
-    fn store_flow(
-        &self,
-        workflow: Arc<Flow>,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        let workflow_json = serde_json::to_value(workflow.as_ref());
-        async move {
-            let flow_data = workflow_json.change_context(StateError::Serialization)?;
-            let flow_value = ValueRef::new(flow_data);
-            self.put_blob(flow_value, BlobType::Flow).await
-        }
-        .boxed()
-    }
-
-    fn get_flow(
-        &self,
-        flow_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
-        let flow_id = flow_id.clone();
-        async move {
-            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
-                Some(blob_data) => {
-                    let workflow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
-                        .change_context(StateError::Serialization)?;
-                    Ok(Some(Arc::new(workflow)))
-                }
-                None => Ok(None),
-            }
-        }
-        .boxed()
-    }
+    // Note: store_flow and get_flow use default implementations from the trait
 }
 
 impl MetadataStore for SqliteStateStore {

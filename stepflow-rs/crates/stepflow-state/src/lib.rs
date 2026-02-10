@@ -11,6 +11,7 @@
 // the License.
 
 mod active_executions;
+pub mod blob_compliance;
 mod blob_store;
 mod completion_notifier;
 mod environment_ext;
