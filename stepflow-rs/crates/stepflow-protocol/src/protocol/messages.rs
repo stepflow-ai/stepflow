@@ -48,7 +48,6 @@ impl<'a> ToSchema for Message<'a> {
             utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
         )>,
     ) {
-        use crate::protocol::blobs::*;
         use crate::protocol::components::*;
         use crate::protocol::flows::*;
         use crate::protocol::initialization::*;
@@ -91,12 +90,6 @@ impl<'a> ToSchema for Message<'a> {
         push_schema::<ListComponentsResult>(schemas);
         push_schema::<ComponentInferSchemaParams>(schemas);
         push_schema::<ComponentInferSchemaResult>(schemas);
-
-        // Blobs
-        push_schema::<GetBlobParams>(schemas);
-        push_schema::<GetBlobResult>(schemas);
-        push_schema::<PutBlobParams>(schemas);
-        push_schema::<PutBlobResult>(schemas);
 
         // Runs
         push_schema::<SubmitRunProtocolParams>(schemas);

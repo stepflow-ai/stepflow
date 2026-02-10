@@ -44,8 +44,6 @@
         "components/info",
         "components/execute",
         "components/infer_schema",
-        "blobs/put",
-        "blobs/get",
         "runs/submit",
         "runs/get"
       ]
@@ -488,93 +486,6 @@
               "description": "The inferred output schema, or None if the component cannot determine it."
             }
           ]
-        }
-      }
-    },
-    "GetBlobParams": {
-      "type": "object",
-      "description": "Sent from the component server to the Stepflow to retrieve the content of a specific blob.",
-      "required": [
-        "blob_id"
-      ],
-      "properties": {
-        "blob_id": {
-          "$ref": "#/$defs/BlobId",
-          "description": "The ID of the blob to retrieve."
-        },
-        "observability": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing bidirectional calls."
-            }
-          ]
-        }
-      }
-    },
-    "BlobType": {
-      "type": "string",
-      "description": "Type of blob stored in the blob store.",
-      "enum": [
-        "flow",
-        "data"
-      ]
-    },
-    "GetBlobResult": {
-      "type": "object",
-      "description": "Sent from the Stepflow back to the component server with the blob data and metadata.",
-      "required": [
-        "data",
-        "blob_type"
-      ],
-      "properties": {
-        "data": {
-          "$ref": "#/$defs/Value"
-        },
-        "blob_type": {
-          "$ref": "#/$defs/BlobType"
-        }
-      }
-    },
-    "PutBlobParams": {
-      "type": "object",
-      "description": "Sent from the component server to the Stepflow to store a blob with the provided content.",
-      "required": [
-        "data",
-        "blob_type"
-      ],
-      "properties": {
-        "data": {
-          "$ref": "#/$defs/Value"
-        },
-        "blob_type": {
-          "$ref": "#/$defs/BlobType"
-        },
-        "observability": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "$ref": "#/$defs/ObservabilityContext",
-              "description": "Observability context for tracing bidirectional calls."
-            }
-          ]
-        }
-      }
-    },
-    "PutBlobResult": {
-      "type": "object",
-      "description": "Sent from the Stepflow back to the component server with the ID of the stored blob.",
-      "required": [
-        "blob_id"
-      ],
-      "properties": {
-        "blob_id": {
-          "$ref": "#/$defs/BlobId"
         }
       }
     },

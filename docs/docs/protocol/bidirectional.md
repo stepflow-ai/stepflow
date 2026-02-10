@@ -4,15 +4,18 @@ sidebar_position: 5
 
 # Bidirectional Communication
 
-The Stepflow Protocol supports bidirectional communication, enabling component servers to make requests back to the runtime during component execution. This capability enables powerful patterns like blob storage, run submission, and runtime introspection while maintaining the JSON-RPC request-response model.
+The Stepflow Protocol supports bidirectional communication, enabling component servers to make requests back to the runtime during component execution. This capability enables powerful patterns like run submission and runtime introspection while maintaining the JSON-RPC request-response model.
 
 ## Overview
 
 While the primary communication flow is Runtime → Component Server, the protocol enables Component Server → Runtime requests for:
 
-- **Blob Storage**: Store and retrieve persistent data using content-addressable storage
 - **Run Submission**: Submit and monitor sub-workflow executions
 - **Resource Access**: Request additional resources or capabilities (future)
+
+:::note Blob Storage
+Blob storage uses a separate HTTP API rather than the bidirectional protocol. See [Blob Storage](./methods/blobs.md) for details.
+:::
 
 ## Communication Model
 
@@ -38,8 +41,6 @@ sequenceDiagram
     R->>+S: component_execute request
 
     Note over S: Component can make requests during execution
-    S->>+R: blobs/put request
-    R-->>-S: blob_id response
 
     S->>+R: runs/submit request
     R-->>-S: run status response
@@ -50,12 +51,6 @@ sequenceDiagram
 ## Available Methods
 
 Component servers can call these methods during execution:
-
-### Blob Storage Methods
-- **`blobs/put`**: Store JSON data, receive content-addressable blob ID
-- **`blobs/get`**: Retrieve stored data by blob ID
-
-See [Blob Storage Methods](./methods/blobs.md) for detailed specifications.
 
 ### Run Methods
 - **`runs/submit`**: Submit a workflow run for execution

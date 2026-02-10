@@ -8,12 +8,12 @@ The Stepflow Protocol defines methods and notifications for communication betwee
 
 ## Method Categories
 
-The protocol methods are organized into four main categories:
+The protocol methods are organized into the following categories:
 
 1. **[Initialization](./initialization.md)** - Protocol connection and capability negotiation
 2. **[Components](./components.md)** - Component discovery, introspection, and execution
-3. **[Blob Storage](./blobs.md)** - Content-addressable data storage and retrieval
-4. **[Runs](./runs.md)** - Workflow run submission and status retrieval
+3. **[Runs](./runs.md)** - Workflow run submission and status retrieval
+4. **[Blob Storage](./blobs.md)** - Content-addressable data storage via HTTP API
 
 ## Complete Method Reference
 
@@ -26,9 +26,10 @@ The protocol methods are organized into four main categories:
 | [`components/list`](./components.md#componentslist-method) | Runtime → Component | Request | Discover all available components |
 | [`components/info`](./components.md#componentsinfo-method) | Runtime → Component | Request | Get detailed component information and schema |
 | [`components/execute`](./components.md#componentsexecute-method) | Runtime → Component | Request | Execute a component with input data |
-| **Blob Storage** | | | |
-| [`blobs/put`](./blobs.md#blobsput-method) | Component → Runtime | Request | Store JSON data and receive content-addressable ID |
-| [`blobs/get`](./blobs.md#blobsget-method) | Component → Runtime | Request | Retrieve data by blob ID |
 | **Runs** | | | |
 | [`runs/submit`](./runs.md#runssubmit-method) | Component → Runtime | Request | Submit a workflow run for execution |
 | [`runs/get`](./runs.md#runsget-method) | Component → Runtime | Request | Retrieve run status and results |
+
+:::note Blob Storage
+Blob storage is accessed via HTTP API rather than the bidirectional protocol. See [Blob Storage](./blobs.md) for details.
+:::

@@ -43,8 +43,6 @@ class Method(Enum):
     components_info = 'components/info'
     components_execute = 'components/execute'
     components_infer_schema = 'components/infer_schema'
-    blobs_put = 'blobs/put'
-    blobs_get = 'blobs/get'
     runs_submit = 'runs/submit'
     runs_get = 'runs/get'
 
@@ -176,20 +174,6 @@ class ComponentInferSchemaParams(Struct, kw_only=True):
 
 class ComponentInferSchemaResult(Struct, kw_only=True):
     output_schema: Schema | None = None
-
-
-class BlobType(Enum):
-    flow = 'flow'
-    data = 'data'
-
-
-class GetBlobResult(Struct, kw_only=True):
-    data: Value
-    blob_type: BlobType
-
-
-class PutBlobResult(Struct, kw_only=True):
-    blob_id: BlobId
 
 
 class OverrideType(Enum):
@@ -350,17 +334,6 @@ class ListComponentsResult(Struct, kw_only=True):
     components: Annotated[
         List[ComponentInfo], Meta(description='A list of all available components.')
     ]
-
-
-class GetBlobParams(Struct, kw_only=True):
-    blob_id: Annotated[BlobId, Meta(description='The ID of the blob to retrieve.')]
-    observability: ObservabilityContext | None = None
-
-
-class PutBlobParams(Struct, kw_only=True):
-    data: Value
-    blob_type: BlobType
-    observability: ObservabilityContext | None = None
 
 
 class StepOverride(Struct, kw_only=True):
