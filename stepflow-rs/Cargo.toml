@@ -11,6 +11,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+anyhow = "1.0"
 arc-swap = "1.7"
 async-stream = "0.3"
 async-trait = "0.1"
@@ -65,11 +66,13 @@ opentelemetry_sdk = { version = "0.31", features = [
 opentelemetry-semantic-conventions = "0.31"
 nonempty = "0.11"
 parking_lot = "0.12"
-pingora = { version = "0.6", features = ["proxy"] }
-pingora-core = "0.6"
-pingora-http = "0.6"
-pingora-load-balancing = "0.6"
-pingora-proxy = "0.6"
+pingora = { version = "0.7", features = ["proxy"] }
+
+pingora-core = "0.7"
+pingora-http = "0.7"
+pingora-load-balancing = "0.7"
+pingora-proxy = "0.7"
+prometheus = "0.13"
 regex = "1.11.1"
 reqwest = { version = "0.12", features = [
     "json",
