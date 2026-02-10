@@ -14,7 +14,7 @@ use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
 use stepflow_core::GetRunParams;
 use stepflow_plugin::RunContext;
-use stepflow_state::StateStoreExt as _;
+use stepflow_state::BlobStoreExt as _;
 use tokio::sync::mpsc;
 
 use crate::error::TransportError;
@@ -40,9 +40,9 @@ impl MethodHandler for SubmitRunHandler {
             request,
             response_tx,
             async move |request: crate::protocol::SubmitRunProtocolParams| {
-                // Fetch the flow from the state store
+                // Fetch the flow from the blob store
                 let flow_id = &request.flow_id;
-                let blob_data = env.state_store().get_blob(flow_id).await.map_err(|e| {
+                let blob_data = env.blob_store().get_blob(flow_id).await.map_err(|e| {
                     log::error!("Failed to get flow blob: {e}");
                     Error::not_found("flow", flow_id.as_str())
                 })?;

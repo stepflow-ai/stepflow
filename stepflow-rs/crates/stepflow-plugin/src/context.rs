@@ -20,7 +20,7 @@ use stepflow_core::{
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
 use stepflow_dtos::ResultOrder;
-use stepflow_state::{StateStore, StateStoreExt as _};
+use stepflow_state::{BlobStore, BlobStoreExt as _, MetadataStore, MetadataStoreExt as _};
 use uuid::Uuid;
 
 /// Run context for workflow execution.
@@ -125,9 +125,14 @@ impl RunContext {
         &self.env
     }
 
-    /// Get a reference to the state store.
-    pub fn state_store(&self) -> &Arc<dyn StateStore> {
-        self.env.state_store()
+    /// Get a reference to the metadata store.
+    pub fn metadata_store(&self) -> &Arc<dyn MetadataStore> {
+        self.env.metadata_store()
+    }
+
+    /// Get a reference to the blob store.
+    pub fn blob_store(&self) -> &Arc<dyn BlobStore> {
+        self.env.blob_store()
     }
 
     /// Get the working directory.
@@ -176,7 +181,7 @@ impl RunContext {
     /// Executes a flow by blob ID - combines blob retrieval, deserialization, and execution.
     ///
     /// This is a convenience method that handles the common pattern of:
-    /// 1. Retrieving a flow blob by ID from the state store
+    /// 1. Retrieving a flow blob by ID from the blob store
     /// 2. Deserializing the flow from blob data
     /// 3. Executing the flow with given input and optional overrides
     pub async fn execute_flow_by_id(
@@ -189,7 +194,7 @@ impl RunContext {
 
         // Retrieve the flow from the blob store
         let blob_data = self
-            .state_store()
+            .blob_store()
             .get_blob(flow_id)
             .await
             .change_context(crate::PluginError::Execution)?;
@@ -250,15 +255,15 @@ impl RunContext {
             .await
             .change_context(crate::PluginError::Execution)?;
 
-        // Wait for completion using the unified state store notification
-        self.state_store()
+        // Wait for completion using the unified metadata store notification
+        self.metadata_store()
             .wait_for_completion(run_id)
             .await
             .change_context(crate::PluginError::Execution)?;
 
-        // Get results from state store
+        // Get results from metadata store
         let items = self
-            .state_store()
+            .metadata_store()
             .get_item_results(run_id, ResultOrder::ByIndex)
             .await
             .change_context(crate::PluginError::Execution)?;

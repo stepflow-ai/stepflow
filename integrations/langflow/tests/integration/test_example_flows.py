@@ -35,7 +35,7 @@ import pytest_asyncio
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
-    InMemoryStateStoreConfig,
+    InMemoryStoreConfig,
     RouteRule,
     StepflowConfig,
     StepflowSubprocessPluginConfig,
@@ -146,7 +146,7 @@ def shared_config():
             "/langflow/{*component}": [RouteRule(plugin="langflow")],
             "/builtin/{*component}": [RouteRule(plugin="builtin")],
         },
-        stateStore=InMemoryStateStoreConfig(type="inMemory"),
+        storageConfig=InMemoryStoreConfig(type="inMemory"),
     )
 
     # Cleanup after all tests in module complete

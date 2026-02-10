@@ -16,7 +16,7 @@ use stepflow_core::{BlobId, FlowResult, status::ExecutionStatus, workflow::Value
 use stepflow_plugin::{
     RunContext, StepflowEnvironment, StepflowEnvironmentBuilder, subflow_channel,
 };
-use stepflow_state::{CreateRunParams, StateStoreExt as _};
+use stepflow_state::{CreateRunParams, MetadataStoreExt as _};
 use uuid::Uuid;
 
 /// A mock execution context for testing built-in components.
@@ -49,7 +49,7 @@ impl MockContext {
         let (submitter, mut receiver) = subflow_channel(10, run_id);
 
         // Clone what we need for the spawned task
-        let state_store = self.env.state_store().clone();
+        let metadata_store = self.env.metadata_store().clone();
 
         // Spawn a task that handles subflow requests with mock results
         tokio::spawn(async move {
@@ -57,23 +57,23 @@ impl MockContext {
                 let subflow_run_id = Uuid::now_v7();
                 let input_count = request.inputs.len();
 
-                // Create the run in state store
+                // Create the run in metadata store
                 let create_params =
                     CreateRunParams::new(subflow_run_id, request.flow_id, request.inputs);
-                let _ = state_store.create_run(create_params).await;
+                let _ = metadata_store.create_run(create_params).await;
 
                 // Record mock results for each item
                 for item_index in 0..input_count {
                     let mock_result = FlowResult::Success(ValueRef::new(
                         serde_json::json!({"message": "Hello from nested flow"}),
                     ));
-                    let _ = state_store
-                        .record_item_result(subflow_run_id, item_index, mock_result)
+                    let _ = metadata_store
+                        .record_item_result(subflow_run_id, item_index, mock_result, Vec::new())
                         .await;
                 }
 
-                // Update status to completed (this triggers state store notification)
-                let _ = state_store
+                // Update status to completed (this triggers metadata store notification)
+                let _ = metadata_store
                     .update_run_status(subflow_run_id, ExecutionStatus::Completed)
                     .await;
 

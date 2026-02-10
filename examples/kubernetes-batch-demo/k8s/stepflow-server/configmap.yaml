@@ -33,5 +33,5 @@ data:
         - plugin: builtin
 
     # In-memory state store (single-instance runtime)
-    stateStore:
+    storageConfig:
       type: inMemory

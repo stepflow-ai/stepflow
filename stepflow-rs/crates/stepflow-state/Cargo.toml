@@ -16,11 +16,13 @@ workspace = true
 doctest = false
 
 [dependencies]
-bit-set.workspace = true
+bytes.workspace = true
 chrono.workspace = true
 dashmap.workspace = true
 error-stack.workspace = true
 futures.workspace = true
+log.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 stepflow-core.workspace = true
 stepflow-dtos.workspace = true

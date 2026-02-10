@@ -17,7 +17,10 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
-use stepflow_state::{InMemoryStateStore, StateStore};
+use stepflow_state::{
+    ActiveExecutions, BlobStore, ExecutionJournal, InMemoryStateStore, LeaseManager, MetadataStore,
+    NoOpJournal, NoOpLeaseManager,
+};
 
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
@@ -40,7 +43,10 @@ use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 ///     .await?;
 /// ```
 pub struct StepflowEnvironmentBuilder {
-    state_store: Option<Arc<dyn StateStore>>,
+    metadata_store: Option<Arc<dyn MetadataStore>>,
+    blob_store: Option<Arc<dyn BlobStore>>,
+    execution_journal: Option<Arc<dyn ExecutionJournal>>,
+    lease_manager: Option<Arc<dyn LeaseManager>>,
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
 }
@@ -55,15 +61,50 @@ impl StepflowEnvironmentBuilder {
     /// Create a new builder.
     pub fn new() -> Self {
         Self {
-            state_store: None,
+            metadata_store: None,
+            blob_store: None,
+            execution_journal: None,
+            lease_manager: None,
             working_directory: None,
             plugin_router: None,
         }
     }
 
-    /// Set the state store.
-    pub fn state_store(mut self, store: Arc<dyn StateStore>) -> Self {
-        self.state_store = Some(store);
+    /// Set the metadata store.
+    pub fn metadata_store(mut self, store: Arc<dyn MetadataStore>) -> Self {
+        self.metadata_store = Some(store);
+        self
+    }
+
+    /// Set the blob store for content-addressed storage.
+    ///
+    /// For implementations where the metadata store also implements BlobStore
+    /// (like InMemoryStateStore or SqliteStateStore), you can pass the same
+    /// object as both metadata_store and blob_store.
+    pub fn blob_store(mut self, store: Arc<dyn BlobStore>) -> Self {
+        self.blob_store = Some(store);
+        self
+    }
+
+    /// Set the execution journal for recovery.
+    ///
+    /// If not set, a no-op journal is used (events are discarded).
+    /// For implementations where the metadata store also implements
+    /// ExecutionJournal (like InMemoryStateStore or SqliteStateStore),
+    /// you can pass the same object as both.
+    pub fn execution_journal(mut self, journal: Arc<dyn ExecutionJournal>) -> Self {
+        self.execution_journal = Some(journal);
+        self
+    }
+
+    /// Set the lease manager for distributed run coordination.
+    ///
+    /// If not set, a `NoOpLeaseManager` is used which always grants leases
+    /// (single-orchestrator mode). For distributed deployments, use an
+    /// implementation like etcd-based lease management to coordinate run
+    /// ownership across orchestrators.
+    pub fn lease_manager(mut self, manager: Arc<dyn LeaseManager>) -> Self {
+        self.lease_manager = Some(manager);
         self
     }
 
@@ -84,9 +125,14 @@ impl StepflowEnvironmentBuilder {
     /// This is async because plugin initialization may require async operations
     /// (e.g., connecting to external services).
     pub async fn build(self) -> Result<Arc<StepflowEnvironment>> {
-        let state_store = self.state_store.ok_or_else(|| {
+        let metadata_store = self.metadata_store.ok_or_else(|| {
             error_stack::report!(PluginError::Initializing)
-                .attach_printable("state_store is required")
+                .attach_printable("metadata_store is required")
+        })?;
+
+        let blob_store = self.blob_store.ok_or_else(|| {
+            error_stack::report!(PluginError::Initializing)
+                .attach_printable("blob_store is required")
         })?;
 
         let working_directory = self.working_directory.ok_or_else(|| {
@@ -99,10 +145,26 @@ impl StepflowEnvironmentBuilder {
                 .attach_printable("plugin_router is required")
         })?;
 
+        // Use provided journal or default to no-op (discards events)
+        let journal: Arc<dyn ExecutionJournal> = self
+            .execution_journal
+            .unwrap_or_else(|| Arc::new(NoOpJournal::new()));
+
+        // Use provided lease manager or default to no-op (single-orchestrator mode)
+        let lease_manager: Arc<dyn LeaseManager> = self
+            .lease_manager
+            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new()));
+
         let mut env = StepflowEnvironment::new();
-        env.insert(state_store);
+        env.insert(metadata_store);
+        env.insert(blob_store);
+        env.insert(journal);
+        env.insert(lease_manager);
         env.insert(working_directory);
         env.insert(plugin_router);
+
+        // Always create ActiveExecutions for tracking running executions
+        env.insert(ActiveExecutions::new());
 
         let env = Arc::new(env);
 
@@ -121,13 +183,18 @@ impl StepflowEnvironmentBuilder {
     ///
     /// This creates an environment with an in-memory state store,
     /// current directory as working directory, and empty plugin router.
+    /// The in-memory state store is also used as the execution journal and blob store.
     pub async fn build_in_memory() -> Result<Arc<StepflowEnvironment>> {
         let plugin_router = PluginRouter::builder()
             .build()
             .change_context(PluginError::Initializing)?;
 
+        let store = Arc::new(InMemoryStateStore::new());
+
         Self::new()
-            .state_store(Arc::new(InMemoryStateStore::new()))
+            .metadata_store(store.clone())
+            .blob_store(store.clone())
+            .execution_journal(store)
             .working_directory(PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()

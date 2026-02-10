@@ -106,6 +106,47 @@ impl From<ServerError> for ErrorResponse {
     }
 }
 
+/// Map execution errors to appropriate HTTP status codes
+fn execution_error_status_code(err: &stepflow_execution::ExecutionError) -> StatusCode {
+    use stepflow_execution::ExecutionError;
+    match err {
+        // Client errors (4xx) - issues with user input or request
+        ExecutionError::OverrideError => StatusCode::BAD_REQUEST,
+        ExecutionError::AnalysisError => StatusCode::BAD_REQUEST,
+        ExecutionError::MalformedReference { .. } => StatusCode::BAD_REQUEST,
+        ExecutionError::UndefinedValue(_) => StatusCode::BAD_REQUEST,
+        ExecutionError::UndefinedField { .. } => StatusCode::BAD_REQUEST,
+
+        // Not found (404)
+        ExecutionError::ExecutionNotFound(_) | ExecutionError::RunNotFound => StatusCode::NOT_FOUND,
+        ExecutionError::WorkflowNotFound(_) => StatusCode::NOT_FOUND,
+        ExecutionError::BlobNotFound { .. } => StatusCode::NOT_FOUND,
+        ExecutionError::StepNotFound { .. } => StatusCode::NOT_FOUND,
+
+        // Server errors (5xx) - infrastructure or runtime issues
+        ExecutionError::RecoveryFailed => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::Deadlock => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StateStoreError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StateError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::JournalError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::PluginError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::PluginInitialization => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::RouterError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::FlowNotCompiled => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::RecvInput => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::RecordResult(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StepPanic => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StepFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StepNotCompleted { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::StepNotRunnable { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::UnregisteredProtocol(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::ResolveStepInput(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::ResolveStepOutput(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::ResolveWorkflowOutput => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
 impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
     fn from(report: error_stack::Report<T>) -> ErrorResponse {
         let code = report
@@ -115,6 +156,11 @@ impl<T: error_stack::Context> From<error_stack::Report<T>> for ErrorResponse {
                 report
                     .downcast_ref::<ServerError>()
                     .map(ServerError::status_code)
+            })
+            .or_else(|| {
+                report
+                    .downcast_ref::<stepflow_execution::ExecutionError>()
+                    .map(execution_error_status_code)
             })
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 

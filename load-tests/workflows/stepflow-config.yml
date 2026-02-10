@@ -22,7 +22,7 @@ routes:
   "/{component}":
     - plugin: builtin
 
-stateStore:
+storageConfig:
   type: sqlite
   databaseUrl: "sqlite:///Users/benjamin.chambers/code/stepflow-rs-fixes/load-tests/workflow_state.db"
   autoMigrate: true

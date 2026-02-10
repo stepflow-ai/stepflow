@@ -84,7 +84,7 @@ impl BuiltinComponent for PutBlobComponent {
 
         // Create the blob through the run context
         let blob_id = run_context
-            .state_store()
+            .blob_store()
             .put_blob(data_ref, input.blob_type)
             .await
             .change_context(BuiltinError::Internal)?;
@@ -160,7 +160,7 @@ impl BuiltinComponent for GetBlobComponent {
 
         // Retrieve the blob through the run context
         let data_ref = run_context
-            .state_store()
+            .blob_store()
             .get_blob(&blob_id)
             .await
             .change_context(BuiltinError::Internal)?;
@@ -227,7 +227,7 @@ mod tests {
         // First, store the blob
         let blob_id = mock
             .run_context()
-            .state_store()
+            .blob_store()
             .put_blob(
                 ValueRef::new(test_data.clone()),
                 stepflow_core::BlobType::Data,

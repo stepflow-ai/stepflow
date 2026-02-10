@@ -25,7 +25,7 @@ routes:
     - plugin: mock
 
 # Use SQLite with in-memory database for testing
-stateStore:
+storageConfig:
   type: sqlite
   databaseUrl: "sqlite::memory:"
   autoMigrate: true

@@ -23,9 +23,9 @@ use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepResult};
+use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary};
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::StateStoreExt as _;
+use stepflow_state::{BlobStoreExt as _, MetadataStoreExt as _};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -96,6 +96,9 @@ pub struct ListRunsQuery {
     /// Filter to direct children of this parent run
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<Uuid>,
+    /// Filter to only root runs (runs where parent_run_id is None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub roots_only: Option<bool>,
     /// Maximum depth for hierarchy queries (0 = root only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_depth: Option<u32>,
@@ -141,6 +144,17 @@ pub struct ListStepRunsResponse {
     pub steps: IndexMap<String, StepRunResponse>,
 }
 
+/// Query parameters for step runs endpoint
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepRunsQuery {
+    /// Optional item index for multi-item (batch) runs.
+    /// If not specified, step statuses are aggregated across all items
+    /// using "worst status" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
+    #[serde(default)]
+    pub item_index: Option<usize>,
+}
+
 /// Response containing a flow definition and its hash for run endpoints
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -172,10 +186,10 @@ pub async fn create_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<CreateRunRequest>,
 ) -> Result<Json<CreateRunResponse>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let blob_store = executor.blob_store();
 
-    // Get the flow from the state store
-    let flow = state_store
+    // Get the flow from the blob store
+    let flow = blob_store
         .get_flow(&req.flow_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
@@ -192,7 +206,6 @@ pub async fn create_run(
         max_concurrency: req.max_concurrency,
         overrides: req.overrides,
         variables,
-        ..Default::default()
     };
 
     let run_status =
@@ -248,10 +261,10 @@ pub async fn get_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
 
     // Get execution details
-    let details = state_store
+    let details = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
@@ -281,18 +294,18 @@ pub async fn get_run_items(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ListItemsResponse>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
 
     // Get run details to get item_count
-    let run_details = state_store
+    let run_details = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
     let item_count = run_details.summary.items.total;
 
-    // Get item results from state store (ordered by item_index)
-    let items = state_store
+    // Get item results from metadata store (ordered by item_index)
+    let items = metadata_store
         .get_item_results(run_id, ResultOrder::ByIndex)
         .await?;
 
@@ -318,17 +331,18 @@ pub async fn get_run_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunFlowResponse>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
+    let blob_store = executor.blob_store();
 
     // Get execution details to retrieve the workflow hash
-    let execution = state_store
+    let execution = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
     let workflow_id = execution.summary.flow_id;
-    // Get the workflow from the state store
-    let workflow = state_store
+    // Get the workflow from the blob store
+    let workflow = blob_store
         .get_flow(&workflow_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(workflow_id.clone())))?;
@@ -356,19 +370,20 @@ pub async fn list_runs(
     State(executor): State<Arc<StepflowEnvironment>>,
     Query(query): Query<ListRunsQuery>,
 ) -> Result<Json<ListRunsResponse>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
 
     let filters = RunFilters {
         status: query.status,
         flow_name: query.flow_name,
         root_run_id: query.root_run_id,
         parent_run_id: query.parent_run_id,
+        roots_only: query.roots_only,
         max_depth: query.max_depth,
         limit: query.limit,
         offset: query.offset,
     };
 
-    let executions = state_store.list_runs(&filters).await?;
+    let executions = metadata_store.list_runs(&filters).await?;
 
     Ok(Json(ListRunsResponse { runs: executions }))
 }
@@ -378,11 +393,12 @@ pub async fn list_runs(
     get,
     path = "/runs/{run_id}/steps",
     params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
+        ("item_index" = Option<usize>, Query, description = "Item index for multi-item runs. If not specified, aggregates across all items.")
     ),
     responses(
         (status = 200, description = "Run step details retrieved successfully", body = ListStepRunsResponse),
-        (status = 400, description = "Invalid run ID format"),
+        (status = 400, description = "Invalid run ID format or item index out of bounds"),
         (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -391,59 +407,69 @@ pub async fn list_runs(
 pub async fn get_run_steps(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
+    Query(query): Query<StepRunsQuery>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
-    use std::collections::HashMap;
+    let metadata_store = executor.metadata_store();
+    let blob_store = executor.blob_store();
 
-    let state_store = executor.state_store();
-
-    // Get execution details to retrieve the workflow hash
-    let execution = state_store
+    // Get execution details to retrieve the workflow hash and step statuses
+    let execution = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
     let workflow_id = execution.summary.flow_id;
 
-    // Get the workflow from the state store
-    let workflow = state_store
+    // Get the workflow from the blob store
+    let workflow = blob_store
         .get_flow(&workflow_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(workflow_id.clone())))?;
 
-    // Get step results for completed steps
-    let step_results = state_store.list_step_results(run_id).await?;
-
-    let mut completed_steps: HashMap<usize, StepResult> = HashMap::new();
-    for step_result in step_results {
-        completed_steps.insert(step_result.step_index(), step_result);
-    }
-
-    // Create unified response with both status and results
-    let mut step_responses = IndexMap::new();
-
-    // Get step status from state store
-    let step_statuses = {
-        let step_info_list = state_store.get_step_info_for_run(run_id).await?;
-        let mut status_map = HashMap::new();
-        for step_info in step_info_list {
-            status_map.insert(step_info.step_index(), step_info.status);
-        }
-        status_map
+    // Build step status map from ItemDetails.steps
+    let step_statuses: HashMap<String, StepStatus> = if let Some(item_index) = query.item_index {
+        // Specific item requested - return statuses for that item only
+        execution
+            .item_details
+            .as_ref()
+            .and_then(|items| items.get(item_index))
+            .map(|item| {
+                item.steps
+                    .iter()
+                    .map(|s| (s.step_id.clone(), s.status))
+                    .collect()
+            })
+            .ok_or_else(|| {
+                error_stack::report!(ServerError::InvalidRequest(format!(
+                    "Item index {} out of bounds (run has {} items)",
+                    item_index,
+                    execution
+                        .item_details
+                        .as_ref()
+                        .map(|i| i.len())
+                        .unwrap_or(0)
+                )))
+            })?
+    } else {
+        // No item specified - aggregate across all items using "worst status" precedence
+        aggregate_step_statuses(&execution.item_details)
     };
 
-    // Build unified responses
-    for (idx, step) in workflow.steps().iter().enumerate() {
+    // Build step responses from workflow definition.
+    // Status comes from ItemDetails.steps; results are not included (use journal for detailed output).
+    let mut step_responses = IndexMap::new();
+
+    for step in workflow.steps().iter() {
         let status = step_statuses
-            .get(&idx)
+            .get(&step.id)
             .copied()
             .unwrap_or(StepStatus::Blocked);
-        let result = completed_steps.get(&idx).map(|sr| sr.result().clone());
 
         let step_response = StepRunResponse {
             step_id: step.id.clone(),
             component: Some(step.component.to_string()),
             status,
-            result,
+            result: None, // Results not included; use debug API with journal for step outputs
         };
 
         step_responses.insert(step.id.clone(), step_response);
@@ -452,6 +478,47 @@ pub async fn get_run_steps(
     Ok(Json(ListStepRunsResponse {
         steps: step_responses,
     }))
+}
+
+/// Aggregate step statuses across all items using "worst status" precedence.
+///
+/// For each step, the aggregated status is the "worst" status across all items:
+/// Failed > Running > Runnable > Blocked > Skipped > Completed
+fn aggregate_step_statuses(
+    item_details: &Option<Vec<stepflow_dtos::ItemDetails>>,
+) -> HashMap<String, StepStatus> {
+    let items = match item_details {
+        Some(items) if !items.is_empty() => items,
+        _ => return HashMap::new(),
+    };
+
+    let mut aggregated: HashMap<String, StepStatus> = HashMap::new();
+
+    for item in items {
+        for step in &item.steps {
+            let current = aggregated
+                .entry(step.step_id.clone())
+                .or_insert(step.status);
+            // Update if new status has higher precedence (is "worse")
+            if status_precedence(step.status) > status_precedence(*current) {
+                *current = step.status;
+            }
+        }
+    }
+
+    aggregated
+}
+
+/// Returns a precedence value for step status (higher = worse/more attention needed).
+fn status_precedence(status: StepStatus) -> u8 {
+    match status {
+        StepStatus::Completed => 0,
+        StepStatus::Skipped => 1,
+        StepStatus::Blocked => 2,
+        StepStatus::Runnable => 3,
+        StepStatus::Running => 4,
+        StepStatus::Failed => 5,
+    }
 }
 
 /// Cancel a running execution
@@ -474,17 +541,20 @@ pub async fn cancel_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<RunSummary>, ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
 
     // Get execution to check current status
-    let execution = state_store
+    let execution = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
 
     // Check if execution can be cancelled
     match execution.summary.status {
-        ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
+        ExecutionStatus::Completed
+        | ExecutionStatus::Failed
+        | ExecutionStatus::Cancelled
+        | ExecutionStatus::RecoveryFailed => {
             return Err(error_stack::report!(ServerError::ExecutionNotCancellable {
                 run_id,
                 status: execution.summary.status
@@ -494,14 +564,14 @@ pub async fn cancel_run(
         ExecutionStatus::Running | ExecutionStatus::Paused => {
             // TODO: Implement actual execution cancellation logic
             // For now, just update the status in the database
-            state_store
+            metadata_store
                 .update_run_status(run_id, ExecutionStatus::Cancelled)
                 .await?;
         }
     }
 
     // Return updated execution summary
-    let updated_execution = state_store
+    let updated_execution = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
@@ -529,10 +599,10 @@ pub async fn delete_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
 ) -> Result<(), ErrorResponse> {
-    let state_store = executor.state_store();
+    let metadata_store = executor.metadata_store();
 
     // Get execution to check current status
-    let execution = state_store
+    let execution = metadata_store
         .get_run(run_id)
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
@@ -542,7 +612,10 @@ pub async fn delete_run(
         ExecutionStatus::Running | ExecutionStatus::Paused => {
             return Err(error_stack::report!(ServerError::ExecutionStillRunning(run_id)).into());
         }
-        ExecutionStatus::Completed | ExecutionStatus::Failed | ExecutionStatus::Cancelled => {
+        ExecutionStatus::Completed
+        | ExecutionStatus::Failed
+        | ExecutionStatus::Cancelled
+        | ExecutionStatus::RecoveryFailed => {
             // TODO: Implement actual execution deletion logic
             // This should remove execution record and all associated step results
             // For now, this is a placeholder

@@ -291,7 +291,6 @@ mod tests {
         // Get first task
         let task = scheduler.select_next(1).into_tasks().unwrap().head;
         assert_eq!(task, Task::new(run_id, 0, 0));
-        state.mark_executing(task);
 
         // Complete and get newly ready
         let new_ready = state.complete_task_and_get_ready(

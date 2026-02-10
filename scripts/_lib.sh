@@ -79,7 +79,7 @@ print_fail() {
 # Print fix instruction
 # Usage: print_fix "cargo fmt"
 print_fix() {
-    echo "    Fix: $1"
+    echo "    Fix:   $1"
 }
 
 # Print rerun instruction
@@ -171,8 +171,10 @@ run_check() {
             FAILED_CHECKS+=("$name")
             FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
             if [ -n "$fix_cmd" ]; then
-                FAILED_CHECK_FIXES+=("$(_make_reproduce_cmd "$fix_cmd")")
-                print_fix "$fix_cmd"
+                local full_fix_cmd
+                full_fix_cmd="$(_make_reproduce_cmd "$fix_cmd")"
+                FAILED_CHECK_FIXES+=("$full_fix_cmd")
+                print_fix "$full_fix_cmd"
             else
                 FAILED_CHECK_FIXES+=("")
             fi
@@ -184,21 +186,18 @@ run_check() {
             return 0
         else
             print_fail
+            local reproduce_cmd
+            reproduce_cmd="$(_make_reproduce_cmd "$@")"
             FAILED_CHECKS+=("$name")
-            FAILED_CHECK_CMDS+=("$(_make_reproduce_cmd "$@")")
+            FAILED_CHECK_CMDS+=("$reproduce_cmd")
+            echo "    Check: $reproduce_cmd"
             if [ -n "$fix_cmd" ]; then
-                FAILED_CHECK_FIXES+=("$(_make_reproduce_cmd "$fix_cmd")")
+                local full_fix_cmd
+                full_fix_cmd="$(_make_reproduce_cmd "$fix_cmd")"
+                FAILED_CHECK_FIXES+=("$full_fix_cmd")
+                print_fix "$full_fix_cmd"
             else
                 FAILED_CHECK_FIXES+=("")
-            fi
-            # Show captured output on failure
-            echo "    Output:"
-            sed 's/^/      /' "$outfile" | head -50
-            if [ "$(wc -l < "$outfile")" -gt 50 ]; then
-                echo "      ... (truncated, run with -v for full output)"
-            fi
-            if [ -n "$fix_cmd" ]; then
-                print_fix "$fix_cmd"
             fi
             return 1
         fi
@@ -248,7 +247,12 @@ print_summary() {
         echo "✅ All $category checks passed!"
         return 0
     else
-        echo "❌ Failed checks: ${FAILED_CHECKS[*]}"
+        local count=${#FAILED_CHECKS[@]}
+        if [ $count -eq 1 ]; then
+            echo "❌ 1 check failed"
+        else
+            echo "❌ $count checks failed"
+        fi
         echo ""
         for i in "${!FAILED_CHECKS[@]}"; do
             echo "  ${FAILED_CHECKS[$i]}:"

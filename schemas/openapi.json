@@ -253,6 +253,18 @@
             }
           },
           {
+            "name": "rootsOnly",
+            "in": "query",
+            "description": "Filter to only root runs (runs where parent_run_id is None)",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "maxDepth",
             "in": "query",
             "description": "Maximum depth for hierarchy queries (0 = root only)",
@@ -574,6 +586,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "item_index",
+            "in": "query",
+            "description": "Item index for multi-item runs. If not specified, aggregates across all items.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -588,7 +610,7 @@
             }
           },
           "400": {
-            "description": "Invalid run ID format"
+            "description": "Invalid run ID format or item index out of bounds"
           },
           "404": {
             "description": "Run not found"
@@ -875,7 +897,8 @@
           "completed",
           "failed",
           "cancelled",
-          "paused"
+          "paused",
+          "recoveryFailed"
         ]
       },
       "Flow": {
@@ -1166,6 +1189,47 @@
           }
         }
       },
+      "ItemDetails": {
+        "type": "object",
+        "description": "Detailed information for a single item in a run.\n\nIncludes the item's input, execution status, and step-level details.",
+        "required": [
+          "itemIndex",
+          "input",
+          "status",
+          "steps"
+        ],
+        "properties": {
+          "itemIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Index of this item in the input array (0-based).",
+            "minimum": 0
+          },
+          "input": {
+            "$ref": "#/components/schemas/Value",
+            "description": "Input value for this item."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus",
+            "description": "Execution status of this item."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepStatusInfo"
+            },
+            "description": "Step statuses for this item."
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When this item completed (if completed)."
+          }
+        }
+      },
       "ItemResult": {
         "type": "object",
         "description": "Result for an individual item in a multi-item run.",
@@ -1328,6 +1392,13 @@
             "format": "uuid",
             "description": "Filter to direct children of this parent run"
           },
+          "rootsOnly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Filter to only root runs (runs where parent_run_id is None)"
+          },
           "maxDepth": {
             "type": [
               "integer",
@@ -1456,16 +1527,16 @@
           },
           {
             "type": "object",
-            "required": [
-              "inputs"
-            ],
             "properties": {
-              "inputs": {
-                "type": "array",
+              "itemDetails": {
+                "type": [
+                  "array",
+                  "null"
+                ],
                 "items": {
-                  "$ref": "#/components/schemas/Value"
+                  "$ref": "#/components/schemas/ItemDetails"
                 },
-                "description": "Input values for each item in this run."
+                "description": "Item details with inputs and step statuses.\n- `None`: details not requested, or run is active (query executor)\n- `Some`: item-level details available"
               },
               "overrides": {
                 "oneOf": [
@@ -1481,7 +1552,7 @@
             }
           }
         ],
-        "description": "Detailed flow run information including inputs.\n\nNote: Item results are not included here. Use `get_item_results()` to\nfetch item results separately. This design reflects that items are stored\nin a separate table and avoids loading all results when just querying\nrun metadata."
+        "description": "Detailed flow run information including item details.\n\nFor completed runs, `item_details` contains per-item information including\ninputs and step statuses. For active runs, `item_details` may be `None`\n(query the owning orchestrator for live status)."
       },
       "RunFlowResponse": {
         "type": "object",
@@ -1672,6 +1743,24 @@
           "skipped",
           "failed"
         ]
+      },
+      "StepStatusInfo": {
+        "type": "object",
+        "description": "Status information for a single step execution.",
+        "required": [
+          "stepId",
+          "status"
+        ],
+        "properties": {
+          "stepId": {
+            "type": "string",
+            "description": "Step name/identifier."
+          },
+          "status": {
+            "$ref": "#/components/schemas/StepStatus",
+            "description": "Current status of the step."
+          }
+        }
       },
       "StoreFlowRequest": {
         "type": "object",

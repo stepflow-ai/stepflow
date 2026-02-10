@@ -16,13 +16,52 @@
 //! system for representing run status, item results, and related data.
 //! These types are pure data structures with no storage or execution logic.
 
-use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::Component;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
+use stepflow_core::workflow::{Component, ValueRef};
 use stepflow_core::{BlobId, FlowResult};
 use uuid::Uuid;
 
 // Re-export StepId for convenience
 pub use stepflow_core::workflow::StepId;
+
+/// Status information for a single step execution.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepStatusInfo {
+    /// Step name/identifier.
+    pub step_id: String,
+    /// Current status of the step.
+    pub status: StepStatus,
+}
+
+impl StepStatusInfo {
+    /// Create a new step status info from a StepId.
+    pub fn new(step_id: &StepId, status: StepStatus) -> Self {
+        Self {
+            step_id: step_id.name().to_string(),
+            status,
+        }
+    }
+}
+
+/// Detailed information for a single item in a run.
+///
+/// Includes the item's input, execution status, and step-level details.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemDetails {
+    /// Index of this item in the input array (0-based).
+    pub item_index: u32,
+    /// Input value for this item.
+    pub input: ValueRef,
+    /// Execution status of this item.
+    pub status: ExecutionStatus,
+    /// Step statuses for this item.
+    pub steps: Vec<StepStatusInfo>,
+    /// When this item completed (if completed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
 
 /// Statistics about items in a run.
 #[derive(
@@ -55,6 +94,7 @@ impl ItemStatistics {
             ExecutionStatus::Failed => stats.failed = 1,
             ExecutionStatus::Cancelled => stats.cancelled = 1,
             ExecutionStatus::Paused => stats.running = 1, // Paused counts as running
+            ExecutionStatus::RecoveryFailed => stats.failed = 1, // Recovery failure counts as failed
         }
         stats
     }
@@ -90,19 +130,21 @@ pub struct RunSummary {
     pub parent_run_id: Option<Uuid>,
 }
 
-/// Detailed flow run information including inputs.
+/// Detailed flow run information including item details.
 ///
-/// Note: Item results are not included here. Use `get_item_results()` to
-/// fetch item results separately. This design reflects that items are stored
-/// in a separate table and avoids loading all results when just querying
-/// run metadata.
+/// For completed runs, `item_details` contains per-item information including
+/// inputs and step statuses. For active runs, `item_details` may be `None`
+/// (query the owning orchestrator for live status).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunDetails {
     #[serde(flatten)]
     pub summary: RunSummary,
-    /// Input values for each item in this run.
-    pub inputs: Vec<stepflow_core::workflow::ValueRef>,
+    /// Item details with inputs and step statuses.
+    /// - `None`: details not requested, or run is active (query executor)
+    /// - `Some`: item-level details available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_details: Option<Vec<ItemDetails>>,
     /// Optional workflow overrides applied to this run (per-run, not per-item).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub overrides: Option<stepflow_core::workflow::WorkflowOverrides>,
@@ -117,6 +159,8 @@ pub struct RunFilters {
     pub root_run_id: Option<Uuid>,
     /// Filter to direct children of this parent run.
     pub parent_run_id: Option<Uuid>,
+    /// Filter to only root runs (runs where parent_run_id is None).
+    pub roots_only: Option<bool>,
     /// Maximum depth for hierarchy queries (0 = root only).
     pub max_depth: Option<u32>,
     pub limit: Option<usize>,
@@ -323,9 +367,13 @@ mod tests {
                 root_run_id: run_id,
                 parent_run_id: None,
             },
-            inputs: vec![stepflow_core::workflow::ValueRef::new(
-                json!({"test": "input"}),
-            )],
+            item_details: Some(vec![ItemDetails {
+                item_index: 0,
+                input: stepflow_core::workflow::ValueRef::new(json!({"test": "input"})),
+                status: ExecutionStatus::Completed,
+                steps: vec![],
+                completed_at: Some(now),
+            }]),
             overrides: None,
         };
 
@@ -341,8 +389,8 @@ mod tests {
         assert_eq!(value["flowName"], json!("test-workflow"));
         assert_eq!(value["status"], json!("completed"));
 
-        // Verify that detail-specific fields are also present
-        assert_eq!(value["inputs"], json!([{"test": "input"}]));
+        // Verify that item_details field is present
+        assert!(value.get("itemDetails").is_some());
 
         // Verify there's no nested "summary" object
         assert!(value.get("summary").is_none());

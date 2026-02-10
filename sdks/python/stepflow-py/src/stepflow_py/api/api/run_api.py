@@ -18,7 +18,7 @@ Do not edit the class manually.
 
 from typing import Annotated, Any
 
-from pydantic import Field, StrictFloat, StrictInt, StrictStr, validate_call
+from pydantic import Field, StrictBool, StrictFloat, StrictInt, StrictStr, validate_call
 
 from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
@@ -1768,6 +1768,12 @@ class RunApi:
             StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
+        roots_only: Annotated[
+            StrictBool | None,
+            Field(
+                description="Filter to only root runs (runs where parent_run_id is None)"
+            ),
+        ] = None,
         max_depth: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(description="Maximum depth for hierarchy queries (0 = root only)"),
@@ -1801,6 +1807,8 @@ class RunApi:
         :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
         :type parent_run_id: str
+        :param roots_only: Filter to only root runs (runs where parent_run_id is None)
+        :type roots_only: bool
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return
@@ -1834,6 +1842,7 @@ class RunApi:
             flow_name=flow_name,
             root_run_id=root_run_id,
             parent_run_id=parent_run_id,
+            roots_only=roots_only,
             max_depth=max_depth,
             limit=limit,
             offset=offset,
@@ -1875,6 +1884,12 @@ class RunApi:
             StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
+        roots_only: Annotated[
+            StrictBool | None,
+            Field(
+                description="Filter to only root runs (runs where parent_run_id is None)"
+            ),
+        ] = None,
         max_depth: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(description="Maximum depth for hierarchy queries (0 = root only)"),
@@ -1908,6 +1923,8 @@ class RunApi:
         :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
         :type parent_run_id: str
+        :param roots_only: Filter to only root runs (runs where parent_run_id is None)
+        :type roots_only: bool
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return
@@ -1941,6 +1958,7 @@ class RunApi:
             flow_name=flow_name,
             root_run_id=root_run_id,
             parent_run_id=parent_run_id,
+            roots_only=roots_only,
             max_depth=max_depth,
             limit=limit,
             offset=offset,
@@ -1982,6 +2000,12 @@ class RunApi:
             StrictStr | None,
             Field(description="Filter to direct children of this parent run"),
         ] = None,
+        roots_only: Annotated[
+            StrictBool | None,
+            Field(
+                description="Filter to only root runs (runs where parent_run_id is None)"
+            ),
+        ] = None,
         max_depth: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(description="Maximum depth for hierarchy queries (0 = root only)"),
@@ -2015,6 +2039,8 @@ class RunApi:
         :type root_run_id: str
         :param parent_run_id: Filter to direct children of this parent run
         :type parent_run_id: str
+        :param roots_only: Filter to only root runs (runs where parent_run_id is None)
+        :type roots_only: bool
         :param max_depth: Maximum depth for hierarchy queries (0 = root only)
         :type max_depth: int
         :param limit: Maximum number of results to return
@@ -2048,6 +2074,7 @@ class RunApi:
             flow_name=flow_name,
             root_run_id=root_run_id,
             parent_run_id=parent_run_id,
+            roots_only=roots_only,
             max_depth=max_depth,
             limit=limit,
             offset=offset,
@@ -2072,6 +2099,7 @@ class RunApi:
         flow_name,
         root_run_id,
         parent_run_id,
+        roots_only,
         max_depth,
         limit,
         offset,
@@ -2106,6 +2134,9 @@ class RunApi:
 
         if parent_run_id is not None:
             _query_params.append(("parentRunId", parent_run_id))
+
+        if roots_only is not None:
+            _query_params.append(("rootsOnly", roots_only))
 
         if max_depth is not None:
             _query_params.append(("maxDepth", max_depth))

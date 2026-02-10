@@ -25,6 +25,18 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Apply journal tables migration
+    apply_migration(pool, "002_create_journal_tables", || {
+        create_journal_tables(pool)
+    })
+    .await?;
+
+    // Add step_statuses_json column to run_items
+    apply_migration(pool, "003_add_step_statuses_to_run_items", || {
+        add_step_statuses_column(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -189,6 +201,54 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
             .await
             .change_context(StateError::Initialization)?;
     }
+
+    Ok(())
+}
+
+/// Create journal tables for write-ahead logging and recovery.
+///
+/// Journals are keyed by `root_run_id`, meaning all events for an execution tree
+/// (parent flow + all subflows) share a single journal with a unified sequence space.
+/// Each entry contains a `run_id` to identify which specific run the event belongs to.
+async fn create_journal_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    // Journal entries for recovery - stores execution events.
+    // Keyed by (root_run_id, sequence) so all events for an execution tree
+    // share one journal with monotonically increasing sequence numbers.
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS journal_entries (
+                root_run_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                run_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                event_data TEXT NOT NULL,
+                PRIMARY KEY (root_run_id, sequence)
+            )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    // Index for filtering by specific run_id within a journal
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_journal_run_id ON journal_entries(run_id)")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Add step_statuses_json column to run_items table.
+///
+/// This stores a JSON array of step status info for each completed item,
+/// allowing step-level status to be queried without accessing the journal.
+async fn add_step_statuses_column(pool: &SqlitePool) -> Result<(), StateError> {
+    sqlx::query("ALTER TABLE run_items ADD COLUMN step_statuses_json TEXT")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
 
     Ok(())
 }

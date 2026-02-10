@@ -27,7 +27,6 @@ serde_yaml_ng.workspace = true
 serde.workspace = true
 serde_with.workspace = true
 sha2.workspace = true
-stepflow-observability.workspace = true
 thiserror.workspace = true
 log.workspace = true
 utoipa.workspace = true

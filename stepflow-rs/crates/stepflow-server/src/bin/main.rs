@@ -10,14 +10,19 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use clap::Parser;
-use error_stack::{Report, ResultExt as _};
-use log::info;
 use std::io::Read as _;
 use std::path::PathBuf;
+
+use clap::Parser;
+use error_stack::{Report, ResultExt as _};
+use log::{info, warn};
 use stepflow_config::StepflowConfig;
+use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
+use stepflow_server::{orphan_claiming_loop, shutdown_signal};
+use stepflow_state::OrchestratorId;
 use thiserror::Error;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
@@ -25,6 +30,8 @@ pub enum ServerError {
     ConfigError,
     #[error("Failed to create executor")]
     ExecutorError,
+    #[error("Failed to recover pending runs")]
+    RecoveryError,
     #[error("Failed to start server")]
     ServerError,
 }
@@ -55,32 +62,22 @@ struct Args {
     observability: ObservabilityConfig,
 }
 
-async fn create_executor(
-    config_path: Option<PathBuf>,
-    config_stdin: bool,
-) -> Result<std::sync::Arc<stepflow_plugin::StepflowEnvironment>> {
-    info!("Creating Stepflow executor from configuration");
-
-    let config = if config_stdin {
+/// Load configuration from the specified source.
+async fn load_config(config_path: Option<PathBuf>, config_stdin: bool) -> Result<StepflowConfig> {
+    if config_stdin {
         let mut buffer = String::new();
         std::io::stdin()
             .read_to_string(&mut buffer)
             .change_context(ServerError::ConfigError)
             .attach_printable("Failed to read configuration from stdin")?;
-        StepflowConfig::load_from_json(&buffer).change_context(ServerError::ConfigError)?
+        StepflowConfig::load_from_json(&buffer).change_context(ServerError::ConfigError)
     } else if let Some(path) = config_path {
         StepflowConfig::load_from_file(&path)
             .await
-            .change_context(ServerError::ConfigError)?
+            .change_context(ServerError::ConfigError)
     } else {
-        StepflowConfig::default()
-    };
-
-    config
-        .create_environment()
-        .await
-        .change_context(ServerError::ExecutorError)
-        .attach_printable("Failed to create executor from configuration")
+        Ok(StepflowConfig::default())
+    }
 }
 
 #[tokio::main]
@@ -107,13 +104,88 @@ async fn main() {
         args.port, args.config
     );
 
-    let result = async {
-        let executor = create_executor(args.config, args.config_stdin).await?;
+    let result: Result<()> = async {
+        // Load configuration
+        let config = load_config(args.config, args.config_stdin).await?;
+        let recovery_config = config.recovery.clone();
 
-        stepflow_server::start_server(args.port, executor)
+        // Create executor/environment
+        info!("Creating Stepflow executor from configuration");
+        let executor = config
+            .create_environment()
             .await
-            .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
-            .change_context(ServerError::ServerError)
+            .change_context(ServerError::ExecutorError)
+            .attach_printable("Failed to create executor from configuration")?;
+
+        // Generate orchestrator ID (could be configured via env var in the future)
+        let orchestrator_id =
+            OrchestratorId::new(format!("stepflow-server-{}", uuid::Uuid::now_v7()));
+
+        // Set up cancellation token for graceful shutdown
+        let cancel_token = CancellationToken::new();
+
+        // Recover pending runs on startup
+        if recovery_config.max_startup_recovery > 0 {
+            info!(
+                "Recovering pending runs with orchestrator_id={}",
+                orchestrator_id.as_str()
+            );
+
+            let recovery_result = recover_orphaned_runs(
+                &executor,
+                orchestrator_id.clone(),
+                recovery_config.max_startup_recovery,
+            )
+            .await
+            .change_context(ServerError::RecoveryError)?;
+
+            if recovery_result.recovered > 0 || recovery_result.failed > 0 {
+                info!(
+                    "Startup recovery complete: {} recovered, {} failed",
+                    recovery_result.recovered, recovery_result.failed
+                );
+            }
+        }
+
+        // Start background orphan claiming loop (handles missing lease manager internally)
+        let orphan_task = tokio::spawn(orphan_claiming_loop(
+            executor.clone(),
+            orchestrator_id.clone(),
+            recovery_config,
+            cancel_token.clone(),
+        ));
+
+        // Run server until shutdown signal
+        tokio::select! {
+            result = stepflow_server::start_server(args.port, executor.clone()) => {
+                result
+                    .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
+                    .change_context(ServerError::ServerError)?;
+            }
+            _ = shutdown_signal() => {
+                info!("Shutdown signal received, stopping server");
+            }
+        }
+
+        // Graceful shutdown: cancel background task and wait for it
+        cancel_token.cancel();
+        info!("Waiting for background tasks to complete...");
+        match orphan_task.await {
+            Ok(()) => {
+                info!("Orphan claiming task exited normally");
+            }
+            Err(e) => {
+                warn!("Orphan claiming task panicked: {:?}", e);
+            }
+        }
+
+        // TODO: Release leases for any runs still in progress
+        // This requires tracking active runs in the executor, which is not
+        // currently implemented. For now, leases will expire naturally.
+        // In production with short TTLs (e.g., 30s), this is acceptable.
+
+        info!("Graceful shutdown complete");
+        Ok(())
     }
     .await;
 

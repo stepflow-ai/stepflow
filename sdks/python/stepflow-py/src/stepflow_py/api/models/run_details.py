@@ -27,13 +27,14 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_py.api.models.execution_status import ExecutionStatus
+from stepflow_py.api.models.item_details import ItemDetails
 from stepflow_py.api.models.item_statistics import ItemStatistics
 from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
 
 class RunDetails(BaseModel):
     """
-    Detailed flow run information including inputs.  Note: Item results are not included here. Use `get_item_results()` to fetch item results separately. This design reflects that items are stored in a separate table and avoids loading all results when just querying run metadata.
+    Detailed flow run information including item details.  For completed runs, `item_details` contains per-item information including inputs and step statuses. For active runs, `item_details` may be `None` (query the owning orchestrator for live status).
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
@@ -57,7 +58,11 @@ class RunDetails(BaseModel):
         description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
         alias="parentRunId",
     )
-    inputs: list[Any] = Field(description="Input values for each item in this run.")
+    item_details: list[ItemDetails] | None = Field(
+        default=None,
+        description="Item details with inputs and step statuses. - `None`: details not requested, or run is active (query executor) - `Some`: item-level details available",
+        alias="itemDetails",
+    )
     overrides: WorkflowOverrides | None = Field(
         default=None,
         description="Optional workflow overrides applied to this run (per-run, not per-item).",
@@ -72,7 +77,7 @@ class RunDetails(BaseModel):
         "completedAt",
         "rootRunId",
         "parentRunId",
-        "inputs",
+        "itemDetails",
         "overrides",
     ]
 
@@ -116,9 +121,21 @@ class RunDetails(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of items
         if self.items:
             _dict["items"] = self.items.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of each item in item_details (list)
+        _items = []
+        if self.item_details:
+            for _item_item_details in self.item_details:
+                if _item_item_details:
+                    _items.append(_item_item_details.to_dict())
+            _dict["itemDetails"] = _items
         # override the default output from pydantic by calling `to_dict()` of overrides
         if self.overrides:
             _dict["overrides"] = self.overrides.to_dict()
+        # set to None if item_details (nullable) is None
+        # and model_fields_set contains the field
+        if self.item_details is None and "item_details" in self.model_fields_set:
+            _dict["itemDetails"] = None
+
         # set to None if overrides (nullable) is None
         # and model_fields_set contains the field
         if self.overrides is None and "overrides" in self.model_fields_set:
@@ -148,7 +165,11 @@ class RunDetails(BaseModel):
                 "completedAt": obj.get("completedAt"),
                 "rootRunId": obj.get("rootRunId"),
                 "parentRunId": obj.get("parentRunId"),
-                "inputs": obj.get("inputs"),
+                "itemDetails": [
+                    ItemDetails.from_dict(_item) for _item in obj["itemDetails"]
+                ]
+                if obj.get("itemDetails") is not None
+                else None,
                 "overrides": WorkflowOverrides.from_dict(obj["overrides"])
                 if obj.get("overrides") is not None
                 else None,

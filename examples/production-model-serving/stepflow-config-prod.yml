@@ -71,7 +71,7 @@ routes:
 # - PostgreSQL RDS/Cloud SQL for transactional workloads
 # - DynamoDB/Firestore for serverless architectures
 # - Redis Cluster for high-throughput caching
-stateStore:
+storageConfig:
   type: sqlite
   databaseUrl: "sqlite:/tmp/prod_workflow_state.db?mode=rwc"
   autoMigrate: true

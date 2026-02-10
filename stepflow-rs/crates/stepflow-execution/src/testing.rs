@@ -24,7 +24,9 @@ use stepflow_core::workflow::{Flow, FlowBuilder, StepBuilder};
 use stepflow_core::{FlowResult, StepflowEnvironment, ValueExpr};
 use stepflow_mock::{MockComponentBehavior, MockPlugin};
 use stepflow_plugin::StepflowEnvironmentBuilder;
-use stepflow_state::{InMemoryStateStore, StateStore, StateStoreExt as _};
+use stepflow_state::{
+    BlobStore, ExecutionJournal, InMemoryStateStore, MetadataStore, MetadataStoreExt as _,
+};
 
 /// Builder for creating a mock [`StepflowEnvironment`] for testing.
 ///
@@ -117,9 +119,14 @@ impl MockExecutorBuilder {
             .build()
             .unwrap();
 
-        let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+        let store = Arc::new(InMemoryStateStore::new());
+        let metadata_store: Arc<dyn MetadataStore> = store.clone();
+        let blob_store: Arc<dyn BlobStore> = store.clone();
+        let journal: Arc<dyn ExecutionJournal> = store;
         StepflowEnvironmentBuilder::new()
-            .state_store(state_store)
+            .metadata_store(metadata_store)
+            .blob_store(blob_store)
+            .execution_journal(journal)
             .working_directory(std::path::PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()
@@ -341,9 +348,14 @@ pub async fn create_executor_with_behaviors(
         .build()
         .unwrap();
 
-    let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+    let store = Arc::new(InMemoryStateStore::new());
+    let metadata_store: Arc<dyn MetadataStore> = store.clone();
+    let blob_store: Arc<dyn BlobStore> = store.clone();
+    let journal: Arc<dyn ExecutionJournal> = store;
     StepflowEnvironmentBuilder::new()
-        .state_store(state_store)
+        .metadata_store(metadata_store)
+        .blob_store(blob_store)
+        .execution_journal(journal)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()
@@ -414,9 +426,14 @@ pub async fn create_env_with_wait_signal(
         .build()
         .unwrap();
 
-    let state_store: Arc<dyn StateStore> = Arc::new(InMemoryStateStore::new());
+    let store = Arc::new(InMemoryStateStore::new());
+    let metadata_store: Arc<dyn MetadataStore> = store.clone();
+    let blob_store: Arc<dyn BlobStore> = store.clone();
+    let journal: Arc<dyn ExecutionJournal> = store;
     let env = StepflowEnvironmentBuilder::new()
-        .state_store(state_store)
+        .metadata_store(metadata_store)
+        .blob_store(blob_store)
+        .execution_journal(journal)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()
@@ -479,9 +496,9 @@ mod tests {
             .build()
             .await;
 
-        // Verify the executor was created by checking state_store is accessible
+        // Verify the executor was created by checking metadata_store is accessible
         // (We can't easily test get_blob without a valid blob ID, so just verify construction)
-        let _ = executor.state_store();
+        let _ = executor.metadata_store();
     }
 
     #[test]

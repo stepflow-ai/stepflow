@@ -74,5 +74,5 @@ routes:
     - plugin: builtin
 
 # Development state store - uses SQLite for persistence during testing
-stateStore:
+storageConfig:
   type: inMemory

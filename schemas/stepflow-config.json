@@ -28,9 +28,17 @@
             "type": "string"
           }
         },
-        "stateStore": {
-          "$ref": "#/$defs/StateStoreConfig",
-          "description": "State store configuration. If not specified, uses in-memory storage."
+        "storageConfig": {
+          "$ref": "#/$defs/StorageConfig",
+          "description": "Storage configuration. If not specified, uses in-memory storage."
+        },
+        "leaseManager": {
+          "$ref": "#/$defs/LeaseManagerConfig",
+          "description": "Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode)."
+        },
+        "recovery": {
+          "$ref": "#/$defs/RecoveryConfig",
+          "description": "Recovery configuration for handling interrupted runs."
         }
       }
     }
@@ -65,43 +73,96 @@
         }
       }
     },
-    "StateStoreConfig": {
+    "StorageConfig": {
       "oneOf": [
         {
           "type": "object",
-          "description": "In-memory state store (default, for testing and demos)",
+          "description": "Expanded form: individual config per store",
+          "required": [
+            "metadata"
+          ],
+          "properties": {
+            "metadata": {
+              "$ref": "#/$defs/StoreConfig",
+              "description": "Configuration for the metadata store"
+            },
+            "blobs": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/StoreConfig",
+                  "description": "Configuration for the blob store (defaults to metadata config if not specified)"
+                }
+              ]
+            },
+            "journal": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/StoreConfig",
+                  "description": "Configuration for the execution journal (defaults to metadata config if not specified)"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/StoreConfig",
+          "description": "Simple form: all stores share one backend"
+        }
+      ],
+      "description": "Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: \"sqlite:workflow_state.db\"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  blobs:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication)."
+    },
+    "LeaseManagerConfig": {
+      "oneOf": [
+        {
+          "type": "object",
           "required": [
             "type"
           ],
           "properties": {
             "type": {
               "type": "string",
-              "const": "inMemory"
+              "const": "noOp"
             }
           }
-        },
-        {
-          "allOf": [
-            {
-              "$ref": "#/$defs/SqliteStateStoreConfig",
-              "description": "SQLite-based persistent state store"
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "sqlite"
-                }
-              }
-            }
-          ],
-          "description": "SQLite-based persistent state store"
         }
-      ]
+      ],
+      "description": "Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time."
+    },
+    "RecoveryConfig": {
+      "type": "object",
+      "description": "Configuration for run recovery and orphan claiming.\n\nControls how the orchestrator handles interrupted runs on startup\nand during execution.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true",
+          "default": true
+        },
+        "checkIntervalSecs": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.",
+          "default": 30,
+          "minimum": 0
+        },
+        "maxStartupRecovery": {
+          "type": "integer",
+          "description": "Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.",
+          "default": 100,
+          "minimum": 0
+        },
+        "maxClaimsPerCheck": {
+          "type": "integer",
+          "description": "Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.",
+          "default": 10,
+          "minimum": 0
+        }
+      }
     },
     "SupportedPlugin": {
       "oneOf": [
@@ -543,6 +604,45 @@
         "$[0]",
         "$.field[0].nested"
       ]
+    },
+    "StoreConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "inMemory"
+            }
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SqliteStateStoreConfig",
+              "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development."
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "sqlite"
+                }
+              }
+            }
+          ],
+          "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development."
+        }
+      ],
+      "description": "Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery"
     },
     "SqliteStateStoreConfig": {
       "type": "object",

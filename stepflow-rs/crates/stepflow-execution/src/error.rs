@@ -73,6 +73,10 @@ pub enum ExecutionError {
     ResolveWorkflowOutput,
     #[error("failed to apply workflow overrides")]
     OverrideError,
+    #[error("recovery failed")]
+    RecoveryFailed,
+    #[error("journal write failed")]
+    JournalError,
 }
 
 impl ExecutionError {

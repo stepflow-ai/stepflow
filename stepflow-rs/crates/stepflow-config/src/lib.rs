@@ -10,6 +10,16 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod lease_manager_config;
+mod recovery_config;
+mod storage_config;
+mod supported_plugin;
+
+pub use lease_manager_config::LeaseManagerConfig;
+pub use recovery_config::RecoveryConfig;
+pub use storage_config::{StorageConfig, StoreConfig, Stores};
+pub use supported_plugin::{SupportedPlugin, SupportedPluginConfig};
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -17,13 +27,7 @@ use error_stack::{Report, ResultExt as _};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
-use stepflow_components_mcp::McpPluginConfig;
-use stepflow_mock::MockPlugin;
 use stepflow_plugin::routing::RoutingConfig;
-use stepflow_plugin::{DynPlugin, PluginConfig};
-use stepflow_protocol::StepflowPluginConfig;
-use stepflow_state::{InMemoryStateStore, StateStore};
-use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -47,9 +51,16 @@ pub struct StepflowConfig {
     /// Routing configuration for mapping components to plugins.
     #[serde(flatten)]
     pub routing: RoutingConfig,
-    /// State store configuration. If not specified, uses in-memory storage.
+    /// Storage configuration. If not specified, uses in-memory storage.
     #[serde(default)]
-    pub state_store: StateStoreConfig,
+    pub storage_config: StorageConfig,
+    /// Lease manager configuration for distributed coordination.
+    /// If not specified, uses no-op (single orchestrator mode).
+    #[serde(default)]
+    pub lease_manager: LeaseManagerConfig,
+    /// Recovery configuration for handling interrupted runs.
+    #[serde(default)]
+    pub recovery: RecoveryConfig,
 }
 
 impl Default for StepflowConfig {
@@ -66,71 +77,10 @@ impl Default for StepflowConfig {
             working_directory: None,
             plugins,
             routing: RoutingConfig::default(),
-            state_store: StateStoreConfig::default(),
+            storage_config: StorageConfig::default(),
+            lease_manager: LeaseManagerConfig::default(),
+            recovery: RecoveryConfig::default(),
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-#[derive(Default)]
-pub enum StateStoreConfig {
-    /// In-memory state store (default, for testing and demos)
-    #[default]
-    InMemory,
-    /// SQLite-based persistent state store
-    Sqlite(SqliteStateStoreConfig),
-}
-
-impl StateStoreConfig {
-    /// Create a StateStore instance from this configuration
-    pub async fn create_state_store(&self) -> Result<Arc<dyn StateStore>> {
-        match self {
-            StateStoreConfig::InMemory => Ok(Arc::new(InMemoryStateStore::new())),
-            StateStoreConfig::Sqlite(config) => {
-                let store = SqliteStateStore::new(config.clone())
-                    .await
-                    .change_context(ConfigError::Configuration)?;
-                Ok(Arc::new(store))
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum SupportedPlugin {
-    Stepflow(StepflowPluginConfig),
-    Builtin(BuiltinPluginConfig),
-    Mock(MockPlugin),
-    Mcp(McpPluginConfig),
-}
-
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
-pub struct SupportedPluginConfig {
-    #[serde(flatten)]
-    pub plugin: SupportedPlugin,
-}
-
-async fn create_plugin<P: PluginConfig>(
-    plugin: P,
-    working_directory: &Path,
-) -> Result<Box<DynPlugin<'static>>> {
-    plugin
-        .create_plugin(working_directory)
-        .await
-        .change_context(ConfigError::Configuration)
-}
-
-impl SupportedPluginConfig {
-    pub async fn instantiate(self, working_directory: &Path) -> Result<Box<DynPlugin<'static>>> {
-        let plugin = match self.plugin {
-            SupportedPlugin::Stepflow(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,
-        };
-        Ok(plugin)
     }
 }
 
@@ -166,8 +116,11 @@ impl StepflowConfig {
         use stepflow_plugin::StepflowEnvironmentBuilder;
         use stepflow_plugin::routing::PluginRouter;
 
-        // Create state store from configuration
-        let state_store = self.state_store.create_state_store().await?;
+        // Create metadata store, blob store, and execution journal from configuration
+        let stores = self.storage_config.create_stores().await?;
+
+        // Create lease manager from configuration
+        let lease_manager = self.lease_manager.create_lease_manager();
 
         let working_directory = self
             .working_directory
@@ -194,7 +147,10 @@ impl StepflowConfig {
 
         // Create environment using the builder (this also initializes all plugins)
         let env = StepflowEnvironmentBuilder::new()
-            .state_store(state_store)
+            .metadata_store(stores.metadata_store)
+            .blob_store(stores.blob_store)
+            .execution_journal(stores.execution_journal)
+            .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)
             .build()
