@@ -15,7 +15,7 @@
 //! This module provides [`ActiveExecutions`], a concurrent map that tracks all
 //! running workflow executions by their root run ID. This enables:
 //!
-//! - Graceful shutdown with cancellation
+//! - Graceful shutdown with cancellation, returning run IDs for lease release
 //! - Monitoring the number of active executions
 //! - Preventing duplicate execution of the same run
 //!
@@ -126,6 +126,9 @@ impl ActiveExecutions {
     /// The caller should release leases for the returned run IDs to allow
     /// other orchestrators to immediately pick them up for recovery.
     ///
+    /// **Note:** The caller must ensure no new tasks are spawned after calling
+    /// this method. Typically, stop accepting new work before initiating shutdown.
+    ///
     /// # Returns
     /// The run IDs of executions that were cancelled.
     pub fn shutdown(&self) -> Vec<Uuid> {
@@ -216,5 +219,4 @@ mod tests {
         // Clean up
         active1.shutdown();
     }
-
 }
