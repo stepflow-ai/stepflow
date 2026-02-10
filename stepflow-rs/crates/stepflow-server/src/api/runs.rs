@@ -144,6 +144,17 @@ pub struct ListStepRunsResponse {
     pub steps: IndexMap<String, StepRunResponse>,
 }
 
+/// Query parameters for step runs endpoint
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepRunsQuery {
+    /// Optional item index for multi-item (batch) runs.
+    /// If not specified, step statuses are aggregated across all items
+    /// using "worst status" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
+    #[serde(default)]
+    pub item_index: Option<usize>,
+}
+
 /// Response containing a flow definition and its hash for run endpoints
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -382,11 +393,12 @@ pub async fn list_runs(
     get,
     path = "/runs/{run_id}/steps",
     params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
+        ("item_index" = Option<usize>, Query, description = "Item index for multi-item runs. If not specified, aggregates across all items.")
     ),
     responses(
         (status = 200, description = "Run step details retrieved successfully", body = ListStepRunsResponse),
-        (status = 400, description = "Invalid run ID format"),
+        (status = 400, description = "Invalid run ID format or item index out of bounds"),
         (status = 404, description = "Run not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -395,9 +407,8 @@ pub async fn list_runs(
 pub async fn get_run_steps(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
+    Query(query): Query<StepRunsQuery>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
-    use std::collections::HashMap;
-
     let metadata_store = executor.metadata_store();
     let blob_store = executor.blob_store();
 
@@ -416,18 +427,29 @@ pub async fn get_run_steps(
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(workflow_id.clone())))?;
 
     // Build step status map from ItemDetails.steps
-    // For multi-item runs, we aggregate across items (using first item for now)
-    let step_statuses: HashMap<String, StepStatus> = execution
-        .item_details
-        .as_ref()
-        .and_then(|items| items.first())
-        .map(|item| {
-            item.steps
-                .iter()
-                .map(|s| (s.step_id.clone(), s.status))
-                .collect()
-        })
-        .unwrap_or_default();
+    let step_statuses: HashMap<String, StepStatus> = if let Some(item_index) = query.item_index {
+        // Specific item requested - return statuses for that item only
+        execution
+            .item_details
+            .as_ref()
+            .and_then(|items| items.get(item_index))
+            .map(|item| {
+                item.steps
+                    .iter()
+                    .map(|s| (s.step_id.clone(), s.status))
+                    .collect()
+            })
+            .ok_or_else(|| {
+                error_stack::report!(ServerError::InvalidRequest(format!(
+                    "Item index {} out of bounds (run has {} items)",
+                    item_index,
+                    execution.item_details.as_ref().map(|i| i.len()).unwrap_or(0)
+                )))
+            })?
+    } else {
+        // No item specified - aggregate across all items using "worst status" precedence
+        aggregate_step_statuses(&execution.item_details)
+    };
 
     // Build step responses from workflow definition.
     // Status comes from ItemDetails.steps; results are not included (use journal for detailed output).
@@ -452,6 +474,45 @@ pub async fn get_run_steps(
     Ok(Json(ListStepRunsResponse {
         steps: step_responses,
     }))
+}
+
+/// Aggregate step statuses across all items using "worst status" precedence.
+///
+/// For each step, the aggregated status is the "worst" status across all items:
+/// Failed > Running > Runnable > Blocked > Skipped > Completed
+fn aggregate_step_statuses(
+    item_details: &Option<Vec<stepflow_dtos::ItemDetails>>,
+) -> HashMap<String, StepStatus> {
+    let items = match item_details {
+        Some(items) if !items.is_empty() => items,
+        _ => return HashMap::new(),
+    };
+
+    let mut aggregated: HashMap<String, StepStatus> = HashMap::new();
+
+    for item in items {
+        for step in &item.steps {
+            let current = aggregated.entry(step.step_id.clone()).or_insert(step.status);
+            // Update if new status has higher precedence (is "worse")
+            if status_precedence(step.status) > status_precedence(*current) {
+                *current = step.status;
+            }
+        }
+    }
+
+    aggregated
+}
+
+/// Returns a precedence value for step status (higher = worse/more attention needed).
+fn status_precedence(status: StepStatus) -> u8 {
+    match status {
+        StepStatus::Completed => 0,
+        StepStatus::Skipped => 1,
+        StepStatus::Blocked => 2,
+        StepStatus::Runnable => 3,
+        StepStatus::Running => 4,
+        StepStatus::Failed => 5,
+    }
 }
 
 /// Cancel a running execution

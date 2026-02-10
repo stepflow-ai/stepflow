@@ -40,7 +40,7 @@ use super::state_store::CreateRunParams;
 /// (SQLite, NATS KV, CockroachDB, etc.) with consistent semantics.
 ///
 /// Blob storage is provided by the separate [`BlobStore`](crate::BlobStore) trait.
-/// Step-level execution details are handled by [`ExecutionJournal`] and
+/// Step-level execution details are handled by [`ExecutionJournal`](crate::ExecutionJournal) and
 /// recovered via journal replay during recovery.
 pub trait MetadataStore: Send + Sync {
     // =========================================================================

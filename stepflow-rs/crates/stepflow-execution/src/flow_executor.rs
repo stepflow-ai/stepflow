@@ -45,7 +45,7 @@ use stepflow_plugin::{SubflowReceiver, SubflowRequest, SubflowSubmitter};
 /// to determine task ordering and respecting concurrency limits. It supports
 /// both run-to-completion and streaming execution modes.
 ///
-/// Use [`FlowExecutorBuilder`] to create instances.
+/// Use [`crate::FlowExecutorBuilder`] to create instances.
 ///
 /// # Example
 ///

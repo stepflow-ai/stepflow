@@ -586,6 +586,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "item_index",
+            "in": "query",
+            "description": "Item index for multi-item runs. If not specified, aggregates across all items.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -600,7 +610,7 @@
             }
           },
           "400": {
-            "description": "Invalid run ID format"
+            "description": "Invalid run ID format or item index out of bounds"
           },
           "404": {
             "description": "Run not found"
