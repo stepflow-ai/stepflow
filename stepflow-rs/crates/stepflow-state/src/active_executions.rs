@@ -15,7 +15,7 @@
 //! This module provides [`ActiveExecutions`], a concurrent map that tracks all
 //! running workflow executions by their root run ID. This enables:
 //!
-//! - Graceful shutdown with lease release and cancellation
+//! - Graceful shutdown with cancellation
 //! - Monitoring the number of active executions
 //! - Preventing duplicate execution of the same run
 //!
@@ -30,8 +30,11 @@
 //! // Check how many are running
 //! println!("Active executions: {}", active.count());
 //!
-//! // Graceful shutdown
-//! active.shutdown();
+//! // Graceful shutdown - returns run IDs for lease release
+//! let run_ids = active.shutdown();
+//! for run_id in run_ids {
+//!     lease_manager.release_lease(run_id, orchestrator_id).await;
+//! }
 //! ```
 
 use std::future::Future;
@@ -119,24 +122,28 @@ impl ActiveExecutions {
 
     /// Initiate graceful shutdown.
     ///
-    /// This aborts all running execution tasks. Note that this does not
-    /// release leases - that should be handled by the caller if needed.
+    /// This aborts all running execution tasks and returns their run IDs.
+    /// The caller should release leases for the returned run IDs to allow
+    /// other orchestrators to immediately pick them up for recovery.
     ///
     /// # Returns
-    /// The number of executions that were cancelled.
-    pub fn shutdown(&self) -> usize {
-        let count = self.executions.len();
-
-        // Abort all running tasks
-        for entry in self.executions.iter() {
-            entry.value().abort();
-        }
+    /// The run IDs of executions that were cancelled.
+    pub fn shutdown(&self) -> Vec<Uuid> {
+        // Collect run IDs and abort tasks
+        let run_ids: Vec<Uuid> = self
+            .executions
+            .iter()
+            .map(|entry| {
+                entry.value().abort();
+                *entry.key()
+            })
+            .collect();
 
         // Clear the map
         self.executions.clear();
 
-        log::info!("Shutdown: cancelled {} active executions", count);
-        count
+        log::info!("Shutdown: cancelled {} active executions", run_ids.len());
+        run_ids
     }
 }
 
@@ -168,20 +175,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_shutdown() {
+    async fn test_shutdown_returns_run_ids() {
         let active = ActiveExecutions::new();
-        let run_id = Uuid::now_v7();
+        let run_id1 = Uuid::now_v7();
+        let run_id2 = Uuid::now_v7();
 
-        // Spawn a long-running task
-        active.spawn(run_id, async {
+        // Spawn long-running tasks
+        active.spawn(run_id1, async {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        });
+        active.spawn(run_id2, async {
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         });
 
-        assert_eq!(active.count(), 1);
+        assert_eq!(active.count(), 2);
 
-        // Shutdown should abort and clear
-        let cancelled = active.shutdown();
-        assert_eq!(cancelled, 1);
+        // Shutdown should abort, clear, and return run IDs
+        let cancelled_ids = active.shutdown();
+        assert_eq!(cancelled_ids.len(), 2);
+        assert!(cancelled_ids.contains(&run_id1));
+        assert!(cancelled_ids.contains(&run_id2));
         assert!(active.is_empty());
     }
 
@@ -203,4 +216,5 @@ mod tests {
         // Clean up
         active1.shutdown();
     }
+
 }
