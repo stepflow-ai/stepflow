@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -62,6 +63,8 @@ try:
     _HAS_LANGCHAIN = True
 except ImportError:
     _HAS_LANGCHAIN = False
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -364,7 +367,19 @@ class StepflowServer:
         # Extract blob API URL from capabilities if provided
         if isinstance(request.params, InitializeParams):
             if request.params.capabilities is not None:
-                self._blob_api_url = request.params.capabilities.blobApiUrl
+                blob_url = request.params.capabilities.blobApiUrl
+                if blob_url is not None:
+                    # Validate the URL has a valid scheme and netloc
+                    from urllib.parse import urlparse
+
+                    parsed = urlparse(blob_url)
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        self._blob_api_url = blob_url
+                    else:
+                        logger.warning(
+                            "Invalid blob API URL received: %s (must be http/https)",
+                            blob_url,
+                        )
 
         # Return protocol version
         result = InitializeResult(server_protocol_version=1)

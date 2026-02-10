@@ -28,56 +28,59 @@ use crate::{
 /// this function starts a background HTTP server to serve the blob API
 /// and other orchestrator endpoints.
 async fn create_environment(mut config: StepflowConfig) -> Result<Arc<StepflowEnvironment>> {
-    // Check if we need to start a background HTTP server for blob API
-    let needs_server = config.blob_api.enabled && config.blob_api.url.is_none();
-
-    if needs_server {
-        // Bind to port 0 to get an available port
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .change_context(MainError::Configuration)
-            .attach_printable("Failed to bind HTTP server for blob API")?;
-
-        let port = listener
-            .local_addr()
-            .change_context(MainError::Configuration)?
-            .port();
-
-        // Set the blob API URL in the config before creating the environment
-        config.blob_api.url = Some(format!("http://127.0.0.1:{port}/api/v1/blobs"));
-        log::info!(
-            "Starting background HTTP server for blob API at {}",
-            config.blob_api.url.as_ref().unwrap()
+    // If blob API URL is already configured or blob API is disabled, just create the environment
+    if config.blob_api.url.is_some() || !config.blob_api.enabled {
+        log::debug!(
+            "Blob API configuration: enabled={}, url={:?}",
+            config.blob_api.enabled,
+            config.blob_api.url
         );
-
-        // Create the environment with the configured blob API URL
-        let env = config
+        return config
             .create_environment()
             .await
-            .change_context(MainError::Configuration)?;
-
-        // Create the HTTP server router with the environment
-        let app = AppConfig {
-            include_swagger: false,
-            include_cors: false,
-        }
-        .create_app_router(env.clone(), port);
-
-        // Spawn the server in the background
-        tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
-                log::error!("Background HTTP server error: {e}");
-            }
-        });
-
-        Ok(env)
-    } else {
-        // No server needed, just create the environment
-        config
-            .create_environment()
-            .await
-            .change_context(MainError::Configuration)
+            .change_context(MainError::Configuration);
     }
+
+    // Blob API is enabled but no URL configured - start a background HTTP server
+    // Bind to port 0 to get an available port
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .change_context(MainError::Configuration)
+        .attach_printable("Failed to bind HTTP server for blob API")?;
+
+    let port = listener
+        .local_addr()
+        .change_context(MainError::Configuration)?
+        .port();
+
+    // Set the blob API URL in the config before creating the environment
+    config.blob_api.url = Some(format!("http://127.0.0.1:{port}/api/v1/blobs"));
+    log::info!(
+        "Starting background HTTP server for blob API at {}",
+        config.blob_api.url.as_ref().unwrap()
+    );
+
+    // Create the environment with the configured blob API URL
+    let env = config
+        .create_environment()
+        .await
+        .change_context(MainError::Configuration)?;
+
+    // Create the HTTP server router with the environment
+    let app = AppConfig {
+        include_swagger: false,
+        include_cors: false,
+    }
+    .create_app_router(env.clone(), port);
+
+    // Spawn the server in the background
+    tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, app).await {
+            log::error!("Background HTTP server error: {e}");
+        }
+    });
+
+    Ok(env)
 }
 
 /// Shared workflow operations
