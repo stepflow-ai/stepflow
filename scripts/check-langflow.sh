@@ -43,12 +43,21 @@ require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 # LANGFLOW SETUP
 # =============================================================================
 
-# Skip Python installation if already available
-if ! python3 --version >/dev/null 2>&1; then
-    run_check "Python install" uv python install || true
+# Detect Intel Mac - langflow requires Python <=3.12 on this platform due to
+# torch compatibility (agent-lifecycle-toolkit pins torch==2.2.2 which lacks 3.13 wheels)
+PYTHON_VERSION=""
+if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "x86_64" ]]; then
+    PYTHON_VERSION="3.12"
+    print_verbose "Intel Mac detected - using Python $PYTHON_VERSION (torch compatibility)"
 fi
 
-run_check "Dependencies" uv sync || true
+# Skip Python installation if already available
+if ! python3 --version >/dev/null 2>&1; then
+    run_check "Python install" uv python install ${PYTHON_VERSION:+$PYTHON_VERSION} || true
+fi
+
+# Use --python flag on Intel Mac to ensure correct version
+run_check "Dependencies" uv sync ${PYTHON_VERSION:+--python $PYTHON_VERSION} || true
 
 # =============================================================================
 # LANGFLOW CHECKS
