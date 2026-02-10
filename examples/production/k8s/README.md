@@ -8,54 +8,93 @@ The Stepflow K8s deployment provides a complete local development environment wi
 
 - **Stepflow Server**: Core workflow orchestration engine
 - **Load Balancer**: Pingora-based request routing to workers
-- **Langflow Worker**: Python-based component execution (3 replicas)
-- **OpenSearch**: Document storage and vector search
-- **Docling**: Document processing service (PDF, DOCX, images to structured formats)
+- **Langflow Worker**: Python-based component execution
+- **Docling Worker**: Document processing with sidecar architecture
+- **OpenSearch**: Document storage and vector search (with jvector plugin)
 - **Observability Stack**: Full telemetry pipeline (traces, metrics, logs)
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph client["Client"]
+        CLI["CLI / API Client"]
+    end
+
+    subgraph stepflow["stepflow namespace"]
+        Server["Stepflow Server<br/>(workflow engine)"]
+        LB["Load Balancer<br/>(Pingora)"]
+
+        subgraph workers["Worker Pods"]
+            LW1["Langflow<br/>Worker 1"]
+            LW2["Langflow<br/>Worker 2"]
+        end
+
+        subgraph docling["Docling Worker Pods (x3)"]
+            subgraph pod1["Pod 1"]
+                DC1["stepflow-docling"]
+                DS1["docling-serve<br/>sidecar"]
+            end
+            subgraph pod2["Pod 2"]
+                DC2["stepflow-docling"]
+                DS2["docling-serve<br/>sidecar"]
+            end
+            subgraph pod3["Pod 3"]
+                DC3["stepflow-docling"]
+                DS3["docling-serve<br/>sidecar"]
+            end
+        end
+
+        OS["OpenSearch<br/>(jvector)"]
+    end
+
+    subgraph o12y["stepflow-o12y namespace"]
+        OTEL["OTel Collector"]
+        Jaeger["Jaeger"]
+        Prometheus["Prometheus"]
+        Loki["Loki"]
+        Grafana["Grafana"]
+    end
+
+    CLI -->|":7840"| Server
+    Server --> LB
+    LB --> LW1 & LW2
+    LB --> DC1 & DC2 & DC3
+    DC1 -->|"localhost:5001"| DS1
+    DC2 -->|"localhost:5001"| DS2
+    DC3 -->|"localhost:5001"| DS3
+    LW1 & LW2 --> OS
+
+    Server & LB & LW1 & LW2 & DC1 & DC2 & DC3 -->|"OTLP"| OTEL
+    OTEL --> Jaeger & Prometheus & Loki
+    Grafana --> Jaeger & Prometheus & Loki
 ```
-                                    ┌─────────────────────────────────────┐
-                                    │         stepflow namespace          │
-┌──────────────┐                    │  ┌─────────────────────────────┐   │
-│   Client     │───────────────────▶│  │     Stepflow Server         │   │
-│  (localhost) │      :7840         │  │     (workflow engine)       │   │
-└──────────────┘                    │  └──────────────┬──────────────┘   │
-                                    │                 │                   │
-                                    │                 ▼                   │
-                                    │  ┌─────────────────────────────┐   │
-                                    │  │      Load Balancer          │   │
-                                    │  │   (Pingora, instance-aware) │   │
-                                    │  └──────────────┬──────────────┘   │
-                                    │                 │                   │
-                                    │       ┌─────────┼─────────┐        │
-                                    │       ▼         ▼         ▼        │
-                                    │  ┌─────────┐┌─────────┐┌─────────┐ │
-                                    │  │Langflow ││Langflow ││Langflow │ │
-                                    │  │Worker 1 ││Worker 2 ││Worker 3 │ │
-                                    │  └────┬────┘└────┬────┘└────┬────┘ │
-                                    │       │         │          │       │
-                                    │       └────┬────┴────┬─────┘       │
-                                    │            ▼         ▼             │
-                                    │  ┌─────────────┐ ┌─────────────┐   │
-                                    │  │ OpenSearch  │ │   Docling   │   │
-                                    │  │ (vectors)   │ │  (parsing)  │   │
-                                    │  └─────────────┘ └─────────────┘   │
-                                    └─────────────────────────────────────┘
-                                                      │
-                                                      │ OTLP
-                                                      ▼
-                                    ┌─────────────────────────────────────┐
-                                    │       stepflow-o12y namespace       │
-                                    │                                     │
-                                    │  OTel Collector → Jaeger (traces)   │
-                                    │                 → Prometheus (metrics)
-                                    │                 → Loki (logs)       │
-                                    │                                     │
-                                    │           Grafana (UI)              │
-                                    └─────────────────────────────────────┘
+
+### Docling Worker Architecture
+
+The docling-worker deployment uses a **sidecar pattern** for document processing:
+
+```mermaid
+flowchart LR
+    subgraph pod["Docling Worker Pod"]
+        direction TB
+        SF["stepflow-docling<br/>(component server)<br/>:8080"]
+        DS["docling-serve<br/>(document processor)<br/>:5001"]
+        SF -->|"localhost:5001"| DS
+    end
+
+    LB["Load Balancer"] -->|":8080"| SF
+    DS -->|"ML Models"| Models["Pre-loaded<br/>OCR/Layout Models"]
 ```
+
+Each docling-worker pod contains two containers:
+- **stepflow-docling**: Stepflow component server that handles incoming requests
+- **docling-serve**: The actual document processing engine (PDF, DOCX, images)
+
+This sidecar pattern provides:
+- Fast localhost communication (no network hop)
+- Independent scaling of document processing capacity
+- Isolated resource limits for CPU-intensive ML operations
 
 ## Prerequisites
 
@@ -70,10 +109,16 @@ The Stepflow K8s deployment provides a complete local development environment wi
 From the repository root:
 
 ```bash
-# Build all three images
-podman build -t stepflow-server:latest -f docker/Dockerfile.server .
-podman build -t stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
-podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
+# Build core Stepflow images
+podman build -t localhost/stepflow-server:latest -f docker/Dockerfile.server .
+podman build -t localhost/stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
+podman build -t localhost/langflow-worker:latest -f docker/langflow-worker/Dockerfile .
+
+# Build docling worker (from integrations/docling)
+podman build -t localhost/stepflow-docling:v14 -f integrations/docling/Dockerfile integrations/docling
+
+# Build OpenSearch with jvector plugin
+podman build -t localhost/opensearch-jvector:latest -f examples/production/k8s/stepflow/opensearch/Dockerfile examples/production/k8s/stepflow/opensearch
 ```
 
 ### 2. Create Kind Cluster
@@ -91,9 +136,14 @@ This creates a cluster named `stepflow` with port mappings for:
 ### 3. Load Images into Kind
 
 ```bash
-kind load docker-image stepflow-server:latest --name stepflow
-kind load docker-image stepflow-load-balancer:latest --name stepflow
-kind load docker-image langflow-worker:latest --name stepflow
+# Load all images into the Kind cluster
+# For Podman, use: podman save <image> | kind load image-archive /dev/stdin --name stepflow
+
+kind load docker-image localhost/stepflow-server:latest --name stepflow
+kind load docker-image localhost/stepflow-load-balancer:latest --name stepflow
+kind load docker-image localhost/langflow-worker:latest --name stepflow
+kind load docker-image localhost/stepflow-docling:v14 --name stepflow
+kind load docker-image localhost/opensearch-jvector:latest --name stepflow
 ```
 
 ### 4. Create Secrets
@@ -150,6 +200,64 @@ kubectl port-forward -n stepflow svc/docling-serve 5001:5001
 | `stepflow` | Application workloads (server, load balancer, workers) and infrastructure services (OpenSearch, Docling) |
 | `stepflow-o12y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
 
+## Running Workflows
+
+Two scripts are provided for processing documents through the ingestion pipeline.
+
+### Wikipedia Article Ingestion
+
+Process Wikipedia articles (HTML pages) through the pipeline:
+
+```bash
+# Process default article list (wikipedia-ai-articles.jsonl)
+./run-workflow.sh
+
+# Process custom URL file
+./run-workflow.sh my-urls.txt
+
+# Run with parallel execution
+./run-workflow.sh --parallel 3 wikipedia-ai-articles.jsonl
+
+# Dry run to see what would be processed
+./run-workflow.sh --dry-run
+```
+
+**Options:**
+| Flag | Description |
+|------|-------------|
+| `-p, --parallel N` | Run N workflows concurrently (default: 1) |
+| `-f, --flow FILE` | Use custom flow file |
+| `-v, --vars FILE` | Use custom variables file |
+| `--dry-run` | Show URLs without executing |
+
+### PDF Document Ingestion
+
+Process PDF documents (downloads from arxiv.org) through the pipeline:
+
+```bash
+# Download papers and run workflow
+./run-pdf-workflow.sh
+
+# Skip download, use existing PDFs
+./run-pdf-workflow.sh --skip-download
+
+# Run with higher parallelism
+./run-pdf-workflow.sh --skip-download --parallelism 4
+
+# Download only (no workflow execution)
+./run-pdf-workflow.sh --download-only
+```
+
+**Options:**
+| Flag | Description |
+|------|-------------|
+| `--parallelism N` | Number of parallel workflow submissions (default: 2) |
+| `--skip-download` | Skip PDF download, use existing files |
+| `--download-only` | Only download PDFs, don't run workflow |
+| `--pdf-dir DIR` | Directory to store PDFs (default: ./arxiv-pdfs) |
+
+**Note:** Both scripts require `OPENAI_API_KEY` environment variable for embedding generation.
+
 ## Teardown
 
 To remove all resources:
@@ -201,6 +309,29 @@ The server configuration is stored in `k8s/stepflow/server/configmap.yaml`. Key 
 - Routes `/builtin/*` to built-in components
 - Sends telemetry to OTel Collector
 
+### Docling Worker Configuration
+
+The docling-worker deployment (`stepflow/docling/deployment.yaml`) includes tuned settings for document processing:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Replicas | 3 | Number of docling worker pods |
+| CPU Request/Limit | 1000m / 4000m | CPU cores for docling-serve container |
+| Memory Request/Limit | 2Gi / 6Gi | Memory for docling-serve container |
+| `OMP_NUM_THREADS` | 4 | OpenMP thread limit to prevent contention |
+| `DOCLING_SERVE_MAX_SYNC_WAIT` | 300 | Sync conversion timeout in seconds |
+
+The extended timeout (300s vs default 120s) accommodates large PDF documents that require significant processing time.
+
+### Langflow Worker Configuration
+
+The langflow-worker deployment (`stepflow/langflow-worker/deployment.yaml`) includes:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Replicas | 2 | Number of langflow worker pods |
+| `OPENSEARCH_MAX_CONNECTIONS` | 20 | Connection pool size for OpenSearch |
+
 ### Environment Variables
 
 All services are configured via environment variables in their deployment manifests. Sensitive values (API keys, passwords) are referenced from the `stepflow-secrets` secret.
@@ -229,11 +360,12 @@ This deployment distinguishes between two types of services:
 
 ### Routed Components
 
-Components accessible via the Stepflow routing configuration (e.g., `/langflow/*`, `/builtin/*`). These are invoked by workflow steps and routed through the load balancer.
+Components accessible via the Stepflow routing configuration. These are invoked by workflow steps and routed through the load balancer.
 
 | Path Pattern | Plugin | Description |
 |--------------|--------|-------------|
 | `/langflow/*` | langflow_k8s | Langflow components via load balancer |
+| `/docling/*` | docling_k8s | Docling document processing via load balancer |
 | `/builtin/*` | builtin | Built-in components (OpenAI, eval, etc.) |
 
 ### Infrastructure Services
@@ -242,10 +374,19 @@ Backend services accessed directly by workers via Kubernetes DNS. These are NOT 
 
 | Service | DNS Endpoint | Port | Purpose |
 |---------|--------------|------|---------|
-| OpenSearch | `opensearch.stepflow.svc.cluster.local` | 9200 | Document storage, vector search |
-| Docling | `docling-serve.stepflow.svc.cluster.local` | 5001 | Document processing (PDF, DOCX, images) |
+| OpenSearch | `opensearch.stepflow.svc.cluster.local` | 9200 | Document storage, vector search (jvector) |
 
-Workers discover these services through environment variables (e.g., `OPENSEARCH_HOST`, `DOCLING_SERVE_URL`).
+### Docling Sidecar Communication
+
+Within docling-worker pods, the stepflow-docling container communicates with its docling-serve sidecar via localhost:
+
+```
+stepflow-docling container → localhost:5001 → docling-serve container
+```
+
+This is configured via the `DOCLING_SERVE_URL` environment variable set to `http://localhost:5001`.
+
+Workers discover OpenSearch through environment variables (e.g., `OPENSEARCH_HOST`, `OPENSEARCH_PORT`).
 
 ## Observability
 
@@ -299,4 +440,6 @@ This deployment is designed for local development. For production:
    - Queue-based scaling for batch processing workloads
    - Pod disruption budgets for availability
 
-4. **Direct Docling Routing**: Future work may add `/docling/{*component}` routes for direct component access from workflows, enabling Docling as a routed component rather than infrastructure service.
+4. **Async Document Processing**: The current implementation uses synchronous docling-serve API calls. Future work may leverage the async API (`/v1/convert/source/async`) with polling for better throughput under heavy load.
+
+5. **Batch Submission**: Leverage Stepflow's native batch submission capabilities for processing large document sets more efficiently.
