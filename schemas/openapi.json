@@ -1800,6 +1800,13 @@
             ],
             "format": "uuid",
             "description": "Parent run ID if this is a sub-flow.\n\nNone for top-level runs, Some(parent_id) for sub-flows."
+          },
+          "orchestratorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The orchestrator currently managing this run.\n\nNone means the run is orphaned (no orchestrator owns it).\nSet when the run is created and updated during recovery."
           }
         }
       },

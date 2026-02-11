@@ -120,7 +120,7 @@ sequenceDiagram
     Note over Orch: Recovery on Restart
     Orch->>Meta: list_runs(status=Running)
     loop For each run
-        Orch->>Lease: acquire_lease(run_id)
+        Orch->>Lease: acquire_lease(run_id, orchestrator_id, ttl)
         alt Acquired
             Orch->>Meta: get_run(run_id)
             Orch->>Journal: read_from(root_run_id, seq=0)

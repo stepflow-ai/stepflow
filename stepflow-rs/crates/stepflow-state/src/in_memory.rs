@@ -13,7 +13,7 @@
 use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use stepflow_core::status::ExecutionStatus;
 
 use crate::{
@@ -487,9 +487,9 @@ impl MetadataStore for InMemoryStateStore {
 
     fn orphan_runs_by_stale_orchestrators(
         &self,
-        live_orchestrator_ids: &[String],
+        live_orchestrator_ids: &HashSet<String>,
     ) -> BoxFuture<'_, error_stack::Result<usize, StateError>> {
-        let live_ids: Vec<String> = live_orchestrator_ids.to_vec();
+        let live_ids = live_orchestrator_ids.clone();
         async move {
             let mut orphaned = 0;
             for mut entry in self.runs.iter_mut() {

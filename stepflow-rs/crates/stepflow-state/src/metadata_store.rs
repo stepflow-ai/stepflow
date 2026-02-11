@@ -23,6 +23,8 @@
 //! Step-level details (StepResult, StepInfo, StepStatus) are recovered from the
 //! ExecutionJournal during recovery, not stored in MetadataStore.
 
+use std::collections::HashSet;
+
 use futures::future::BoxFuture;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
@@ -199,7 +201,7 @@ pub trait MetadataStore: Send + Sync {
     /// * `live_orchestrator_ids` - IDs of currently active orchestrators
     fn orphan_runs_by_stale_orchestrators(
         &self,
-        live_orchestrator_ids: &[String],
+        live_orchestrator_ids: &HashSet<String>,
     ) -> BoxFuture<'_, error_stack::Result<usize, StateError>>;
 
     // =========================================================================

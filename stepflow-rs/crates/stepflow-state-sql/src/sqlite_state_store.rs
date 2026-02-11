@@ -10,6 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::collections::HashSet;
+
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
@@ -766,12 +768,18 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
         async move {
             let sql = "UPDATE runs SET orchestrator_id = ? WHERE id = ?";
-            sqlx::query(sql)
+            let result = sqlx::query(sql)
                 .bind(&orchestrator_id)
                 .bind(run_id.to_string())
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
+            if result.rows_affected() == 0 {
+                return Err(error_stack::Report::new(StateError::Internal)
+                    .attach_printable(format!(
+                        "update_run_orchestrator: no run found for id {run_id}"
+                    )));
+            }
             Ok(())
         }
         .boxed()
@@ -779,10 +787,10 @@ impl MetadataStore for SqliteStateStore {
 
     fn orphan_runs_by_stale_orchestrators(
         &self,
-        live_orchestrator_ids: &[String],
+        live_orchestrator_ids: &HashSet<String>,
     ) -> BoxFuture<'_, error_stack::Result<usize, StateError>> {
         let pool = self.pool.clone();
-        let live_ids: Vec<String> = live_orchestrator_ids.to_vec();
+        let live_ids: Vec<String> = live_orchestrator_ids.iter().cloned().collect();
         async move {
             if live_ids.is_empty() {
                 // No live orchestrators — orphan all running runs that have an orchestrator
