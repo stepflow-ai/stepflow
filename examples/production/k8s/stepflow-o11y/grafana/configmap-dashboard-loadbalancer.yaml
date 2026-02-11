@@ -16,7 +16,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboard-loadbalancer
-  namespace: stepflow-o12y
+  namespace: stepflow-o11y
 data:
   load-balancer.json: |
     {

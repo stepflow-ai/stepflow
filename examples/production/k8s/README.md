@@ -48,7 +48,7 @@ flowchart TB
         OS["OpenSearch<br/>(jvector)"]
     end
 
-    subgraph o12y["stepflow-o12y namespace"]
+    subgraph o11y["stepflow-o11y namespace"]
         OTEL["OTel Collector"]
         Jaeger["Jaeger"]
         Prometheus["Prometheus"]
@@ -112,14 +112,58 @@ From the repository root:
 # Build core Stepflow images
 podman build -t localhost/stepflow-server:latest -f docker/Dockerfile.server .
 podman build -t localhost/stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
-podman build -t localhost/langflow-worker:latest -f docker/langflow-worker/Dockerfile .
+podman build -t localhost/langflow-worker:latest -f docker/langflow-component-server/Dockerfile .
 
-# Build docling worker (from integrations/docling)
-podman build -t localhost/stepflow-docling:v14 -f integrations/docling/Dockerfile integrations/docling
+# Build docling worker
+podman build -t localhost/stepflow-docling:v14 -f docker/docling-worker/Dockerfile .
 
 # Build OpenSearch with jvector plugin
 podman build -t localhost/opensearch-jvector:latest -f examples/production/k8s/stepflow/opensearch/Dockerfile examples/production/k8s/stepflow/opensearch
 ```
+
+#### Dockerfile Build Patterns
+
+The worker Dockerfiles use a **3-stage build pattern** with `uv sync --frozen` for reproducible, cache-efficient builds:
+
+```mermaid
+flowchart LR
+    subgraph Stage1["Stage 1: deps"]
+        D1["Copy pyproject.toml + uv.lock"]
+        D2["Create minimal package structure"]
+        D3["uv sync --frozen<br/>--no-install-project"]
+    end
+
+    subgraph Stage2["Stage 2: builder"]
+        B1["Copy full source code"]
+        B2["uv sync --frozen"]
+    end
+
+    subgraph Stage3["Stage 3: runtime"]
+        R1["Copy .venv only"]
+        R2["Create user"]
+        R3["Set entrypoint"]
+    end
+
+    Stage1 --> Stage2 --> Stage3
+```
+
+**Key optimizations:**
+- **Lock file reproducibility**: Uses `uv.lock` files with `--frozen` flag for exact version pinning
+- **Layer caching**: Dependencies in `deps` stage are cached unless `pyproject.toml` or `uv.lock` changes
+- **Minimal runtime**: Final image has no build tools (gcc, uv), only the Python venv
+- **Stdlib healthchecks**: Use `urllib.request` instead of external `requests` package
+
+**uv flags explained:**
+- `--frozen`: Use lock file exactly as-is (fails if out of sync)
+- `--no-install-project`: Install dependencies only, not the project itself
+- `--no-install-workspace`: For workspaces, install deps without workspace members
+- `--no-dev`: Skip development dependencies
+
+This pattern is used in:
+- `docker/langflow-component-server/Dockerfile` (langflow worker)
+- `docker/docling-worker/Dockerfile` (docling worker)
+
+See [uv Docker Integration Guide](https://docs.astral.sh/uv/guides/integration/docker/) for more details.
 
 ### 2. Create Kind Cluster
 
@@ -171,7 +215,7 @@ This deploys all components in the correct order with dependency waits.
 
 ```bash
 kubectl get pods -n stepflow
-kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow-o11y
 ```
 
 All pods should show `Running` status.
@@ -198,7 +242,7 @@ kubectl port-forward -n stepflow svc/docling-serve 5001:5001
 | Namespace | Purpose |
 |-----------|---------|
 | `stepflow` | Application workloads (server, load balancer, workers) and infrastructure services (OpenSearch, Docling) |
-| `stepflow-o12y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
+| `stepflow-o11y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
 
 ## Running Workflows
 
@@ -290,7 +334,7 @@ k8s/
 │   ├── langflow-worker/           # Python workers
 │   ├── opensearch/                # OpenSearch (infrastructure)
 │   └── docling/                   # Docling document processing (infrastructure)
-└── stepflow-o12y/                 # Observability manifests
+└── stepflow-o11y/                 # Observability manifests
     ├── otel-collector/            # OpenTelemetry Collector
     ├── jaeger/                    # Distributed tracing
     ├── prometheus/                # Metrics

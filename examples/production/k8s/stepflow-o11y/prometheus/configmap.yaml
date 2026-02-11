@@ -16,7 +16,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
-  namespace: stepflow-o12y
+  namespace: stepflow-o11y
 data:
   prometheus.yml: |
     # Prometheus configuration for Stepflow observability
@@ -39,7 +39,7 @@ data:
       # Scrape OpenTelemetry Collector's own metrics
       - job_name: 'otel-collector'
         static_configs:
-          - targets: ['otel-collector.stepflow-o12y.svc.cluster.local:8888']
+          - targets: ['otel-collector.stepflow-o11y.svc.cluster.local:8888']
             labels:
               component: 'otel-collector'
 
@@ -47,28 +47,28 @@ data:
       # This is where Stepflow application metrics will appear
       - job_name: 'stepflow-via-otel'
         static_configs:
-          - targets: ['otel-collector.stepflow-o12y.svc.cluster.local:8889']
+          - targets: ['otel-collector.stepflow-o11y.svc.cluster.local:8889']
             labels:
               source: 'otlp'
 
       # Jaeger metrics
       - job_name: 'jaeger'
         static_configs:
-          - targets: ['jaeger.stepflow-o12y.svc.cluster.local:14269']
+          - targets: ['jaeger.stepflow-o11y.svc.cluster.local:14269']
             labels:
               component: 'jaeger'
 
       # Loki metrics
       - job_name: 'loki'
         static_configs:
-          - targets: ['loki.stepflow-o12y.svc.cluster.local:3100']
+          - targets: ['loki.stepflow-o11y.svc.cluster.local:3100']
             labels:
               component: 'loki'
 
       # Grafana metrics
       - job_name: 'grafana'
         static_configs:
-          - targets: ['grafana.stepflow-o12y.svc.cluster.local:3000']
+          - targets: ['grafana.stepflow-o11y.svc.cluster.local:3000']
             labels:
               component: 'grafana'
 

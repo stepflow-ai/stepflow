@@ -16,7 +16,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-datasources
-  namespace: stepflow-o12y
+  namespace: stepflow-o11y
 data:
   datasources.yaml: |
     # Grafana datasources provisioning for Stepflow observability
@@ -32,7 +32,7 @@ data:
         type: prometheus
         uid: prometheus
         access: proxy
-        url: http://prometheus.stepflow-o12y.svc.cluster.local:9090
+        url: http://prometheus.stepflow-o11y.svc.cluster.local:9090
         isDefault: true
         editable: true
         jsonData:
@@ -48,7 +48,7 @@ data:
         type: loki
         uid: loki
         access: proxy
-        url: http://loki.stepflow-o12y.svc.cluster.local:3100
+        url: http://loki.stepflow-o11y.svc.cluster.local:3100
         editable: true
         jsonData:
           maxLines: 1000
@@ -67,7 +67,7 @@ data:
       - name: Jaeger
         type: jaeger
         access: proxy
-        url: http://jaeger.stepflow-o12y.svc.cluster.local:16686
+        url: http://jaeger.stepflow-o11y.svc.cluster.local:16686
         uid: jaeger
         editable: true
         jsonData:

@@ -126,7 +126,7 @@ spec:
           value: "langflow-worker"
         # Stepflow OpenTelemetry configuration
         - name: STEPFLOW_OTLP_ENDPOINT
-          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
         - name: STEPFLOW_TRACE_ENABLED
           value: "true"
         - name: STEPFLOW_LOG_DESTINATION

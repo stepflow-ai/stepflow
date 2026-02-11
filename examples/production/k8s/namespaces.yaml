@@ -14,7 +14,7 @@
 
 # Stepflow Kubernetes Namespaces
 # - stepflow: Application components (server, load balancer, workers, opensearch)
-# - stepflow-o12y: Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana)
+# - stepflow-o11y: Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana)
 
 apiVersion: v1
 kind: Namespace
@@ -27,7 +27,7 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: stepflow-o12y
+  name: stepflow-o11y
   labels:
-    name: stepflow-o12y
+    name: stepflow-o11y
     app.kubernetes.io/part-of: stepflow-observability

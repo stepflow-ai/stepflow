@@ -61,7 +61,7 @@ From the diagram, we have the following key components:
 
 This example architecture deployed into the `stepflow` namespace is designed around increasing the throughput and performance of Langflow workflow. We do this by distributing the workload across multiple worker pods. The Stepflow Orchestrator marshals the workflow execution, while the Stepflow Load Balancer ensures that requests are routed to the workers whenever `/langflow/*` is encountered in the workflow's YAML execution. Stepflow's Langflow Worker pods are responsible for executing the actual Langflow component code, and the Infrastructure Services provide additional functionality such as vector storage and document processing. We'll walk through the routing mechanics a bit further down, but the takeaway here is that we can scale our workers and right size machine instances to specific workloads to facilitate resource efficiency and high througput. 
 
-A separate `stepflow-o12y` namespace houses a full observability stack based on familiar open source tooling: OpenTelemetry Collector, Jaeger, Prometheus, Loki, and Grafana.
+A separate `stepflow-o11y` namespace houses a full observability stack based on familiar open source tooling: OpenTelemetry Collector, Jaeger, Prometheus, Loki, and Grafana.
 
 ## Converting a Langflow Flow to Stepflow YAML
 
@@ -406,11 +406,11 @@ This separation keeps the routing configuration simple while allowing workers to
 
 ## Observability: Traces, Metrics, and Logs
 
-Given we were building a distributed workflow system from the ground up, observability (commonly abbreviated as o12y) was baked in from the start via the [Open Telemetry](https://opentelemetry.io/docs/specs/otlp/) standard. Along those lines, we've created the `stepflow-o12y` namespace with common open source telemetry servcies to provide full observability for the Stepflow runtime. The `stepflow-o12y` namespace contains the following services which are detailed below:
+Given we were building a distributed workflow system from the ground up, observability (commonly abbreviated as o11y) was baked in from the start via the [Open Telemetry](https://opentelemetry.io/docs/specs/otlp/) standard. Along those lines, we've created the `stepflow-o11y` namespace with common open source telemetry servcies to provide full observability for the Stepflow runtime. The `stepflow-o11y` namespace contains the following services which are detailed below:
 
 ```mermaid
 flowchart TB
-    subgraph o12y["stepflow-o12y namespace"]
+    subgraph o11y["stepflow-o11y namespace"]
         OT["OTel Collector"] 
         
         subgraph backends["Telemetry Backends"]
@@ -486,7 +486,7 @@ kubectl create secret generic stepflow-secrets \
 
 # 6. Verify
 kubectl get pods -n stepflow
-kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow-o11y
 ```
 
 ### Submit a Workflow

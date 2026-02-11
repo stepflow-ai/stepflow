@@ -15,14 +15,22 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: otel-collector
-  namespace: stepflow-o12y
+  name: jaeger
+  namespace: stepflow-o11y
   labels:
-    app: otel-collector
+    app: jaeger
     component: observability
 spec:
   type: ClusterIP
   ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+      protocol: TCP
+    - name: grpc
+      port: 14250
+      targetPort: 14250
+      protocol: TCP
     - name: otlp-grpc
       port: 4317
       targetPort: 4317
@@ -32,41 +40,67 @@ spec:
       targetPort: 4318
       protocol: TCP
     - name: metrics
-      port: 8888
-      targetPort: 8888
-      protocol: TCP
-    - name: prom-exporter
-      port: 8889
-      targetPort: 8889
+      port: 14269
+      targetPort: 14269
       protocol: TCP
   selector:
-    app: otel-collector
+    app: jaeger
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-ui
+  namespace: stepflow-o11y
+  labels:
+    app: jaeger
+    component: observability
+spec:
+  type: NodePort
+  ports:
+    - name: ui
+      port: 16686
+      targetPort: 16686
+      nodePort: 30686
+      protocol: TCP
+  selector:
+    app: jaeger
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: otel-collector
-  namespace: stepflow-o12y
+  name: jaeger
+  namespace: stepflow-o11y
   labels:
-    app: otel-collector
+    app: jaeger
     component: observability
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: otel-collector
+      app: jaeger
   template:
     metadata:
       labels:
-        app: otel-collector
+        app: jaeger
         component: observability
     spec:
       containers:
-      - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
-        args:
-          - "--config=/etc/otel-collector-config.yaml"
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.54
+        env:
+          - name: COLLECTOR_OTLP_ENABLED
+            value: "true"
+          - name: SPAN_STORAGE_TYPE
+            value: "memory"
+          - name: MEMORY_MAX_TRACES
+            value: "10000"
         ports:
+          - name: ui
+            containerPort: 16686
+            protocol: TCP
+          - name: grpc
+            containerPort: 14250
+            protocol: TCP
           - name: otlp-grpc
             containerPort: 4317
             protocol: TCP
@@ -74,36 +108,24 @@ spec:
             containerPort: 4318
             protocol: TCP
           - name: metrics
-            containerPort: 8888
+            containerPort: 14269
             protocol: TCP
-          - name: prom-exporter
-            containerPort: 8889
-            protocol: TCP
-        volumeMounts:
-          - name: config
-            mountPath: /etc/otel-collector-config.yaml
-            subPath: config.yaml
-            readOnly: true
         resources:
           requests:
             memory: "256Mi"
             cpu: "100m"
           limits:
-            memory: "512Mi"
+            memory: "1Gi"
             cpu: "500m"
         livenessProbe:
           httpGet:
             path: /
-            port: 13133
+            port: 14269
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 13133
+            port: 14269
           initialDelaySeconds: 5
           periodSeconds: 5
-      volumes:
-        - name: config
-          configMap:
-            name: otel-collector-config
