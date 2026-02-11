@@ -775,10 +775,11 @@ impl MetadataStore for SqliteStateStore {
                 .await
                 .change_context(StateError::Internal)?;
             if result.rows_affected() == 0 {
-                return Err(error_stack::Report::new(StateError::Internal)
-                    .attach_printable(format!(
+                return Err(
+                    error_stack::Report::new(StateError::Internal).attach_printable(format!(
                         "update_run_orchestrator: no run found for id {run_id}"
-                    )));
+                    )),
+                );
             }
             Ok(())
         }

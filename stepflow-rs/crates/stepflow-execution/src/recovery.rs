@@ -282,10 +282,7 @@ async fn claim_for_recovery(
                 // live set.
                 if summary.orchestrator_id.as_deref() != Some(owner.as_str())
                     && let Err(e) = metadata_store
-                        .update_run_orchestrator(
-                            summary.run_id,
-                            Some(owner.as_str().to_string()),
-                        )
+                        .update_run_orchestrator(summary.run_id, Some(owner.as_str().to_string()))
                         .await
                 {
                     log::warn!(
