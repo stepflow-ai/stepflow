@@ -86,7 +86,7 @@ class BlobApiConfig(Struct, kw_only=True):
             ),
         ]
         | None
-    ) = None
+    ) = True
     url: (
         Annotated[
             str | None,

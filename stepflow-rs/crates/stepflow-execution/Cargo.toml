@@ -17,6 +17,7 @@ doctest = false
 
 [dependencies]
 bit-set.workspace = true
+bytes.workspace = true
 error-stack.workspace = true
 futures.workspace = true
 log.workspace = true

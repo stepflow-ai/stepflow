@@ -23,6 +23,8 @@
 //! Step-level details (StepResult, StepInfo, StepStatus) are recovered from the
 //! ExecutionJournal during recovery, not stored in MetadataStore.
 
+use std::collections::HashSet;
+
 use futures::future::BoxFuture;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
@@ -148,6 +150,59 @@ pub trait MetadataStore: Send + Sync {
         run_id: Uuid,
         order: ResultOrder,
     ) -> BoxFuture<'_, error_stack::Result<Vec<ItemResult>, StateError>>;
+
+    // =========================================================================
+    // Orchestrator Ownership
+    // =========================================================================
+
+    /// Update the orchestrator that owns a run.
+    ///
+    /// Set to `None` to mark the run as orphaned (available for claiming).
+    /// Set to `Some(id)` to assign the run to a specific orchestrator.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `orchestrator_id` - The new orchestrator owner, or None for orphaned
+    fn update_run_orchestrator(
+        &self,
+        run_id: Uuid,
+        orchestrator_id: Option<String>,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Mark all Running runs owned by orchestrators NOT in the live set as orphaned.
+    ///
+    /// This is a batch operation equivalent to:
+    /// ```sql
+    /// UPDATE runs SET orchestrator_id = NULL
+    /// WHERE orchestrator_id IS NOT NULL
+    ///   AND orchestrator_id NOT IN (live_ids)
+    ///   AND status = 'running'
+    /// ```
+    ///
+    /// Returns the number of runs that were orphaned.
+    ///
+    /// # Accuracy of the live set
+    ///
+    /// The `live_orchestrator_ids` set does **not** need to be perfectly accurate.
+    /// The lease manager is the source of truth for run ownership; the metadata
+    /// store's `orchestrator_id` is an optimization for efficient discovery.
+    ///
+    /// - **Superset** (includes a dead orchestrator as live): The dead orchestrator's
+    ///   runs won't be orphaned in this pass. They will be discovered in a future
+    ///   iteration once the dead orchestrator is no longer in the live set. Safe,
+    ///   but delays recovery.
+    ///
+    /// - **Subset** (misses a live orchestrator): The live orchestrator's runs get
+    ///   incorrectly marked as orphaned. When another orchestrator tries to claim
+    ///   them, `acquire_lease` returns `OwnedBy`, and the recovery module self-heals
+    ///   by writing the actual owner back to the metadata store.
+    ///
+    /// # Arguments
+    /// * `live_orchestrator_ids` - IDs of currently active orchestrators
+    fn orphan_runs_by_stale_orchestrators(
+        &self,
+        live_orchestrator_ids: &HashSet<String>,
+    ) -> BoxFuture<'_, error_stack::Result<usize, StateError>>;
 
     // =========================================================================
     // Completion Notification

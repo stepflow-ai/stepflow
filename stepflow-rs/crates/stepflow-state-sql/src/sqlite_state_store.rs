@@ -10,6 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::collections::HashSet;
+
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
@@ -118,7 +120,7 @@ impl SqliteStateStore {
 
         // Insert run metadata (items stored separately in run_items)
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id) VALUES (?, ?, ?, 'running', ?, ?, ?)";
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
@@ -127,6 +129,7 @@ impl SqliteStateStore {
             .bind(&overrides_json)
             .bind(params.root_run_id.to_string())
             .bind(params.parent_run_id.map(|id| id.to_string()))
+            .bind(&params.orchestrator_id)
             .execute(pool)
             .await
             .change_context(StateError::Internal)?;
@@ -248,7 +251,7 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -363,6 +366,8 @@ impl MetadataStore for SqliteStateStore {
                         .as_ref()
                         .and_then(|s| Uuid::parse_str(s).ok());
 
+                    let orchestrator_id: Option<String> = row.get("orchestrator_id");
+
                     let details = RunDetails {
                         summary: RunSummary {
                             run_id,
@@ -374,6 +379,7 @@ impl MetadataStore for SqliteStateStore {
                             completed_at,
                             root_run_id,
                             parent_run_id,
+                            orchestrator_id,
                         },
                         item_details: Some(item_details),
                         overrides: None,
@@ -398,7 +404,7 @@ impl MetadataStore for SqliteStateStore {
                 SELECT
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
-                    r.root_run_id, r.parent_run_id,
+                    r.root_run_id, r.parent_run_id, r.orchestrator_id,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
                     COALESCE(i.completed, 0) as item_completed,
@@ -452,6 +458,19 @@ impl MetadataStore for SqliteStateStore {
             // Filter for root runs only (no parent)
             if filters.roots_only == Some(true) {
                 conditions.push("r.parent_run_id IS NULL".to_string());
+            }
+
+            // Filter by orchestrator_id
+            if let Some(ref orch_filter) = filters.orchestrator_id {
+                match orch_filter {
+                    Some(orch_id) => {
+                        conditions.push("r.orchestrator_id = ?".to_string());
+                        bind_values.push(orch_id.clone());
+                    }
+                    None => {
+                        conditions.push("r.orchestrator_id IS NULL".to_string());
+                    }
+                }
             }
 
             if !conditions.is_empty() {
@@ -527,6 +546,8 @@ impl MetadataStore for SqliteStateStore {
                     .as_ref()
                     .and_then(|s| Uuid::parse_str(s).ok());
 
+                let orchestrator_id: Option<String> = row.get("orchestrator_id");
+
                 let summary = RunSummary {
                     run_id,
                     flow_name,
@@ -537,6 +558,7 @@ impl MetadataStore for SqliteStateStore {
                     completed_at,
                     root_run_id,
                     parent_run_id,
+                    orchestrator_id,
                 };
 
                 summaries.push(summary);
@@ -734,6 +756,68 @@ impl MetadataStore for SqliteStateStore {
             }
 
             Ok(items)
+        }
+        .boxed()
+    }
+
+    fn update_run_orchestrator(
+        &self,
+        run_id: Uuid,
+        orchestrator_id: Option<String>,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move {
+            let sql = "UPDATE runs SET orchestrator_id = ? WHERE id = ?";
+            let result = sqlx::query(sql)
+                .bind(&orchestrator_id)
+                .bind(run_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            if result.rows_affected() == 0 {
+                return Err(
+                    error_stack::Report::new(StateError::Internal).attach_printable(format!(
+                        "update_run_orchestrator: no run found for id {run_id}"
+                    )),
+                );
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn orphan_runs_by_stale_orchestrators(
+        &self,
+        live_orchestrator_ids: &HashSet<String>,
+    ) -> BoxFuture<'_, error_stack::Result<usize, StateError>> {
+        let pool = self.pool.clone();
+        let live_ids: Vec<String> = live_orchestrator_ids.iter().cloned().collect();
+        async move {
+            if live_ids.is_empty() {
+                // No live orchestrators — orphan all running runs that have an orchestrator
+                let sql = "UPDATE runs SET orchestrator_id = NULL WHERE orchestrator_id IS NOT NULL AND status = 'running'";
+                let result = sqlx::query(sql)
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+                return Ok(result.rows_affected() as usize);
+            }
+
+            // Build a parameterized IN clause for the live IDs
+            let placeholders: Vec<&str> = live_ids.iter().map(|_| "?").collect();
+            let sql = format!(
+                "UPDATE runs SET orchestrator_id = NULL WHERE orchestrator_id IS NOT NULL AND orchestrator_id NOT IN ({}) AND status = 'running'",
+                placeholders.join(", ")
+            );
+            let mut query = sqlx::query(&sql);
+            for id in &live_ids {
+                query = query.bind(id);
+            }
+            let result = query
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            Ok(result.rows_affected() as usize)
         }
         .boxed()
     }

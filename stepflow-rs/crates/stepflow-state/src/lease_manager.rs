@@ -13,8 +13,23 @@
 //! Lease management for distributed workflow orchestration.
 //!
 //! This module provides abstractions for managing run ownership in multi-orchestrator
-//! deployments. Leases ensure that only one orchestrator executes a given run at a time,
-//! and enable recovery of orphaned runs when an orchestrator crashes.
+//! deployments. Leases ensure that only one orchestrator executes a given run at a time.
+//!
+//! # Design Philosophy
+//!
+//! The `LeaseManager` trait is a pure coordination primitive. It handles ownership
+//! enforcement (acquire, renew, release) and orchestrator liveness (heartbeats), but
+//! does **not** query the metadata store or journal. This separation keeps the trait
+//! implementable by distributed backends like etcd, where:
+//!
+//! - Leases have native TTLs and expired keys are automatically deleted
+//! - A single etcd lease per orchestrator can efficiently release all run keys
+//!   during graceful shutdown (`release_all`)
+//! - Watch events on key deletions enable push-based orphan detection (`watch_orphans`)
+//!
+//! Recovery logic (identifying which runs need to be resumed) lives in the
+//! `stepflow_execution::recovery` module, which uses the `MetadataStore` as the
+//! source of truth for run status.
 //!
 //! # Key Concepts
 //!
@@ -24,18 +39,15 @@
 //! - **Orphaned Run**: A run whose lease has expired without completion, indicating
 //!   the owning orchestrator likely crashed.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use error_stack::Result;
+use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use crate::{
-    ExecutionJournal, LeaseInfo, MetadataStore, OrchestratorId, OrchestratorInfo, OrphanedRun,
-    RunRecoveryInfo,
-};
+use crate::{LeaseInfo, OrchestratorId, OrchestratorInfo};
 
 /// Error type for lease operations.
 #[derive(Debug, thiserror::Error)]
@@ -115,38 +127,37 @@ pub trait LeaseManager: Send + Sync {
         orchestrator_id: OrchestratorId,
     ) -> BoxFuture<'_, Result<(), LeaseError>>;
 
-    /// List runs with expired leases (orphaned runs).
-    ///
-    /// These are runs that were being executed by an orchestrator that crashed
-    /// or became unresponsive before completing the run.
-    fn list_orphaned_runs(&self) -> BoxFuture<'_, Result<Vec<OrphanedRun>, LeaseError>>;
-
-    /// Atomically claim ownership of orphaned runs.
-    ///
-    /// This is used during recovery to take over runs from crashed orchestrators.
-    /// The operation is atomic - if multiple orchestrators try to claim the same
-    /// run simultaneously, only one will succeed.
-    ///
-    /// # Arguments
-    /// * `orchestrator_id` - The orchestrator claiming the runs
-    /// * `max_claims` - Maximum number of runs to claim in this call
-    /// * `ttl` - TTL for the newly acquired leases
-    ///
-    /// # Returns
-    /// The run IDs that were successfully claimed
-    fn claim_orphaned_runs(
-        &self,
-        orchestrator_id: OrchestratorId,
-        max_claims: usize,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<Vec<Uuid>, LeaseError>>;
-
     /// Send a heartbeat to indicate this orchestrator is still alive.
     ///
     /// This is used to track active orchestrators for load balancing and
     /// orphan detection. Orchestrators that stop sending heartbeats may
     /// have their runs redistributed.
-    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>>;
+    ///
+    /// # Arguments
+    /// * `orchestrator_id` - The orchestrator sending the heartbeat
+    /// * `ttl` - How long the heartbeat should be valid before the orchestrator
+    ///   is considered dead
+    fn heartbeat(
+        &self,
+        orchestrator_id: OrchestratorId,
+        ttl: Duration,
+    ) -> BoxFuture<'_, Result<(), LeaseError>>;
+
+    /// Release all leases held by this orchestrator.
+    ///
+    /// This is intended for graceful shutdown — the orchestrator releases all
+    /// its run leases in a single operation so they can be immediately reclaimed
+    /// by other orchestrators.
+    ///
+    /// The default implementation returns `Ok(())` (no-op). Backends that can
+    /// efficiently release all leases (e.g., etcd lease revocation) should
+    /// override this.
+    fn release_all(
+        &self,
+        _orchestrator_id: OrchestratorId,
+    ) -> BoxFuture<'_, Result<(), LeaseError>> {
+        async { Ok(()) }.boxed()
+    }
 
     /// Get the current lease holder for a run, if any.
     ///
@@ -163,34 +174,6 @@ pub trait LeaseManager: Send + Sync {
     /// how many orphans each orchestrator should claim.
     fn list_orchestrators(&self) -> BoxFuture<'_, Result<Vec<OrchestratorInfo>, LeaseError>>;
 
-    /// Claim runs that need to be recovered and return their recovery info.
-    ///
-    /// This method encapsulates the recovery strategy for the lease manager:
-    /// - For `NoOpLeaseManager`: Queries metadata store for pending runs
-    /// - For distributed lease managers: Claims orphaned runs from failed orchestrators
-    ///
-    /// The implementation should:
-    /// 1. Identify runs that need recovery (crashed, orphaned, etc.)
-    /// 2. Acquire leases for those runs
-    /// 3. Query the metadata store for run details
-    /// 4. Return recovery info for each claimed run
-    ///
-    /// # Arguments
-    /// * `orchestrator_id` - The orchestrator claiming the runs
-    /// * `metadata_store` - The metadata store for querying run details
-    /// * `journal` - The execution journal (for determining replay offset)
-    /// * `limit` - Maximum number of runs to claim
-    ///
-    /// # Returns
-    /// A vector of `RunRecoveryInfo` for each claimed run
-    fn claim_for_recovery(
-        &self,
-        orchestrator_id: OrchestratorId,
-        metadata_store: &Arc<dyn MetadataStore>,
-        journal: &Arc<dyn ExecutionJournal>,
-        limit: usize,
-    ) -> BoxFuture<'_, Result<Vec<RunRecoveryInfo>, LeaseError>>;
-
     /// Subscribe to orphaned run notifications (push-based).
     ///
     /// Returns a receiver that yields run IDs as they become orphaned (e.g., when
@@ -199,7 +182,7 @@ pub trait LeaseManager: Send + Sync {
     ///
     /// # Returns
     /// * `Some(receiver)` - For implementations that support push notifications (e.g., etcd watches)
-    /// * `None` - For implementations that only support polling (caller should use periodic `claim_for_recovery`)
+    /// * `None` - For implementations that only support polling (caller should use periodic recovery)
     ///
     /// The default implementation returns `None`, indicating polling should be used.
     fn watch_orphans(&self) -> Option<tokio::sync::mpsc::UnboundedReceiver<Uuid>> {

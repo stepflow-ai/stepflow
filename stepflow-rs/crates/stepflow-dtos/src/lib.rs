@@ -128,6 +128,12 @@ pub struct RunSummary {
     /// None for top-level runs, Some(parent_id) for sub-flows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<Uuid>,
+    /// The orchestrator currently managing this run.
+    ///
+    /// None means the run is orphaned (no orchestrator owns it).
+    /// Set when the run is created and updated during recovery.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub orchestrator_id: Option<String>,
 }
 
 /// Detailed flow run information including item details.
@@ -163,6 +169,12 @@ pub struct RunFilters {
     pub roots_only: Option<bool>,
     /// Maximum depth for hierarchy queries (0 = root only).
     pub max_depth: Option<u32>,
+    /// Filter by orchestrator ID.
+    ///
+    /// - `Some(Some(id))` — runs owned by a specific orchestrator
+    /// - `Some(None)` — orphaned runs (orchestrator_id IS NULL)
+    /// - `None` — no orchestrator filter applied
+    pub orchestrator_id: Option<Option<String>>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -366,6 +378,7 @@ mod tests {
                 completed_at: Some(now),
                 root_run_id: run_id,
                 parent_run_id: None,
+                orchestrator_id: None,
             },
             item_details: Some(vec![ItemDetails {
                 item_index: 0,
