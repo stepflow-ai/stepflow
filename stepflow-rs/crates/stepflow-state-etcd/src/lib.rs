@@ -36,8 +36,7 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use stepflow_state::{
-    DEFAULT_LEASE_TTL_SECS, LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId,
-    OrchestratorInfo,
+    LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId, OrchestratorInfo,
 };
 use uuid::Uuid;
 
@@ -132,19 +131,7 @@ impl EtcdLeaseManager {
     }
 
     /// Create from an existing etcd client (useful for testing).
-    ///
-    /// Uses [`DEFAULT_LEASE_TTL_SECS`] for the lease TTL.
-    pub fn new(client: Client, key_prefix: String) -> Self {
-        Self {
-            client,
-            key_prefix,
-            ttl: Duration::from_secs(DEFAULT_LEASE_TTL_SECS),
-            orchestrator_lease: tokio::sync::RwLock::new(None),
-        }
-    }
-
-    /// Create from an existing etcd client with an explicit TTL (useful for testing).
-    pub fn new_with_ttl(client: Client, key_prefix: String, ttl: Duration) -> Self {
+    pub fn new(client: Client, key_prefix: String, ttl: Duration) -> Self {
         Self {
             client,
             key_prefix,
@@ -164,10 +151,7 @@ impl EtcdLeaseManager {
     /// in-memory without revoking the previous etcd lease. This shouldn't
     /// happen in normal operation since each `EtcdLeaseManager` instance is
     /// bound to one orchestrator.
-    async fn ensure_lease(
-        &self,
-        orchestrator_id: &OrchestratorId,
-    ) -> Result<i64, LeaseError> {
+    async fn ensure_lease(&self, orchestrator_id: &OrchestratorId) -> Result<i64, LeaseError> {
         // Fast path: lease already exists for this orchestrator
         {
             let guard = self.orchestrator_lease.read().await;
@@ -397,10 +381,7 @@ impl LeaseManager for EtcdLeaseManager {
         .boxed()
     }
 
-    fn heartbeat(
-        &self,
-        orchestrator_id: OrchestratorId,
-    ) -> BoxFuture<'_, Result<(), LeaseError>> {
+    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move {
             // Ensure the lease exists (idempotent after first call)
             let _lease_id = self.ensure_lease(&orchestrator_id).await?;

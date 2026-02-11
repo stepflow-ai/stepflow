@@ -426,14 +426,8 @@ impl LeaseComplianceTests {
             .find(|o| o.id == orch_b)
             .expect("orch-b should be in the list");
 
-        assert_eq!(
-            a_info.active_runs, 3,
-            "orch-a should have 3 active runs"
-        );
-        assert_eq!(
-            b_info.active_runs, 1,
-            "orch-b should have 1 active run"
-        );
+        assert_eq!(a_info.active_runs, 3, "orch-a should have 3 active runs");
+        assert_eq!(b_info.active_runs, 1, "orch-b should have 1 active run");
     }
 
     /// Test that release_all removes all leases for an orchestrator.
@@ -483,6 +477,9 @@ mod tests {
 
     #[tokio::test]
     async fn noop_lease_manager_compliance() {
-        LeaseComplianceTests::run_all_isolated(|| async { NoOpLeaseManager::new() }).await;
+        LeaseComplianceTests::run_all_isolated(|| async {
+            NoOpLeaseManager::new(std::time::Duration::from_secs(30))
+        })
+        .await;
     }
 }

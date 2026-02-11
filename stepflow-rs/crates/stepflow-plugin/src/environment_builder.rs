@@ -14,6 +14,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
@@ -194,7 +195,7 @@ impl StepflowEnvironmentBuilder {
         // Use provided lease manager or default to no-op (single-orchestrator mode)
         let lease_manager: Arc<dyn LeaseManager> = self
             .lease_manager
-            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new()));
+            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))));
 
         let mut env = StepflowEnvironment::new();
         env.insert(metadata_store);

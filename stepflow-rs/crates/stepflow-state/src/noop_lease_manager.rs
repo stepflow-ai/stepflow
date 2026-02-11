@@ -22,10 +22,7 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use crate::{
-    DEFAULT_LEASE_TTL_SECS, LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId,
-    OrchestratorInfo,
-};
+use crate::{LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId, OrchestratorInfo};
 
 /// Internal lease record for tracking acquired leases.
 #[derive(Debug, Clone)]
@@ -46,11 +43,12 @@ struct LeaseRecord {
 /// # Example
 ///
 /// ```rust
+/// use std::time::Duration;
 /// use stepflow_state::{LeaseManager, NoOpLeaseManager, OrchestratorId};
 /// use uuid::Uuid;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let manager = NoOpLeaseManager::new();
+/// let manager = NoOpLeaseManager::new(Duration::from_secs(30));
 /// let run_id = Uuid::now_v7();
 /// let orch_id = OrchestratorId::new("my-orchestrator");
 ///
@@ -79,23 +77,11 @@ impl std::fmt::Debug for NoOpLeaseManager {
     }
 }
 
-impl Default for NoOpLeaseManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl NoOpLeaseManager {
-    /// Create a new no-op lease manager with the default TTL.
-    pub fn new() -> Self {
-        Self {
-            leases: DashMap::new(),
-            ttl: Duration::from_secs(DEFAULT_LEASE_TTL_SECS),
-        }
-    }
-
-    /// Create a new no-op lease manager with an explicit TTL.
-    pub fn with_ttl(ttl: Duration) -> Self {
+    /// Create a new no-op lease manager with the given TTL.
+    ///
+    /// The TTL controls the `expires_at` field on acquired leases.
+    pub fn new(ttl: Duration) -> Self {
         Self {
             leases: DashMap::new(),
             ttl,
@@ -163,10 +149,7 @@ impl LeaseManager for NoOpLeaseManager {
         async move { Ok(()) }.boxed()
     }
 
-    fn heartbeat(
-        &self,
-        _orchestrator_id: OrchestratorId,
-    ) -> BoxFuture<'_, Result<(), LeaseError>> {
+    fn heartbeat(&self, _orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move { Ok(()) }.boxed()
     }
 
@@ -207,14 +190,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_noop_acquire_lease() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let run_id = Uuid::now_v7();
         let orch_id = OrchestratorId::new("test-orch");
 
-        let result = manager
-            .acquire_lease(run_id, orch_id)
-            .await
-            .unwrap();
+        let result = manager.acquire_lease(run_id, orch_id).await.unwrap();
 
         assert!(result.is_acquired());
         assert!(result.expires_at() > Utc::now());
@@ -222,7 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_noop_release_lease() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let run_id = Uuid::now_v7();
         let orch_id = OrchestratorId::new("test-orch");
 
@@ -232,7 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_noop_heartbeat() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let orch_id = OrchestratorId::new("test-orch");
 
         // Should not error
@@ -241,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_lease_returns_some_after_acquire() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let run_id = Uuid::now_v7();
         let orch_id = OrchestratorId::new("test-orch");
 
@@ -266,7 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_lease_returns_none_after_release() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let run_id = Uuid::now_v7();
         let orch_id = OrchestratorId::new("test-orch");
 
@@ -290,7 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_orchestrators_reflects_active_leases() {
-        let manager = NoOpLeaseManager::new();
+        let manager = NoOpLeaseManager::new(Duration::from_secs(30));
         let orch_id = OrchestratorId::new("test-orch");
 
         // Initially no orchestrators

@@ -242,7 +242,8 @@ mod tests {
         use crate::NoOpLeaseManager;
 
         let mut env = StepflowEnvironment::new();
-        let lease_manager: Arc<dyn LeaseManager> = Arc::new(NoOpLeaseManager::new());
+        let lease_manager: Arc<dyn LeaseManager> =
+            Arc::new(NoOpLeaseManager::new(std::time::Duration::from_secs(30)));
         env.insert(lease_manager);
 
         // Use the extension trait

@@ -47,12 +47,6 @@ use uuid::Uuid;
 
 use crate::{LeaseInfo, OrchestratorId, OrchestratorInfo};
 
-/// Default TTL for orchestrator leases, in seconds.
-///
-/// Heartbeats are sent at `DEFAULT_LEASE_TTL_SECS / 3` to keep the lease alive.
-/// If an orchestrator stops heartbeating, the lease expires after this duration.
-pub const DEFAULT_LEASE_TTL_SECS: u64 = 30;
-
 /// Error type for lease operations.
 #[derive(Debug, thiserror::Error)]
 pub enum LeaseError {
@@ -122,10 +116,7 @@ pub trait LeaseManager: Send + Sync {
     ///
     /// # Arguments
     /// * `orchestrator_id` - The orchestrator sending the heartbeat
-    fn heartbeat(
-        &self,
-        orchestrator_id: OrchestratorId,
-    ) -> BoxFuture<'_, Result<(), LeaseError>>;
+    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>>;
 
     /// Release all leases held by this orchestrator.
     ///

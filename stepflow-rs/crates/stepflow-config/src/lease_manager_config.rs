@@ -54,13 +54,12 @@ impl LeaseManagerConfig {
         lease_ttl: Duration,
     ) -> Result<Arc<dyn LeaseManager>, ConfigError> {
         match self {
-            LeaseManagerConfig::NoOp => Ok(Arc::new(NoOpLeaseManager::with_ttl(lease_ttl))),
+            LeaseManagerConfig::NoOp => Ok(Arc::new(NoOpLeaseManager::new(lease_ttl))),
             LeaseManagerConfig::Etcd(config) => {
-                let manager =
-                    stepflow_state_etcd::EtcdLeaseManager::connect(config, lease_ttl)
-                        .await
-                        .change_context(ConfigError::Configuration)
-                        .attach_printable("Failed to connect to etcd for lease management")?;
+                let manager = stepflow_state_etcd::EtcdLeaseManager::connect(config, lease_ttl)
+                    .await
+                    .change_context(ConfigError::Configuration)
+                    .attach_printable("Failed to connect to etcd for lease management")?;
                 Ok(Arc::new(manager))
             }
         }

@@ -117,7 +117,7 @@ async fn start_etcd() -> (ContainerAsync<GenericImage>, etcd_client::Client) {
 
 /// Create an EtcdLeaseManager connected to the test etcd instance.
 fn create_manager(client: etcd_client::Client, prefix: &str) -> EtcdLeaseManager {
-    EtcdLeaseManager::new(client, prefix.to_string())
+    EtcdLeaseManager::new(client, prefix.to_string(), Duration::from_secs(30))
 }
 
 // =============================================================================
@@ -178,7 +178,7 @@ async fn test_watch_orphans_on_lease_expiry() {
     let (_container, client) = start_etcd().await;
 
     // Use a short TTL so the etcd lease expires quickly
-    let manager = EtcdLeaseManager::new_with_ttl(
+    let manager = EtcdLeaseManager::new(
         client.clone(),
         "/test/watch-orphans".to_string(),
         Duration::from_secs(2),
@@ -211,4 +211,3 @@ async fn test_watch_orphans_on_lease_expiry() {
 
     assert_eq!(orphaned_run_id, run_id);
 }
-
