@@ -20,69 +20,52 @@
 # It provides Stepflow component endpoints that route to the local docling-serve.
 
 # Stage 1: Dependency installation (cached layer)
-# Dependencies are installed first so this layer is cached unless pyproject.toml changes
+# Dependencies are installed from uv.lock files for reproducibility
 FROM python:3.11-slim AS deps
 
-WORKDIR /build
+WORKDIR /app
 
-# Install build dependencies and uv
+# Install uv from official image (pinned version for reproducibility)
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /bin/uv
+
+# Install build dependencies (needed for some packages)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+    && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Copy dependency specification files for caching
+# stepflow-py workspace (includes stepflow-py and stepflow-orchestrator)
+COPY sdks/python/pyproject.toml sdks/python/uv.lock ./sdks/python/
+COPY sdks/python/stepflow-py/pyproject.toml ./sdks/python/stepflow-py/
+COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orchestrator/
 
-# Copy dependency files first for better layer caching
-COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
-COPY integrations/docling/pyproject.toml /tmp/stepflow-docling/pyproject.toml
+# stepflow-docling
+COPY integrations/docling/pyproject.toml integrations/docling/uv.lock ./integrations/docling/
 
-# Install core dependencies (this layer is cached unless pyproject.toml files change)
-RUN uv pip install --python /opt/venv/bin/python \
-    # stepflow-docling deps
-    httpx>=0.25.0 \
-    click>=8.0 \
-    python-dotenv>=1.0.0 \
-    nest-asyncio>=1.6.0 \
-    # stepflow-py core deps
-    msgspec>=0.19.0 \
-    jsonschema>=4.17.0 \
-    pydantic>=2.0.0 \
-    aiohttp>=3.9.0 \
-    aiohttp-retry>=2.8.0 \
-    python-dateutil>=2.8.2 \
-    typing-extensions>=4.7.1 \
-    urllib3>=2.0.0 \
-    # stepflow-py http deps
-    fastapi>=0.104.1 \
-    uvicorn>=0.24.0 \
-    sse-starlette>=1.6.5 \
-    # opentelemetry deps
-    opentelemetry-api>=1.20.0 \
-    opentelemetry-sdk>=1.20.0 \
-    opentelemetry-exporter-otlp-proto-grpc>=1.20.0 \
-    opentelemetry-instrumentation-httpx>=0.48b0
+# Create minimal package structure for uv to resolve dependencies
+RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
+    touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
+    touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py && \
+    mkdir -p integrations/docling/src/stepflow_docling && \
+    touch integrations/docling/src/stepflow_docling/__init__.py
+
+# Install dependencies only (cached unless pyproject.toml/uv.lock change)
+# Use --frozen to ensure lock file is used exactly as-is
+RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http
+RUN cd integrations/docling && uv sync --frozen --no-install-project --no-dev
 
 
 # Stage 2: Application code (changes frequently, but deps layer is cached)
 FROM deps AS builder
 
-# Copy stepflow-py SDK source
-COPY sdks/python/stepflow-py /tmp/stepflow-py
+# Copy full source code
+COPY sdks/python ./sdks/python/
+COPY integrations/docling ./integrations/docling/
 
-# Copy docling integration source
-COPY integrations/docling /tmp/stepflow-docling
-
-# Install stepflow-py from local copy with HTTP support (no deps - already installed)
-RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-py[http]
-
-# Install stepflow-docling (no deps - already installed)
-RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-docling
-
-# Clean up source copies (keep venv clean)
-RUN rm -rf /tmp/stepflow-py /tmp/stepflow-docling
+# Install the actual packages (deps already installed)
+RUN cd sdks/python && uv sync --frozen --no-dev --extra http
+RUN cd integrations/docling && uv sync --frozen --no-dev
 
 
 # Stage 3: Minimal runtime image (no build tools)
@@ -90,9 +73,12 @@ FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
-# Copy virtual environment from builder (includes all installed packages)
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Copy virtual environments from builder
+COPY --from=builder /app/sdks/python/.venv ./sdks/python/.venv
+COPY --from=builder /app/integrations/docling/.venv ./integrations/docling/.venv
+
+# Add both venvs to PATH (docling venv takes precedence)
+ENV PATH="/app/integrations/docling/.venv/bin:/app/sdks/python/.venv/bin:$PATH"
 
 # Create non-root user
 RUN useradd --create-home --uid 1000 appuser \

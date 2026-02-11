@@ -123,24 +123,23 @@ podman build -t localhost/opensearch-jvector:latest -f examples/production/k8s/s
 
 #### Dockerfile Build Patterns
 
-The worker Dockerfiles use a **3-stage build pattern** for cache efficiency and smaller images:
+The worker Dockerfiles use a **3-stage build pattern** with `uv sync --frozen` for reproducible, cache-efficient builds:
 
 ```mermaid
 flowchart LR
     subgraph Stage1["Stage 1: deps"]
-        D1["Install uv"]
-        D2["Create venv"]
-        D3["Install dependencies"]
+        D1["Copy pyproject.toml + uv.lock"]
+        D2["Create minimal package structure"]
+        D3["uv sync --frozen<br/>--no-install-project"]
     end
 
     subgraph Stage2["Stage 2: builder"]
-        B1["Copy source code"]
-        B2["Install packages<br/>(--no-deps)"]
-        B3["Cleanup /tmp"]
+        B1["Copy full source code"]
+        B2["uv sync --frozen"]
     end
 
     subgraph Stage3["Stage 3: runtime"]
-        R1["Copy venv only"]
+        R1["Copy .venv only"]
         R2["Create user"]
         R3["Set entrypoint"]
     end
@@ -149,14 +148,22 @@ flowchart LR
 ```
 
 **Key optimizations:**
-- **Layer caching**: Dependencies in `deps` stage are cached unless `pyproject.toml` changes
+- **Lock file reproducibility**: Uses `uv.lock` files with `--frozen` flag for exact version pinning
+- **Layer caching**: Dependencies in `deps` stage are cached unless `pyproject.toml` or `uv.lock` changes
 - **Minimal runtime**: Final image has no build tools (gcc, uv), only the Python venv
-- **Source cleanup**: `/tmp` source copies are removed before creating runtime image
 - **Stdlib healthchecks**: Use `urllib.request` instead of external `requests` package
+
+**uv flags explained:**
+- `--frozen`: Use lock file exactly as-is (fails if out of sync)
+- `--no-install-project`: Install dependencies only, not the project itself
+- `--no-install-workspace`: For workspaces, install deps without workspace members
+- `--no-dev`: Skip development dependencies
 
 This pattern is used in:
 - `docker/langflow-component-server/Dockerfile` (langflow worker)
 - `docker/docling-worker/Dockerfile` (docling worker)
+
+See [uv Docker Integration Guide](https://docs.astral.sh/uv/guides/integration/docker/) for more details.
 
 ### 2. Create Kind Cluster
 

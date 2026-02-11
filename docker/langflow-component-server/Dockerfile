@@ -17,6 +17,7 @@
 # Build context: repository root (stepflow/)
 #
 # Uses langflowai/langflow:1.7.1 as base to match project dependencies
+# Note: langflow base image already has uv and a venv at /app/.venv
 
 # Stage 1: Dependency installation (cached layer)
 FROM langflowai/langflow:1.7.1 AS deps
@@ -26,53 +27,45 @@ WORKDIR /app
 # Switch to root for installations
 USER root
 
-# Copy dependency files first for better layer caching
-COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
-COPY integrations/langflow/pyproject.toml /tmp/stepflow-langflow/pyproject.toml
+# Copy dependency specification files for caching
+# stepflow-py workspace
+COPY sdks/python/pyproject.toml sdks/python/uv.lock ./sdks/python/
+COPY sdks/python/stepflow-py/pyproject.toml ./sdks/python/stepflow-py/
+COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orchestrator/
 
-# Install dependencies only (no source code yet)
-# This layer is cached unless pyproject.toml files change
-RUN uv pip install --python /app/.venv/bin/python \
-    msgspec>=0.19.0 \
-    jsonschema>=4.17.0 \
-    opentelemetry-api>=1.20.0 \
-    opentelemetry-sdk>=1.20.0 \
-    opentelemetry-exporter-otlp-proto-grpc>=1.20.0 \
-    fastapi>=0.104.1 \
-    uvicorn>=0.24.0 \
-    sse-starlette>=1.6.5 \
-    pyyaml>=6.0 \
-    click>=8.0 \
-    pydantic>=2.0.0 \
-    pandas>=2.0.0 \
-    python-dotenv>=1.0.0 \
-    openai>=1.0.0 \
-    langchain_core>=0.1.0 \
-    langchain_openai>=0.1.0 \
-    nest-asyncio>=1.6.0 \
-    opensearch-py>=2.8.0
+# stepflow-langflow integration
+COPY integrations/langflow/pyproject.toml integrations/langflow/uv.lock ./integrations/langflow/
+
+# Create minimal package structure for uv to resolve dependencies
+RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
+    touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
+    touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py && \
+    mkdir -p integrations/langflow/src/stepflow_langflow_integration && \
+    touch integrations/langflow/src/stepflow_langflow_integration/__init__.py
+
+# Install dependencies only (cached unless pyproject.toml/uv.lock change)
+# Note: langflow base image venv is at /app/.venv, use --python to target it
+RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http --python /app/.venv/bin/python
+RUN cd integrations/langflow && uv sync --frozen --no-install-project --no-dev --python /app/.venv/bin/python
 
 
 # Stage 2: Application code (changes frequently, but deps layer is cached)
 FROM deps AS runtime
 
-# Copy stepflow-py SDK source
-COPY sdks/python/stepflow-py /tmp/stepflow-py
+# Copy full source code
+COPY sdks/python ./sdks/python/
+COPY integrations/langflow ./integrations/langflow/
 
-# Copy langflow integration source
-COPY integrations/langflow /tmp/stepflow-langflow
+# Install the actual packages (deps already installed)
+RUN cd sdks/python && uv sync --frozen --no-dev --extra http --python /app/.venv/bin/python
+RUN cd integrations/langflow && uv sync --frozen --no-dev --python /app/.venv/bin/python
 
-# Install stepflow-py from local copy with HTTP support (no deps - already installed)
-RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/stepflow-py[http]
-
-# Install lfx (required by langflow components)
+# Install lfx (required by langflow components, not in lock file)
 RUN uv pip install --python /app/.venv/bin/python "lfx==0.2.1"
 
-# Install langflow integration (skip deps - already installed above)
-RUN uv pip install --python /app/.venv/bin/python --no-deps /tmp/stepflow-langflow
-
 # Clean up source copies to reduce image size
-RUN rm -rf /tmp/stepflow-py /tmp/stepflow-langflow
+RUN rm -rf sdks/python integrations/langflow
 
 # Copy component server entry point
 COPY docker/langflow-component-server/components.py /app/
@@ -85,9 +78,9 @@ USER 1000
 # Expose HTTP port
 EXPOSE 8080
 
-# Health check
+# Health check - using urllib (no external deps needed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # Run component server in HTTP mode
 CMD ["python", "components.py", "--http"]

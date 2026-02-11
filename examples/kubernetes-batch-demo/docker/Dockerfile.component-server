@@ -14,48 +14,40 @@
 
 # Dockerfile for Python Component Server
 # Provides HTTP-based component execution for Stepflow workflows
+# Build context: repository root (stepflow/)
 
 # Stage 1: Dependency installation (cached layer)
 FROM python:3.12-slim AS deps
 
-WORKDIR /build
+WORKDIR /app
 
-# Install uv for fast Python package management
-RUN pip install --no-cache-dir uv
+# Install uv from official image (pinned version for reproducibility)
+COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /bin/uv
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Copy dependency specification files for caching
+# stepflow-py workspace
+COPY sdks/python/pyproject.toml sdks/python/uv.lock ./sdks/python/
+COPY sdks/python/stepflow-py/pyproject.toml ./sdks/python/stepflow-py/
+COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orchestrator/
 
-# Copy dependency file for layer caching
-COPY sdks/python/stepflow-py/pyproject.toml /tmp/stepflow-py/pyproject.toml
+# Create minimal package structure for uv to resolve dependencies
+RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
+    touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
+    touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py
 
-# Install stepflow-py dependencies (cached unless pyproject.toml changes)
-RUN uv pip install --python /opt/venv/bin/python \
-    msgspec>=0.19.0 \
-    jsonschema>=4.17.0 \
-    pydantic>=2.0.0 \
-    aiohttp>=3.9.0 \
-    aiohttp-retry>=2.8.0 \
-    python-dateutil>=2.8.2 \
-    typing-extensions>=4.7.1 \
-    urllib3>=2.0.0 \
-    fastapi>=0.104.1 \
-    uvicorn>=0.24.0 \
-    sse-starlette>=1.6.5
+# Install dependencies only (cached unless pyproject.toml/uv.lock change)
+RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http
 
 
 # Stage 2: Application code (changes frequently, but deps layer is cached)
 FROM deps AS builder
 
-# Copy stepflow-py SDK source
-COPY sdks/python/stepflow-py /tmp/stepflow-py
+# Copy full source code
+COPY sdks/python ./sdks/python/
 
-# Install stepflow-py from local copy with HTTP support (no deps - already installed)
-RUN uv pip install --python /opt/venv/bin/python --no-deps /tmp/stepflow-py[http]
-
-# Clean up source copies
-RUN rm -rf /tmp/stepflow-py
+# Install the actual packages (deps already installed)
+RUN cd sdks/python && uv sync --frozen --no-dev --extra http
 
 
 # Stage 3: Minimal runtime image (no build tools)
@@ -64,8 +56,8 @@ FROM python:3.12-slim AS runtime
 WORKDIR /app
 
 # Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=builder /app/sdks/python/.venv ./sdks/python/.venv
+ENV PATH="/app/sdks/python/.venv/bin:$PATH"
 
 # Copy component server code
 COPY examples/kubernetes-batch-demo/docker/components.py /app/
