@@ -89,7 +89,7 @@ spec:
           value: "true"
         # OpenTelemetry configuration
         - name: STEPFLOW_OTLP_ENDPOINT
-          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
         - name: OTEL_SERVICE_NAME
           value: "stepflow-docling"
         - name: OTEL_RESOURCE_ATTRIBUTES
@@ -151,7 +151,7 @@ spec:
         - name: DOCLING_SERVE_OTEL_SERVICE_NAME
           value: "docling-serve"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=kubernetes,service.namespace=stepflow"
         livenessProbe:

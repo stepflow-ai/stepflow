@@ -46,12 +46,12 @@ kubectl delete -f stepflow/opensearch/ --ignore-not-found
 
 # 3. Observability stack
 echo "[3/4] Removing observability stack..."
-kubectl delete -f stepflow-o12y/grafana/ --ignore-not-found
-kubectl delete -f stepflow-o12y/promtail/ --ignore-not-found
-kubectl delete -f stepflow-o12y/loki/ --ignore-not-found
-kubectl delete -f stepflow-o12y/prometheus/ --ignore-not-found
-kubectl delete -f stepflow-o12y/jaeger/ --ignore-not-found
-kubectl delete -f stepflow-o12y/otel-collector/ --ignore-not-found
+kubectl delete -f stepflow-o11y/grafana/ --ignore-not-found
+kubectl delete -f stepflow-o11y/promtail/ --ignore-not-found
+kubectl delete -f stepflow-o11y/loki/ --ignore-not-found
+kubectl delete -f stepflow-o11y/prometheus/ --ignore-not-found
+kubectl delete -f stepflow-o11y/jaeger/ --ignore-not-found
+kubectl delete -f stepflow-o11y/otel-collector/ --ignore-not-found
 
 # 4. Namespaces (cleans up any remaining resources)
 echo "[4/4] Removing namespaces..."

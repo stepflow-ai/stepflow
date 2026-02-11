@@ -171,7 +171,7 @@ spec:
         - name: DOCLING_SERVE_URL
           value: "http://localhost:5001"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://otel-collector.stepflow-o12y.svc.cluster.local:4317"
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
           
       - name: docling-serve
         image: quay.io/docling-project/docling-serve-cpu:latest

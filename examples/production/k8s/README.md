@@ -48,7 +48,7 @@ flowchart TB
         OS["OpenSearch<br/>(jvector)"]
     end
 
-    subgraph o12y["stepflow-o12y namespace"]
+    subgraph o11y["stepflow-o11y namespace"]
         OTEL["OTel Collector"]
         Jaeger["Jaeger"]
         Prometheus["Prometheus"]
@@ -208,7 +208,7 @@ This deploys all components in the correct order with dependency waits.
 
 ```bash
 kubectl get pods -n stepflow
-kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow-o11y
 ```
 
 All pods should show `Running` status.
@@ -235,7 +235,7 @@ kubectl port-forward -n stepflow svc/docling-serve 5001:5001
 | Namespace | Purpose |
 |-----------|---------|
 | `stepflow` | Application workloads (server, load balancer, workers) and infrastructure services (OpenSearch, Docling) |
-| `stepflow-o12y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
+| `stepflow-o11y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
 
 ## Running Workflows
 
@@ -327,7 +327,7 @@ k8s/
 │   ├── langflow-worker/           # Python workers
 │   ├── opensearch/                # OpenSearch (infrastructure)
 │   └── docling/                   # Docling document processing (infrastructure)
-└── stepflow-o12y/                 # Observability manifests
+└── stepflow-o11y/                 # Observability manifests
     ├── otel-collector/            # OpenTelemetry Collector
     ├── jaeger/                    # Distributed tracing
     ├── prometheus/                # Metrics

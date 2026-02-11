@@ -49,12 +49,12 @@ kubectl cluster-info --context kind-stepflow
 kubectl apply -f k8s/namespaces.yaml
 
 # Deploy observability stack
-kubectl apply -f k8s/stepflow-o12y/otel-collector/
-kubectl apply -f k8s/stepflow-o12y/jaeger/
-kubectl apply -f k8s/stepflow-o12y/prometheus/
-kubectl apply -f k8s/stepflow-o12y/loki/
-kubectl apply -f k8s/stepflow-o12y/promtail/
-kubectl apply -f k8s/stepflow-o12y/grafana/
+kubectl apply -f k8s/stepflow-o11y/otel-collector/
+kubectl apply -f k8s/stepflow-o11y/jaeger/
+kubectl apply -f k8s/stepflow-o11y/prometheus/
+kubectl apply -f k8s/stepflow-o11y/loki/
+kubectl apply -f k8s/stepflow-o11y/promtail/
+kubectl apply -f k8s/stepflow-o11y/grafana/
 
 # Deploy application stack
 kubectl apply -f k8s/stepflow/opensearch/
@@ -72,10 +72,10 @@ kubectl apply -f k8s/stepflow/langflow-worker/
 kubectl get pods -n stepflow
 
 # All observability pods
-kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow-o11y
 
 # All pods across both namespaces
-kubectl get pods -n stepflow && kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow && kubectl get pods -n stepflow-o11y
 
 # Watch pods (auto-refresh)
 kubectl get pods -n stepflow -w
@@ -104,10 +104,10 @@ kubectl rollout restart deployment/langflow-worker -n stepflow
 kubectl rollout restart deployment/opensearch -n stepflow
 
 # Restart observability components
-kubectl rollout restart deployment/otel-collector -n stepflow-o12y
-kubectl rollout restart deployment/grafana -n stepflow-o12y
-kubectl rollout restart deployment/jaeger -n stepflow-o12y
-kubectl rollout restart deployment/prometheus -n stepflow-o12y
+kubectl rollout restart deployment/otel-collector -n stepflow-o11y
+kubectl rollout restart deployment/grafana -n stepflow-o11y
+kubectl rollout restart deployment/jaeger -n stepflow-o11y
+kubectl rollout restart deployment/prometheus -n stepflow-o11y
 
 # Delete all pods in namespace (forces recreation)
 kubectl delete pods -n stepflow --all
@@ -139,19 +139,19 @@ kubectl logs -n stepflow deployment/stepflow-server --previous
 
 ```bash
 # OTel Collector logs
-kubectl logs -n stepflow-o12y deployment/otel-collector --tail=100
+kubectl logs -n stepflow-o11y deployment/otel-collector --tail=100
 
 # Grafana logs
-kubectl logs -n stepflow-o12y deployment/grafana --tail=100
+kubectl logs -n stepflow-o11y deployment/grafana --tail=100
 
 # Jaeger logs
-kubectl logs -n stepflow-o12y deployment/jaeger --tail=100
+kubectl logs -n stepflow-o11y deployment/jaeger --tail=100
 
 # Promtail logs (DaemonSet)
-kubectl logs -n stepflow-o12y -l app=promtail --tail=50
+kubectl logs -n stepflow-o11y -l app=promtail --tail=50
 
 # Loki logs
-kubectl logs -n stepflow-o12y statefulset/loki --tail=100
+kubectl logs -n stepflow-o11y statefulset/loki --tail=100
 ```
 
 ### Filtered Logs
@@ -186,19 +186,19 @@ kubectl port-forward -n stepflow svc/opensearch 9200:9200
 
 ```bash
 # Grafana (dashboards)
-kubectl port-forward -n stepflow-o12y svc/grafana 3000:3000
+kubectl port-forward -n stepflow-o11y svc/grafana 3000:3000
 
 # Jaeger (traces)
-kubectl port-forward -n stepflow-o12y svc/jaeger 16686:16686
+kubectl port-forward -n stepflow-o11y svc/jaeger 16686:16686
 
 # Prometheus (metrics)
-kubectl port-forward -n stepflow-o12y svc/prometheus 9090:9090
+kubectl port-forward -n stepflow-o11y svc/prometheus 9090:9090
 
 # Loki (logs API)
-kubectl port-forward -n stepflow-o12y svc/loki 3100:3100
+kubectl port-forward -n stepflow-o11y svc/loki 3100:3100
 
 # OTel Collector (for debugging)
-kubectl port-forward -n stepflow-o12y svc/otel-collector 4317:4317
+kubectl port-forward -n stepflow-o11y svc/otel-collector 4317:4317
 ```
 
 ### Background Port Forwarding
@@ -206,9 +206,9 @@ kubectl port-forward -n stepflow-o12y svc/otel-collector 4317:4317
 ```bash
 # Run all port forwards in background
 kubectl port-forward -n stepflow svc/stepflow-server 7840:7840 &
-kubectl port-forward -n stepflow-o12y svc/grafana 3000:3000 &
-kubectl port-forward -n stepflow-o12y svc/jaeger 16686:16686 &
-kubectl port-forward -n stepflow-o12y svc/prometheus 9090:9090 &
+kubectl port-forward -n stepflow-o11y svc/grafana 3000:3000 &
+kubectl port-forward -n stepflow-o11y svc/jaeger 16686:16686 &
+kubectl port-forward -n stepflow-o11y svc/prometheus 9090:9090 &
 
 # Kill all port forwards
 pkill -f "kubectl port-forward"
@@ -219,11 +219,11 @@ pkill -f "kubectl port-forward"
 ```bash
 # List all services
 kubectl get svc -n stepflow
-kubectl get svc -n stepflow-o12y
+kubectl get svc -n stepflow-o11y
 
 # Get service endpoints
 kubectl get endpoints -n stepflow
-kubectl get endpoints -n stepflow-o12y
+kubectl get endpoints -n stepflow-o11y
 ```
 
 ## Secrets
@@ -251,11 +251,11 @@ kubectl create secret generic stepflow-secrets --namespace=stepflow ...
 ```bash
 # List configmaps
 kubectl get configmaps -n stepflow
-kubectl get configmaps -n stepflow-o12y
+kubectl get configmaps -n stepflow-o11y
 
 # View configmap content
 kubectl get configmap stepflow-server-config -n stepflow -o yaml
-kubectl get configmap otel-collector-config -n stepflow-o12y -o yaml
+kubectl get configmap otel-collector-config -n stepflow-o11y -o yaml
 
 # Edit configmap (triggers restart needed)
 kubectl edit configmap stepflow-server-config -n stepflow
@@ -323,7 +323,7 @@ kubectl exec -n stepflow deployment/stepflow-server -- nslookup opensearch.stepf
 kubectl exec -n stepflow deployment/stepflow-server -- curl -s http://opensearch.stepflow.svc.cluster.local:9200
 
 # Test OTel Collector connectivity
-kubectl exec -n stepflow deployment/stepflow-server -- nc -zv otel-collector.stepflow-o12y.svc.cluster.local 4317
+kubectl exec -n stepflow deployment/stepflow-server -- nc -zv otel-collector.stepflow-o11y.svc.cluster.local 4317
 ```
 
 ### Resource Issues
@@ -334,10 +334,10 @@ kubectl describe node stepflow-control-plane
 
 # Check pod resource usage
 kubectl top pods -n stepflow
-kubectl top pods -n stepflow-o12y
+kubectl top pods -n stepflow-o11y
 
 # Check PVC status
-kubectl get pvc -n stepflow-o12y
+kubectl get pvc -n stepflow-o11y
 ```
 
 ### Exec into Pod
@@ -380,7 +380,7 @@ curl -s http://localhost:9200/_cluster/health | jq
 ```bash
 # Check all deployments ready
 kubectl get deployments -n stepflow
-kubectl get deployments -n stepflow-o12y
+kubectl get deployments -n stepflow-o11y
 
 # Wait for deployment
 kubectl rollout status deployment/stepflow-server -n stepflow --timeout=120s
@@ -393,18 +393,18 @@ Add to your shell profile (`~/.bashrc` or `~/.zshrc`):
 ```bash
 # Namespace shortcuts
 alias ks='kubectl -n stepflow'
-alias ko='kubectl -n stepflow-o12y'
+alias ko='kubectl -n stepflow-o11y'
 
 # Quick pod list
 alias ksp='kubectl get pods -n stepflow'
-alias kop='kubectl get pods -n stepflow-o12y'
+alias kop='kubectl get pods -n stepflow-o11y'
 
 # Quick logs
 alias ksl='kubectl logs -n stepflow'
-alias kol='kubectl logs -n stepflow-o12y'
+alias kol='kubectl logs -n stepflow-o11y'
 
 # Port forward shortcuts
 alias pf-stepflow='kubectl port-forward -n stepflow svc/stepflow-server 7840:7840'
-alias pf-grafana='kubectl port-forward -n stepflow-o12y svc/grafana 3000:3000'
-alias pf-jaeger='kubectl port-forward -n stepflow-o12y svc/jaeger 16686:16686'
+alias pf-grafana='kubectl port-forward -n stepflow-o11y svc/grafana 3000:3000'
+alias pf-jaeger='kubectl port-forward -n stepflow-o11y svc/jaeger 16686:16686'
 ```

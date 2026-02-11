@@ -35,18 +35,18 @@ echo "[1/7] Creating namespaces..."
 kubectl apply -f namespaces.yaml
 
 # 2. Observability stack (so telemetry endpoints are ready)
-echo "[2/7] Deploying observability stack (stepflow-o12y)..."
-kubectl apply -f stepflow-o12y/otel-collector/
-kubectl apply -f stepflow-o12y/jaeger/
-kubectl apply -f stepflow-o12y/prometheus/
-kubectl apply -f stepflow-o12y/loki/
-kubectl apply -f stepflow-o12y/promtail/
-kubectl apply -f stepflow-o12y/grafana/
+echo "[2/7] Deploying observability stack (stepflow-o11y)..."
+kubectl apply -f stepflow-o11y/otel-collector/
+kubectl apply -f stepflow-o11y/jaeger/
+kubectl apply -f stepflow-o11y/prometheus/
+kubectl apply -f stepflow-o11y/loki/
+kubectl apply -f stepflow-o11y/promtail/
+kubectl apply -f stepflow-o11y/grafana/
 
 # 3. Wait for OTel Collector to be ready (apps depend on it)
 echo "    Waiting for OTel Collector..."
 kubectl wait --for=condition=available --timeout=120s \
-    deployment/otel-collector -n stepflow-o12y 2>/dev/null || echo "    (OTel Collector not ready yet, continuing...)"
+    deployment/otel-collector -n stepflow-o11y 2>/dev/null || echo "    (OTel Collector not ready yet, continuing...)"
 
 # 4. Infrastructure services (data layer, apps may depend on them)
 echo "[3/7] Deploying infrastructure services (OpenSearch, Docling)..."
@@ -81,7 +81,7 @@ echo "=== Stepflow Namespace ==="
 kubectl get pods -n stepflow
 echo ""
 echo "=== Observability Namespace ==="
-kubectl get pods -n stepflow-o12y
+kubectl get pods -n stepflow-o11y
 echo ""
 echo "=== Access URLs ==="
 echo "Stepflow API:  http://localhost:7840  (via Kind port mapping)"
@@ -92,6 +92,6 @@ echo ""
 echo "Or use kubectl port-forward:"
 echo "  kubectl port-forward -n stepflow svc/stepflow-server 7840:7840"
 echo "  kubectl port-forward -n stepflow svc/docling-serve 5001:5001  # Docling API docs at /docs"
-echo "  kubectl port-forward -n stepflow-o12y svc/grafana 3000:3000"
-echo "  kubectl port-forward -n stepflow-o12y svc/jaeger 16686:16686"
-echo "  kubectl port-forward -n stepflow-o12y svc/prometheus 9090:9090"
+echo "  kubectl port-forward -n stepflow-o11y svc/grafana 3000:3000"
+echo "  kubectl port-forward -n stepflow-o11y svc/jaeger 16686:16686"
+echo "  kubectl port-forward -n stepflow-o11y svc/prometheus 9090:9090"
