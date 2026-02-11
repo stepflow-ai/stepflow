@@ -70,6 +70,7 @@ impl LeaseComplianceTests {
         Self::test_renew_by_non_owner_fails(manager).await;
         Self::test_release_by_non_owner_fails(manager).await;
         Self::test_release_all_clears_leases(manager).await;
+        Self::test_list_orchestrators_multiple_orchestrators(manager).await;
     }
 
     /// Run all compliance tests with a fresh manager for each test.
@@ -103,6 +104,7 @@ impl LeaseComplianceTests {
         Self::test_renew_by_non_owner_fails(&factory().await).await;
         Self::test_release_by_non_owner_fails(&factory().await).await;
         Self::test_release_all_clears_leases(&factory().await).await;
+        Self::test_list_orchestrators_multiple_orchestrators(&factory().await).await;
     }
 
     // =========================================================================
@@ -456,6 +458,62 @@ impl LeaseComplianceTests {
         assert!(
             lease.is_some(),
             "Lease should still exist after failed release"
+        );
+    }
+
+    /// Test that list_orchestrators correctly reports multiple orchestrators
+    /// with different run counts.
+    ///
+    /// Contract: When multiple orchestrators hold leases, list_orchestrators
+    /// should return each with the correct active_runs count.
+    pub async fn test_list_orchestrators_multiple_orchestrators<L: LeaseManager>(manager: &L) {
+        let orch_a = OrchestratorId::new("multi-orch-a");
+        let orch_b = OrchestratorId::new("multi-orch-b");
+        let ttl = Duration::from_secs(30);
+
+        // orch-a: heartbeat + 3 runs
+        manager
+            .heartbeat(orch_a.clone(), ttl)
+            .await
+            .expect("heartbeat should succeed");
+        for _ in 0..3 {
+            manager
+                .acquire_lease(Uuid::now_v7(), orch_a.clone(), ttl)
+                .await
+                .expect("acquire should succeed");
+        }
+
+        // orch-b: heartbeat + 1 run
+        manager
+            .heartbeat(orch_b.clone(), ttl)
+            .await
+            .expect("heartbeat should succeed");
+        manager
+            .acquire_lease(Uuid::now_v7(), orch_b.clone(), ttl)
+            .await
+            .expect("acquire should succeed");
+
+        let orchestrators = manager
+            .list_orchestrators()
+            .await
+            .expect("list_orchestrators should succeed");
+
+        let a_info = orchestrators
+            .iter()
+            .find(|o| o.id == orch_a)
+            .expect("orch-a should be in the list");
+        let b_info = orchestrators
+            .iter()
+            .find(|o| o.id == orch_b)
+            .expect("orch-b should be in the list");
+
+        assert_eq!(
+            a_info.active_runs, 3,
+            "orch-a should have 3 active runs"
+        );
+        assert_eq!(
+            b_info.active_runs, 1,
+            "orch-b should have 1 active run"
         );
     }
 
