@@ -68,10 +68,7 @@ static INIT_DOCKER_HOST: LazyLock<()> = LazyLock::new(|| {
     if colima_socket.exists() {
         // SAFETY: This runs once before any async work via LazyLock.
         unsafe {
-            std::env::set_var(
-                "DOCKER_HOST",
-                format!("unix://{}", colima_socket.display()),
-            );
+            std::env::set_var("DOCKER_HOST", format!("unix://{}", colima_socket.display()));
         }
     }
 });

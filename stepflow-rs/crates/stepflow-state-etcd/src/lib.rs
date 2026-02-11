@@ -196,7 +196,6 @@ impl EtcdLeaseManager {
     fn heartbeat_key(&self, orchestrator_id: &OrchestratorId) -> String {
         format!("{}/heartbeats/{}", self.key_prefix, orchestrator_id)
     }
-
 }
 
 impl LeaseManager for EtcdLeaseManager {
@@ -210,7 +209,8 @@ impl LeaseManager for EtcdLeaseManager {
             let lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
             let key = self.run_key(run_id);
             let now = Utc::now();
-            let expires_at = now + chrono::Duration::from_std(ttl)
+            let expires_at = now
+                + chrono::Duration::from_std(ttl)
                     .map_err(|_| error_stack::report!(LeaseError::Internal))?;
 
             let value = LeaseValue {
@@ -222,7 +222,11 @@ impl LeaseManager for EtcdLeaseManager {
 
             // Transaction: if key doesn't exist, create it; otherwise read existing
             let txn = Txn::new()
-                .when([Compare::create_revision(key.as_bytes(), CompareOp::Equal, 0)])
+                .when([Compare::create_revision(
+                    key.as_bytes(),
+                    CompareOp::Equal,
+                    0,
+                )])
                 .and_then([TxnOp::put(
                     key.as_bytes(),
                     value_bytes.clone(),
@@ -289,10 +293,7 @@ impl LeaseManager for EtcdLeaseManager {
                                 .and_then(|resp| {
                                     let ttl_secs = resp.ttl();
                                     if ttl_secs > 0 {
-                                        Some(
-                                            Utc::now()
-                                                + chrono::Duration::seconds(ttl_secs),
-                                        )
+                                        Some(Utc::now() + chrono::Duration::seconds(ttl_secs))
                                     } else {
                                         None
                                     }
@@ -343,7 +344,8 @@ impl LeaseManager for EtcdLeaseManager {
 
             // Update with new expiration
             let now = Utc::now();
-            let expires_at = now + chrono::Duration::from_std(ttl)
+            let expires_at = now
+                + chrono::Duration::from_std(ttl)
                     .map_err(|_| error_stack::report!(LeaseError::Internal))?;
 
             let new_value = LeaseValue {
@@ -522,8 +524,8 @@ impl LeaseManager for EtcdLeaseManager {
             for kv in heartbeat_resp.kvs() {
                 let key_str = std::str::from_utf8(kv.key()).unwrap_or_default();
                 if let Some(orch_id) = key_str.strip_prefix(&heartbeat_prefix) {
-                    let value: HeartbeatValue = serde_json::from_slice(kv.value())
-                        .change_context(LeaseError::Internal)?;
+                    let value: HeartbeatValue =
+                        serde_json::from_slice(kv.value()).change_context(LeaseError::Internal)?;
                     orchestrators.insert(
                         orch_id.to_string(),
                         OrchestratorInfo {
@@ -547,8 +549,8 @@ impl LeaseManager for EtcdLeaseManager {
                 .change_context(LeaseError::Internal)?;
 
             for kv in runs_resp.kvs() {
-                let value: LeaseValue = serde_json::from_slice(kv.value())
-                    .change_context(LeaseError::Internal)?;
+                let value: LeaseValue =
+                    serde_json::from_slice(kv.value()).change_context(LeaseError::Internal)?;
                 orchestrators
                     .entry(value.owner.clone())
                     .and_modify(|info| info.active_runs += 1)
@@ -573,8 +575,7 @@ impl LeaseManager for EtcdLeaseManager {
 
         tokio::spawn(async move {
             let watch_opts = etcd_client::WatchOptions::new().with_prefix();
-            let Ok(mut stream) =
-                client.watch(runs_prefix.as_bytes(), Some(watch_opts)).await
+            let Ok(mut stream) = client.watch(runs_prefix.as_bytes(), Some(watch_opts)).await
             else {
                 log::error!("Failed to start etcd watch for orphan detection");
                 return;
@@ -586,10 +587,9 @@ impl LeaseManager for EtcdLeaseManager {
                     // Only care about DELETE events (key removed due to lease expiry)
                     if event.event_type() == etcd_client::EventType::Delete
                         && let Some(kv) = event.kv()
-                        && let Some(run_id_str) =
-                            std::str::from_utf8(kv.key())
-                                .ok()
-                                .and_then(|k| k.strip_prefix(&prefix))
+                        && let Some(run_id_str) = std::str::from_utf8(kv.key())
+                            .ok()
+                            .and_then(|k| k.strip_prefix(&prefix))
                         && let Ok(run_id) = Uuid::parse_str(run_id_str)
                         && tx.send(run_id).is_err()
                     {

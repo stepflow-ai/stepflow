@@ -134,13 +134,10 @@ async fn main() {
         // Resolve orchestrator ID: CLI arg → HOSTNAME env var → random UUID.
         // Deterministic IDs (e.g., from Kubernetes $HOSTNAME) enable fast restart
         // recovery since the restarted process recognizes its own etcd leases.
-        let orchestrator_id = OrchestratorId::new(
-            args.orchestrator_id
-                .unwrap_or_else(|| {
-                    std::env::var("HOSTNAME")
-                        .unwrap_or_else(|_| format!("stepflow-server-{}", uuid::Uuid::now_v7()))
-                }),
-        );
+        let orchestrator_id = OrchestratorId::new(args.orchestrator_id.unwrap_or_else(|| {
+            std::env::var("HOSTNAME")
+                .unwrap_or_else(|_| format!("stepflow-server-{}", uuid::Uuid::now_v7()))
+        }));
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
