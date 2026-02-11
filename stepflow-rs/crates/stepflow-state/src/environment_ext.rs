@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use stepflow_core::StepflowEnvironment;
 
-use crate::{ActiveExecutions, BlobStore, ExecutionJournal, LeaseManager, MetadataStore};
+use crate::{
+    ActiveExecutions, BlobStore, ExecutionJournal, LeaseManager, MetadataStore, OrchestratorId,
+};
 
 /// Extension trait providing MetadataStore access for StepflowEnvironment.
 ///
@@ -140,6 +142,22 @@ impl LeaseManagerExt for StepflowEnvironment {
     fn lease_manager(&self) -> &Arc<dyn LeaseManager> {
         self.get::<Arc<dyn LeaseManager>>()
             .expect("LeaseManager not set in environment")
+    }
+}
+
+/// Extension trait providing OrchestratorId access for StepflowEnvironment.
+///
+/// Unlike other extension traits, this returns `Option` rather than panicking
+/// because the orchestrator ID is only set in multi-orchestrator deployments.
+/// Single-orchestrator mode (CLI, tests) does not set it.
+pub trait OrchestratorIdExt {
+    /// Get a reference to the orchestrator ID, if set.
+    fn orchestrator_id(&self) -> Option<&OrchestratorId>;
+}
+
+impl OrchestratorIdExt for StepflowEnvironment {
+    fn orchestrator_id(&self) -> Option<&OrchestratorId> {
+        self.get::<OrchestratorId>()
     }
 }
 

@@ -112,36 +112,6 @@ impl LeaseManager for NoOpLeaseManager {
         async move { Ok(LeaseResult::Acquired { expires_at }) }.boxed()
     }
 
-    fn renew_lease(
-        &self,
-        run_id: Uuid,
-        orchestrator_id: OrchestratorId,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>> {
-        // Verify ownership before renewing
-        if let Some(existing) = self.leases.get(&run_id)
-            && existing.owner != orchestrator_id
-        {
-            return async move { Err(error_stack::report!(LeaseError::NotOwner)) }.boxed();
-        }
-
-        let now = Utc::now();
-        let expires_at =
-            now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
-
-        // Update the lease
-        self.leases.insert(
-            run_id,
-            LeaseRecord {
-                owner: orchestrator_id,
-                acquired_at: now,
-                expires_at,
-            },
-        );
-
-        async move { Ok(LeaseResult::Acquired { expires_at }) }.boxed()
-    }
-
     fn release_lease(
         &self,
         run_id: Uuid,
@@ -224,20 +194,6 @@ mod tests {
 
         assert!(result.is_acquired());
         assert!(result.expires_at() > Utc::now());
-    }
-
-    #[tokio::test]
-    async fn test_noop_renew_lease() {
-        let manager = NoOpLeaseManager::new();
-        let run_id = Uuid::now_v7();
-        let orch_id = OrchestratorId::new("test-orch");
-
-        let result = manager
-            .renew_lease(run_id, orch_id, Duration::from_secs(60))
-            .await
-            .unwrap();
-
-        assert!(result.is_acquired());
     }
 
     #[tokio::test]

@@ -42,7 +42,7 @@ async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnviro
         .port();
 
     // Create the environment (auto-configures blob API URL from listener port)
-    let env = stepflow_server::create_environment(config, &listener)
+    let env = stepflow_server::create_environment(config, &listener, None)
         .await
         .change_context(MainError::Configuration)?;
 

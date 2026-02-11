@@ -62,12 +62,10 @@ impl LeaseComplianceTests {
         Self::test_get_lease_after_acquire(manager).await;
         Self::test_get_lease_returns_none_before_acquire(manager).await;
         Self::test_release_lease_removes_lease(manager).await;
-        Self::test_renew_lease_updates_expiry(manager).await;
         Self::test_heartbeat_succeeds(manager).await;
         Self::test_list_orchestrators_reflects_leases(manager).await;
         Self::test_acquire_returns_owned_by_when_taken(manager).await;
         Self::test_acquire_same_owner_succeeds(manager).await;
-        Self::test_renew_by_non_owner_fails(manager).await;
         Self::test_release_by_non_owner_fails(manager).await;
         Self::test_release_all_clears_leases(manager).await;
         Self::test_list_orchestrators_multiple_orchestrators(manager).await;
@@ -96,12 +94,10 @@ impl LeaseComplianceTests {
         Self::test_get_lease_after_acquire(&factory().await).await;
         Self::test_get_lease_returns_none_before_acquire(&factory().await).await;
         Self::test_release_lease_removes_lease(&factory().await).await;
-        Self::test_renew_lease_updates_expiry(&factory().await).await;
         Self::test_heartbeat_succeeds(&factory().await).await;
         Self::test_list_orchestrators_reflects_leases(&factory().await).await;
         Self::test_acquire_returns_owned_by_when_taken(&factory().await).await;
         Self::test_acquire_same_owner_succeeds(&factory().await).await;
-        Self::test_renew_by_non_owner_fails(&factory().await).await;
         Self::test_release_by_non_owner_fails(&factory().await).await;
         Self::test_release_all_clears_leases(&factory().await).await;
         Self::test_list_orchestrators_multiple_orchestrators(&factory().await).await;
@@ -219,51 +215,6 @@ impl LeaseComplianceTests {
         assert!(
             lease.is_none(),
             "get_lease should return None after release"
-        );
-    }
-
-    // =========================================================================
-    // renew_lease() tests
-    // =========================================================================
-
-    /// Test that renew_lease() extends the expiry time.
-    ///
-    /// Contract: After renewing a lease, the expiry should be extended.
-    pub async fn test_renew_lease_updates_expiry<L: LeaseManager>(manager: &L) {
-        let run_id = Uuid::now_v7();
-        let orch_id = OrchestratorId::new("test-orch");
-        let short_ttl = Duration::from_secs(10);
-        let long_ttl = Duration::from_secs(60);
-
-        // Acquire with short TTL
-        let acquire_result = manager
-            .acquire_lease(run_id, orch_id.clone(), short_ttl)
-            .await
-            .expect("acquire_lease should succeed");
-        let original_expiry = acquire_result.expires_at();
-
-        // Renew with longer TTL
-        let renew_result = manager
-            .renew_lease(run_id, orch_id.clone(), long_ttl)
-            .await
-            .expect("renew_lease should succeed");
-
-        assert!(renew_result.is_acquired(), "Renew should succeed");
-        assert!(
-            renew_result.expires_at() > original_expiry,
-            "Renewed expiry should be later than original"
-        );
-
-        // Verify via get_lease
-        let lease = manager
-            .get_lease(run_id)
-            .await
-            .expect("get_lease should succeed")
-            .expect("Lease should exist");
-
-        assert!(
-            lease.expires_at >= renew_result.expires_at(),
-            "get_lease should show renewed expiry"
         );
     }
 
@@ -407,27 +358,6 @@ impl LeaseComplianceTests {
             result.is_acquired(),
             "Same owner should be able to re-acquire"
         );
-    }
-
-    /// Test that renewing a lease by a non-owner fails.
-    ///
-    /// Contract: If orchestrator A holds a lease, orchestrator B's renew attempt
-    /// should fail with an error.
-    pub async fn test_renew_by_non_owner_fails<L: LeaseManager>(manager: &L) {
-        let run_id = Uuid::now_v7();
-        let orch_a = OrchestratorId::new("orch-a");
-        let orch_b = OrchestratorId::new("orch-b");
-        let ttl = Duration::from_secs(30);
-
-        // Orchestrator A acquires the lease
-        manager
-            .acquire_lease(run_id, orch_a, ttl)
-            .await
-            .expect("acquire_lease should succeed");
-
-        // Orchestrator B tries to renew
-        let result = manager.renew_lease(run_id, orch_b, ttl).await;
-        assert!(result.is_err(), "Renew by non-owner should fail");
     }
 
     /// Test that releasing a lease by a non-owner fails.

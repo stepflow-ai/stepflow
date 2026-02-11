@@ -27,7 +27,7 @@ use stepflow_core::workflow::StepId;
 use stepflow_observability::RunInfoGuard;
 use stepflow_state::{
     CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEntry, JournalEvent,
-    MetadataStore,
+    LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _,
 };
 use uuid::Uuid;
 
@@ -148,6 +148,17 @@ impl FlowExecutor {
         let future = async move {
             if let Err(e) = self.execute_to_completion().await {
                 log::error!("Run {} failed: {:?}", run_id, e);
+            }
+
+            // Release lease after completion (best-effort, root runs only)
+            if let Some(orch_id) = self.env.orchestrator_id()
+                && let Err(e) = self
+                    .env
+                    .lease_manager()
+                    .release_lease(run_id, orch_id.clone())
+                    .await
+            {
+                log::warn!("Failed to release lease for run {run_id}: {e:?}");
             }
         }
         .in_span(run_span);

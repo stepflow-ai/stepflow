@@ -118,8 +118,14 @@ impl StepflowConfig {
         Ok(config)
     }
 
-    /// Create a StepflowEnvironment from this configuration
-    pub async fn create_environment(self) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
+    /// Create a StepflowEnvironment from this configuration.
+    ///
+    /// If `orchestrator_id` is provided, it will be stored in the environment
+    /// for distributed lease management (acquire/release during run execution).
+    pub async fn create_environment(
+        self,
+        orchestrator_id: Option<stepflow_state::OrchestratorId>,
+    ) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
         use stepflow_plugin::StepflowEnvironmentBuilder;
         use stepflow_plugin::routing::PluginRouter;
 
@@ -153,14 +159,20 @@ impl StepflowConfig {
             .change_context(ConfigError::Configuration)?;
 
         // Create environment using the builder (this also initializes all plugins)
-        let env = StepflowEnvironmentBuilder::new()
+        let mut builder = StepflowEnvironmentBuilder::new()
             .metadata_store(stores.metadata_store)
             .blob_store(stores.blob_store)
             .execution_journal(stores.execution_journal)
             .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)
-            .blob_api_url(self.blob_api.url)
+            .blob_api_url(self.blob_api.url);
+
+        if let Some(id) = orchestrator_id {
+            builder = builder.orchestrator_id(id);
+        }
+
+        let env = builder
             .build()
             .await
             .change_context(ConfigError::Configuration)?;

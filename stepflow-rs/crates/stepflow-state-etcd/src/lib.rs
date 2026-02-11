@@ -312,65 +312,6 @@ impl LeaseManager for EtcdLeaseManager {
         .boxed()
     }
 
-    fn renew_lease(
-        &self,
-        run_id: Uuid,
-        orchestrator_id: OrchestratorId,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>> {
-        async move {
-            let lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
-            let key = self.run_key(run_id);
-
-            // Read existing value to verify ownership
-            let resp = self
-                .client
-                .clone()
-                .get(key.as_bytes(), None)
-                .await
-                .change_context(LeaseError::Internal)?;
-
-            let kv = resp
-                .kvs()
-                .first()
-                .ok_or_else(|| error_stack::report!(LeaseError::Expired))?;
-
-            let existing: LeaseValue =
-                serde_json::from_slice(kv.value()).change_context(LeaseError::Internal)?;
-
-            if existing.owner != orchestrator_id.as_str() {
-                return Err(error_stack::report!(LeaseError::NotOwner));
-            }
-
-            // Update with new expiration
-            let now = Utc::now();
-            let expires_at = now
-                + chrono::Duration::from_std(ttl)
-                    .map_err(|_| error_stack::report!(LeaseError::Internal))?;
-
-            let new_value = LeaseValue {
-                owner: orchestrator_id.as_str().to_string(),
-                acquired_at: existing.acquired_at,
-                expires_at,
-            };
-            let value_bytes =
-                serde_json::to_vec(&new_value).change_context(LeaseError::Internal)?;
-
-            self.client
-                .clone()
-                .put(
-                    key.as_bytes(),
-                    value_bytes,
-                    Some(etcd_client::PutOptions::new().with_lease(lease_id)),
-                )
-                .await
-                .change_context(LeaseError::Internal)?;
-
-            Ok(LeaseResult::Acquired { expires_at })
-        }
-        .boxed()
-    }
-
     fn release_lease(
         &self,
         run_id: Uuid,

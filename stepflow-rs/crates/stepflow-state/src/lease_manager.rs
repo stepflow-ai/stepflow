@@ -18,7 +18,7 @@
 //! # Design Philosophy
 //!
 //! The `LeaseManager` trait is a pure coordination primitive. It handles ownership
-//! enforcement (acquire, renew, release) and orchestrator liveness (heartbeats), but
+//! enforcement (acquire, release) and orchestrator liveness (heartbeats), but
 //! does **not** query the metadata store or journal. This separation keeps the trait
 //! implementable by distributed backends like etcd, where:
 //!
@@ -33,8 +33,8 @@
 //!
 //! # Key Concepts
 //!
-//! - **Lease**: A time-limited ownership claim on a run. The owner must periodically
-//!   renew the lease to maintain ownership.
+//! - **Lease**: A time-limited ownership claim on a run. The orchestrator's heartbeat
+//!   keeps the underlying lease alive.
 //! - **Orchestrator ID**: Unique identifier for an orchestrator instance.
 //! - **Orphaned Run**: A run whose lease has expired without completion, indicating
 //!   the owning orchestrator likely crashed.
@@ -89,25 +89,6 @@ pub trait LeaseManager: Send + Sync {
     /// * `LeaseResult::Acquired` if the lease was granted
     /// * `LeaseResult::OwnedBy` if another orchestrator owns the lease
     fn acquire_lease(
-        &self,
-        run_id: Uuid,
-        orchestrator_id: OrchestratorId,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>>;
-
-    /// Renew an existing lease.
-    ///
-    /// The orchestrator must already own the lease. This extends the expiration time.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run whose lease to renew
-    /// * `orchestrator_id` - The orchestrator renewing (must be current owner)
-    /// * `ttl` - New TTL from now
-    ///
-    /// # Returns
-    /// * `LeaseResult::Acquired` with new expiration if successful
-    /// * Error if the orchestrator doesn't own the lease
-    fn renew_lease(
         &self,
         run_id: Uuid,
         orchestrator_id: OrchestratorId,
@@ -190,7 +171,7 @@ pub trait LeaseManager: Send + Sync {
     }
 }
 
-/// Result of a lease acquisition or renewal attempt.
+/// Result of a lease acquisition attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeaseResult {
     /// The lease was successfully acquired or renewed.

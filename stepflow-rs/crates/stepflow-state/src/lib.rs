@@ -33,6 +33,7 @@ pub use blob_store::BlobStore;
 pub use completion_notifier::RunCompletionNotifier;
 pub use environment_ext::{
     ActiveExecutionsExt, BlobStoreExt, ExecutionJournalExt, LeaseManagerExt, MetadataStoreExt,
+    OrchestratorIdExt,
 };
 pub use error::{Result, StateError};
 pub use execution_journal::{

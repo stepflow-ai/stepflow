@@ -187,6 +187,13 @@
           "description": "Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.",
           "default": 10,
           "minimum": 0
+        },
+        "leaseTtlSecs": {
+          "type": "integer",
+          "format": "int64",
+          "description": "TTL in seconds for the orchestrator lease and heartbeats.\n\nThe heartbeat interval is automatically set to `lease_ttl_secs / 3`.\nIf an orchestrator stops sending heartbeats, its lease expires after this\nduration and its runs become eligible for recovery. Default: 30 seconds.",
+          "default": 30,
+          "minimum": 0
         }
       }
     },

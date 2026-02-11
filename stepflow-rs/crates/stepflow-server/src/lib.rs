@@ -28,5 +28,5 @@ pub use api::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowRe
 pub use startup::{AppConfig, create_environment, start_server};
 
 // Server lifecycle
-pub use orphan_recovery::orphan_claiming_loop;
+pub use orphan_recovery::{heartbeat_loop, orphan_claiming_loop};
 pub use shutdown::shutdown_signal;
