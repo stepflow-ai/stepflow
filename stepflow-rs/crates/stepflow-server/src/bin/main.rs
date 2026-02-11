@@ -57,6 +57,14 @@ struct Args {
     #[arg(long, conflicts_with = "config")]
     config_stdin: bool,
 
+    /// Orchestrator ID for distributed lease management.
+    ///
+    /// Deterministic IDs enable fast recovery on restart: the restarted process
+    /// recognizes its own leases and reclaims them immediately. For Kubernetes
+    /// StatefulSets, $HOSTNAME (e.g., "stepflow-0") is stable across restarts.
+    #[arg(long, env = "STEPFLOW_ORCHESTRATOR_ID")]
+    orchestrator_id: Option<String>,
+
     /// Observability configuration
     #[command(flatten)]
     observability: ObservabilityConfig,
@@ -123,9 +131,16 @@ async fn main() {
             .change_context(ServerError::ExecutorError)
             .attach_printable("Failed to create executor from configuration")?;
 
-        // Generate orchestrator ID (could be configured via env var in the future)
-        let orchestrator_id =
-            OrchestratorId::new(format!("stepflow-server-{}", uuid::Uuid::now_v7()));
+        // Resolve orchestrator ID: CLI arg → HOSTNAME env var → random UUID.
+        // Deterministic IDs (e.g., from Kubernetes $HOSTNAME) enable fast restart
+        // recovery since the restarted process recognizes its own etcd leases.
+        let orchestrator_id = OrchestratorId::new(
+            args.orchestrator_id
+                .unwrap_or_else(|| {
+                    std::env::var("HOSTNAME")
+                        .unwrap_or_else(|_| format!("stepflow-server-{}", uuid::Uuid::now_v7()))
+                }),
+        );
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();

@@ -108,6 +108,7 @@ stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 stepflow-server = { path = "./crates/stepflow-server" }
 stepflow-state = { path = "./crates/stepflow-state" }
+stepflow-state-etcd = { path = "./crates/stepflow-state-etcd" }
 stepflow-state-sql = { path = "./crates/stepflow-state-sql" }
 stepflow-typecheck = { path = "./crates/stepflow-typecheck" }
 tempfile = "3.8"

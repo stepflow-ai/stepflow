@@ -127,7 +127,7 @@ impl StepflowConfig {
         let stores = self.storage_config.create_stores().await?;
 
         // Create lease manager from configuration
-        let lease_manager = self.lease_manager.create_lease_manager();
+        let lease_manager = self.lease_manager.create_lease_manager().await?;
 
         let working_directory = self
             .working_directory

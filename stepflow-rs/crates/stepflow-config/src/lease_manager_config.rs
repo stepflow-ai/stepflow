@@ -12,8 +12,12 @@
 
 use std::sync::Arc;
 
+use error_stack::{Result, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use stepflow_state::{LeaseManager, NoOpLeaseManager};
+use stepflow_state_etcd::EtcdLeaseManagerConfig;
+
+use crate::ConfigError;
 
 /// Configuration for the lease manager used in distributed deployments.
 ///
@@ -29,15 +33,28 @@ pub enum LeaseManagerConfig {
     #[default]
     #[serde(alias = "none")]
     NoOp,
-    // Future variants:
-    // Etcd(EtcdLeaseManagerConfig),
+
+    /// etcd-backed lease management for distributed deployments.
+    ///
+    /// Uses etcd v3 for distributed coordination with one etcd lease per
+    /// orchestrator. Provides automatic cleanup on crash, push-based orphan
+    /// detection, and efficient `release_all` via lease revocation.
+    #[serde(alias = "etcd")]
+    Etcd(EtcdLeaseManagerConfig),
 }
 
 impl LeaseManagerConfig {
     /// Create a LeaseManager instance from this configuration.
-    pub fn create_lease_manager(&self) -> Arc<dyn LeaseManager> {
+    pub async fn create_lease_manager(&self) -> Result<Arc<dyn LeaseManager>, ConfigError> {
         match self {
-            LeaseManagerConfig::NoOp => Arc::new(NoOpLeaseManager::new()),
+            LeaseManagerConfig::NoOp => Ok(Arc::new(NoOpLeaseManager::new())),
+            LeaseManagerConfig::Etcd(config) => {
+                let manager = stepflow_state_etcd::EtcdLeaseManager::connect(config)
+                    .await
+                    .change_context(ConfigError::Configuration)
+                    .attach_printable("Failed to connect to etcd for lease management")?;
+                Ok(Arc::new(manager))
+            }
         }
     }
 }

@@ -27,6 +27,7 @@ stepflow-core.workspace = true
 stepflow-plugin.workspace = true
 stepflow-protocol.workspace = true
 stepflow-state.workspace = true
+stepflow-state-etcd.workspace = true
 stepflow-state-sql.workspace = true
 stepflow-mock.workspace = true
 thiserror.workspace = true
