@@ -132,8 +132,9 @@ impl StepflowConfig {
         // Create metadata store, blob store, and execution journal from configuration
         let stores = self.storage_config.create_stores().await?;
 
-        // Create lease manager from configuration
-        let lease_manager = self.lease_manager.create_lease_manager().await?;
+        // Create lease manager from configuration, using the recovery TTL
+        let lease_ttl = std::time::Duration::from_secs(self.recovery.lease_ttl_secs);
+        let lease_manager = self.lease_manager.create_lease_manager(lease_ttl).await?;
 
         let working_directory = self
             .working_directory

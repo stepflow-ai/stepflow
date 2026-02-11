@@ -11,6 +11,7 @@
 // the License.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use error_stack::{Result, ResultExt as _};
 use serde::{Deserialize, Serialize};
@@ -45,14 +46,21 @@ pub enum LeaseManagerConfig {
 
 impl LeaseManagerConfig {
     /// Create a LeaseManager instance from this configuration.
-    pub async fn create_lease_manager(&self) -> Result<Arc<dyn LeaseManager>, ConfigError> {
+    ///
+    /// The `lease_ttl` is passed to the underlying implementation and controls
+    /// how long a lease survives without heartbeats.
+    pub async fn create_lease_manager(
+        &self,
+        lease_ttl: Duration,
+    ) -> Result<Arc<dyn LeaseManager>, ConfigError> {
         match self {
-            LeaseManagerConfig::NoOp => Ok(Arc::new(NoOpLeaseManager::new())),
+            LeaseManagerConfig::NoOp => Ok(Arc::new(NoOpLeaseManager::with_ttl(lease_ttl))),
             LeaseManagerConfig::Etcd(config) => {
-                let manager = stepflow_state_etcd::EtcdLeaseManager::connect(config)
-                    .await
-                    .change_context(ConfigError::Configuration)
-                    .attach_printable("Failed to connect to etcd for lease management")?;
+                let manager =
+                    stepflow_state_etcd::EtcdLeaseManager::connect(config, lease_ttl)
+                        .await
+                        .change_context(ConfigError::Configuration)
+                        .attach_printable("Failed to connect to etcd for lease management")?;
                 Ok(Arc::new(manager))
             }
         }

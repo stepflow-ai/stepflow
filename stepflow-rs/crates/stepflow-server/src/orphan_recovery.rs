@@ -179,7 +179,6 @@ pub async fn heartbeat_loop(
         return;
     }
 
-    let ttl = Duration::from_secs(config.lease_ttl_secs);
     let interval = Duration::from_secs(config.lease_ttl_secs / 3);
     let lease_manager = env.lease_manager();
     let metadata_store = env.metadata_store().clone();
@@ -202,7 +201,7 @@ pub async fn heartbeat_loop(
             _ = timer.tick() => {
                 // 1. Send heartbeat (keeps etcd lease alive)
                 if let Err(e) = lease_manager
-                    .heartbeat(orchestrator_id.clone(), ttl)
+                    .heartbeat(orchestrator_id.clone())
                     .await
                 {
                     warn!("Heartbeat failed: {e:?}");
@@ -212,8 +211,8 @@ pub async fn heartbeat_loop(
                 match lease_manager.list_orchestrators().await {
                     Ok(orchestrators) => {
                         let live_ids: HashSet<String> = orchestrators
-                            .iter()
-                            .map(|o| o.id.as_str().to_string())
+                            .into_iter()
+                            .map(|o| o.id.into_string())
                             .collect();
 
                         if let Err(e) = metadata_store

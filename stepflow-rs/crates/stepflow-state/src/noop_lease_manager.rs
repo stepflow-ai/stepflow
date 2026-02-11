@@ -22,7 +22,10 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use crate::{LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId, OrchestratorInfo};
+use crate::{
+    DEFAULT_LEASE_TTL_SECS, LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId,
+    OrchestratorInfo,
+};
 
 /// Internal lease record for tracking acquired leases.
 #[derive(Debug, Clone)]
@@ -44,7 +47,6 @@ struct LeaseRecord {
 ///
 /// ```rust
 /// use stepflow_state::{LeaseManager, NoOpLeaseManager, OrchestratorId};
-/// use std::time::Duration;
 /// use uuid::Uuid;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +55,7 @@ struct LeaseRecord {
 /// let orch_id = OrchestratorId::new("my-orchestrator");
 ///
 /// // Always succeeds
-/// let result = manager.acquire_lease(run_id, orch_id.clone(), Duration::from_secs(30)).await?;
+/// let result = manager.acquire_lease(run_id, orch_id.clone()).await?;
 /// assert!(result.is_acquired());
 ///
 /// // Lease is now observable via get_lease
@@ -62,17 +64,41 @@ struct LeaseRecord {
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Default)]
 pub struct NoOpLeaseManager {
     /// Active leases tracked in memory.
     leases: DashMap<Uuid, LeaseRecord>,
+    /// TTL used for computing `expires_at` on acquired leases.
+    ttl: Duration,
+}
+
+impl std::fmt::Debug for NoOpLeaseManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NoOpLeaseManager")
+            .field("ttl", &self.ttl)
+            .finish()
+    }
+}
+
+impl Default for NoOpLeaseManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NoOpLeaseManager {
-    /// Create a new no-op lease manager.
+    /// Create a new no-op lease manager with the default TTL.
     pub fn new() -> Self {
         Self {
             leases: DashMap::new(),
+            ttl: Duration::from_secs(DEFAULT_LEASE_TTL_SECS),
+        }
+    }
+
+    /// Create a new no-op lease manager with an explicit TTL.
+    pub fn with_ttl(ttl: Duration) -> Self {
+        Self {
+            leases: DashMap::new(),
+            ttl,
         }
     }
 }
@@ -82,11 +108,10 @@ impl LeaseManager for NoOpLeaseManager {
         &self,
         run_id: Uuid,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>> {
         let now = Utc::now();
         let expires_at =
-            now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
+            now + chrono::Duration::from_std(self.ttl).unwrap_or(chrono::Duration::hours(1));
 
         // Check if the lease is already owned by a different orchestrator
         if let Some(existing) = self.leases.get(&run_id)
@@ -141,7 +166,6 @@ impl LeaseManager for NoOpLeaseManager {
     fn heartbeat(
         &self,
         _orchestrator_id: OrchestratorId,
-        _ttl: Duration,
     ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move { Ok(()) }.boxed()
     }
@@ -188,7 +212,7 @@ mod tests {
         let orch_id = OrchestratorId::new("test-orch");
 
         let result = manager
-            .acquire_lease(run_id, orch_id, Duration::from_secs(30))
+            .acquire_lease(run_id, orch_id)
             .await
             .unwrap();
 
@@ -212,10 +236,7 @@ mod tests {
         let orch_id = OrchestratorId::new("test-orch");
 
         // Should not error
-        manager
-            .heartbeat(orch_id, Duration::from_secs(30))
-            .await
-            .unwrap();
+        manager.heartbeat(orch_id).await.unwrap();
     }
 
     #[tokio::test]
@@ -230,7 +251,7 @@ mod tests {
 
         // Acquire the lease
         let result = manager
-            .acquire_lease(run_id, orch_id.clone(), Duration::from_secs(30))
+            .acquire_lease(run_id, orch_id.clone())
             .await
             .unwrap();
         assert!(result.is_acquired());
@@ -251,7 +272,7 @@ mod tests {
 
         // Acquire the lease
         manager
-            .acquire_lease(run_id, orch_id.clone(), Duration::from_secs(30))
+            .acquire_lease(run_id, orch_id.clone())
             .await
             .unwrap();
 
@@ -279,7 +300,7 @@ mod tests {
         // Acquire a lease
         let run_id1 = Uuid::now_v7();
         manager
-            .acquire_lease(run_id1, orch_id.clone(), Duration::from_secs(30))
+            .acquire_lease(run_id1, orch_id.clone())
             .await
             .unwrap();
 
@@ -292,7 +313,7 @@ mod tests {
         // Acquire another lease with same orchestrator
         let run_id2 = Uuid::now_v7();
         manager
-            .acquire_lease(run_id2, orch_id.clone(), Duration::from_secs(30))
+            .acquire_lease(run_id2, orch_id.clone())
             .await
             .unwrap();
 

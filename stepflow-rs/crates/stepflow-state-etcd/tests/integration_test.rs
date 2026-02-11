@@ -66,7 +66,12 @@ static INIT_DOCKER_HOST: LazyLock<()> = LazyLock::new(|| {
     };
     let colima_socket = std::path::Path::new(&home).join(".colima/default/docker.sock");
     if colima_socket.exists() {
-        // SAFETY: This runs once before any async work via LazyLock.
+        // SAFETY: `set_var` is not thread-safe, but this runs inside a `LazyLock`
+        // that is forced (`let _ = *INIT_DOCKER_HOST`) at the top of `start_etcd()`
+        // before any etcd client / testcontainers work begins. The tokio runtime
+        // may already have worker threads, but none of them read `DOCKER_HOST`
+        // before this point because `start_etcd()` is the first thing every test
+        // calls. Acceptable trade-off for test-only code.
         unsafe {
             std::env::set_var("DOCKER_HOST", format!("unix://{}", colima_socket.display()));
         }
@@ -155,17 +160,13 @@ async fn test_connect_from_config() {
         key_prefix: "/test/connect".to_string(),
     };
 
-    let manager = EtcdLeaseManager::connect(&config)
+    let manager = EtcdLeaseManager::connect(&config, Duration::from_secs(30))
         .await
         .expect("Failed to connect via config");
 
     // Verify it works with a basic operation
     let result = manager
-        .acquire_lease(
-            Uuid::now_v7(),
-            OrchestratorId::new("test-orch"),
-            Duration::from_secs(30),
-        )
+        .acquire_lease(Uuid::now_v7(), OrchestratorId::new("test-orch"))
         .await
         .expect("acquire_lease failed");
     assert!(matches!(result, LeaseResult::Acquired { .. }));
@@ -176,20 +177,23 @@ async fn test_watch_orphans_on_lease_expiry() {
     require_docker!();
     let (_container, client) = start_etcd().await;
 
-    let manager = create_manager(client.clone(), "/test/watch-orphans");
+    // Use a short TTL so the etcd lease expires quickly
+    let manager = EtcdLeaseManager::new_with_ttl(
+        client.clone(),
+        "/test/watch-orphans".to_string(),
+        Duration::from_secs(2),
+    );
     let orch_id = OrchestratorId::new("orch-ephemeral");
-    // Short TTL so the etcd lease expires quickly
-    let ttl = Duration::from_secs(2);
 
     // Start watching before acquiring
     let mut rx = manager
         .watch_orphans()
         .expect("watch_orphans should return a receiver");
 
-    // Acquire a lease with a short TTL
+    // Acquire a lease (using the short TTL configured on the manager)
     let run_id = Uuid::now_v7();
     manager
-        .acquire_lease(run_id, orch_id.clone(), ttl)
+        .acquire_lease(run_id, orch_id.clone())
         .await
         .expect("acquire failed");
 

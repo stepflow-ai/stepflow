@@ -36,7 +36,8 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use stepflow_state::{
-    LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId, OrchestratorInfo,
+    DEFAULT_LEASE_TTL_SECS, LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId,
+    OrchestratorInfo,
 };
 use uuid::Uuid;
 
@@ -84,6 +85,13 @@ pub struct EtcdLeaseManager {
     /// Key prefix for all lease-related keys.
     key_prefix: String,
 
+    /// TTL for the orchestrator's etcd lease.
+    ///
+    /// Set at construction time and used for all lease grants. Heartbeats
+    /// keep the lease alive; if an orchestrator stops heartbeating, the
+    /// lease expires after this duration.
+    ttl: Duration,
+
     /// The etcd lease ID for this orchestrator instance.
     ///
     /// Lazily initialized on first `acquire_lease` or `heartbeat` call.
@@ -103,7 +111,14 @@ struct OrchestratorLease {
 
 impl EtcdLeaseManager {
     /// Connect to etcd and create a new lease manager.
-    pub async fn connect(config: &EtcdLeaseManagerConfig) -> Result<Self, LeaseError> {
+    ///
+    /// The `ttl` controls the etcd lease duration. Heartbeats must arrive
+    /// before the TTL expires or the lease (and all attached keys) will be
+    /// deleted by etcd, triggering orphan detection.
+    pub async fn connect(
+        config: &EtcdLeaseManagerConfig,
+        ttl: Duration,
+    ) -> Result<Self, LeaseError> {
         let client = Client::connect(&config.endpoints, None)
             .await
             .change_context(LeaseError::ConnectionFailed)?;
@@ -111,24 +126,39 @@ impl EtcdLeaseManager {
         Ok(Self {
             client,
             key_prefix: config.key_prefix.clone(),
+            ttl,
             orchestrator_lease: tokio::sync::RwLock::new(None),
         })
     }
 
     /// Create from an existing etcd client (useful for testing).
+    ///
+    /// Uses [`DEFAULT_LEASE_TTL_SECS`] for the lease TTL.
     pub fn new(client: Client, key_prefix: String) -> Self {
         Self {
             client,
             key_prefix,
+            ttl: Duration::from_secs(DEFAULT_LEASE_TTL_SECS),
+            orchestrator_lease: tokio::sync::RwLock::new(None),
+        }
+    }
+
+    /// Create from an existing etcd client with an explicit TTL (useful for testing).
+    pub fn new_with_ttl(client: Client, key_prefix: String, ttl: Duration) -> Self {
+        Self {
+            client,
+            key_prefix,
+            ttl,
             orchestrator_lease: tokio::sync::RwLock::new(None),
         }
     }
 
     /// Get or create the etcd lease for the given orchestrator.
     ///
-    /// The etcd lease TTL is set from the first `ttl` value passed; subsequent
-    /// calls return the cached lease ID without re-granting (the underlying
-    /// lease TTL is maintained by `heartbeat` keep-alives, not by this method).
+    /// The etcd lease TTL is set from `self.ttl` (configured at construction).
+    /// Subsequent calls return the cached lease ID without re-granting (the
+    /// underlying lease TTL is maintained by `heartbeat` keep-alives, not by
+    /// this method).
     ///
     /// If a lease already exists for a different orchestrator, it is replaced
     /// in-memory without revoking the previous etcd lease. This shouldn't
@@ -137,7 +167,6 @@ impl EtcdLeaseManager {
     async fn ensure_lease(
         &self,
         orchestrator_id: &OrchestratorId,
-        ttl: Duration,
     ) -> Result<i64, LeaseError> {
         // Fast path: lease already exists for this orchestrator
         {
@@ -159,7 +188,7 @@ impl EtcdLeaseManager {
             return Ok(lease.lease_id);
         }
 
-        let ttl_secs = ttl.as_secs().max(1) as i64;
+        let ttl_secs = self.ttl.as_secs().max(1) as i64;
         let resp = self
             .client
             .clone()
@@ -203,14 +232,13 @@ impl LeaseManager for EtcdLeaseManager {
         &self,
         run_id: Uuid,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>> {
         async move {
-            let lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
+            let lease_id = self.ensure_lease(&orchestrator_id).await?;
             let key = self.run_key(run_id);
             let now = Utc::now();
             let expires_at = now
-                + chrono::Duration::from_std(ttl)
+                + chrono::Duration::from_std(self.ttl)
                     .map_err(|_| error_stack::report!(LeaseError::Internal))?;
 
             let value = LeaseValue {
@@ -372,11 +400,10 @@ impl LeaseManager for EtcdLeaseManager {
     fn heartbeat(
         &self,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move {
             // Ensure the lease exists (idempotent after first call)
-            let _lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
+            let _lease_id = self.ensure_lease(&orchestrator_id).await?;
 
             // Send keep-alive on the long-lived stream (reuses the gRPC stream
             // established in ensure_lease, avoiding per-call stream setup overhead).
@@ -463,7 +490,16 @@ impl LeaseManager for EtcdLeaseManager {
             let mut orchestrators: HashMap<String, OrchestratorInfo> = HashMap::new();
 
             for kv in heartbeat_resp.kvs() {
-                let key_str = std::str::from_utf8(kv.key()).unwrap_or_default();
+                let key_str = match std::str::from_utf8(kv.key()) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::warn!(
+                            "Skipping heartbeat key with invalid UTF-8 ({} bytes): {e}",
+                            kv.key().len()
+                        );
+                        continue;
+                    }
+                };
                 if let Some(orch_id) = key_str.strip_prefix(&heartbeat_prefix) {
                     let value: HeartbeatValue =
                         serde_json::from_slice(kv.value()).change_context(LeaseError::Internal)?;

@@ -11,6 +11,7 @@
 // the License.
 
 use serde::{Deserialize, Serialize};
+use stepflow_state::DEFAULT_LEASE_TTL_SECS;
 
 /// Default: recovery is enabled.
 pub const RECOVERY_DEFAULT_ENABLED: bool = true;
@@ -23,9 +24,6 @@ pub const RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY: usize = 100;
 
 /// Default: claim up to 10 orphaned runs per check interval.
 pub const RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK: usize = 10;
-
-/// Default: orchestrator lease TTL is 30 seconds.
-pub const RECOVERY_DEFAULT_LEASE_TTL_SECS: u64 = 30;
 
 /// Configuration for run recovery and orphan claiming.
 ///
@@ -74,7 +72,7 @@ impl Default for RecoveryConfig {
             check_interval_secs: RECOVERY_DEFAULT_CHECK_INTERVAL_SECS,
             max_startup_recovery: RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY,
             max_claims_per_check: RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK,
-            lease_ttl_secs: RECOVERY_DEFAULT_LEASE_TTL_SECS,
+            lease_ttl_secs: DEFAULT_LEASE_TTL_SECS,
         }
     }
 }

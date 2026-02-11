@@ -25,7 +25,6 @@
 //! For synchronous execution, call `submit_run()` followed by `wait_for_completion()`.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::{ExecutionError, Result, RunState};
 use error_stack::ResultExt as _;
@@ -93,15 +92,13 @@ pub async fn submit_run(
         .change_context(ExecutionError::StateStoreError)?;
 
     // Acquire lease in the distributed lease manager (creates etcd key for orphan detection)
-    if let Some(orch_id) = env.orchestrator_id() {
-        let ttl = Duration::from_secs(30); // Kept alive by orchestrator heartbeat
-        if let Err(e) = env
+    if let Some(orch_id) = env.orchestrator_id()
+        && let Err(e) = env
             .lease_manager()
-            .acquire_lease(run_id, orch_id.clone(), ttl)
+            .acquire_lease(run_id, orch_id.clone())
             .await
-        {
-            log::warn!("Failed to acquire lease for run {run_id}: {e:?}");
-        }
+    {
+        log::warn!("Failed to acquire lease for run {run_id}: {e:?}");
     }
 
     // Journal: Record run creation and flush to ensure durability before execution.

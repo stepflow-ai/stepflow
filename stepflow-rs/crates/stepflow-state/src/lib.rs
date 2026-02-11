@@ -40,7 +40,7 @@ pub use execution_journal::{
     ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, RootJournalInfo, SequenceNumber,
 };
 pub use in_memory::InMemoryStateStore;
-pub use lease_manager::{LeaseError, LeaseManager, LeaseResult};
+pub use lease_manager::{DEFAULT_LEASE_TTL_SECS, LeaseError, LeaseManager, LeaseResult};
 pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, RunRecoveryInfo};
 pub use metadata_store::MetadataStore;
 pub use noop_journal::NoOpJournal;

@@ -49,7 +49,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::ResultExt as _;
@@ -62,12 +61,6 @@ use stepflow_state::{
     LeaseManagerExt as _, LeaseResult, MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo,
     SequenceNumber,
 };
-
-/// Default TTL for leases acquired during recovery.
-///
-/// Recovery leases should be long enough to complete journal replay and resume
-/// execution, after which the normal lease renewal mechanism takes over.
-const RECOVERY_LEASE_TTL: Duration = Duration::from_secs(60);
 
 use crate::{ExecutionError, Result, RunState};
 
@@ -254,7 +247,7 @@ async fn claim_for_recovery(
         // one orchestrator recovers each run. With deterministic IDs, re-acquiring
         // our own lease (same owner) succeeds immediately.
         match lease_manager
-            .acquire_lease(summary.run_id, orchestrator_id.clone(), RECOVERY_LEASE_TTL)
+            .acquire_lease(summary.run_id, orchestrator_id.clone())
             .await
         {
             Ok(LeaseResult::Acquired { .. }) => {

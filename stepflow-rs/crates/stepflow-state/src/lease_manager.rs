@@ -39,8 +39,6 @@
 //! - **Orphaned Run**: A run whose lease has expired without completion, indicating
 //!   the owning orchestrator likely crashed.
 
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
 use error_stack::Result;
 use futures::FutureExt as _;
@@ -48,6 +46,12 @@ use futures::future::BoxFuture;
 use uuid::Uuid;
 
 use crate::{LeaseInfo, OrchestratorId, OrchestratorInfo};
+
+/// Default TTL for orchestrator leases, in seconds.
+///
+/// Heartbeats are sent at `DEFAULT_LEASE_TTL_SECS / 3` to keep the lease alive.
+/// If an orchestrator stops heartbeating, the lease expires after this duration.
+pub const DEFAULT_LEASE_TTL_SECS: u64 = 30;
 
 /// Error type for lease operations.
 #[derive(Debug, thiserror::Error)]
@@ -80,10 +84,11 @@ pub enum LeaseError {
 pub trait LeaseManager: Send + Sync {
     /// Attempt to acquire a lease on a run.
     ///
+    /// The lease TTL is determined by the implementation (configured at construction).
+    ///
     /// # Arguments
     /// * `run_id` - The run to acquire a lease for
     /// * `orchestrator_id` - The orchestrator requesting the lease
-    /// * `ttl` - How long the lease should be valid
     ///
     /// # Returns
     /// * `LeaseResult::Acquired` if the lease was granted
@@ -92,7 +97,6 @@ pub trait LeaseManager: Send + Sync {
         &self,
         run_id: Uuid,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>>;
 
     /// Release a lease, allowing other orchestrators to claim the run.
@@ -110,18 +114,17 @@ pub trait LeaseManager: Send + Sync {
 
     /// Send a heartbeat to indicate this orchestrator is still alive.
     ///
-    /// This is used to track active orchestrators for load balancing and
-    /// orphan detection. Orchestrators that stop sending heartbeats may
-    /// have their runs redistributed.
+    /// This keeps the orchestrator's lease alive (e.g., sends etcd keep-alive)
+    /// and updates the heartbeat timestamp. Orchestrators that stop sending
+    /// heartbeats have their leases expire and runs become eligible for recovery.
+    ///
+    /// The lease TTL is determined by the implementation (configured at construction).
     ///
     /// # Arguments
     /// * `orchestrator_id` - The orchestrator sending the heartbeat
-    /// * `ttl` - How long the heartbeat should be valid before the orchestrator
-    ///   is considered dead
     fn heartbeat(
         &self,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<(), LeaseError>>;
 
     /// Release all leases held by this orchestrator.
