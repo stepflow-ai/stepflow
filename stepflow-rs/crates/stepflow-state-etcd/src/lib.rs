@@ -92,10 +92,13 @@ pub struct EtcdLeaseManager {
     orchestrator_lease: tokio::sync::RwLock<Option<OrchestratorLease>>,
 }
 
-/// Tracks the etcd lease for an orchestrator.
+/// Tracks the etcd lease and its keep-alive stream for an orchestrator.
 struct OrchestratorLease {
     lease_id: i64,
     orchestrator_id: OrchestratorId,
+    /// Long-lived keep-alive handle. Sending a keep-alive on this reuses
+    /// the existing gRPC stream instead of opening a new one each time.
+    keeper: etcd_client::LeaseKeeper,
 }
 
 impl EtcdLeaseManager {
@@ -123,10 +126,14 @@ impl EtcdLeaseManager {
 
     /// Get or create the etcd lease for the given orchestrator.
     ///
-    /// The etcd lease TTL is set from the provided `ttl`. If a lease already
-    /// exists for a different orchestrator, it is revoked first (this shouldn't
-    /// happen in normal operation since each EtcdLeaseManager instance is
-    /// bound to one orchestrator).
+    /// The etcd lease TTL is set from the first `ttl` value passed; subsequent
+    /// calls return the cached lease ID without re-granting (the underlying
+    /// lease TTL is maintained by `heartbeat` keep-alives, not by this method).
+    ///
+    /// If a lease already exists for a different orchestrator, it is replaced
+    /// in-memory without revoking the previous etcd lease. This shouldn't
+    /// happen in normal operation since each `EtcdLeaseManager` instance is
+    /// bound to one orchestrator.
     async fn ensure_lease(
         &self,
         orchestrator_id: &OrchestratorId,
@@ -161,9 +168,20 @@ impl EtcdLeaseManager {
             .change_context(LeaseError::Internal)?;
 
         let lease_id = resp.id();
+
+        // Establish a long-lived keep-alive stream for this lease.
+        // The keeper is reused by heartbeat() to avoid per-call stream setup.
+        let (keeper, _stream) = self
+            .client
+            .clone()
+            .lease_keep_alive(lease_id)
+            .await
+            .change_context(LeaseError::Internal)?;
+
         *guard = Some(OrchestratorLease {
             lease_id,
             orchestrator_id: orchestrator_id.clone(),
+            keeper,
         });
 
         Ok(lease_id)
@@ -192,7 +210,8 @@ impl LeaseManager for EtcdLeaseManager {
             let lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
             let key = self.run_key(run_id);
             let now = Utc::now();
-            let expires_at = now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
+            let expires_at = now + chrono::Duration::from_std(ttl)
+                    .map_err(|_| error_stack::report!(LeaseError::Internal))?;
 
             let value = LeaseValue {
                 owner: orchestrator_id.as_str().to_string(),
@@ -256,10 +275,35 @@ impl LeaseManager for EtcdLeaseManager {
                         .change_context(LeaseError::Internal)?;
                     Ok(LeaseResult::Acquired { expires_at })
                 } else {
-                    // Different owner
+                    // Different owner — derive expires_at from the etcd lease TTL
+                    // rather than the stored value, which may be stale if the
+                    // owner's heartbeat has been extending the lease.
+                    let actual_expires_at = {
+                        let etcd_lease_id = kv.lease();
+                        if etcd_lease_id != 0 {
+                            self.client
+                                .clone()
+                                .lease_time_to_live(etcd_lease_id, None)
+                                .await
+                                .ok()
+                                .and_then(|resp| {
+                                    let ttl_secs = resp.ttl();
+                                    if ttl_secs > 0 {
+                                        Some(
+                                            Utc::now()
+                                                + chrono::Duration::seconds(ttl_secs),
+                                        )
+                                    } else {
+                                        None
+                                    }
+                                })
+                        } else {
+                            None
+                        }
+                    };
                     Ok(LeaseResult::OwnedBy {
                         owner: OrchestratorId::new(existing.owner),
-                        expires_at: existing.expires_at,
+                        expires_at: actual_expires_at.unwrap_or(existing.expires_at),
                     })
                 }
             }
@@ -299,7 +343,8 @@ impl LeaseManager for EtcdLeaseManager {
 
             // Update with new expiration
             let now = Utc::now();
-            let expires_at = now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
+            let expires_at = now + chrono::Duration::from_std(ttl)
+                    .map_err(|_| error_stack::report!(LeaseError::Internal))?;
 
             let new_value = LeaseValue {
                 owner: orchestrator_id.as_str().to_string(),
@@ -387,22 +432,27 @@ impl LeaseManager for EtcdLeaseManager {
         ttl: Duration,
     ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move {
-            let lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
+            // Ensure the lease exists (idempotent after first call)
+            let _lease_id = self.ensure_lease(&orchestrator_id, ttl).await?;
 
-            // Keep the etcd lease alive
-            let (mut keeper, _stream) = self
-                .client
-                .clone()
-                .lease_keep_alive(lease_id)
-                .await
-                .change_context(LeaseError::Internal)?;
-
-            keeper
-                .keep_alive()
-                .await
-                .change_context(LeaseError::Internal)?;
+            // Send keep-alive on the long-lived stream (reuses the gRPC stream
+            // established in ensure_lease, avoiding per-call stream setup overhead).
+            {
+                let mut guard = self.orchestrator_lease.write().await;
+                if let Some(ref mut lease) = *guard {
+                    lease
+                        .keeper
+                        .keep_alive()
+                        .await
+                        .change_context(LeaseError::Internal)?;
+                }
+            }
 
             // Also update the heartbeat key with the current timestamp
+            let lease_id = {
+                let guard = self.orchestrator_lease.read().await;
+                guard.as_ref().map(|l| l.lease_id).unwrap_or(0)
+            };
             let key = self.heartbeat_key(&orchestrator_id);
             let value = HeartbeatValue {
                 last_heartbeat: Utc::now(),
@@ -473,9 +523,7 @@ impl LeaseManager for EtcdLeaseManager {
                 let key_str = std::str::from_utf8(kv.key()).unwrap_or_default();
                 if let Some(orch_id) = key_str.strip_prefix(&heartbeat_prefix) {
                     let value: HeartbeatValue = serde_json::from_slice(kv.value())
-                        .unwrap_or(HeartbeatValue {
-                            last_heartbeat: Utc::now(),
-                        });
+                        .change_context(LeaseError::Internal)?;
                     orchestrators.insert(
                         orch_id.to_string(),
                         OrchestratorInfo {
@@ -499,16 +547,16 @@ impl LeaseManager for EtcdLeaseManager {
                 .change_context(LeaseError::Internal)?;
 
             for kv in runs_resp.kvs() {
-                if let Ok(value) = serde_json::from_slice::<LeaseValue>(kv.value()) {
-                    orchestrators
-                        .entry(value.owner.clone())
-                        .and_modify(|info| info.active_runs += 1)
-                        .or_insert_with(|| OrchestratorInfo {
-                            id: OrchestratorId::new(&value.owner),
-                            last_heartbeat: Utc::now(),
-                            active_runs: 1,
-                        });
-                }
+                let value: LeaseValue = serde_json::from_slice(kv.value())
+                    .change_context(LeaseError::Internal)?;
+                orchestrators
+                    .entry(value.owner.clone())
+                    .and_modify(|info| info.active_runs += 1)
+                    .or_insert_with(|| OrchestratorInfo {
+                        id: OrchestratorId::new(&value.owner),
+                        last_heartbeat: Utc::now(),
+                        active_runs: 1,
+                    });
             }
 
             Ok(orchestrators.into_values().collect())

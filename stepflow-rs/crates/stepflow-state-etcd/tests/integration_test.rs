@@ -53,22 +53,33 @@ macro_rules! require_docker {
     };
 }
 
-/// Start an etcd container and return (container, client).
-async fn start_etcd() -> (ContainerAsync<GenericImage>, etcd_client::Client) {
-    // Ensure DOCKER_HOST is set for testcontainers (Colima support on macOS)
-    if std::env::var("DOCKER_HOST").is_err() {
-        let colima_socket = std::path::Path::new(&std::env::var("HOME").unwrap())
-            .join(".colima/default/docker.sock");
-        if colima_socket.exists() {
-            // SAFETY: Setting env var during test initialization before any async work
-            unsafe {
-                std::env::set_var(
-                    "DOCKER_HOST",
-                    format!("unix://{}", colima_socket.display()),
-                );
-            }
+/// One-time initialization to configure DOCKER_HOST for testcontainers.
+///
+/// Primarily supports Colima on macOS. If DOCKER_HOST is already set,
+/// or if HOME is not set / the Colima socket does not exist, this is a no-op.
+static INIT_DOCKER_HOST: LazyLock<()> = LazyLock::new(|| {
+    if std::env::var_os("DOCKER_HOST").is_some() {
+        return;
+    }
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let colima_socket = std::path::Path::new(&home).join(".colima/default/docker.sock");
+    if colima_socket.exists() {
+        // SAFETY: This runs once before any async work via LazyLock.
+        unsafe {
+            std::env::set_var(
+                "DOCKER_HOST",
+                format!("unix://{}", colima_socket.display()),
+            );
         }
     }
+});
+
+/// Start an etcd container and return (container, client).
+async fn start_etcd() -> (ContainerAsync<GenericImage>, etcd_client::Client) {
+    // Ensure DOCKER_HOST is configured once in a thread-safe way
+    let _ = *INIT_DOCKER_HOST;
 
     let etcd = GenericImage::new("gcr.io/etcd-development/etcd", "v3.5.21")
         .with_wait_for(WaitFor::message_on_stderr("ready to serve client requests"))
