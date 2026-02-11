@@ -4688,6 +4688,7 @@ name = "stepflow-execution"
 version = "0.9.0"
 dependencies = [
  "bit-set",
+ "bytes",
  "error-stack",
  "futures",
  "log",

@@ -13,24 +13,16 @@
 //! No-op lease manager for single-orchestrator deployments.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use error_stack::{Result, ResultExt as _};
+use error_stack::Result;
 use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use stepflow_core::status::ExecutionStatus;
-use stepflow_dtos::RunFilters;
-
-use crate::{
-    ExecutionJournal, LeaseError, LeaseInfo, LeaseManager, LeaseResult, MetadataStore,
-    OrchestratorId, OrchestratorInfo, OrphanedRun, RunRecoveryInfo,
-};
+use crate::{LeaseError, LeaseInfo, LeaseManager, LeaseResult, OrchestratorId, OrchestratorInfo};
 
 /// Internal lease record for tracking acquired leases.
 #[derive(Debug, Clone)]
@@ -96,6 +88,17 @@ impl LeaseManager for NoOpLeaseManager {
         let expires_at =
             now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
 
+        // Check if the lease is already owned by a different orchestrator
+        if let Some(existing) = self.leases.get(&run_id)
+            && existing.owner != orchestrator_id
+        {
+            let result = LeaseResult::OwnedBy {
+                owner: existing.owner.clone(),
+                expires_at: existing.expires_at,
+            };
+            return async move { Ok(result) }.boxed();
+        }
+
         // Track the lease
         self.leases.insert(
             run_id,
@@ -115,11 +118,18 @@ impl LeaseManager for NoOpLeaseManager {
         orchestrator_id: OrchestratorId,
         ttl: Duration,
     ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>> {
+        // Verify ownership before renewing
+        if let Some(existing) = self.leases.get(&run_id)
+            && existing.owner != orchestrator_id
+        {
+            return async move { Err(error_stack::report!(LeaseError::NotOwner)) }.boxed();
+        }
+
         let now = Utc::now();
         let expires_at =
             now + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1));
 
-        // Update or insert the lease
+        // Update the lease
         self.leases.insert(
             run_id,
             LeaseRecord {
@@ -135,29 +145,34 @@ impl LeaseManager for NoOpLeaseManager {
     fn release_lease(
         &self,
         run_id: Uuid,
-        _orchestrator_id: OrchestratorId,
+        orchestrator_id: OrchestratorId,
     ) -> BoxFuture<'_, Result<(), LeaseError>> {
+        // Verify ownership before releasing
+        if let Some(existing) = self.leases.get(&run_id)
+            && existing.owner != orchestrator_id
+        {
+            return async move { Err(error_stack::report!(LeaseError::NotOwner)) }.boxed();
+        }
+
         // Remove the lease
         self.leases.remove(&run_id);
         async move { Ok(()) }.boxed()
     }
 
-    fn list_orphaned_runs(&self) -> BoxFuture<'_, Result<Vec<OrphanedRun>, LeaseError>> {
-        // No-op manager never has orphaned runs
-        async move { Ok(Vec::new()) }.boxed()
+    fn release_all(
+        &self,
+        orchestrator_id: OrchestratorId,
+    ) -> BoxFuture<'_, Result<(), LeaseError>> {
+        self.leases
+            .retain(|_, record| record.owner != orchestrator_id);
+        async move { Ok(()) }.boxed()
     }
 
-    fn claim_orphaned_runs(
+    fn heartbeat(
         &self,
         _orchestrator_id: OrchestratorId,
-        _max_claims: usize,
         _ttl: Duration,
-    ) -> BoxFuture<'_, Result<Vec<Uuid>, LeaseError>> {
-        // No-op manager never has orphaned runs to claim
-        async move { Ok(Vec::new()) }.boxed()
-    }
-
-    fn heartbeat(&self, _orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>> {
+    ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move { Ok(()) }.boxed()
     }
 
@@ -189,66 +204,6 @@ impl LeaseManager for NoOpLeaseManager {
             .collect();
 
         async move { Ok(result) }.boxed()
-    }
-
-    fn claim_for_recovery(
-        &self,
-        _orchestrator_id: OrchestratorId,
-        metadata_store: &Arc<dyn MetadataStore>,
-        _journal: &Arc<dyn ExecutionJournal>,
-        limit: usize,
-    ) -> BoxFuture<'_, Result<Vec<RunRecoveryInfo>, LeaseError>> {
-        let metadata_store = Arc::clone(metadata_store);
-
-        async move {
-            // For single-orchestrator deployments, we recover all pending runs
-            // from the metadata store. No lease coordination is needed.
-            let filters = RunFilters {
-                status: Some(ExecutionStatus::Running),
-                limit: Some(limit),
-                ..Default::default()
-            };
-            let pending_runs = metadata_store
-                .list_runs(&filters)
-                .await
-                .change_context(LeaseError::Internal)?;
-
-            let mut recovery_infos = Vec::with_capacity(pending_runs.len());
-
-            for summary in pending_runs {
-                // Get full run details for inputs and variables
-                let details = metadata_store
-                    .get_run(summary.run_id)
-                    .await
-                    .change_context(LeaseError::Internal)?;
-
-                if let Some(details) = details {
-                    // Extract inputs from item_details
-                    let inputs = details
-                        .item_details
-                        .as_ref()
-                        .map(|items| items.iter().map(|item| item.input.clone()).collect())
-                        .unwrap_or_default();
-
-                    // Note: inputs and variables here are placeholders. Recovery extracts
-                    // authoritative values from the RunCreated journal event, which contains
-                    // the exact inputs and variables used when the run was originally created.
-                    // journal_offset is empty to replay from the beginning.
-                    recovery_infos.push(RunRecoveryInfo {
-                        run_id: summary.run_id,
-                        root_run_id: summary.root_run_id,
-                        parent_run_id: summary.parent_run_id,
-                        flow_id: summary.flow_id,
-                        inputs,
-                        variables: HashMap::new(),
-                        journal_offset: Bytes::new(),
-                    });
-                }
-            }
-
-            Ok(recovery_infos)
-        }
-        .boxed()
     }
 }
 
@@ -296,26 +251,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_noop_no_orphans() {
-        let manager = NoOpLeaseManager::new();
-
-        let orphans = manager.list_orphaned_runs().await.unwrap();
-        assert!(orphans.is_empty());
-
-        let claimed = manager
-            .claim_orphaned_runs(OrchestratorId::new("test"), 10, Duration::from_secs(30))
-            .await
-            .unwrap();
-        assert!(claimed.is_empty());
-    }
-
-    #[tokio::test]
     async fn test_noop_heartbeat() {
         let manager = NoOpLeaseManager::new();
         let orch_id = OrchestratorId::new("test-orch");
 
         // Should not error
-        manager.heartbeat(orch_id).await.unwrap();
+        manager
+            .heartbeat(orch_id, Duration::from_secs(30))
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

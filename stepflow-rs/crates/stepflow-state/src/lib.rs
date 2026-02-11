@@ -40,7 +40,7 @@ pub use execution_journal::{
 };
 pub use in_memory::InMemoryStateStore;
 pub use lease_manager::{LeaseError, LeaseManager, LeaseResult};
-pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, OrphanedRun, RunRecoveryInfo};
+pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, RunRecoveryInfo};
 pub use metadata_store::MetadataStore;
 pub use noop_journal::NoOpJournal;
 pub use noop_lease_manager::NoOpLeaseManager;

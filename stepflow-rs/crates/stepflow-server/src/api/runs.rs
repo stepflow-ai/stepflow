@@ -379,6 +379,7 @@ pub async fn list_runs(
         parent_run_id: query.parent_run_id,
         roots_only: query.roots_only,
         max_depth: query.max_depth,
+        orchestrator_id: None,
         limit: query.limit,
         offset: query.offset,
     };

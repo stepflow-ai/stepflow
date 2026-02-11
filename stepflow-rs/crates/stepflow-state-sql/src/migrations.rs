@@ -37,6 +37,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
+    // Add orchestrator_id column to runs for multi-orchestrator recovery
+    apply_migration(pool, "004_add_orchestrator_id_to_runs", || {
+        add_orchestrator_id_column(pool)
+    })
+    .await?;
+
     Ok(())
 }
 
@@ -246,6 +252,24 @@ async fn create_journal_tables(pool: &SqlitePool) -> Result<(), StateError> {
 /// allowing step-level status to be queried without accessing the journal.
 async fn add_step_statuses_column(pool: &SqlitePool) -> Result<(), StateError> {
     sqlx::query("ALTER TABLE run_items ADD COLUMN step_statuses_json TEXT")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Add orchestrator_id column to runs table for multi-orchestrator recovery.
+///
+/// Tracks which orchestrator owns each run, enabling targeted recovery queries.
+/// NULL means the run is orphaned (available for claiming).
+async fn add_orchestrator_id_column(pool: &SqlitePool) -> Result<(), StateError> {
+    sqlx::query("ALTER TABLE runs ADD COLUMN orchestrator_id TEXT")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_runs_orchestrator_id ON runs(orchestrator_id)")
         .execute(pool)
         .await
         .change_context(StateError::Initialization)?;

@@ -135,6 +135,7 @@ impl InMemoryStateStore {
                 completed_at: None,
                 root_run_id: params.root_run_id,
                 parent_run_id: params.parent_run_id,
+                orchestrator_id: params.orchestrator_id,
             },
             item_details: Some(item_details),
             overrides: if params.overrides.is_empty() {
@@ -279,6 +280,13 @@ impl MetadataStore for InMemoryStateStore {
 
                     // Apply roots_only filter (get only top-level runs)
                     if filters.roots_only == Some(true) && exec.parent_run_id.is_some() {
+                        return false;
+                    }
+
+                    // Apply orchestrator_id filter
+                    if let Some(ref orch_filter) = filters.orchestrator_id
+                        && exec.orchestrator_id.as_ref() != orch_filter.as_ref()
+                    {
                         return false;
                     }
 
@@ -459,6 +467,42 @@ impl MetadataStore for InMemoryStateStore {
             }
 
             Ok(items)
+        }
+        .boxed()
+    }
+
+    fn update_run_orchestrator(
+        &self,
+        run_id: Uuid,
+        orchestrator_id: Option<String>,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async move {
+            if let Some(mut run_state) = self.runs.get_mut(&run_id) {
+                run_state.details.summary.orchestrator_id = orchestrator_id;
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn orphan_runs_by_stale_orchestrators(
+        &self,
+        live_orchestrator_ids: &[String],
+    ) -> BoxFuture<'_, error_stack::Result<usize, StateError>> {
+        let live_ids: Vec<String> = live_orchestrator_ids.to_vec();
+        async move {
+            let mut orphaned = 0;
+            for mut entry in self.runs.iter_mut() {
+                let summary = &mut entry.details.summary;
+                if summary.status == ExecutionStatus::Running
+                    && let Some(ref orch_id) = summary.orchestrator_id
+                    && !live_ids.contains(orch_id)
+                {
+                    summary.orchestrator_id = None;
+                    orphaned += 1;
+                }
+            }
+            Ok(orphaned)
         }
         .boxed()
     }

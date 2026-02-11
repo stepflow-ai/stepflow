@@ -15,10 +15,16 @@
 //! This module provides functionality to recover runs that were interrupted
 //! due to crashes or restarts. Recovery works by:
 //!
-//! 1. Querying the lease manager for runs that need recovery
-//! 2. For each run, loading the flow definition from the metadata store
+//! 1. Querying the **MetadataStore** for runs with `Running` status
+//! 2. For each run, loading the flow definition from the BlobStore
 //! 3. Replaying journal events to reconstruct the execution state
 //! 4. Resuming execution from where it left off
+//!
+//! The MetadataStore is the source of truth for identifying recoverable runs.
+//! The LeaseManager is not involved in discovery — it handles only coordination
+//! (ownership enforcement) in multi-orchestrator deployments. This separation
+//! allows the lease manager to remain a pure coordination primitive, compatible
+//! with backends like etcd where expired keys are automatically deleted.
 //!
 //! ## Journal Organization
 //!
@@ -41,16 +47,27 @@
 //! println!("Recovered {} runs", recovered);
 //! ```
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use bytes::Bytes;
 use error_stack::ResultExt as _;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::apply_overrides;
+use stepflow_dtos::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, BlobStoreExt as _, ExecutionJournal, ExecutionJournalExt as _,
-    LeaseManagerExt as _, MetadataStoreExt as _, OrchestratorId, SequenceNumber,
+    LeaseManagerExt as _, LeaseResult, MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo,
+    SequenceNumber,
 };
+
+/// Default TTL for leases acquired during recovery.
+///
+/// Recovery leases should be long enough to complete journal replay and resume
+/// execution, after which the normal lease renewal mechanism takes over.
+const RECOVERY_LEASE_TTL: Duration = Duration::from_secs(60);
 
 use crate::{ExecutionError, Result, RunState};
 
@@ -117,11 +134,11 @@ pub async fn recover_orphaned_runs(
     let metadata_store = env.metadata_store().clone();
     let journal = env.execution_journal();
 
-    // Claim runs for recovery
-    let runs_to_recover = lease_manager
-        .claim_for_recovery(orchestrator_id.clone(), &metadata_store, journal, limit)
-        .await
-        .change_context(ExecutionError::RecoveryFailed)?;
+    // Find runs that need recovery by querying the metadata store for runs
+    // with Running status, then attempting to acquire leases for each.
+    // Only runs where the lease is successfully acquired are returned.
+    let runs_to_recover =
+        claim_for_recovery(lease_manager, &metadata_store, &orchestrator_id, limit).await?;
 
     if runs_to_recover.is_empty() {
         log::info!("No runs to recover");
@@ -169,6 +186,161 @@ pub async fn recover_orphaned_runs(
     );
 
     Ok(result)
+}
+
+/// Find runs that need recovery and acquire leases for them.
+///
+/// This queries the metadata store for runs with `Running` status that are
+/// owned by this orchestrator (targeted query) or orphaned. For each run,
+/// it attempts to acquire a lease via the lease manager. Only runs where the
+/// lease is successfully acquired are returned — runs owned by other
+/// orchestrators are skipped.
+///
+/// With deterministic orchestrator IDs (e.g., hostname-based), a restarting
+/// orchestrator will find its own runs still leased under its ID. The same-owner
+/// acquire path succeeds immediately, making restart recovery fast.
+///
+/// ## Self-healing
+///
+/// The lease manager is the source of truth for run ownership. The metadata
+/// store's `orchestrator_id` is an optimization for efficient discovery, and
+/// may become stale. This function self-heals in two directions:
+///
+/// - **Acquired an orphaned run**: writes our orchestrator ID to the metadata
+///   store so future queries find it under our ownership.
+/// - **OwnedBy another orchestrator**: writes the actual owner back to the
+///   metadata store, correcting stale orphan status. This handles the case
+///   where `orphan_runs_by_stale_orchestrators` was called with an incomplete
+///   live set (missing the actual owner).
+async fn claim_for_recovery(
+    lease_manager: &Arc<dyn stepflow_state::LeaseManager>,
+    metadata_store: &Arc<dyn stepflow_state::MetadataStore>,
+    orchestrator_id: &OrchestratorId,
+    limit: usize,
+) -> Result<Vec<RunRecoveryInfo>> {
+    // First, recover our own runs (targeted query by orchestrator_id).
+    // This is the fast path for deterministic ID restarts.
+    let own_filters = RunFilters {
+        status: Some(ExecutionStatus::Running),
+        orchestrator_id: Some(Some(orchestrator_id.as_str().to_string())),
+        limit: Some(limit),
+        ..Default::default()
+    };
+    let mut pending_runs = metadata_store
+        .list_runs(&own_filters)
+        .await
+        .change_context(ExecutionError::RecoveryFailed)?;
+
+    // Then, claim orphaned runs (orchestrator_id IS NULL) up to the remaining limit.
+    let remaining = limit.saturating_sub(pending_runs.len());
+    if remaining > 0 {
+        let orphan_filters = RunFilters {
+            status: Some(ExecutionStatus::Running),
+            orchestrator_id: Some(None), // NULL = orphaned
+            limit: Some(remaining),
+            ..Default::default()
+        };
+        let orphaned_runs = metadata_store
+            .list_runs(&orphan_filters)
+            .await
+            .change_context(ExecutionError::RecoveryFailed)?;
+        pending_runs.extend(orphaned_runs);
+    }
+
+    let mut recovery_infos = Vec::with_capacity(pending_runs.len());
+
+    for summary in pending_runs {
+        // Attempt to acquire the lease before loading details. This ensures only
+        // one orchestrator recovers each run. With deterministic IDs, re-acquiring
+        // our own lease (same owner) succeeds immediately.
+        match lease_manager
+            .acquire_lease(summary.run_id, orchestrator_id.clone(), RECOVERY_LEASE_TTL)
+            .await
+        {
+            Ok(LeaseResult::Acquired { .. }) => {
+                // Lease acquired — update ownership if this was an orphaned run
+                if summary.orchestrator_id.is_none()
+                    && let Err(e) = metadata_store
+                        .update_run_orchestrator(
+                            summary.run_id,
+                            Some(orchestrator_id.as_str().to_string()),
+                        )
+                        .await
+                {
+                    log::warn!(
+                        "Failed to update orchestrator for run {}: {:?}",
+                        summary.run_id,
+                        e
+                    );
+                }
+            }
+            Ok(LeaseResult::OwnedBy { owner, .. }) => {
+                // Self-heal: if the metadata store thinks this run is orphaned (or
+                // owned by us) but the lease manager says otherwise, write the actual
+                // owner back. This corrects stale orchestrator_id values caused by
+                // orphan_runs_by_stale_orchestrators being called with an incomplete
+                // live set.
+                if summary.orchestrator_id.as_deref() != Some(owner.as_str())
+                    && let Err(e) = metadata_store
+                        .update_run_orchestrator(
+                            summary.run_id,
+                            Some(owner.as_str().to_string()),
+                        )
+                        .await
+                {
+                    log::warn!(
+                        "Failed to self-heal orchestrator for run {}: {:?}",
+                        summary.run_id,
+                        e
+                    );
+                }
+                log::debug!(
+                    "Skipping run {} during recovery: owned by {}",
+                    summary.run_id,
+                    owner
+                );
+                continue;
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to acquire lease for run {} during recovery: {:?}",
+                    summary.run_id,
+                    e
+                );
+                continue;
+            }
+        }
+
+        // Get full run details for inputs
+        let details = metadata_store
+            .get_run(summary.run_id)
+            .await
+            .change_context(ExecutionError::RecoveryFailed)?;
+
+        if let Some(details) = details {
+            let inputs = details
+                .item_details
+                .as_ref()
+                .map(|items| items.iter().map(|item| item.input.clone()).collect())
+                .unwrap_or_default();
+
+            // Note: inputs and variables here are placeholders. Recovery extracts
+            // authoritative values from the RunCreated journal event, which contains
+            // the exact inputs and variables used when the run was originally created.
+            // journal_offset is empty to replay from the beginning.
+            recovery_infos.push(RunRecoveryInfo {
+                run_id: summary.run_id,
+                root_run_id: summary.root_run_id,
+                parent_run_id: summary.parent_run_id,
+                flow_id: summary.flow_id,
+                inputs,
+                variables: HashMap::new(),
+                journal_offset: Bytes::new(),
+            });
+        }
+    }
+
+    Ok(recovery_infos)
 }
 
 /// Recover a single run by replaying its journal and resuming execution.

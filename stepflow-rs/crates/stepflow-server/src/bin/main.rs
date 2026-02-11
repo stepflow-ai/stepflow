@@ -20,7 +20,7 @@ use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
 use stepflow_server::{orphan_claiming_loop, shutdown_signal};
-use stepflow_state::OrchestratorId;
+use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -185,10 +185,11 @@ async fn main() {
             }
         }
 
-        // TODO: Release leases for any runs still in progress
-        // This requires tracking active runs in the executor, which is not
-        // currently implemented. For now, leases will expire naturally.
-        // In production with short TTLs (e.g., 30s), this is acceptable.
+        // Release all leases held by this orchestrator so other orchestrators
+        // can immediately reclaim the runs
+        if let Err(e) = executor.lease_manager().release_all(orchestrator_id).await {
+            warn!("Failed to release leases during shutdown: {:?}", e);
+        }
 
         info!("Graceful shutdown complete");
         Ok(())

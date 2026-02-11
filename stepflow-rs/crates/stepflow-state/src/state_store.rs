@@ -49,6 +49,11 @@ pub struct CreateRunParams {
     ///
     /// None for top-level runs, Some(parent_id) for sub-flows.
     pub parent_run_id: Option<Uuid>,
+    /// The orchestrator that owns this run.
+    ///
+    /// Set when the run is created and updated during recovery.
+    /// None means the run is orphaned (no orchestrator owns it).
+    pub orchestrator_id: Option<String>,
 }
 
 impl CreateRunParams {
@@ -66,6 +71,7 @@ impl CreateRunParams {
             variables: HashMap::new(),
             root_run_id: run_id,
             parent_run_id: None,
+            orchestrator_id: None,
         }
     }
 
@@ -89,6 +95,7 @@ impl CreateRunParams {
             variables: HashMap::new(),
             root_run_id,
             parent_run_id: Some(parent_run_id),
+            orchestrator_id: None,
         }
     }
 

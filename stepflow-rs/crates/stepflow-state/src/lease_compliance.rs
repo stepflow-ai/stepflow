@@ -65,6 +65,11 @@ impl LeaseComplianceTests {
         Self::test_renew_lease_updates_expiry(manager).await;
         Self::test_heartbeat_succeeds(manager).await;
         Self::test_list_orchestrators_reflects_leases(manager).await;
+        Self::test_acquire_returns_owned_by_when_taken(manager).await;
+        Self::test_acquire_same_owner_succeeds(manager).await;
+        Self::test_renew_by_non_owner_fails(manager).await;
+        Self::test_release_by_non_owner_fails(manager).await;
+        Self::test_release_all_clears_leases(manager).await;
     }
 
     /// Run all compliance tests with a fresh manager for each test.
@@ -93,6 +98,11 @@ impl LeaseComplianceTests {
         Self::test_renew_lease_updates_expiry(&factory().await).await;
         Self::test_heartbeat_succeeds(&factory().await).await;
         Self::test_list_orchestrators_reflects_leases(&factory().await).await;
+        Self::test_acquire_returns_owned_by_when_taken(&factory().await).await;
+        Self::test_acquire_same_owner_succeeds(&factory().await).await;
+        Self::test_renew_by_non_owner_fails(&factory().await).await;
+        Self::test_release_by_non_owner_fails(&factory().await).await;
+        Self::test_release_all_clears_leases(&factory().await).await;
     }
 
     // =========================================================================
@@ -265,9 +275,11 @@ impl LeaseComplianceTests {
     pub async fn test_heartbeat_succeeds<L: LeaseManager>(manager: &L) {
         let orch_id = OrchestratorId::new("test-orch");
 
+        let ttl = Duration::from_secs(30);
+
         // Heartbeat should succeed
         manager
-            .heartbeat(orch_id)
+            .heartbeat(orch_id, ttl)
             .await
             .expect("heartbeat should succeed");
     }
@@ -331,6 +343,159 @@ impl LeaseComplianceTests {
             our_orch.unwrap().active_runs,
             1,
             "Orchestrator should have 1 active run after release"
+        );
+    }
+
+    // =========================================================================
+    // Contention tests
+    // =========================================================================
+
+    /// Test that acquire returns `OwnedBy` when another orchestrator holds the lease.
+    ///
+    /// Contract: If orchestrator A holds a lease, orchestrator B's acquire attempt
+    /// should return `OwnedBy { owner: A }`.
+    pub async fn test_acquire_returns_owned_by_when_taken<L: LeaseManager>(manager: &L) {
+        let run_id = Uuid::now_v7();
+        let orch_a = OrchestratorId::new("orch-a");
+        let orch_b = OrchestratorId::new("orch-b");
+        let ttl = Duration::from_secs(30);
+
+        // Orchestrator A acquires the lease
+        let result = manager
+            .acquire_lease(run_id, orch_a.clone(), ttl)
+            .await
+            .expect("acquire_lease should succeed");
+        assert!(result.is_acquired(), "Orch A should acquire the lease");
+
+        // Orchestrator B tries to acquire the same lease
+        let result = manager
+            .acquire_lease(run_id, orch_b, ttl)
+            .await
+            .expect("acquire_lease should succeed (not error)");
+        assert!(!result.is_acquired(), "Orch B should NOT acquire the lease");
+        match result {
+            crate::LeaseResult::OwnedBy { owner, .. } => {
+                assert_eq!(owner, orch_a, "Should report orch-a as the owner");
+            }
+            other => panic!("Expected OwnedBy, got {:?}", other),
+        }
+    }
+
+    /// Test that the same orchestrator can re-acquire its own lease (idempotent).
+    ///
+    /// Contract: If orchestrator A already holds a lease, acquiring again should succeed.
+    pub async fn test_acquire_same_owner_succeeds<L: LeaseManager>(manager: &L) {
+        let run_id = Uuid::now_v7();
+        let orch_id = OrchestratorId::new("test-orch");
+        let ttl = Duration::from_secs(30);
+
+        // First acquire
+        let result = manager
+            .acquire_lease(run_id, orch_id.clone(), ttl)
+            .await
+            .expect("acquire_lease should succeed");
+        assert!(result.is_acquired());
+
+        // Same orchestrator re-acquires
+        let result = manager
+            .acquire_lease(run_id, orch_id.clone(), ttl)
+            .await
+            .expect("re-acquire should succeed");
+        assert!(
+            result.is_acquired(),
+            "Same owner should be able to re-acquire"
+        );
+    }
+
+    /// Test that renewing a lease by a non-owner fails.
+    ///
+    /// Contract: If orchestrator A holds a lease, orchestrator B's renew attempt
+    /// should fail with an error.
+    pub async fn test_renew_by_non_owner_fails<L: LeaseManager>(manager: &L) {
+        let run_id = Uuid::now_v7();
+        let orch_a = OrchestratorId::new("orch-a");
+        let orch_b = OrchestratorId::new("orch-b");
+        let ttl = Duration::from_secs(30);
+
+        // Orchestrator A acquires the lease
+        manager
+            .acquire_lease(run_id, orch_a, ttl)
+            .await
+            .expect("acquire_lease should succeed");
+
+        // Orchestrator B tries to renew
+        let result = manager.renew_lease(run_id, orch_b, ttl).await;
+        assert!(result.is_err(), "Renew by non-owner should fail");
+    }
+
+    /// Test that releasing a lease by a non-owner fails.
+    ///
+    /// Contract: If orchestrator A holds a lease, orchestrator B's release attempt
+    /// should fail with an error.
+    pub async fn test_release_by_non_owner_fails<L: LeaseManager>(manager: &L) {
+        let run_id = Uuid::now_v7();
+        let orch_a = OrchestratorId::new("orch-a");
+        let orch_b = OrchestratorId::new("orch-b");
+        let ttl = Duration::from_secs(30);
+
+        // Orchestrator A acquires the lease
+        manager
+            .acquire_lease(run_id, orch_a, ttl)
+            .await
+            .expect("acquire_lease should succeed");
+
+        // Orchestrator B tries to release
+        let result = manager.release_lease(run_id, orch_b).await;
+        assert!(result.is_err(), "Release by non-owner should fail");
+
+        // Verify lease is still intact
+        let lease = manager
+            .get_lease(run_id)
+            .await
+            .expect("get_lease should succeed");
+        assert!(
+            lease.is_some(),
+            "Lease should still exist after failed release"
+        );
+    }
+
+    /// Test that release_all removes all leases for an orchestrator.
+    ///
+    /// Contract: After release_all, no leases should remain for the orchestrator.
+    pub async fn test_release_all_clears_leases<L: LeaseManager>(manager: &L) {
+        let orch_id = OrchestratorId::new("test-orch");
+        let ttl = Duration::from_secs(30);
+
+        // Acquire two leases
+        let run1 = Uuid::now_v7();
+        let run2 = Uuid::now_v7();
+        manager
+            .acquire_lease(run1, orch_id.clone(), ttl)
+            .await
+            .expect("acquire should succeed");
+        manager
+            .acquire_lease(run2, orch_id.clone(), ttl)
+            .await
+            .expect("acquire should succeed");
+
+        // Verify both leases exist
+        assert!(manager.get_lease(run1).await.unwrap().is_some());
+        assert!(manager.get_lease(run2).await.unwrap().is_some());
+
+        // Release all
+        manager
+            .release_all(orch_id)
+            .await
+            .expect("release_all should succeed");
+
+        // Verify both leases are gone
+        assert!(
+            manager.get_lease(run1).await.unwrap().is_none(),
+            "Lease 1 should be removed after release_all"
+        );
+        assert!(
+            manager.get_lease(run2).await.unwrap().is_none(),
+            "Lease 2 should be removed after release_all"
         );
     }
 }

@@ -67,25 +67,6 @@ impl From<&str> for OrchestratorId {
     }
 }
 
-/// Information about an orphaned run.
-///
-/// An orphaned run is one whose lease has expired without the run completing,
-/// typically indicating the owning orchestrator crashed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OrphanedRun {
-    /// The run ID.
-    pub run_id: Uuid,
-
-    /// The root run ID (for subflow tracking).
-    pub root_run_id: Uuid,
-
-    /// The last known owner of the run.
-    pub last_owner: OrchestratorId,
-
-    /// When the lease expired.
-    pub expired_at: DateTime<Utc>,
-}
-
 /// Current lease information for a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaseInfo {
