@@ -376,10 +376,10 @@ class StepflowServer:
                     if parsed.scheme in ("http", "https") and parsed.netloc:
                         self._blob_api_url = blob_url
 
-                        # Also set the blob_store contextvar
+                        # One-time configuration (no reset needed)
                         from stepflow_py.worker import blob_store
 
-                        blob_store._blob_api_url.set(blob_url)
+                        blob_store.configure(blob_api_url=blob_url)
                     else:
                         logger.warning(
                             "Invalid blob API URL received: %s (must be http/https)",
@@ -487,89 +487,94 @@ class StepflowServer:
                 step_id=params.observability.step_id,
             )
 
-            # Set blob_store execution contextvars
-            from stepflow_py.worker import blob_store
+            # Set execution context for this component invocation
+            from stepflow_py.worker import execution_context
 
-            blob_store._blob_api_url.set(self._blob_api_url)
-            blob_store.current_run_id.set(params.observability.run_id)
-            blob_store.current_step_id.set(params.observability.step_id)
-            blob_store.current_flow_id.set(params.observability.flow_id)
-            blob_store.current_attempt.set(params.attempt)
+            exec_token = execution_context.set_context(
+                run_id=params.observability.run_id,
+                step_id=params.observability.step_id,
+                flow_id=params.observability.flow_id,
+                attempt=params.attempt,
+            )
 
-            logger = logging.getLogger(__name__)
+            try:
+                logger = logging.getLogger(__name__)
 
-            # Create a child span if trace context is available
-            tracer = get_tracer(__name__)
-            span_context = None
-            if params.observability.trace_id and params.observability.span_id:
-                span_context = extract_trace_context(
-                    params.observability.trace_id, params.observability.span_id
-                )
-
-            # Create OpenTelemetry context from span context
-            otel_context = None
-            if span_context:
-                otel_context = otel_trace.set_span_in_context(
-                    otel_trace.NonRecordingSpan(span_context)
-                )
-
-            # Create span for component execution
-            with tracer.start_as_current_span(
-                f"component:{params.component}",
-                context=otel_context,
-                attributes={
-                    "component": params.component,
-                    "attempt": params.attempt,
-                    **(
-                        {"run_id": params.observability.run_id}
-                        if params.observability.run_id
-                        else {}
-                    ),
-                    **(
-                        {"flow_id": params.observability.flow_id}
-                        if params.observability.flow_id
-                        else {}
-                    ),
-                    **(
-                        {"step_id": params.observability.step_id}
-                        if params.observability.step_id
-                        else {}
-                    ),
-                },
-            ):
-                # Parse input using component's input type
-                # Handle types that msgspec doesn't support (dict, Any, object)
-                # by passing through the input as-is
-                try:
-                    input_value: Any = msgspec.convert(
-                        params.input, type=component.input_type
+                # Create a child span if trace context is available
+                tracer = get_tracer(__name__)
+                span_context = None
+                if params.observability.trace_id and params.observability.span_id:
+                    span_context = extract_trace_context(
+                        params.observability.trace_id, params.observability.span_id
                     )
-                except TypeError as type_err:
-                    if "is not supported" in str(type_err):
-                        # Type not supported by msgspec, pass through as-is
-                        input_value = params.input
+
+                # Create OpenTelemetry context from span context
+                otel_context = None
+                if span_context:
+                    otel_context = otel_trace.set_span_in_context(
+                        otel_trace.NonRecordingSpan(span_context)
+                    )
+
+                # Create span for component execution
+                with tracer.start_as_current_span(
+                    f"component:{params.component}",
+                    context=otel_context,
+                    attributes={
+                        "component": params.component,
+                        "attempt": params.attempt,
+                        **(
+                            {"run_id": params.observability.run_id}
+                            if params.observability.run_id
+                            else {}
+                        ),
+                        **(
+                            {"flow_id": params.observability.flow_id}
+                            if params.observability.flow_id
+                            else {}
+                        ),
+                        **(
+                            {"step_id": params.observability.step_id}
+                            if params.observability.step_id
+                            else {}
+                        ),
+                    },
+                ):
+                    # Parse input using component's input type
+                    # Handle types that msgspec doesn't support (dict, Any, object)
+                    # by passing through the input as-is
+                    try:
+                        input_value: Any = msgspec.convert(
+                            params.input, type=component.input_type
+                        )
+                    except TypeError as type_err:
+                        if "is not supported" in str(type_err):
+                            # Type not supported by msgspec, pass through as-is
+                            input_value = params.input
+                        else:
+                            raise
+
+                    logger.info(
+                        f"Executing component {params.component} "
+                        f"(attempt {params.attempt})"
+                    )
+                    logger.debug(f"Component input: {input_value}")
+
+                    # Execute component with or without context, plus path params
+                    args = [input_value]
+                    if context is not None:
+                        args.append(context)
+
+                    if inspect.iscoroutinefunction(component.function):
+                        output = await component.function(*args, **path_params)
                     else:
-                        raise
+                        output = component.function(*args, **path_params)
 
-                logger.info(
-                    f"Executing component {params.component} (attempt {params.attempt})"
-                )
-                logger.debug(f"Component input: {input_value}")
-
-                # Execute component with or without context, plus path params as kwargs
-                args = [input_value]
-                if context is not None:
-                    args.append(context)
-
-                if inspect.iscoroutinefunction(component.function):
-                    output = await component.function(*args, **path_params)
-                else:
-                    output = component.function(*args, **path_params)
-
-                result = ComponentExecuteResult(output=output)
-                logger.info(f"Component {params.component} executed successfully")
-                logger.debug(f"Component output: {output}")
-                return MethodSuccess(id=request.id, result=result)
+                    result = ComponentExecuteResult(output=output)
+                    logger.info(f"Component {params.component} executed successfully")
+                    logger.debug(f"Component output: {output}")
+                    return MethodSuccess(id=request.id, result=result)
+            finally:
+                execution_context.reset_context(exec_token)
 
         except Exception as e:
             logger = logging.getLogger(__name__)

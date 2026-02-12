@@ -29,26 +29,60 @@ Usage::
 
 from __future__ import annotations
 
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import Any
 
 from stepflow_py.api.models.blob_type import BlobType
 
 # ---------------------------------------------------------------------------
-# Contextvars – set by the server during initialization and request handling
+# Contextvars – private; callers use configure() / reset()
 # ---------------------------------------------------------------------------
 
-# Blob API configuration (set once during _handle_initialize)
 _blob_api_url: ContextVar[str | None] = ContextVar(
     "stepflow_blob_api_url", default=None
 )
-_http_client: ContextVar[Any] = ContextVar("stepflow_http_client", default=None)
+_blob_http_client: ContextVar[Any] = ContextVar(
+    "stepflow_blob_http_client", default=None
+)
 
-# Execution metadata (set per-request in _handle_component_execute)
-current_run_id: ContextVar[str | None] = ContextVar("stepflow_run_id", default=None)
-current_step_id: ContextVar[str | None] = ContextVar("stepflow_step_id", default=None)
-current_flow_id: ContextVar[str | None] = ContextVar("stepflow_flow_id", default=None)
-current_attempt: ContextVar[int] = ContextVar("stepflow_attempt", default=1)
+
+# ---------------------------------------------------------------------------
+# Configuration API
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BlobStoreTokens:
+    """Opaque tokens returned by :func:`configure` for later :func:`reset`."""
+
+    url_token: Token[str | None] | None = None
+    client_token: Token[Any] | None = None
+
+
+def configure(
+    *,
+    blob_api_url: str | None = None,
+    http_client: Any = None,
+) -> BlobStoreTokens:
+    """Configure the blob store for the current async scope.
+
+    Only non-``None`` arguments are applied; the rest are left unchanged.
+    Call :func:`reset` with the returned tokens to restore the previous values.
+    """
+    url_token = _blob_api_url.set(blob_api_url) if blob_api_url is not None else None
+    client_token = (
+        _blob_http_client.set(http_client) if http_client is not None else None
+    )
+    return BlobStoreTokens(url_token=url_token, client_token=client_token)
+
+
+def reset(tokens: BlobStoreTokens) -> None:
+    """Restore previous blob store configuration."""
+    if tokens.url_token is not None:
+        _blob_api_url.reset(tokens.url_token)
+    if tokens.client_token is not None:
+        _blob_http_client.reset(tokens.client_token)
 
 
 # ---------------------------------------------------------------------------
@@ -58,21 +92,24 @@ current_attempt: ContextVar[int] = ContextVar("stepflow_attempt", default=1)
 
 def is_configured() -> bool:
     """Return True if the blob store has been configured with a URL and client."""
-    return _blob_api_url.get() is not None and _http_client.get() is not None
+    return _blob_api_url.get() is not None and _blob_http_client.get() is not None
 
 
-def _get_url() -> str:
+def _get_blob_api_url(blob_id: str | None = None) -> str:
+    """Get the blob API URL, optionally with a blob ID path appended."""
     url = _blob_api_url.get()
     if url is None:
         raise RuntimeError(
             "Blob API URL not configured. "
             "Ensure the orchestrator is configured with blobApi.url"
         )
+    if blob_id is not None:
+        return f"{url}/{blob_id}"
     return url
 
 
 def _get_client() -> Any:
-    client = _http_client.get()
+    client = _blob_http_client.get()
     if client is None:
         raise RuntimeError(
             "HTTP client not configured. "
@@ -96,7 +133,7 @@ async def put_blob(data: Any, blob_type: BlobType = BlobType.DATA) -> str:
     """
     from stepflow_py.worker.observability import get_tracer
 
-    url = _get_url()
+    url = _get_blob_api_url()
     client = _get_client()
 
     tracer = get_tracer(__name__)
@@ -124,7 +161,7 @@ async def get_blob(blob_id: str) -> Any:
     """
     from stepflow_py.worker.observability import get_tracer
 
-    url = _get_url()
+    url = _get_blob_api_url(blob_id)
     client = _get_client()
 
     tracer = get_tracer(__name__)
@@ -132,6 +169,6 @@ async def get_blob(blob_id: str) -> Any:
         "get_blob",
         attributes={"blob_id": blob_id},
     ):
-        resp = await client.get(f"{url}/{blob_id}")
+        resp = await client.get(url)
         resp.raise_for_status()
         return resp.json()["data"]
