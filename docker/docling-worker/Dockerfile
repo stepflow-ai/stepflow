@@ -43,12 +43,16 @@ COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orc
 COPY integrations/docling/pyproject.toml integrations/docling/uv.lock ./integrations/docling/
 
 # Create minimal package structure for uv to resolve dependencies
+# Note: README.md files are required by hatchling build backend
 RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
     touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    touch sdks/python/stepflow-py/README.md && \
     mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
     touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py && \
+    touch sdks/python/stepflow-orchestrator/README.md && \
     mkdir -p integrations/docling/src/stepflow_docling && \
-    touch integrations/docling/src/stepflow_docling/__init__.py
+    touch integrations/docling/src/stepflow_docling/__init__.py && \
+    touch integrations/docling/README.md
 
 # Install dependencies only (cached unless pyproject.toml/uv.lock change)
 # Use --frozen to ensure lock file is used exactly as-is
@@ -81,9 +85,9 @@ COPY --from=builder /app/integrations/docling/.venv ./integrations/docling/.venv
 ENV PATH="/app/integrations/docling/.venv/bin:/app/sdks/python/.venv/bin:$PATH"
 
 # Create non-root user
-RUN useradd --create-home --uid 1000 appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+RUN useradd --create-home --uid 1000 stepflow \
+    && chown -R stepflow:stepflow /app
+USER stepflow
 
 # Environment variables for docling-serve sidecar
 # In K8s, docling-serve runs in the same pod on localhost:5001

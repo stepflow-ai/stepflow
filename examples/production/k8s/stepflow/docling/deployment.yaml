@@ -45,11 +45,16 @@ spec:
         app: docling-worker
         component: document-processing
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
       containers:
       # Stepflow component server - handles incoming requests
       - name: stepflow-docling
         image: localhost/stepflow-docling:v14
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never  # Use local image loaded into Kind
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: http
           containerPort: 8080
@@ -115,6 +120,8 @@ spec:
       - name: docling-serve
         image: quay.io/docling-project/docling-serve-cpu:v1.10.0
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: docling
           containerPort: 5001

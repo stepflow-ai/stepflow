@@ -39,6 +39,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 
 - **Rust Development**: See `stepflow-rs/CLAUDE.md` for Rust conventions, testing, error handling, and coding standards
 - **Python SDK**: See `sdks/python/CLAUDE.md` for Python development and version compatibility
+- **Kubernetes & Docker**: See `examples/production/k8s/CLAUDE.md` for K8s demo conventions, Docker build patterns, and deployment standards
 
 ## Key Concepts
 

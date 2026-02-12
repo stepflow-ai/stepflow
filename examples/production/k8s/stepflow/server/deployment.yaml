@@ -31,10 +31,16 @@ spec:
         app: stepflow-server
         component: orchestration
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
       containers:
       - name: stepflow-server
         image: ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.9.0
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
         args:
         - "--config=/app/config/stepflow-config.yml"
         ports:

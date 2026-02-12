@@ -17,6 +17,13 @@
 .vscode
 **/*.swp
 
+# Python version pins (dev uses 3.13, Docker images may use 3.12)
+**/.python-version
+
+# Environment files with secrets
+**/.env
+**/.env.*
+
 # Build artifacts
 **/dist
 **/build
@@ -33,6 +40,7 @@ docs
 **/.DS_Store
 **/Thumbs.db
 
-# Lock files (not needed in container)
-**/uv.lock
+# Poetry lock files (not using poetry)
 **/poetry.lock
+
+# Note: uv.lock files are NOT excluded - needed for uv sync --frozen

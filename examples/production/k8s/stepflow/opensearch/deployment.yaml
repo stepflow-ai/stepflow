@@ -31,10 +31,15 @@ spec:
         app: opensearch
         component: search
     spec:
+      # Note: No pod-level runAsNonRoot/runAsUser here. OpenSearch manages its own
+      # internal user (uid 1000) and needs writable access to data volumes.
+      # Only container-level allowPrivilegeEscalation is restricted.
       containers:
       - name: opensearch
         image: localhost/opensearch-jvector:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never  # Use local image loaded into Kind
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: http
           containerPort: 9200

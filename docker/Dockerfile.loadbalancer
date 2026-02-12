@@ -16,7 +16,7 @@
 # Provides instance-aware routing for Stepflow component servers
 # Build context: repository root (stepflow/)
 
-FROM rust:1.90 AS builder
+FROM rust:1.90-bookworm AS builder
 
 WORKDIR /build
 
@@ -52,6 +52,9 @@ RUN useradd -m -u 1000 stepflow && \
     chown stepflow:stepflow /usr/local/bin/stepflow-load-balancer
 
 USER stepflow
+
+# Note: No HEALTHCHECK directive. The load balancer uses TCP-only probing.
+# Kubernetes deployments use tcpSocket probes for liveness/readiness.
 
 # Expose load balancer and metrics ports
 EXPOSE 8080 9090
