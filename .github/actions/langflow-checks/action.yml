@@ -50,4 +50,4 @@ runs:
       run: ./scripts/check-langflow.sh -v
       env:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
-        STEPFLOW_DEV_BINARY: stepflow-rs/target/debug/stepflow-server
+        STEPFLOW_DEV_BINARY: ${{ github.workspace }}/stepflow-rs/target/debug/stepflow-server
