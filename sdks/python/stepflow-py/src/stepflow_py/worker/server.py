@@ -375,6 +375,11 @@ class StepflowServer:
                     parsed = urlparse(blob_url)
                     if parsed.scheme in ("http", "https") and parsed.netloc:
                         self._blob_api_url = blob_url
+
+                        # Also set the blob_store contextvar
+                        from stepflow_py.worker import blob_store
+
+                        blob_store._blob_api_url.set(blob_url)
                     else:
                         logger.warning(
                             "Invalid blob API URL received: %s (must be http/https)",
@@ -481,6 +486,15 @@ class StepflowServer:
                 run_id=params.observability.run_id,
                 step_id=params.observability.step_id,
             )
+
+            # Set blob_store execution contextvars
+            from stepflow_py.worker import blob_store
+
+            blob_store._blob_api_url.set(self._blob_api_url)
+            blob_store.current_run_id.set(params.observability.run_id)
+            blob_store.current_step_id.set(params.observability.step_id)
+            blob_store.current_flow_id.set(params.observability.flow_id)
+            blob_store.current_attempt.set(params.attempt)
 
             logger = logging.getLogger(__name__)
 

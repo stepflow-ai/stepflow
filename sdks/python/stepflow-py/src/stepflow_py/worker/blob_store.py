@@ -1,0 +1,137 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+"""Module-level blob store API backed by contextvars.
+
+This module provides the canonical blob API functions that can be used by any
+code without requiring a StepflowContext parameter. The blob API URL and HTTP
+client are configured via contextvars during server initialization.
+
+Usage::
+
+    from stepflow_py.worker import blob_store
+
+    # In any async code (component, executor, framework):
+    blob_id = await blob_store.put_blob({"key": "value"})
+    data = await blob_store.get_blob(blob_id)
+"""
+
+from __future__ import annotations
+
+from contextvars import ContextVar
+from typing import Any
+
+from stepflow_py.api.models.blob_type import BlobType
+
+# ---------------------------------------------------------------------------
+# Contextvars – set by the server during initialization and request handling
+# ---------------------------------------------------------------------------
+
+# Blob API configuration (set once during _handle_initialize)
+_blob_api_url: ContextVar[str | None] = ContextVar(
+    "stepflow_blob_api_url", default=None
+)
+_http_client: ContextVar[Any] = ContextVar("stepflow_http_client", default=None)
+
+# Execution metadata (set per-request in _handle_component_execute)
+current_run_id: ContextVar[str | None] = ContextVar("stepflow_run_id", default=None)
+current_step_id: ContextVar[str | None] = ContextVar("stepflow_step_id", default=None)
+current_flow_id: ContextVar[str | None] = ContextVar("stepflow_flow_id", default=None)
+current_attempt: ContextVar[int] = ContextVar("stepflow_attempt", default=1)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def is_configured() -> bool:
+    """Return True if the blob store has been configured with a URL and client."""
+    return _blob_api_url.get() is not None and _http_client.get() is not None
+
+
+def _get_url() -> str:
+    url = _blob_api_url.get()
+    if url is None:
+        raise RuntimeError(
+            "Blob API URL not configured. "
+            "Ensure the orchestrator is configured with blobApi.url"
+        )
+    return url
+
+
+def _get_client() -> Any:
+    client = _http_client.get()
+    if client is None:
+        raise RuntimeError(
+            "HTTP client not configured. "
+            "Blob store must be used within a running Stepflow server."
+        )
+    return client
+
+
+async def put_blob(data: Any, blob_type: BlobType = BlobType.DATA) -> str:
+    """Store JSON data as a blob and return its content-based ID (SHA-256).
+
+    Args:
+        data: The JSON-serializable data to store.
+        blob_type: The type of blob to store (flow or data).
+
+    Returns:
+        The blob ID (SHA-256 hash) for the stored data.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_url()
+    client = _get_client()
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "put_blob",
+        attributes={"blob_type": blob_type.value},
+    ):
+        resp = await client.post(url, json={"data": data, "blobType": blob_type.value})
+        resp.raise_for_status()
+        blob_id: str = resp.json()["blobId"]
+        return blob_id
+
+
+async def get_blob(blob_id: str) -> Any:
+    """Retrieve JSON data by blob ID.
+
+    Args:
+        blob_id: The blob ID to retrieve.
+
+    Returns:
+        The JSON data associated with the blob ID.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_url()
+    client = _get_client()
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "get_blob",
+        attributes={"blob_id": blob_id},
+    ):
+        resp = await client.get(f"{url}/{blob_id}")
+        resp.raise_for_status()
+        return resp.json()["data"]

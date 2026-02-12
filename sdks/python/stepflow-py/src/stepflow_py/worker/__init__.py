@@ -22,6 +22,7 @@ from stepflow_py.api.models import (
     Step,
 )
 
+from . import blob_store
 from .context import StepflowContext
 from .expressions import ValueExpr
 from .flow_builder import Component, FlowBuilder, StepHandle
@@ -33,6 +34,8 @@ __all__ = [
     "StepflowServer",
     "StepflowContext",
     "FlowBuilder",
+    # Blob store module (module-level API backed by contextvars)
+    "blob_store",
     # Value API for cleaner workflow definitions
     "Value",
     "Valuable",

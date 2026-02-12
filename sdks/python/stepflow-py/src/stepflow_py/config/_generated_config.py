@@ -201,18 +201,6 @@ class SqliteStateStoreConfig(Struct, kw_only=True):
     autoMigrate: bool | None = None
 
 
-class FilesystemBlobStoreConfig(Struct, kw_only=True):
-    directory: (
-        Annotated[
-            str | None,
-            Meta(
-                description='Directory path for storing blobs. If not specified, a temporary directory is used.'
-            ),
-        ]
-        | None
-    ) = None
-
-
 class EtcdLeaseManagerConfig(Struct, kw_only=True):
     endpoints: Annotated[
         List[str],
@@ -289,12 +277,8 @@ class StoreConfig2(SqliteStateStoreConfig, kw_only=True):
     type: Literal['sqlite']
 
 
-class StoreConfig3(FilesystemBlobStoreConfig, kw_only=True):
-    type: Literal['filesystem']
-
-
 StoreConfig = Annotated[
-    StoreConfig1 | StoreConfig2 | StoreConfig3,
+    StoreConfig1 | StoreConfig2,
     Meta(
         description='Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery'
     ),

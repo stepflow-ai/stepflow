@@ -135,6 +135,8 @@ class StepflowContext:
     async def put_blob(self, data: Any, blob_type: BlobType = BlobType.DATA) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
+        Delegates to the module-level blob_store API backed by contextvars.
+
         Args:
             data: The JSON-serializable data to store
             blob_type: The type of blob to store (flow or data)
@@ -145,31 +147,14 @@ class StepflowContext:
         Raises:
             RuntimeError: If blob API URL was not provided during initialization
         """
-        from stepflow_py.worker.observability import get_tracer
+        from stepflow_py.worker import blob_store
 
-        if not self._blob_api_url:
-            raise RuntimeError(
-                "Blob API URL not configured. "
-                "Ensure the orchestrator is configured with blobApi.url"
-            )
-
-        tracer = get_tracer(__name__)
-        with tracer.start_as_current_span(
-            "put_blob",
-            attributes={
-                "blob_type": blob_type.value,
-            },
-        ):
-            resp = await self._http_client.post(
-                self._blob_api_url,
-                json={"data": data, "blobType": blob_type.value},
-            )
-            resp.raise_for_status()
-            blob_id: str = resp.json()["blobId"]
-            return blob_id
+        return await blob_store.put_blob(data, blob_type)
 
     async def get_blob(self, blob_id: str) -> Any:
         """Retrieve JSON data by blob ID.
+
+        Delegates to the module-level blob_store API backed by contextvars.
 
         Args:
             blob_id: The blob ID to retrieve
@@ -180,24 +165,9 @@ class StepflowContext:
         Raises:
             RuntimeError: If blob API URL was not provided during initialization
         """
-        from stepflow_py.worker.observability import get_tracer
+        from stepflow_py.worker import blob_store
 
-        if not self._blob_api_url:
-            raise RuntimeError(
-                "Blob API URL not configured. "
-                "Ensure the orchestrator is configured with blobApi.url"
-            )
-
-        tracer = get_tracer(__name__)
-        with tracer.start_as_current_span(
-            "get_blob",
-            attributes={
-                "blob_id": blob_id,
-            },
-        ):
-            resp = await self._http_client.get(f"{self._blob_api_url}/{blob_id}")
-            resp.raise_for_status()
-            return resp.json()["data"]
+        return await blob_store.get_blob(blob_id)
 
     @property
     def session_id(self) -> str | None:

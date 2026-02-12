@@ -159,6 +159,15 @@ class _HttpServerContext:
     async def handle_request(self, request: MethodRequest):
         """Handle a JSON-RPC method request."""
         try:
+            # Set blob_store contextvars so any code (including components
+            # that don't receive StepflowContext) can use blob_store directly.
+            from stepflow_py.worker import blob_store
+
+            http_client = await self.get_http_client()
+            blob_store._http_client.set(http_client)
+            if self.server.blob_api_url:
+                blob_store._blob_api_url.set(self.server.blob_api_url)
+
             needs_context = self.server.requires_context(request)
 
             if needs_context:
