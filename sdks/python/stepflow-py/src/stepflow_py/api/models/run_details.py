@@ -58,6 +58,11 @@ class RunDetails(BaseModel):
         description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
         alias="parentRunId",
     )
+    orchestrator_id: StrictStr | None = Field(
+        default=None,
+        description="The orchestrator currently managing this run.  None means the run is orphaned (no orchestrator owns it). Set when the run is created and updated during recovery.",
+        alias="orchestratorId",
+    )
     item_details: list[ItemDetails] | None = Field(
         default=None,
         description="Item details with inputs and step statuses. - `None`: details not requested, or run is active (query executor) - `Some`: item-level details available",
@@ -77,6 +82,7 @@ class RunDetails(BaseModel):
         "completedAt",
         "rootRunId",
         "parentRunId",
+        "orchestratorId",
         "itemDetails",
         "overrides",
     ]
@@ -165,6 +171,7 @@ class RunDetails(BaseModel):
                 "completedAt": obj.get("completedAt"),
                 "rootRunId": obj.get("rootRunId"),
                 "parentRunId": obj.get("parentRunId"),
+                "orchestratorId": obj.get("orchestratorId"),
                 "itemDetails": [
                     ItemDetails.from_dict(_item) for _item in obj["itemDetails"]
                 ]

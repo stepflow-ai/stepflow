@@ -17,6 +17,7 @@ mod completion_notifier;
 mod environment_ext;
 mod error;
 mod execution_journal;
+mod filesystem_blob_store;
 mod in_memory;
 pub mod journal_compliance;
 pub mod lease_compliance;
@@ -39,6 +40,7 @@ pub use error::{Result, StateError};
 pub use execution_journal::{
     ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, RootJournalInfo, SequenceNumber,
 };
+pub use filesystem_blob_store::{FilesystemBlobStore, FilesystemBlobStoreConfig};
 pub use in_memory::InMemoryStateStore;
 pub use lease_manager::{LeaseError, LeaseManager, LeaseResult};
 pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, RunRecoveryInfo};

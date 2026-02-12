@@ -56,6 +56,11 @@ class RunSummary(BaseModel):
         description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
         alias="parentRunId",
     )
+    orchestrator_id: StrictStr | None = Field(
+        default=None,
+        description="The orchestrator currently managing this run.  None means the run is orphaned (no orchestrator owns it). Set when the run is created and updated during recovery.",
+        alias="orchestratorId",
+    )
     __properties: ClassVar[list[str]] = [
         "runId",
         "flowId",
@@ -66,6 +71,7 @@ class RunSummary(BaseModel):
         "completedAt",
         "rootRunId",
         "parentRunId",
+        "orchestratorId",
     ]
 
     model_config = ConfigDict(
@@ -123,6 +129,11 @@ class RunSummary(BaseModel):
         if self.parent_run_id is None and "parent_run_id" in self.model_fields_set:
             _dict["parentRunId"] = None
 
+        # set to None if orchestrator_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.orchestrator_id is None and "orchestrator_id" in self.model_fields_set:
+            _dict["orchestratorId"] = None
+
         return _dict
 
     @classmethod
@@ -147,6 +158,7 @@ class RunSummary(BaseModel):
                 "completedAt": obj.get("completedAt"),
                 "rootRunId": obj.get("rootRunId"),
                 "parentRunId": obj.get("parentRunId"),
+                "orchestratorId": obj.get("orchestratorId"),
             }
         )
         return _obj
