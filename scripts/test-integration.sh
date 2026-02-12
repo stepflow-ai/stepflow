@@ -62,7 +62,7 @@ if [ "$VERBOSE" = true ]; then
     echo ""
     CARGO_BUILD_FLAGS=""
     if [ "${CI:-}" = "true" ]; then
-        CARGO_BUILD_FLAGS="--no-default-features"
+        CARGO_BUILD_FLAGS="-p stepflow-cli --no-default-features"
     fi
     echo "    Running: cd stepflow-rs && cargo build $CARGO_BUILD_FLAGS"
     if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build $CARGO_BUILD_FLAGS); then
@@ -82,7 +82,7 @@ else
 
     CARGO_BUILD_FLAGS=""
     if [ "${CI:-}" = "true" ]; then
-        CARGO_BUILD_FLAGS="--no-default-features"
+        CARGO_BUILD_FLAGS="-p stepflow-cli --no-default-features"
     fi
     (cd "$PROJECT_ROOT/stepflow-rs" && cargo build $CARGO_BUILD_FLAGS) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
     CARGO_PID=$!

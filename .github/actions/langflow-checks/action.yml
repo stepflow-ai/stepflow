@@ -40,7 +40,7 @@ runs:
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
-      run: cargo build --no-default-features
+      run: cargo build -p stepflow-server --no-default-features
       working-directory: stepflow-rs
 
     # Run Langflow integration checks using the shared script
@@ -50,3 +50,4 @@ runs:
       run: ./scripts/check-langflow.sh -v
       env:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        STEPFLOW_DEV_BINARY: stepflow-rs/target/debug/stepflow-server
