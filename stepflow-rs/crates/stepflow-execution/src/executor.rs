@@ -34,7 +34,8 @@ use stepflow_dtos::RunStatus;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _,
-    JournalEntry, JournalEvent, MetadataStoreExt as _,
+    JournalEntry, JournalEvent, LeaseManagerExt as _, MetadataStoreExt as _,
+    OrchestratorIdExt as _,
 };
 use uuid::Uuid;
 
@@ -79,10 +80,26 @@ pub async fn submit_run(
     if !params.overrides.is_empty() {
         run_params.overrides = params.overrides.clone();
     }
+
+    // Set orchestrator_id on the run record for distributed coordination
+    if let Some(orch_id) = env.orchestrator_id() {
+        run_params.orchestrator_id = Some(orch_id.as_str().to_string());
+    }
+
     state_store
         .create_run(run_params)
         .await
         .change_context(ExecutionError::StateStoreError)?;
+
+    // Acquire lease in the distributed lease manager (creates etcd key for orphan detection)
+    if let Some(orch_id) = env.orchestrator_id()
+        && let Err(e) = env
+            .lease_manager()
+            .acquire_lease(run_id, orch_id.clone())
+            .await
+    {
+        log::warn!("Failed to acquire lease for run {run_id}: {e:?}");
+    }
 
     // Journal: Record run creation and flush to ensure durability before execution.
     // This ensures recovery can always find at least the RunCreated event.

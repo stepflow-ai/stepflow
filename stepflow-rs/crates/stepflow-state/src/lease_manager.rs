@@ -18,7 +18,7 @@
 //! # Design Philosophy
 //!
 //! The `LeaseManager` trait is a pure coordination primitive. It handles ownership
-//! enforcement (acquire, renew, release) and orchestrator liveness (heartbeats), but
+//! enforcement (acquire, release) and orchestrator liveness (heartbeats), but
 //! does **not** query the metadata store or journal. This separation keeps the trait
 //! implementable by distributed backends like etcd, where:
 //!
@@ -33,13 +33,11 @@
 //!
 //! # Key Concepts
 //!
-//! - **Lease**: A time-limited ownership claim on a run. The owner must periodically
-//!   renew the lease to maintain ownership.
+//! - **Lease**: A time-limited ownership claim on a run. The orchestrator's heartbeat
+//!   keeps the underlying lease alive.
 //! - **Orchestrator ID**: Unique identifier for an orchestrator instance.
 //! - **Orphaned Run**: A run whose lease has expired without completion, indicating
 //!   the owning orchestrator likely crashed.
-
-use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use error_stack::Result;
@@ -80,10 +78,11 @@ pub enum LeaseError {
 pub trait LeaseManager: Send + Sync {
     /// Attempt to acquire a lease on a run.
     ///
+    /// The lease TTL is determined by the implementation (configured at construction).
+    ///
     /// # Arguments
     /// * `run_id` - The run to acquire a lease for
     /// * `orchestrator_id` - The orchestrator requesting the lease
-    /// * `ttl` - How long the lease should be valid
     ///
     /// # Returns
     /// * `LeaseResult::Acquired` if the lease was granted
@@ -92,26 +91,6 @@ pub trait LeaseManager: Send + Sync {
         &self,
         run_id: Uuid,
         orchestrator_id: OrchestratorId,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>>;
-
-    /// Renew an existing lease.
-    ///
-    /// The orchestrator must already own the lease. This extends the expiration time.
-    ///
-    /// # Arguments
-    /// * `run_id` - The run whose lease to renew
-    /// * `orchestrator_id` - The orchestrator renewing (must be current owner)
-    /// * `ttl` - New TTL from now
-    ///
-    /// # Returns
-    /// * `LeaseResult::Acquired` with new expiration if successful
-    /// * Error if the orchestrator doesn't own the lease
-    fn renew_lease(
-        &self,
-        run_id: Uuid,
-        orchestrator_id: OrchestratorId,
-        ttl: Duration,
     ) -> BoxFuture<'_, Result<LeaseResult, LeaseError>>;
 
     /// Release a lease, allowing other orchestrators to claim the run.
@@ -129,19 +108,15 @@ pub trait LeaseManager: Send + Sync {
 
     /// Send a heartbeat to indicate this orchestrator is still alive.
     ///
-    /// This is used to track active orchestrators for load balancing and
-    /// orphan detection. Orchestrators that stop sending heartbeats may
-    /// have their runs redistributed.
+    /// This keeps the orchestrator's lease alive (e.g., sends etcd keep-alive)
+    /// and updates the heartbeat timestamp. Orchestrators that stop sending
+    /// heartbeats have their leases expire and runs become eligible for recovery.
+    ///
+    /// The lease TTL is determined by the implementation (configured at construction).
     ///
     /// # Arguments
     /// * `orchestrator_id` - The orchestrator sending the heartbeat
-    /// * `ttl` - How long the heartbeat should be valid before the orchestrator
-    ///   is considered dead
-    fn heartbeat(
-        &self,
-        orchestrator_id: OrchestratorId,
-        ttl: Duration,
-    ) -> BoxFuture<'_, Result<(), LeaseError>>;
+    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>>;
 
     /// Release all leases held by this orchestrator.
     ///
@@ -190,7 +165,7 @@ pub trait LeaseManager: Send + Sync {
     }
 }
 
-/// Result of a lease acquisition or renewal attempt.
+/// Result of a lease acquisition attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LeaseResult {
     /// The lease was successfully acquired or renewed.

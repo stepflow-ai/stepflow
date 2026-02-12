@@ -14,12 +14,13 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutions, BlobStore, ExecutionJournal, InMemoryStateStore, LeaseManager, MetadataStore,
-    NoOpJournal, NoOpLeaseManager,
+    NoOpJournal, NoOpLeaseManager, OrchestratorId,
 };
 
 use crate::routing::PluginRouter;
@@ -64,6 +65,7 @@ pub struct StepflowEnvironmentBuilder {
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
     blob_api_url: Option<String>,
+    orchestrator_id: Option<OrchestratorId>,
 }
 
 impl Default for StepflowEnvironmentBuilder {
@@ -83,6 +85,7 @@ impl StepflowEnvironmentBuilder {
             working_directory: None,
             plugin_router: None,
             blob_api_url: None,
+            orchestrator_id: None,
         }
     }
 
@@ -136,6 +139,15 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the orchestrator ID for distributed lease management.
+    ///
+    /// When set, the orchestrator ID is stored in the environment and used
+    /// for lease acquisition/release during run execution.
+    pub fn orchestrator_id(mut self, id: OrchestratorId) -> Self {
+        self.orchestrator_id = Some(id);
+        self
+    }
+
     /// Set the blob API URL for workers.
     ///
     /// When set, workers will use direct HTTP requests to this URL for blob operations.
@@ -183,7 +195,7 @@ impl StepflowEnvironmentBuilder {
         // Use provided lease manager or default to no-op (single-orchestrator mode)
         let lease_manager: Arc<dyn LeaseManager> = self
             .lease_manager
-            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new()));
+            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))));
 
         let mut env = StepflowEnvironment::new();
         env.insert(metadata_store);
@@ -195,6 +207,11 @@ impl StepflowEnvironmentBuilder {
 
         // Store blob API URL for workers
         env.insert(BlobApiUrl(self.blob_api_url));
+
+        // Store orchestrator ID if set (distributed mode)
+        if let Some(id) = self.orchestrator_id {
+            env.insert(id);
+        }
 
         // Always create ActiveExecutions for tracking running executions
         env.insert(ActiveExecutions::new());

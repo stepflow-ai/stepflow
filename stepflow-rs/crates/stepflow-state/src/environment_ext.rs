@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use stepflow_core::StepflowEnvironment;
 
-use crate::{ActiveExecutions, BlobStore, ExecutionJournal, LeaseManager, MetadataStore};
+use crate::{
+    ActiveExecutions, BlobStore, ExecutionJournal, LeaseManager, MetadataStore, OrchestratorId,
+};
 
 /// Extension trait providing MetadataStore access for StepflowEnvironment.
 ///
@@ -143,6 +145,22 @@ impl LeaseManagerExt for StepflowEnvironment {
     }
 }
 
+/// Extension trait providing OrchestratorId access for StepflowEnvironment.
+///
+/// Unlike other extension traits, this returns `Option` rather than panicking
+/// because the orchestrator ID is only set in multi-orchestrator deployments.
+/// Single-orchestrator mode (CLI, tests) does not set it.
+pub trait OrchestratorIdExt {
+    /// Get a reference to the orchestrator ID, if set.
+    fn orchestrator_id(&self) -> Option<&OrchestratorId>;
+}
+
+impl OrchestratorIdExt for StepflowEnvironment {
+    fn orchestrator_id(&self) -> Option<&OrchestratorId> {
+        self.get::<OrchestratorId>()
+    }
+}
+
 /// Extension trait providing ActiveExecutions access for StepflowEnvironment.
 ///
 /// This trait allows crates that need to track running executions to import this
@@ -224,7 +242,8 @@ mod tests {
         use crate::NoOpLeaseManager;
 
         let mut env = StepflowEnvironment::new();
-        let lease_manager: Arc<dyn LeaseManager> = Arc::new(NoOpLeaseManager::new());
+        let lease_manager: Arc<dyn LeaseManager> =
+            Arc::new(NoOpLeaseManager::new(std::time::Duration::from_secs(30)));
         env.insert(lease_manager);
 
         // Use the extension trait

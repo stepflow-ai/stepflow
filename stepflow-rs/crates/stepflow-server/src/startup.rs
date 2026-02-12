@@ -91,6 +91,7 @@ impl AppConfig {
 pub async fn create_environment(
     mut config: StepflowConfig,
     listener: &tokio::net::TcpListener,
+    orchestrator_id: Option<stepflow_state::OrchestratorId>,
 ) -> error_stack::Result<Arc<StepflowEnvironment>, ConfigError> {
     let port = listener
         .local_addr()
@@ -112,7 +113,7 @@ pub async fn create_environment(
         );
     }
 
-    config.create_environment().await
+    config.create_environment(orchestrator_id).await
 }
 
 /// Start the HTTP server using axum + utoipa

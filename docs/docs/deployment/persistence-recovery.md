@@ -148,7 +148,7 @@ storageConfig:
 The LeaseManager coordinates run ownership in multi-orchestrator deployments:
 
 - **Lease Acquisition**: Ensures only one orchestrator executes a given run
-- **Ownership Enforcement**: Only the lease owner can renew or release a lease
+- **Ownership Enforcement**: Only the lease owner can release a lease
 - **Heartbeats**: Track active orchestrators with configurable TTL
 - **Graceful Shutdown**: Release all leases at once so other orchestrators can immediately reclaim runs
 
@@ -156,7 +156,6 @@ The LeaseManager coordinates run ownership in multi-orchestrator deployments:
 // Lease lifecycle
 trait LeaseManager {
     fn acquire_lease(run_id, orchestrator_id, ttl) -> LeaseResult;
-    fn renew_lease(run_id, orchestrator_id, ttl) -> LeaseResult;
     fn release_lease(run_id, orchestrator_id);
     fn release_all(orchestrator_id);           // graceful shutdown
     fn heartbeat(orchestrator_id, ttl);
@@ -173,7 +172,6 @@ The lease manager is intentionally kept focused on coordination primitives — i
 Lease operations enforce ownership:
 
 - **acquire_lease**: If the run is already leased by a different orchestrator, returns `OwnedBy { owner, expires_at }` instead of acquiring. Re-acquiring your own lease (same owner) succeeds.
-- **renew_lease**: Fails with `NotOwner` if called by a non-owner.
 - **release_lease**: Fails with `NotOwner` if called by a non-owner.
 - **release_all**: Releases all leases for the given orchestrator in a single operation.
 
@@ -189,7 +187,14 @@ leaseManager:
   type: none
 ```
 
-Future implementations will include etcd-based lease management for distributed deployments. The trait is designed to align with distributed coordination systems like etcd, which use native TTL-based leases — when an orchestrator crashes, its leases expire and attached keys are automatically deleted.
+For distributed deployments, use the etcd-based lease manager which provides native TTL-based leases — when an orchestrator crashes, its leases expire and attached keys are automatically deleted, triggering push-based orphan notifications:
+
+```yaml
+leaseManager:
+  type: etcd
+  endpoints:
+    - "http://localhost:2379"
+```
 
 ### Recovery Configuration
 
@@ -208,6 +213,10 @@ recovery:
 
   # Maximum orphaned runs to claim per check interval (default: 10)
   maxClaimsPerCheck: 10
+
+  # TTL for orchestrator lease and heartbeats in seconds (default: 30)
+  # Heartbeat interval is automatically set to leaseTtlSecs / 3
+  leaseTtlSecs: 30
 ```
 
 | Setting | Default | Description |
@@ -216,6 +225,7 @@ recovery:
 | `checkIntervalSecs` | `30` | Seconds between orphan check attempts |
 | `maxStartupRecovery` | `100` | Maximum runs to recover when orchestrator starts |
 | `maxClaimsPerCheck` | `10` | Maximum orphans to claim in each periodic check |
+| `leaseTtlSecs` | `30` | TTL for orchestrator lease; heartbeat interval is `leaseTtlSecs / 3` |
 
 **Why periodic claiming?** When orchestrators scale down or crash, their runs become orphaned. Periodic claiming allows remaining orchestrators to pick up these runs without requiring a restart.
 
@@ -457,7 +467,6 @@ trait ExecutionJournal {
 ```rust
 trait LeaseManager {
     fn acquire_lease(run_id, orchestrator_id, ttl) -> LeaseResult;
-    fn renew_lease(run_id, orchestrator_id, ttl) -> LeaseResult;
     fn release_lease(run_id, orchestrator_id);
     fn release_all(orchestrator_id);              // default: no-op
     fn heartbeat(orchestrator_id, ttl);

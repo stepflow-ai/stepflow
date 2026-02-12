@@ -60,8 +60,12 @@ if [ "$VERBOSE" = true ]; then
 
     print_step "Build stepflow"
     echo ""
-    echo "    Running: cd stepflow-rs && cargo build"
-    if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build); then
+    CARGO_BUILD_FLAGS=""
+    if [ "${CI:-}" = "true" ]; then
+        CARGO_BUILD_FLAGS="-p stepflow-cli --no-default-features"
+    fi
+    echo "    Running: cd stepflow-rs && cargo build $CARGO_BUILD_FLAGS"
+    if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build $CARGO_BUILD_FLAGS); then
         print_step "Build stepflow"
         print_pass
     else
@@ -76,7 +80,11 @@ else
     (cd "$PROJECT_ROOT/sdks/python" && uv sync --all-extras --group dev) > "$_LIB_TMPDIR/python.txt" 2>&1 &
     PYTHON_PID=$!
 
-    (cd "$PROJECT_ROOT/stepflow-rs" && cargo build) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
+    CARGO_BUILD_FLAGS=""
+    if [ "${CI:-}" = "true" ]; then
+        CARGO_BUILD_FLAGS="-p stepflow-cli --no-default-features"
+    fi
+    (cd "$PROJECT_ROOT/stepflow-rs" && cargo build $CARGO_BUILD_FLAGS) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
     CARGO_PID=$!
 
     # Wait for both to complete

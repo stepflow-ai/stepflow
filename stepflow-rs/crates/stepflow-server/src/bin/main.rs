@@ -19,7 +19,7 @@ use log::{info, warn};
 use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
-use stepflow_server::{orphan_claiming_loop, shutdown_signal};
+use stepflow_server::{heartbeat_loop, orphan_claiming_loop, shutdown_signal};
 use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -56,6 +56,14 @@ struct Args {
     /// Read configuration from stdin as JSON
     #[arg(long, conflicts_with = "config")]
     config_stdin: bool,
+
+    /// Orchestrator ID for distributed lease management.
+    ///
+    /// Deterministic IDs enable fast recovery on restart: the restarted process
+    /// recognizes its own leases and reclaims them immediately. For Kubernetes
+    /// StatefulSets, $HOSTNAME (e.g., "stepflow-0") is stable across restarts.
+    #[arg(long, env = "STEPFLOW_ORCHESTRATOR_ID")]
+    orchestrator_id: Option<String>,
 
     /// Observability configuration
     #[command(flatten)]
@@ -109,6 +117,14 @@ async fn main() {
         let config = load_config(args.config, args.config_stdin).await?;
         let recovery_config = config.recovery.clone();
 
+        // Resolve orchestrator ID: CLI arg → HOSTNAME env var → random UUID.
+        // Deterministic IDs (e.g., from Kubernetes $HOSTNAME) enable fast restart
+        // recovery since the restarted process recognizes its own etcd leases.
+        let orchestrator_id = OrchestratorId::new(args.orchestrator_id.unwrap_or_else(|| {
+            std::env::var("HOSTNAME")
+                .unwrap_or_else(|_| format!("stepflow-server-{}", uuid::Uuid::now_v7()))
+        }));
+
         // Bind the server port early so blob API URL can be auto-configured
         // before plugins are initialized (which sends the URL to component workers)
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))
@@ -118,14 +134,11 @@ async fn main() {
 
         // Create executor/environment (auto-configures blob API URL from bound port)
         info!("Creating Stepflow executor from configuration");
-        let executor = stepflow_server::create_environment(config, &listener)
-            .await
-            .change_context(ServerError::ExecutorError)
-            .attach_printable("Failed to create executor from configuration")?;
-
-        // Generate orchestrator ID (could be configured via env var in the future)
-        let orchestrator_id =
-            OrchestratorId::new(format!("stepflow-server-{}", uuid::Uuid::now_v7()));
+        let executor =
+            stepflow_server::create_environment(config, &listener, Some(orchestrator_id.clone()))
+                .await
+                .change_context(ServerError::ExecutorError)
+                .attach_printable("Failed to create executor from configuration")?;
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
@@ -153,6 +166,14 @@ async fn main() {
             }
         }
 
+        // Start background heartbeat + stale orchestrator detection loop
+        let heartbeat_task = tokio::spawn(heartbeat_loop(
+            executor.clone(),
+            orchestrator_id.clone(),
+            recovery_config.clone(),
+            cancel_token.clone(),
+        ));
+
         // Start background orphan claiming loop (handles missing lease manager internally)
         let orphan_task = tokio::spawn(orphan_claiming_loop(
             executor.clone(),
@@ -173,16 +194,16 @@ async fn main() {
             }
         }
 
-        // Graceful shutdown: cancel background task and wait for it
+        // Graceful shutdown: cancel background tasks and wait for them
         cancel_token.cancel();
         info!("Waiting for background tasks to complete...");
+        match heartbeat_task.await {
+            Ok(()) => info!("Heartbeat task exited normally"),
+            Err(e) => warn!("Heartbeat task panicked: {e:?}"),
+        }
         match orphan_task.await {
-            Ok(()) => {
-                info!("Orphan claiming task exited normally");
-            }
-            Err(e) => {
-                warn!("Orphan claiming task panicked: {:?}", e);
-            }
+            Ok(()) => info!("Orphan claiming task exited normally"),
+            Err(e) => warn!("Orphan claiming task panicked: {e:?}"),
         }
 
         // Release all leases held by this orchestrator so other orchestrators

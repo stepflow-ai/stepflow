@@ -15,6 +15,7 @@
 //! This module provides functionality to periodically check for and recover
 //! orphaned runs (runs whose orchestrator crashed or lost its lease).
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,7 +23,7 @@ use log::{info, warn};
 use stepflow_config::RecoveryConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
+use stepflow_state::{LeaseManagerExt as _, MetadataStoreExt as _, OrchestratorId};
 use tokio_util::sync::CancellationToken;
 
 /// Background task that periodically checks for and claims orphaned runs.
@@ -153,4 +154,81 @@ async fn handle_periodic_recovery(
             warn!("Periodic orphan claiming failed: {:?}", e);
         }
     }
+}
+
+/// Background task that sends heartbeats and detects stale orchestrators.
+///
+/// This task performs two functions on each tick:
+/// 1. **Heartbeat**: Keeps the orchestrator's lease alive in the lease manager
+///    (e.g., sends etcd keep-alive RPCs). Without this, the etcd lease expires
+///    and all run keys are deleted, triggering orphan notifications.
+/// 2. **Stale orchestrator detection**: Queries the lease manager for live
+///    orchestrators and marks runs belonging to absent orchestrators as orphaned
+///    in the metadata store.
+///
+/// The tick interval is `lease_ttl_secs / 3` to ensure heartbeats arrive well
+/// before the lease expires.
+pub async fn heartbeat_loop(
+    env: Arc<StepflowEnvironment>,
+    orchestrator_id: OrchestratorId,
+    config: RecoveryConfig,
+    cancel_token: CancellationToken,
+) {
+    if !config.enabled {
+        info!("Heartbeat loop is disabled (recovery disabled)");
+        return;
+    }
+
+    let interval = Duration::from_secs(config.lease_ttl_secs / 3);
+    let lease_manager = env.lease_manager();
+    let metadata_store = env.metadata_store().clone();
+
+    let mut timer = tokio::time::interval(interval);
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    info!(
+        "Starting heartbeat loop: ttl={}s, interval={}s",
+        config.lease_ttl_secs,
+        config.lease_ttl_secs / 3
+    );
+
+    loop {
+        tokio::select! {
+            _ = cancel_token.cancelled() => {
+                info!("Heartbeat loop cancelled");
+                break;
+            }
+            _ = timer.tick() => {
+                // 1. Send heartbeat (keeps etcd lease alive)
+                if let Err(e) = lease_manager
+                    .heartbeat(orchestrator_id.clone())
+                    .await
+                {
+                    warn!("Heartbeat failed: {e:?}");
+                }
+
+                // 2. Detect stale orchestrators, mark their runs orphaned
+                match lease_manager.list_orchestrators().await {
+                    Ok(orchestrators) => {
+                        let live_ids: HashSet<String> = orchestrators
+                            .into_iter()
+                            .map(|o| o.id.into_string())
+                            .collect();
+
+                        if let Err(e) = metadata_store
+                            .orphan_runs_by_stale_orchestrators(&live_ids)
+                            .await
+                        {
+                            warn!("Stale orchestrator detection failed: {e:?}");
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to list orchestrators: {e:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    info!("Heartbeat loop exiting");
 }

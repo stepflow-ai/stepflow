@@ -50,6 +50,10 @@ regex.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true
 
+[features]
+default = ["etcd"]
+etcd = ["stepflow-config/etcd", "stepflow-server/etcd"]
+
 [[bin]]
 name = "stepflow"
 path = "src/main.rs"

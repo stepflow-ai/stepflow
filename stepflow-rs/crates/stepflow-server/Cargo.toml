@@ -42,6 +42,10 @@ utoipa-swagger-ui.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 
+[features]
+default = ["etcd"]
+etcd = ["stepflow-config/etcd"]
+
 [dev-dependencies]
 stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
