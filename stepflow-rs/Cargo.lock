@@ -4965,7 +4965,6 @@ dependencies = [
  "stepflow-state",
  "testcontainers",
  "tokio",
- "utoipa",
  "uuid",
 ]
 

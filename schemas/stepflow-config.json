@@ -718,7 +718,7 @@
     },
     "EtcdLeaseManagerConfig": {
       "type": "object",
-      "description": "Configuration for the etcd lease manager.",
+      "description": "Configuration for the etcd lease manager backend.",
       "required": [
         "endpoints"
       ],
@@ -728,11 +728,11 @@
           "items": {
             "type": "string"
           },
-          "description": "etcd endpoints (e.g., `[\"http://localhost:2379\"]`)."
+          "description": "etcd endpoint URLs (e.g., `[\"http://localhost:2379\"]`)."
         },
-        "key_prefix": {
+        "keyPrefix": {
           "type": "string",
-          "description": "Key prefix for all stepflow lease keys."
+          "description": "Key prefix for all lease-related keys in etcd.\n\nDefaults to `/stepflow/leases`."
         }
       }
     }

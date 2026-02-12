@@ -53,7 +53,7 @@ run_optional_check "Unused deps" "cargo-machete" --fix "cargo machete --fix --wi
 # RUST BUILD & TEST CHECKS
 # =============================================================================
 
-run_check "Tests" cargo test || true
+run_check "Tests" cargo test --all-features || true
 
 run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings || true
 

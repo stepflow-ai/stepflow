@@ -40,7 +40,7 @@ runs:
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
-      run: cargo build
+      run: cargo build --no-default-features
       working-directory: stepflow-rs
 
     # Run Langflow integration checks using the shared script

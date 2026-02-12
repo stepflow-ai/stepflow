@@ -59,6 +59,10 @@ runs:
       with:
         tool: cargo-deny,cargo-machete
 
+    # Install protoc for etcd-client compilation (needed by --all-features)
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+
     # Install Graphviz for visualize command tests
     - name: Install Graphviz
       shell: bash

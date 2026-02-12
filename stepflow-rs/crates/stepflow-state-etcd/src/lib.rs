@@ -54,21 +54,6 @@ struct HeartbeatValue {
     last_heartbeat: DateTime<Utc>,
 }
 
-/// Configuration for the etcd lease manager.
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct EtcdLeaseManagerConfig {
-    /// etcd endpoints (e.g., `["http://localhost:2379"]`).
-    pub endpoints: Vec<String>,
-
-    /// Key prefix for all stepflow lease keys.
-    #[serde(default = "default_key_prefix")]
-    pub key_prefix: String,
-}
-
-fn default_key_prefix() -> String {
-    "/stepflow/leases".to_string()
-}
-
 /// etcd-backed lease manager for distributed Stepflow orchestration.
 ///
 /// Uses a single etcd lease per orchestrator. All run keys and the heartbeat
@@ -115,16 +100,17 @@ impl EtcdLeaseManager {
     /// before the TTL expires or the lease (and all attached keys) will be
     /// deleted by etcd, triggering orphan detection.
     pub async fn connect(
-        config: &EtcdLeaseManagerConfig,
+        endpoints: &[String],
+        key_prefix: String,
         ttl: Duration,
     ) -> Result<Self, LeaseError> {
-        let client = Client::connect(&config.endpoints, None)
+        let client = Client::connect(endpoints, None)
             .await
             .change_context(LeaseError::ConnectionFailed)?;
 
         Ok(Self {
             client,
-            key_prefix: config.key_prefix.clone(),
+            key_prefix,
             ttl,
             orchestrator_lease: tokio::sync::RwLock::new(None),
         })
@@ -625,18 +611,5 @@ mod tests {
             .strip_prefix(&runs_prefix)
             .and_then(|s| Uuid::parse_str(s).ok());
         assert_eq!(parsed, None);
-    }
-
-    #[test]
-    fn test_default_key_prefix() {
-        assert_eq!(default_key_prefix(), "/stepflow/leases");
-    }
-
-    #[test]
-    fn test_config_serde() {
-        let json = r#"{"endpoints":["http://localhost:2379"]}"#;
-        let config: EtcdLeaseManagerConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.endpoints, vec!["http://localhost:2379"]);
-        assert_eq!(config.key_prefix, "/stepflow/leases");
     }
 }
