@@ -37,12 +37,12 @@ data:
         transport: http
         url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
 
-      # Docling components via dedicated docling-worker
-      # Routes directly to stepflow-docling for document processing
+      # Docling components via dedicated load balancer
+      # Distributes requests across docling-worker pods using least-connections
       docling_k8s:
         type: stepflow
         transport: http
-        url: "http://docling-worker.stepflow.svc.cluster.local:8080"
+        url: "http://stepflow-load-balancer-docling.stepflow.svc.cluster.local:8080"
 
     routes:
       # Route docling components to dedicated docling-worker

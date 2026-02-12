@@ -65,6 +65,7 @@ kubectl wait --for=condition=available --timeout=180s \
 echo "[4/6] Deploying stepflow applications..."
 kubectl apply -f stepflow/server/
 kubectl apply -f stepflow/loadbalancer/
+kubectl apply -f stepflow/loadbalancer-docling/
 kubectl apply -f stepflow/langflow-worker/
 
 # 7. Wait for application components
@@ -73,6 +74,8 @@ kubectl wait --for=condition=available --timeout=120s \
     deployment/stepflow-server -n stepflow 2>/dev/null || echo "    (stepflow-server not ready yet)"
 kubectl wait --for=condition=available --timeout=120s \
     deployment/stepflow-load-balancer -n stepflow 2>/dev/null || echo "    (load-balancer not ready yet)"
+kubectl wait --for=condition=available --timeout=120s \
+    deployment/stepflow-load-balancer-docling -n stepflow 2>/dev/null || echo "    (docling load-balancer not ready yet)"
 
 # 8. Final status
 echo "[6/6] Deployment complete. Checking status..."

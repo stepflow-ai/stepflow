@@ -77,6 +77,7 @@ data:
       # They are available via the 'stepflow-via-otel' job above.
 
       # Stepflow load balancer pods (pingora exposes Prometheus on :9090)
+      # Matches both langflow LB (stepflow-load-balancer) and docling LB (stepflow-load-balancer-docling)
       - job_name: 'stepflow-load-balancer'
         kubernetes_sd_configs:
           - role: pod
@@ -86,7 +87,7 @@ data:
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
-            regex: stepflow-load-balancer
+            regex: stepflow-load-balancer.*
           - source_labels: [__meta_kubernetes_pod_ip]
             target_label: __address__
             replacement: $1:9090
