@@ -50,7 +50,8 @@ FROM deps AS builder
 COPY sdks/python ./sdks/python/
 
 # Install the actual packages (deps already installed)
-RUN cd sdks/python && uv sync --frozen --no-dev --extra http
+RUN rm -f sdks/python/.python-version && \
+    cd sdks/python && uv sync --frozen --no-dev --extra http
 
 
 # Stage 3: Minimal runtime image (no build tools)

@@ -17,6 +17,13 @@
 .vscode
 **/*.swp
 
+# Python version pins (dev uses 3.13, Docker images may use 3.12)
+**/.python-version
+
+# Environment files with secrets
+**/.env
+**/.env.*
+
 # Build artifacts
 **/dist
 **/build

@@ -72,22 +72,11 @@ data:
             labels:
               component: 'grafana'
 
-      # Stepflow server pods (if they expose metrics endpoint)
-      - job_name: 'stepflow-server'
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - stepflow
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
-            action: keep
-            regex: stepflow-server
-          - source_labels: [__meta_kubernetes_pod_ip]
-            target_label: __address__
-            replacement: $1:9090
+      # Note: stepflow-server exports metrics via OTLP (not Prometheus scrape).
+      # Metrics flow: stepflow-server → OTel Collector → prom-exporter (:8889)
+      # They are available via the 'stepflow-via-otel' job above.
 
-      # Stepflow load balancer pods (if they expose metrics endpoint)
+      # Stepflow load balancer pods (pingora exposes Prometheus on :9090)
       - job_name: 'stepflow-load-balancer'
         kubernetes_sd_configs:
           - role: pod

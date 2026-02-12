@@ -85,9 +85,9 @@ COPY --from=builder /app/integrations/docling/.venv ./integrations/docling/.venv
 ENV PATH="/app/integrations/docling/.venv/bin:/app/sdks/python/.venv/bin:$PATH"
 
 # Create non-root user
-RUN useradd --create-home --uid 1000 appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+RUN useradd --create-home --uid 1000 stepflow \
+    && chown -R stepflow:stepflow /app
+USER stepflow
 
 # Environment variables for docling-serve sidecar
 # In K8s, docling-serve runs in the same pod on localhost:5001

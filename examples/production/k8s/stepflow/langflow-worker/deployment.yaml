@@ -119,14 +119,11 @@ spec:
         # OpenSearch connection pool - increase for parallel workloads
         - name: OPENSEARCH_MAX_CONNECTIONS
           value: "20"
-        # Docling document processing service
-        - name: DOCLING_SERVE_URL
-          value: "http://docling-serve.stepflow.svc.cluster.local:5001"
         - name: PYTHONUNBUFFERED
           value: "1"
         # Stepflow logging configuration
         - name: STEPFLOW_LOG_LEVEL
-          value: "DEBUG"
+          value: "debug"
         - name: STEPFLOW_SERVICE_NAME
           value: "langflow-worker"
         # Stepflow OpenTelemetry configuration
@@ -140,7 +137,7 @@ spec:
         - name: OTEL_SERVICE_NAME
           value: "langflow-worker"
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "deployment.environment=kubernetes,service.namespace=stepflow"
+          value: "deployment.environment=kubernetes,service.namespace=stepflow,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
         - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
           value: "true"
         # Workflow configuration variables (for SecretInput components)
