@@ -31,10 +31,13 @@ COPY sdks/python/stepflow-py/pyproject.toml ./sdks/python/stepflow-py/
 COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orchestrator/
 
 # Create minimal package structure for uv to resolve dependencies
+# Note: README.md files are required by hatchling build backend
 RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
     touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    touch sdks/python/stepflow-py/README.md && \
     mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
-    touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py
+    touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py && \
+    touch sdks/python/stepflow-orchestrator/README.md
 
 # Install dependencies only (cached unless pyproject.toml/uv.lock change)
 RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http

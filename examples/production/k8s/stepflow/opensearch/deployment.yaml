@@ -34,7 +34,9 @@ spec:
       containers:
       - name: opensearch
         image: localhost/opensearch-jvector:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Never  # Use local image loaded into Kind
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: http
           containerPort: 9200

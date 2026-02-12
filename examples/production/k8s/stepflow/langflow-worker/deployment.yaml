@@ -31,10 +31,15 @@ spec:
         app: langflow-worker
         component: langflow-integration
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
       containers:
       - name: worker
         image: localhost/langflow-worker:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
+        securityContext:
+          allowPrivilegeEscalation: false
         ports:
         - name: http
           containerPort: 8080

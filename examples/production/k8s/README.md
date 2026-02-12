@@ -233,7 +233,7 @@ All pods should show `Running` status.
 
 **Accessing Docling** (internal service):
 ```bash
-kubectl port-forward -n stepflow svc/docling-serve 5001:5001
+kubectl port-forward -n stepflow deployment/docling-worker 5001:5001
 # Then access: http://localhost:5001/docs (API documentation)
 ```
 

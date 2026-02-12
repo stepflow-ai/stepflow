@@ -33,6 +33,7 @@ docs
 **/.DS_Store
 **/Thumbs.db
 
-# Lock files (not needed in container)
-**/uv.lock
+# Poetry lock files (not using poetry)
 **/poetry.lock
+
+# Note: uv.lock files are NOT excluded - needed for uv sync --frozen

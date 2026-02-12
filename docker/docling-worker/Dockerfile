@@ -43,12 +43,16 @@ COPY sdks/python/stepflow-orchestrator/pyproject.toml ./sdks/python/stepflow-orc
 COPY integrations/docling/pyproject.toml integrations/docling/uv.lock ./integrations/docling/
 
 # Create minimal package structure for uv to resolve dependencies
+# Note: README.md files are required by hatchling build backend
 RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
     touch sdks/python/stepflow-py/src/stepflow_py/__init__.py && \
+    touch sdks/python/stepflow-py/README.md && \
     mkdir -p sdks/python/stepflow-orchestrator/src/stepflow_orchestrator && \
     touch sdks/python/stepflow-orchestrator/src/stepflow_orchestrator/__init__.py && \
+    touch sdks/python/stepflow-orchestrator/README.md && \
     mkdir -p integrations/docling/src/stepflow_docling && \
-    touch integrations/docling/src/stepflow_docling/__init__.py
+    touch integrations/docling/src/stepflow_docling/__init__.py && \
+    touch integrations/docling/README.md
 
 # Install dependencies only (cached unless pyproject.toml/uv.lock change)
 # Use --frozen to ensure lock file is used exactly as-is

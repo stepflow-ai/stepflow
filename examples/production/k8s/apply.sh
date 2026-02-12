@@ -31,11 +31,11 @@ echo "=== Stepflow Kubernetes Deployment ==="
 echo ""
 
 # 1. Namespaces (must exist before anything else)
-echo "[1/7] Creating namespaces..."
+echo "[1/6] Creating namespaces..."
 kubectl apply -f namespaces.yaml
 
 # 2. Observability stack (so telemetry endpoints are ready)
-echo "[2/7] Deploying observability stack (stepflow-o11y)..."
+echo "[2/6] Deploying observability stack (stepflow-o11y)..."
 kubectl apply -f stepflow-o11y/otel-collector/
 kubectl apply -f stepflow-o11y/jaeger/
 kubectl apply -f stepflow-o11y/prometheus/
@@ -49,7 +49,7 @@ kubectl wait --for=condition=available --timeout=120s \
     deployment/otel-collector -n stepflow-o11y 2>/dev/null || echo "    (OTel Collector not ready yet, continuing...)"
 
 # 4. Infrastructure services (data layer, apps may depend on them)
-echo "[3/7] Deploying infrastructure services (OpenSearch, Docling)..."
+echo "[3/6] Deploying infrastructure services (OpenSearch, Docling)..."
 kubectl apply -f stepflow/opensearch/
 kubectl apply -f stepflow/docling/
 
@@ -59,23 +59,23 @@ kubectl wait --for=condition=available --timeout=180s \
     deployment/opensearch -n stepflow 2>/dev/null || echo "    (OpenSearch not ready yet, continuing...)"
 echo "    Waiting for Docling..."
 kubectl wait --for=condition=available --timeout=180s \
-    deployment/docling-serve -n stepflow 2>/dev/null || echo "    (Docling not ready yet, continuing...)"
+    deployment/docling-worker -n stepflow 2>/dev/null || echo "    (Docling not ready yet, continuing...)"
 
 # 6. Application components
-echo "[4/7] Deploying stepflow applications..."
+echo "[4/6] Deploying stepflow applications..."
 kubectl apply -f stepflow/server/
 kubectl apply -f stepflow/loadbalancer/
 kubectl apply -f stepflow/langflow-worker/
 
 # 7. Wait for application components
-echo "[5/7] Waiting for application components..."
+echo "[5/6] Waiting for application components..."
 kubectl wait --for=condition=available --timeout=120s \
     deployment/stepflow-server -n stepflow 2>/dev/null || echo "    (stepflow-server not ready yet)"
 kubectl wait --for=condition=available --timeout=120s \
     deployment/stepflow-load-balancer -n stepflow 2>/dev/null || echo "    (load-balancer not ready yet)"
 
 # 8. Final status
-echo "[6/7] Deployment complete. Checking status..."
+echo "[6/6] Deployment complete. Checking status..."
 echo ""
 echo "=== Stepflow Namespace ==="
 kubectl get pods -n stepflow
@@ -91,7 +91,7 @@ echo "Prometheus:    http://localhost:9090"
 echo ""
 echo "Or use kubectl port-forward:"
 echo "  kubectl port-forward -n stepflow svc/stepflow-server 7840:7840"
-echo "  kubectl port-forward -n stepflow svc/docling-serve 5001:5001  # Docling API docs at /docs"
+echo "  kubectl port-forward -n stepflow deployment/docling-worker 5001:5001  # Docling API docs at /docs"
 echo "  kubectl port-forward -n stepflow-o11y svc/grafana 3000:3000"
 echo "  kubectl port-forward -n stepflow-o11y svc/jaeger 16686:16686"
 echo "  kubectl port-forward -n stepflow-o11y svc/prometheus 9090:9090"

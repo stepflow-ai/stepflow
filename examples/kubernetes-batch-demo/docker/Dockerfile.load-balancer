@@ -14,8 +14,10 @@
 
 # Dockerfile for Pingora Load Balancer
 # Provides instance-aware routing for Stepflow component servers
+# Note: This Dockerfile is provided for reference. The demo uses released GHCR images.
+# Build context must be the repository root if building locally.
 
-FROM rust:1.83 as builder
+FROM rust:1.90-bookworm AS builder
 
 WORKDIR /build
 
