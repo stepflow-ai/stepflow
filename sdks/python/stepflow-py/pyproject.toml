@@ -43,6 +43,7 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
     "httpx>=0.25.0",  # HTTP client for blob API
+    "pybase64>=1.4.0",  # Fast base64 for binary blob encoding
     # API client dependencies (pydantic models, async HTTP)
     "pydantic>=2",
     "aiohttp>=3.9.0",

@@ -189,13 +189,13 @@ async def put_blob_binary(data: bytes) -> str:
     Raises:
         RuntimeError: If blob store is not configured.
     """
-    import base64
+    import pybase64
 
     from stepflow_py.worker.observability import get_tracer
 
     url = _get_blob_api_url()
     client = _get_client()
-    b64_str = base64.standard_b64encode(data).decode("ascii")
+    b64_str = pybase64.standard_b64encode(data).decode("ascii")
 
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
@@ -224,7 +224,7 @@ async def get_blob_binary(blob_id: str) -> bytes:
     Raises:
         RuntimeError: If blob store is not configured.
     """
-    import base64
+    import pybase64
 
     from stepflow_py.worker.observability import get_tracer
 
@@ -239,4 +239,4 @@ async def get_blob_binary(blob_id: str) -> bytes:
         resp = await client.get(url)
         resp.raise_for_status()
         b64_str = resp.json()["data"]
-        return base64.standard_b64decode(b64_str)
+        return pybase64.standard_b64decode(b64_str)

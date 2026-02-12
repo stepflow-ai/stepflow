@@ -96,10 +96,11 @@ async def blobify_inputs(
         return input_data, []
 
     created_ids: list[str] = []
-    result = dict(input_data)
+    result: dict[str, Any] = {}
 
-    for key, value in result.items():
+    for key, value in input_data.items():
         if is_blob_ref(value):
+            result[key] = value
             continue
         serialized = json.dumps(value, separators=(",", ":")).encode("utf-8")
         size = len(serialized)
@@ -108,6 +109,8 @@ async def blobify_inputs(
             ref = BlobRef(blob_id=blob_id, blob_type=BlobType.DATA, size=size)
             result[key] = ref.to_dict()
             created_ids.append(blob_id)
+        else:
+            result[key] = value
 
     return result, created_ids
 
