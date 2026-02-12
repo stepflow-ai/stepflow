@@ -722,7 +722,8 @@
         "description": "Type of blob stored in the blob store.",
         "enum": [
           "flow",
-          "data"
+          "data",
+          "binary"
         ]
       },
       "Component": {

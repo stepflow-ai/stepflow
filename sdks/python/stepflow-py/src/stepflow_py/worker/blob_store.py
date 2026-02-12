@@ -172,3 +172,71 @@ async def get_blob(blob_id: str) -> Any:
         resp = await client.get(url)
         resp.raise_for_status()
         return resp.json()["data"]
+
+
+async def put_blob_binary(data: bytes) -> str:
+    """Store raw binary data as a blob and return its content-based ID.
+
+    The data is base64-encoded for transport. The blob ID is the SHA-256 hash
+    of the raw bytes (not the base64 encoding).
+
+    Args:
+        data: The raw bytes to store.
+
+    Returns:
+        The blob ID (SHA-256 hash) for the stored data.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import base64
+
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_blob_api_url()
+    client = _get_client()
+    b64_str = base64.standard_b64encode(data).decode("ascii")
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "put_blob_binary",
+        attributes={"size": len(data)},
+    ):
+        resp = await client.post(
+            url, json={"data": b64_str, "blobType": BlobType.BINARY.value}
+        )
+        resp.raise_for_status()
+        blob_id: str = resp.json()["blobId"]
+        return blob_id
+
+
+async def get_blob_binary(blob_id: str) -> bytes:
+    """Retrieve raw binary data by blob ID.
+
+    The stored base64 data is decoded back to raw bytes.
+
+    Args:
+        blob_id: The blob ID to retrieve.
+
+    Returns:
+        The raw bytes associated with the blob ID.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import base64
+
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_blob_api_url(blob_id)
+    client = _get_client()
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "get_blob_binary",
+        attributes={"blob_id": blob_id},
+    ):
+        resp = await client.get(url)
+        resp.raise_for_status()
+        b64_str = resp.json()["data"]
+        return base64.standard_b64decode(b64_str)

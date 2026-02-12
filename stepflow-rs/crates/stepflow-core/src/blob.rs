@@ -12,6 +12,8 @@
 
 use std::fmt;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -24,8 +26,10 @@ use std::sync::Arc;
 pub enum BlobValue {
     /// Generic JSON data
     Json(ValueRef),
-    /// A workflow/flow definition  
+    /// A workflow/flow definition
     Flow(Arc<Flow>),
+    /// Raw binary data
+    Binary(Vec<u8>),
 }
 
 impl BlobValue {
@@ -34,18 +38,26 @@ impl BlobValue {
         match self {
             BlobValue::Json(_) => BlobType::Data,
             BlobValue::Flow(_) => BlobType::Flow,
+            BlobValue::Binary(_) => BlobType::Binary,
         }
     }
 
-    /// Convert to ValueRef for serialization
+    /// Convert to ValueRef for serialization.
+    ///
+    /// For binary data, the bytes are base64-encoded into a JSON string.
     pub fn to_value_ref(&self) -> ValueRef {
         match self {
             BlobValue::Json(value_ref) => value_ref.clone(),
             BlobValue::Flow(flow) => ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap()),
+            BlobValue::Binary(bytes) => {
+                ValueRef::new(serde_json::Value::String(BASE64_STANDARD.encode(bytes)))
+            }
         }
     }
 
-    /// Try to create a BlobValue from ValueRef and type
+    /// Try to create a BlobValue from ValueRef and type.
+    ///
+    /// For `BlobType::Binary`, the ValueRef must contain a base64-encoded JSON string.
     pub fn from_value_ref(data: ValueRef, blob_type: BlobType) -> Result<Self, BlobValueError> {
         match blob_type {
             BlobType::Data => Ok(BlobValue::Json(data)),
@@ -53,6 +65,16 @@ impl BlobValue {
                 let flow: Flow = serde_json::from_value(data.as_ref().clone())
                     .map_err(|_| BlobValueError::InvalidFlowData)?;
                 Ok(BlobValue::Flow(Arc::new(flow)))
+            }
+            BlobType::Binary => {
+                let base64_str = data
+                    .as_ref()
+                    .as_str()
+                    .ok_or(BlobValueError::InvalidBinaryData)?;
+                let bytes = BASE64_STANDARD
+                    .decode(base64_str)
+                    .map_err(|_| BlobValueError::InvalidBinaryData)?;
+                Ok(BlobValue::Binary(bytes))
             }
         }
     }
@@ -63,6 +85,8 @@ impl BlobValue {
 pub enum BlobValueError {
     #[error("Invalid flow data - could not deserialize")]
     InvalidFlowData,
+    #[error("Invalid binary data - expected base64-encoded JSON string")]
+    InvalidBinaryData,
 }
 
 /// Structured blob data containing both the content and metadata.
@@ -115,6 +139,14 @@ impl BlobData {
             _ => None,
         }
     }
+
+    /// Get a reference to the binary data
+    pub fn as_binary(&self) -> Option<&[u8]> {
+        match &self.value {
+            BlobValue::Binary(data) => Some(data),
+            _ => None,
+        }
+    }
 }
 
 /// Type of blob stored in the blob store.
@@ -126,6 +158,8 @@ pub enum BlobType {
     /// Generic data blob
     #[default]
     Data,
+    /// Raw binary data (base64-encoded in JSON transport)
+    Binary,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +175,9 @@ pub enum BlobIdError {
 
     #[error("Blob not found: {blob_id}")]
     BlobNotFound { blob_id: String },
+
+    #[error("Invalid binary data for blob ID computation")]
+    InvalidBinaryData,
 }
 
 /// A SHA-256 hash of the blob content, represented as a hexadecimal string.
@@ -191,6 +228,37 @@ impl BlobId {
         let flow_data =
             ValueRef::new(serde_json::to_value(flow).change_context(BlobIdError::SerializeFailed)?);
         Self::from_content(&flow_data)
+    }
+
+    /// Generate a content-based blob ID from raw binary data using SHA-256.
+    ///
+    /// Hashes the raw bytes directly (not base64-encoded).
+    pub fn from_binary(data: &[u8]) -> error_stack::Result<Self, BlobIdError> {
+        let hash = hex::encode(Sha256::digest(data));
+        Self::new(hash)
+    }
+
+    /// Compute the correct blob ID for given data and type.
+    ///
+    /// For `Binary` blobs, the ValueRef must contain a base64-encoded string;
+    /// the raw bytes are decoded and hashed. For other types, the JSON content is hashed.
+    pub fn compute(
+        data: &ValueRef,
+        blob_type: &BlobType,
+    ) -> error_stack::Result<Self, BlobIdError> {
+        match blob_type {
+            BlobType::Binary => {
+                let base64_str = data
+                    .as_ref()
+                    .as_str()
+                    .ok_or_else(|| error_stack::report!(BlobIdError::InvalidBinaryData))?;
+                let bytes = BASE64_STANDARD
+                    .decode(base64_str)
+                    .change_context(BlobIdError::InvalidBinaryData)?;
+                Self::from_binary(&bytes)
+            }
+            _ => Self::from_content(data),
+        }
     }
 }
 

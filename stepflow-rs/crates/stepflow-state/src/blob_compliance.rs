@@ -69,6 +69,8 @@ impl BlobStoreComplianceTests {
         Self::test_get_nonexistent_blob(store).await;
         Self::test_get_blob_of_type_with_wrong_type(store).await;
         Self::test_get_blob_of_type_not_found(store).await;
+        Self::test_binary_blob_round_trip(store).await;
+        Self::test_binary_blob_deduplication(store).await;
     }
 
     /// Run all compliance tests with a fresh store for each test.
@@ -98,6 +100,8 @@ impl BlobStoreComplianceTests {
         Self::test_get_nonexistent_blob(&factory().await).await;
         Self::test_get_blob_of_type_with_wrong_type(&factory().await).await;
         Self::test_get_blob_of_type_not_found(&factory().await).await;
+        Self::test_binary_blob_round_trip(&factory().await).await;
+        Self::test_binary_blob_deduplication(&factory().await).await;
     }
 
     // =========================================================================
@@ -289,6 +293,62 @@ impl BlobStoreComplianceTests {
         assert!(
             result.is_some(),
             "get_blob_of_type with correct type should return Some"
+        );
+    }
+
+    // =========================================================================
+    // Binary Blob Tests
+    // =========================================================================
+
+    /// Test that binary data can be stored and retrieved correctly.
+    ///
+    /// Contract: put_blob_binary followed by get_blob_binary returns the same bytes.
+    pub async fn test_binary_blob_round_trip<B: BlobStore>(store: &B) {
+        let data = b"Hello, binary world! \x00\x01\x02\xff";
+
+        let blob_id = store
+            .put_blob_binary(data)
+            .await
+            .expect("put_blob_binary should succeed");
+
+        let retrieved = store
+            .get_blob_binary(&blob_id)
+            .await
+            .expect("get_blob_binary should succeed");
+
+        assert_eq!(
+            retrieved.as_slice(),
+            data,
+            "Retrieved binary data should match stored data"
+        );
+
+        // Also verify via get_blob that the type is correct
+        let blob_data = store
+            .get_blob(&blob_id)
+            .await
+            .expect("get_blob should succeed");
+        assert_eq!(blob_data.blob_type(), BlobType::Binary);
+    }
+
+    /// Test that storing the same binary data twice returns the same blob ID.
+    ///
+    /// Contract: Binary blob IDs are content-addressed (SHA-256 of raw bytes).
+    pub async fn test_binary_blob_deduplication<B: BlobStore>(store: &B) {
+        let data = b"dedup binary test data";
+
+        let blob_id1 = store
+            .put_blob_binary(data)
+            .await
+            .expect("first put_blob_binary should succeed");
+
+        let blob_id2 = store
+            .put_blob_binary(data)
+            .await
+            .expect("second put_blob_binary should succeed");
+
+        assert_eq!(
+            blob_id1, blob_id2,
+            "Same binary content should produce same blob ID"
         );
     }
 

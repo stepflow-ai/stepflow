@@ -164,15 +164,17 @@ impl BlobStore for SqliteStateStore {
         blob_type: BlobType,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
-            // Generate content-based ID
-            let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
+            // Generate content-based ID (binary blobs hash raw bytes, others hash JSON)
+            let blob_id =
+                BlobId::compute(&data, &blob_type).change_context(StateError::Internal)?;
 
-            // Serialize data to JSON string
+            // Serialize data to JSON string (binary data is stored as base64 string)
             let json_str =
                 serde_json::to_string(data.as_ref()).change_context(StateError::Serialization)?;
             let type_str = match blob_type {
                 BlobType::Flow => "flow",
                 BlobType::Data => "data",
+                BlobType::Binary => "binary",
             };
 
             // Store blob with type information
@@ -218,6 +220,7 @@ impl BlobStore for SqliteStateStore {
             let blob_type = match type_str.as_str() {
                 "flow" => BlobType::Flow,
                 "data" => BlobType::Data,
+                "binary" => BlobType::Binary,
                 _ => {
                     // Default to data for unknown types
                     log::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
