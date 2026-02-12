@@ -159,6 +159,16 @@ class _HttpServerContext:
     async def handle_request(self, request: MethodRequest):
         """Handle a JSON-RPC method request."""
         try:
+            # Configure blob_store for this request scope so any code
+            # (including components without StepflowContext) can use it.
+            from stepflow_py.worker import blob_store
+
+            http_client = await self.get_http_client()
+            blob_tokens = blob_store.configure(
+                blob_api_url=self.server.blob_api_url,
+                http_client=http_client,
+            )
+
             needs_context = self.server.requires_context(request)
 
             if needs_context:
@@ -177,9 +187,6 @@ class _HttpServerContext:
                     run_id = observability.run_id
                     flow_id = observability.flow_id
 
-                # Get shared HTTP client for blob operations
-                http_client = await self.get_http_client()
-
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,
                     message_decoder=self.message_decoder,
@@ -192,19 +199,25 @@ class _HttpServerContext:
                     observability=observability,
                     blob_api_url=self.server.blob_api_url,
                 )
+                # Streaming: tokens are reset inside the generator
+                # (a finally here would fire before the generator runs).
                 return StreamingResponse(
                     self.execute_with_streaming_context(
-                        request, context, outgoing_queue
+                        request, context, outgoing_queue, blob_tokens
                     ),
                     media_type="text/event-stream",
                     headers={"Stepflow-Instance-Id": self.instance_id},
                 )
             else:
-                result = await self.server.handle_message(request)
-                assert result is not None
-                return JSONResponse(
-                    content=msgspec.to_builtins(result), media_type="application/json"
-                )
+                try:
+                    result = await self.server.handle_message(request)
+                    assert result is not None
+                    return JSONResponse(
+                        content=msgspec.to_builtins(result),
+                        media_type="application/json",
+                    )
+                finally:
+                    blob_store.reset(blob_tokens)
         except StepflowError as e:
             return self.create_error_response(
                 request_id=request.id,
@@ -226,6 +239,7 @@ class _HttpServerContext:
         request: MethodRequest,
         context: StepflowContext,
         outgoing_queue: asyncio.Queue[MethodRequest | None],
+        blob_tokens: Any = None,
     ) -> AsyncGenerator[str]:
         """Execute request with streaming context via SSE."""
 
@@ -259,6 +273,11 @@ class _HttpServerContext:
                 error_code=-32603,
                 error_message=f"Request execution failed: {str(e)}",
             )
+        finally:
+            if blob_tokens is not None:
+                from stepflow_py.worker import blob_store
+
+                blob_store.reset(blob_tokens)
 
 
 def _create_app(ctx: _HttpServerContext) -> FastAPI:
