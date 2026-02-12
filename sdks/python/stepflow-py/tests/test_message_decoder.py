@@ -70,7 +70,7 @@ class TestMessageDecoder:
         message_json = {
             "jsonrpc": "2.0",
             "id": "init-123",
-            "result": {"server_protocol_version": 1},
+            "result": {"serverProtocolVersion": 1},
         }
         message_bytes = json.dumps(message_json).encode()
 
@@ -79,7 +79,7 @@ class TestMessageDecoder:
         assert isinstance(message, MethodSuccess)
         assert message.id == "init-123"
         assert isinstance(message.result, InitializeResult)
-        assert message.result.server_protocol_version == 1
+        assert message.result.serverProtocolVersion == 1
         assert context == test_context
 
         # Verify the pending request was removed
@@ -90,7 +90,7 @@ class TestMessageDecoder:
         message_json = {
             "jsonrpc": "2.0",
             "id": "unknown-123",
-            "result": {"server_protocol_version": 1},
+            "result": {"serverProtocolVersion": 1},
         }
         message_bytes = json.dumps(message_json).encode()
 
@@ -175,7 +175,7 @@ class TestMessageDecoder:
         message1_json = {
             "jsonrpc": "2.0",
             "id": "req-1",
-            "result": {"server_protocol_version": 1},
+            "result": {"serverProtocolVersion": 1},
         }
         message1, context1 = decoder.decode(json.dumps(message1_json).encode())
 

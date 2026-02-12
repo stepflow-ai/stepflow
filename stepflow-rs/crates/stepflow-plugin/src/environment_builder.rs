@@ -26,17 +26,33 @@ use stepflow_state::{
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
-/// Wrapper type for the blob API URL stored in the environment.
+/// Blob API configuration stored in the environment for worker communication.
 ///
-/// This is used to store the URL that workers should use for direct HTTP blob access.
-/// When set, workers will use `GET {url}/{blob_id}` and `POST {url}` for blob operations.
+/// Contains the URL workers should use for direct HTTP blob access and the
+/// threshold for automatic blobification.
 #[derive(Debug, Clone)]
-pub struct BlobApiUrl(pub Option<String>);
+pub struct BlobApiUrl {
+    url: Option<String>,
+    blob_threshold: usize,
+}
 
 impl BlobApiUrl {
+    /// Create a new BlobApiUrl configuration.
+    pub fn new(url: Option<String>, blob_threshold: usize) -> Self {
+        Self {
+            url,
+            blob_threshold,
+        }
+    }
+
     /// Get the blob API URL if configured.
     pub fn url(&self) -> Option<&str> {
-        self.0.as_deref()
+        self.url.as_deref()
+    }
+
+    /// Get the blob threshold (0 means disabled).
+    pub fn blob_threshold(&self) -> usize {
+        self.blob_threshold
     }
 }
 
@@ -65,6 +81,7 @@ pub struct StepflowEnvironmentBuilder {
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
     blob_api_url: Option<String>,
+    blob_threshold: usize,
     orchestrator_id: Option<OrchestratorId>,
 }
 
@@ -85,6 +102,7 @@ impl StepflowEnvironmentBuilder {
             working_directory: None,
             plugin_router: None,
             blob_api_url: None,
+            blob_threshold: 0,
             orchestrator_id: None,
         }
     }
@@ -162,6 +180,16 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the blob threshold for automatic blobification.
+    ///
+    /// When a top-level field in a component's input or output exceeds this size
+    /// (in bytes of JSON serialization), it is stored as a blob and replaced with
+    /// a `$blob` reference. Set to 0 to disable (default).
+    pub fn blob_threshold(mut self, threshold: usize) -> Self {
+        self.blob_threshold = threshold;
+        self
+    }
+
     /// Build the environment, initializing all plugins.
     ///
     /// This is async because plugin initialization may require async operations
@@ -205,8 +233,8 @@ impl StepflowEnvironmentBuilder {
         env.insert(working_directory);
         env.insert(plugin_router);
 
-        // Store blob API URL for workers
-        env.insert(BlobApiUrl(self.blob_api_url));
+        // Store blob API configuration for workers
+        env.insert(BlobApiUrl::new(self.blob_api_url, self.blob_threshold));
 
         // Store orchestrator ID if set (distributed mode)
         if let Some(id) = self.orchestrator_id {

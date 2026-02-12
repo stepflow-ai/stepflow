@@ -40,6 +40,17 @@ pub struct BlobApiConfig {
     /// - K8s with separate blob service: `http://blob-service/api/v1/blobs`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+
+    /// Byte size threshold for automatic blobification of component inputs/outputs.
+    ///
+    /// When a top-level field in a component's input or output exceeds this size
+    /// (in bytes of JSON serialization), it is automatically stored as a blob and
+    /// replaced with a `$blob` reference.
+    ///
+    /// Set to `0` to disable automatic blobification.
+    /// Default: `0` (disabled)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blob_threshold: Option<usize>,
 }
 
 impl Default for BlobApiConfig {
@@ -47,6 +58,14 @@ impl Default for BlobApiConfig {
         Self {
             enabled: true,
             url: None,
+            blob_threshold: None,
         }
+    }
+}
+
+impl BlobApiConfig {
+    /// Get the effective blob threshold (0 means disabled).
+    pub fn effective_blob_threshold(&self) -> usize {
+        self.blob_threshold.unwrap_or(0)
     }
 }
