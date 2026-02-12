@@ -692,6 +692,27 @@
             }
           ],
           "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development."
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/FilesystemBlobStoreConfig",
+              "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments."
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "filesystem"
+                }
+              }
+            }
+          ],
+          "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments."
         }
       ],
       "description": "Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery"
@@ -713,6 +734,19 @@
         },
         "autoMigrate": {
           "type": "boolean"
+        }
+      }
+    },
+    "FilesystemBlobStoreConfig": {
+      "type": "object",
+      "description": "Configuration for the filesystem blob store.",
+      "properties": {
+        "directory": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Directory path for storing blobs. If not specified, a temporary directory is used."
         }
       }
     },

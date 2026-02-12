@@ -4946,8 +4946,10 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-dtos",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "utoipa",
  "uuid",
 ]
 

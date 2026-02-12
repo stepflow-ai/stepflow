@@ -15,7 +15,10 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_state::{BlobStore, ExecutionJournal, InMemoryStateStore, MetadataStore};
+use stepflow_state::{
+    BlobStore, ExecutionJournal, FilesystemBlobStore, FilesystemBlobStoreConfig,
+    InMemoryStateStore, MetadataStore,
+};
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 
 use crate::{ConfigError, Result};
@@ -29,6 +32,7 @@ use crate::{ConfigError, Result};
 enum ConcreteStore {
     InMemory(Arc<InMemoryStateStore>),
     Sqlite(Arc<SqliteStateStore>),
+    Filesystem(Arc<FilesystemBlobStore>),
 }
 
 impl ConcreteStore {
@@ -39,8 +43,8 @@ impl ConcreteStore {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
             ConcreteStore::Sqlite(s) => Ok(s.clone()),
-            // Future: some stores might not support metadata
-            // ConcreteStore::BlobOnly(_) => Err(...).attach_printable("BlobOnly store cannot be used for metadata")
+            ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
+                .attach_printable("Filesystem store only supports blob storage, not metadata"),
         }
     }
 
@@ -51,6 +55,7 @@ impl ConcreteStore {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
             ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Filesystem(s) => Ok(s.clone()),
         }
     }
 
@@ -61,6 +66,10 @@ impl ConcreteStore {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
             ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
+                .attach_printable(
+                    "Filesystem store only supports blob storage, not execution journal",
+                ),
         }
     }
 }
@@ -74,6 +83,15 @@ async fn create_concrete(config: &StoreConfig) -> Result<ConcreteStore> {
                 .await
                 .change_context(ConfigError::Configuration)?;
             Ok(ConcreteStore::Sqlite(Arc::new(store)))
+        }
+        StoreConfig::Filesystem(fs_config) => {
+            let store = match &fs_config.directory {
+                Some(dir) => FilesystemBlobStore::new(dir.into())
+                    .await
+                    .change_context(ConfigError::Configuration)?,
+                None => FilesystemBlobStore::temp().change_context(ConfigError::Configuration)?,
+            };
+            Ok(ConcreteStore::Filesystem(Arc::new(store)))
         }
     }
 }
@@ -109,6 +127,14 @@ pub enum StoreConfig {
     /// Provides durable storage with automatic schema migrations.
     /// Suitable for single-instance deployments and development.
     Sqlite(SqliteStateStoreConfig),
+    /// Filesystem-based blob storage.
+    ///
+    /// **Supported stores**: blobs only
+    ///
+    /// Stores blobs as JSON files in a directory. If no directory is specified,
+    /// a temporary directory is created and cleaned up when the store is dropped.
+    /// Suitable for local development and single-instance deployments.
+    Filesystem(FilesystemBlobStoreConfig),
 }
 
 /// Storage configuration supporting both simple and expanded forms.

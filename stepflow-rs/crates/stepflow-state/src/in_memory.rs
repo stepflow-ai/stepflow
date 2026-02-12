@@ -165,9 +165,9 @@ impl BlobStore for InMemoryStateStore {
         blob_type: BlobType,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
-            let blob_id = BlobId::from_content(&data).change_context(StateError::Internal)?;
+            let blob_id = BlobId::from_content(&data).change_context(StateError::Serialization)?;
             let blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Serialization)?;
 
             // Store the data (overwrites are fine since content is identical)
             self.blobs.insert(blob_id.as_str().to_string(), blob_data);
