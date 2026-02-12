@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use stepflow_state::lease_compliance::LeaseComplianceTests;
 use stepflow_state::{LeaseManager, LeaseResult, OrchestratorId};
-use stepflow_state_etcd::EtcdLeaseManager;
+use stepflow_state_etcd::{EtcdLeaseManager, EtcdLeaseManagerConfig};
 use testcontainers::core::IntoContainerPort as _;
 use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner as _;
@@ -155,13 +155,14 @@ async fn test_connect_from_config() {
         .await
         .expect("Failed to get port");
 
-    let manager = EtcdLeaseManager::connect(
-        &[format!("http://localhost:{port}")],
-        "/test/connect".to_string(),
-        Duration::from_secs(30),
-    )
-    .await
-    .expect("Failed to connect via config");
+    let config = EtcdLeaseManagerConfig {
+        endpoints: vec![format!("http://localhost:{port}")],
+        key_prefix: "/test/connect".to_string(),
+    };
+
+    let manager = EtcdLeaseManager::connect(&config, Duration::from_secs(30))
+        .await
+        .expect("Failed to connect via config");
 
     // Verify it works with a basic operation
     let result = manager

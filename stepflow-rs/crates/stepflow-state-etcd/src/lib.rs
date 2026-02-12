@@ -40,6 +40,21 @@ use stepflow_state::{
 };
 use uuid::Uuid;
 
+/// Configuration for the etcd lease manager.
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct EtcdLeaseManagerConfig {
+    /// etcd endpoints (e.g., `["http://localhost:2379"]`).
+    pub endpoints: Vec<String>,
+
+    /// Key prefix for all stepflow lease keys.
+    #[serde(default = "default_key_prefix")]
+    pub key_prefix: String,
+}
+
+fn default_key_prefix() -> String {
+    "/stepflow/leases".to_string()
+}
+
 /// Value stored in etcd for each run lease key.
 #[derive(Debug, Serialize, Deserialize)]
 struct LeaseValue {
@@ -100,17 +115,16 @@ impl EtcdLeaseManager {
     /// before the TTL expires or the lease (and all attached keys) will be
     /// deleted by etcd, triggering orphan detection.
     pub async fn connect(
-        endpoints: &[String],
-        key_prefix: String,
+        config: &EtcdLeaseManagerConfig,
         ttl: Duration,
     ) -> Result<Self, LeaseError> {
-        let client = Client::connect(endpoints, None)
+        let client = Client::connect(&config.endpoints, None)
             .await
             .change_context(LeaseError::ConnectionFailed)?;
 
         Ok(Self {
             client,
-            key_prefix,
+            key_prefix: config.key_prefix.clone(),
             ttl,
             orchestrator_lease: tokio::sync::RwLock::new(None),
         })
@@ -611,5 +625,18 @@ mod tests {
             .strip_prefix(&runs_prefix)
             .and_then(|s| Uuid::parse_str(s).ok());
         assert_eq!(parsed, None);
+    }
+
+    #[test]
+    fn test_default_key_prefix() {
+        assert_eq!(default_key_prefix(), "/stepflow/leases");
+    }
+
+    #[test]
+    fn test_config_serde() {
+        let json = r#"{"endpoints":["http://localhost:2379"]}"#;
+        let config: EtcdLeaseManagerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.endpoints, vec!["http://localhost:2379"]);
+        assert_eq!(config.key_prefix, "/stepflow/leases");
     }
 }

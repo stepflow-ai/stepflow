@@ -17,7 +17,7 @@ mod storage_config;
 mod supported_plugin;
 
 pub use blob_api_config::BlobApiConfig;
-pub use lease_manager_config::{EtcdLeaseManagerConfig, LeaseManagerConfig};
+pub use lease_manager_config::LeaseManagerConfig;
 pub use recovery_config::RecoveryConfig;
 pub use storage_config::{StorageConfig, StoreConfig, Stores};
 pub use supported_plugin::{SupportedPlugin, SupportedPluginConfig};
