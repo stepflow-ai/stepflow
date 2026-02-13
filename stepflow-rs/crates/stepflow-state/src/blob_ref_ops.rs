@@ -70,8 +70,9 @@ pub async fn blobify_inputs(
 
 /// Recursively replace blob refs in a JSON value with their inline data.
 ///
-/// Walks the value tree and replaces any `{"$blob": "<id>", ...}` objects
-/// with the actual blob data fetched from the store.
+/// All blob refs at the current level are fetched in parallel, then substituted.
+/// If the resolved data contains further blob refs, another parallel round is
+/// performed (up to [`MAX_RESOLVE_DEPTH`] rounds).
 pub async fn resolve_blob_refs(
     value: Value,
     blob_store: &dyn BlobStore,
@@ -81,6 +82,55 @@ pub async fn resolve_blob_refs(
 
 /// Maximum recursion depth for blob ref resolution to prevent infinite loops.
 const MAX_RESOLVE_DEPTH: usize = 8;
+
+/// Collect all blob ref IDs from a JSON value tree.
+fn collect_blob_ids(value: &Value, ids: &mut std::collections::HashSet<BlobId>) {
+    match value {
+        Value::Object(_map) => {
+            if let Some(blob_ref) = BlobRef::from_value(value) {
+                ids.insert(blob_ref.blob_id);
+            } else {
+                for val in _map.values() {
+                    collect_blob_ids(val, ids);
+                }
+            }
+        }
+        Value::Array(arr) => {
+            for val in arr {
+                collect_blob_ids(val, ids);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replace blob refs with pre-fetched data (no I/O).
+fn replace_blob_refs(value: Value, resolved: &std::collections::HashMap<BlobId, Value>) -> Value {
+    match value {
+        Value::Object(ref _map) => {
+            if let Some(blob_ref) = BlobRef::from_value(&value) {
+                if let Some(data) = resolved.get(&blob_ref.blob_id) {
+                    return data.clone();
+                }
+                return value;
+            }
+            let Value::Object(map) = value else {
+                unreachable!()
+            };
+            let mut result = serde_json::Map::with_capacity(map.len());
+            for (key, val) in map {
+                result.insert(key, replace_blob_refs(val, resolved));
+            }
+            Value::Object(result)
+        }
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| replace_blob_refs(v, resolved))
+                .collect(),
+        ),
+        other => other,
+    }
+}
 
 fn resolve_blob_refs_inner(
     value: Value,
@@ -92,38 +142,34 @@ fn resolve_blob_refs_inner(
             return Ok(value);
         }
 
-        match value {
-            Value::Object(ref _map) => {
-                if let Some(blob_ref) = BlobRef::from_value(&value) {
-                    let blob_data = blob_store.get_blob(&blob_ref.blob_id).await?;
-                    let resolved = blob_data.data().as_ref().clone();
-                    // Recursively resolve in case the resolved value contains more refs
-                    return resolve_blob_refs_inner(resolved, blob_store, depth + 1).await;
-                }
-
-                // Not a blob ref - recurse into fields
-                let Value::Object(map) = value else {
-                    unreachable!()
-                };
-                let mut result = serde_json::Map::with_capacity(map.len());
-                for (key, val) in map {
-                    result.insert(
-                        key,
-                        resolve_blob_refs_inner(val, blob_store, depth + 1).await?,
-                    );
-                }
-                Ok(Value::Object(result))
-            }
-            Value::Array(arr) => {
-                let mut result = Vec::with_capacity(arr.len());
-                for val in arr {
-                    result.push(resolve_blob_refs_inner(val, blob_store, depth + 1).await?);
-                }
-                Ok(Value::Array(result))
-            }
-            // Scalars pass through unchanged
-            other => Ok(other),
+        // Collect all blob IDs in the current tree
+        let mut ids = std::collections::HashSet::new();
+        collect_blob_ids(&value, &mut ids);
+        if ids.is_empty() {
+            return Ok(value);
         }
+
+        // Fetch all blobs in parallel
+        let ids_vec: Vec<BlobId> = ids.into_iter().collect();
+        let fetches = ids_vec
+            .iter()
+            .map(|id| async { blob_store.get_blob(id).await.map(|data| (id.clone(), data)) });
+        let results: Vec<(BlobId, _)> = futures::future::try_join_all(fetches).await?;
+        let resolved: std::collections::HashMap<BlobId, Value> = results
+            .into_iter()
+            .map(|(id, data)| (id, data.data().as_ref().clone()))
+            .collect();
+
+        // Replace refs with fetched data
+        let result = replace_blob_refs(value, &resolved);
+
+        // Check if resolved data contains more blob refs
+        let mut next_ids = std::collections::HashSet::new();
+        collect_blob_ids(&result, &mut next_ids);
+        if !next_ids.is_empty() {
+            return resolve_blob_refs_inner(result, blob_store, depth + 1).await;
+        }
+        Ok(result)
     })
 }
 

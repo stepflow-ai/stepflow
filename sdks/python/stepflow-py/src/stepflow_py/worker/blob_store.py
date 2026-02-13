@@ -174,6 +174,30 @@ async def get_blob(blob_id: str) -> Any:
         return resp.json()["data"]
 
 
+async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
+    """Retrieve multiple blobs in parallel.
+
+    Fetches all blob IDs concurrently using ``asyncio.gather``.
+
+    Args:
+        blob_ids: Set of blob IDs to retrieve.
+
+    Returns:
+        A mapping from blob ID to its JSON data.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import asyncio
+
+    if not blob_ids:
+        return {}
+
+    ids = list(blob_ids)
+    results = await asyncio.gather(*(get_blob(bid) for bid in ids))
+    return dict(zip(ids, results, strict=False))
+
+
 async def put_blob_binary(data: bytes) -> str:
     """Store raw binary data as a blob and return its content-based ID.
 

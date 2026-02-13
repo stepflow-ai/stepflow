@@ -115,11 +115,42 @@ async def blobify_inputs(
     return result, created_ids
 
 
+def _collect_blob_ids(value: Any, ids: set[str]) -> None:
+    """Walk a JSON value tree and collect all blob ref IDs."""
+    if isinstance(value, dict):
+        ref = BlobRef.from_dict(value)
+        if ref is not None:
+            ids.add(ref.blob_id)
+        else:
+            for v in value.values():
+                _collect_blob_ids(v, ids)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_blob_ids(item, ids)
+
+
+def _replace_blob_refs(value: Any, resolved: dict[str, Any]) -> Any:
+    """Replace blob refs with their pre-fetched data (no I/O)."""
+    if isinstance(value, dict):
+        ref = BlobRef.from_dict(value)
+        if ref is not None and ref.blob_id in resolved:
+            return resolved[ref.blob_id]
+        return {k: _replace_blob_refs(v, resolved) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_replace_blob_refs(item, resolved) for item in value]
+    return value
+
+
 async def resolve_blob_refs(
     value: Any,
     _depth: int = 0,
 ) -> Any:
-    """Recursively replace blob refs in a JSON value with their inline data.
+    """Replace blob refs in a JSON value with their inline data.
+
+    All blob refs at the current level are fetched in parallel using
+    :func:`~stepflow_py.worker.blob_store.get_blobs`, then substituted.
+    If the resolved data itself contains blob refs, another round of
+    parallel fetching is performed (up to ``max_depth`` rounds).
 
     Args:
         value: The JSON value to resolve.
@@ -133,15 +164,21 @@ async def resolve_blob_refs(
     if _depth > max_depth:
         return value
 
-    if isinstance(value, dict):
-        blob_ref = BlobRef.from_dict(value)
-        if blob_ref is not None:
-            resolved = await blob_store.get_blob(blob_ref.blob_id)
-            return await resolve_blob_refs(resolved, _depth + 1)
-        # Not a blob ref — recurse into fields
-        return {k: await resolve_blob_refs(v, _depth + 1) for k, v in value.items()}
+    # Collect all blob IDs in the current tree
+    ids: set[str] = set()
+    _collect_blob_ids(value, ids)
+    if not ids:
+        return value
 
-    if isinstance(value, list):
-        return [await resolve_blob_refs(item, _depth + 1) for item in value]
+    # Batch-fetch all blobs in parallel
+    resolved = await blob_store.get_blobs(ids)
 
-    return value
+    # Replace refs with fetched data
+    result = _replace_blob_refs(value, resolved)
+
+    # Resolved data may itself contain blob refs — check for another round
+    next_ids: set[str] = set()
+    _collect_blob_ids(result, next_ids)
+    if next_ids:
+        return await resolve_blob_refs(result, _depth + 1)
+    return result
