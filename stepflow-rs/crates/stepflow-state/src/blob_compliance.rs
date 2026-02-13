@@ -376,13 +376,16 @@ impl BlobStoreComplianceTests {
             .get_blob(&blob_id_no_name)
             .await
             .expect("get_blob should succeed");
-        assert_eq!(blob.filename(), None, "Blob without metadata filename should have no filename");
+        assert_eq!(
+            blob.filename(),
+            None,
+            "Blob without metadata filename should have no filename"
+        );
 
         // Store different data WITH a filename
         let data2 = ValueRef::new(json!({"filename_test": "with_name"}));
         let metadata = BlobMetadata {
             filename: Some("test-file.json".to_string()),
-            ..Default::default()
         };
 
         let blob_id = store

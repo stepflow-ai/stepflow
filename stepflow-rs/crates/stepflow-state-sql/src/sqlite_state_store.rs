@@ -233,10 +233,7 @@ impl BlobStore for SqliteStateStore {
 
             let filename: Option<String> = row.get("filename");
 
-            let metadata = stepflow_core::BlobMetadata {
-                filename,
-                ..Default::default()
-            };
+            let metadata = stepflow_core::BlobMetadata { filename };
 
             let mut blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
                 .change_context(StateError::Internal)?;

@@ -108,7 +108,6 @@ pub async fn store_blob(
 
         let metadata = BlobMetadata {
             filename: filename.clone(),
-            ..Default::default()
         };
 
         let blob_id = blob_store
@@ -133,7 +132,6 @@ pub async fn store_blob(
 
         let metadata = BlobMetadata {
             filename: filename.clone(),
-            ..Default::default()
         };
 
         let blob_id = blob_store

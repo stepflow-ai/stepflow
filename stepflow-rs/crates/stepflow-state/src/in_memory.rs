@@ -684,7 +684,11 @@ mod tests {
 
         // Create blob
         let blob_id = store
-            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data, Default::default())
+            .put_blob(
+                value_ref.clone(),
+                stepflow_core::BlobType::Data,
+                Default::default(),
+            )
             .await
             .unwrap();
 
@@ -698,7 +702,11 @@ mod tests {
         // Same content should produce same blob ID
         let value_ref2 = ValueRef::new(test_data.clone());
         let blob_id2 = store
-            .put_blob(value_ref2, stepflow_core::BlobType::Data, Default::default())
+            .put_blob(
+                value_ref2,
+                stepflow_core::BlobType::Data,
+                Default::default(),
+            )
             .await
             .unwrap();
         assert_eq!(blob_id, blob_id2);

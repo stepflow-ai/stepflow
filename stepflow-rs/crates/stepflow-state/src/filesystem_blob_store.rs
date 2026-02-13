@@ -183,7 +183,6 @@ impl crate::BlobStore for FilesystemBlobStore {
 
             let metadata = BlobMetadata {
                 filename: stored.filename,
-                ..Default::default()
             };
             let blob_data = BlobData::with_metadata(
                 stepflow_core::blob::BlobValue::from_value_ref(
