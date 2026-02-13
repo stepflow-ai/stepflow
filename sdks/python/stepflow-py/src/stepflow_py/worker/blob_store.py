@@ -211,14 +211,15 @@ async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
     return dict(zip(ids, results, strict=True))
 
 
-async def put_blob_binary(data: bytes) -> str:
+async def put_blob_binary(data: bytes, *, filename: str | None = None) -> str:
     """Store raw binary data as a blob and return its content-based ID.
 
-    The data is base64-encoded for transport. The blob ID is the SHA-256 hash
-    of the raw bytes (not the base64 encoding).
+    Sends the raw bytes directly via ``application/octet-stream`` — no base64
+    encoding overhead. The blob ID is the SHA-256 hash of the raw bytes.
 
     Args:
         data: The raw bytes to store.
+        filename: Optional filename to associate with the blob.
 
     Returns:
         The blob ID (SHA-256 hash) for the stored data.
@@ -226,13 +227,14 @@ async def put_blob_binary(data: bytes) -> str:
     Raises:
         RuntimeError: If blob store is not configured.
     """
-    import pybase64
-
     from stepflow_py.worker.observability import get_tracer
 
     url = _get_blob_api_url()
     client = _get_client()
-    b64_str = pybase64.standard_b64encode(data).decode("ascii")
+
+    headers = {"content-type": "application/octet-stream"}
+    if filename is not None:
+        headers["x-blob-filename"] = filename
 
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
@@ -240,9 +242,7 @@ async def put_blob_binary(data: bytes) -> str:
         attributes={"size": len(data)},
     ):
         try:
-            resp = await client.post(
-                url, json={"data": b64_str, "blobType": BlobType.BINARY.value}
-            )
+            resp = await client.post(url, content=data, headers=headers)
             resp.raise_for_status()
             blob_id: str = resp.json()["blobId"]
             return blob_id
@@ -255,7 +255,8 @@ async def put_blob_binary(data: bytes) -> str:
 async def get_blob_binary(blob_id: str) -> bytes:
     """Retrieve raw binary data by blob ID.
 
-    The stored base64 data is decoded back to raw bytes.
+    Uses ``Accept: application/octet-stream`` to receive raw bytes directly
+    from the server — no base64 decoding overhead.
 
     Args:
         blob_id: The blob ID to retrieve.
@@ -266,8 +267,6 @@ async def get_blob_binary(blob_id: str) -> bytes:
     Raises:
         RuntimeError: If blob store is not configured.
     """
-    import pybase64
-
     from stepflow_py.worker.observability import get_tracer
 
     url = _get_blob_api_url(blob_id)
@@ -279,9 +278,9 @@ async def get_blob_binary(blob_id: str) -> bytes:
         attributes={"blob_id": blob_id},
     ):
         try:
-            resp = await client.get(url)
+            resp = await client.get(url, headers={"accept": "application/octet-stream"})
             resp.raise_for_status()
-            b64_str = resp.json()["data"]
-            return pybase64.standard_b64decode(b64_str)
+            result: bytes = resp.content
+            return result
         except Exception as e:
             raise RuntimeError(f"Failed to fetch binary blob {blob_id}: {e}") from e

@@ -129,7 +129,7 @@ mod tests {
         let flow_id = mock
             .run_context()
             .blob_store()
-            .put_blob(flow_data, stepflow_core::BlobType::Flow)
+            .put_blob(flow_data, stepflow_core::BlobType::Flow, Default::default())
             .await
             .unwrap();
 

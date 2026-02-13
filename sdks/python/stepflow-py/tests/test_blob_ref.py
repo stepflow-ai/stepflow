@@ -80,6 +80,7 @@ class MockBlobStore:
 
     def __init__(self):
         self._blobs: dict[str, any] = {}
+        self._binary_blobs: dict[str, bytes] = {}
 
     async def put(self, data, blob_type="data"):
         content_str = json.dumps(data, sort_keys=True)
@@ -87,8 +88,16 @@ class MockBlobStore:
         self._blobs[blob_id] = data
         return blob_id
 
+    async def put_binary(self, data: bytes):
+        blob_id = hashlib.sha256(data).hexdigest()
+        self._binary_blobs[blob_id] = data
+        return blob_id
+
     async def get(self, blob_id):
         return self._blobs[blob_id]
+
+    def get_binary(self, blob_id: str) -> bytes:
+        return self._binary_blobs[blob_id]
 
 
 @pytest.fixture
@@ -96,23 +105,38 @@ def mock_blob_store():
     """Set up a mock blob store via contextvars for testing."""
     store = MockBlobStore()
 
-    # Create a mock httpx client that delegates to our in-memory store
+    # Create a mock httpx client that delegates to our in-memory store.
+    # Supports both JSON and octet-stream content types.
     mock_client = AsyncMock()
 
-    async def mock_post(url, json=None):
-        data = json["data"]
-        blob_id = await store.put(data, json.get("blobType", "data"))
+    async def mock_post(url, *, json=None, content=None, headers=None):
+        headers = headers or {}
+        ct = headers.get("content-type", "application/json")
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
+
+        if ct.startswith("application/octet-stream"):
+            blob_id = await store.put_binary(content)
+        else:
+            data = json["data"]
+            blob_id = await store.put(data, json.get("blobType", "data"))
+
         resp.json.return_value = {"blobId": blob_id}
         return resp
 
-    async def mock_get(url):
+    async def mock_get(url, *, headers=None):
+        headers = headers or {}
+        accept = headers.get("accept", "application/json")
         blob_id = url.rsplit("/", 1)[-1]
-        data = await store.get(blob_id)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
-        resp.json.return_value = {"data": data}
+
+        if accept.startswith("application/octet-stream"):
+            resp.content = store.get_binary(blob_id)
+        else:
+            data = await store.get(blob_id)
+            resp.json.return_value = {"data": data}
+
         return resp
 
     mock_client.post = mock_post
@@ -239,3 +263,34 @@ class TestResolveBlobRefs:
         }
         result = await resolve_blob_refs(input_data)
         assert result == {"a": "first", "b": "second", "c": ["third", "plain"]}
+
+
+# ---------------------------------------------------------------------------
+# Binary blob store function tests (put_blob_binary / get_blob_binary)
+# ---------------------------------------------------------------------------
+
+
+class TestBinaryBlobStore:
+    @pytest.mark.asyncio
+    async def test_put_get_binary_round_trip(self, mock_blob_store):
+        """Binary data round-trips through put/get via octet-stream."""
+        data = b"Hello, binary world! \x00\x01\x02\xff"
+        blob_id = await blob_store.put_blob_binary(data)
+        assert len(blob_id) == 64  # SHA-256 hex
+        result = await blob_store.get_blob_binary(blob_id)
+        assert result == data
+
+    @pytest.mark.asyncio
+    async def test_put_binary_with_filename(self, mock_blob_store):
+        """put_blob_binary accepts an optional filename parameter."""
+        data = b"file content"
+        blob_id = await blob_store.put_blob_binary(data, filename="test.pdf")
+        assert len(blob_id) == 64
+
+    @pytest.mark.asyncio
+    async def test_put_binary_deduplication(self, mock_blob_store):
+        """Same binary data produces the same blob ID."""
+        data = b"dedup test data"
+        id1 = await blob_store.put_blob_binary(data)
+        id2 = await blob_store.put_blob_binary(data)
+        assert id1 == id2

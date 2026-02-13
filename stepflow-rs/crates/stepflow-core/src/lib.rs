@@ -26,7 +26,7 @@ mod flow_result;
 pub use flow_result::*;
 
 // Re-export commonly used types
-pub use blob::{BlobData, BlobId, BlobType};
+pub use blob::{BlobData, BlobId, BlobMetadata, BlobType};
 pub use blob_ref::BlobRef;
 pub use environment::StepflowEnvironment;
 pub use error_stack::{ErrorStack, ErrorStackEntry};

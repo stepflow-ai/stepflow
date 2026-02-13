@@ -31,7 +31,11 @@ async fn test_blob_storage() {
 
     // Store blob
     let blob_id = store
-        .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+        .put_blob(
+            value_ref.clone(),
+            stepflow_core::BlobType::Data,
+            Default::default(),
+        )
         .await
         .unwrap();
 
@@ -50,11 +54,15 @@ async fn test_blob_deduplication() {
 
     // Store the same data twice
     let blob_id1 = store
-        .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+        .put_blob(
+            value_ref.clone(),
+            stepflow_core::BlobType::Data,
+            Default::default(),
+        )
         .await
         .unwrap();
     let blob_id2 = store
-        .put_blob(value_ref, stepflow_core::BlobType::Data)
+        .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
         .await
         .unwrap();
 

@@ -85,7 +85,7 @@ impl BuiltinComponent for PutBlobComponent {
         // Create the blob through the run context
         let blob_id = run_context
             .blob_store()
-            .put_blob(data_ref, input.blob_type)
+            .put_blob(data_ref, input.blob_type, Default::default())
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -231,6 +231,7 @@ mod tests {
             .put_blob(
                 ValueRef::new(test_data.clone()),
                 stepflow_core::BlobType::Data,
+                Default::default(),
             )
             .await
             .unwrap();

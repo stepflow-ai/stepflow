@@ -22,7 +22,7 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::{
-    BlobData, BlobId, BlobType,
+    BlobData, BlobId, BlobMetadata, BlobType,
     workflow::{Flow, ValueRef},
 };
 
@@ -41,6 +41,7 @@ pub trait BlobStore: Send + Sync {
     /// # Arguments
     /// * `data` - The JSON data to store as a blob
     /// * `blob_type` - The type of blob being stored
+    /// * `metadata` - Non-content metadata (filename, etc.)
     ///
     /// # Returns
     /// The blob ID for the stored data
@@ -48,6 +49,7 @@ pub trait BlobStore: Send + Sync {
         &self,
         data: ValueRef,
         blob_type: BlobType,
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
 
     /// Retrieve blob data with type information by blob ID.
@@ -111,7 +113,8 @@ pub trait BlobStore: Send + Sync {
                 serde_json::to_value(workflow.as_ref())
                     .change_context(StateError::Serialization)?,
             );
-            self.put_blob(flow_data, BlobType::Flow).await
+            self.put_blob(flow_data, BlobType::Flow, BlobMetadata::default())
+                .await
         }
         .boxed()
     }
@@ -174,10 +177,11 @@ pub trait BlobStore: Send + Sync {
     fn put_blob_binary(
         &self,
         data: &[u8],
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         let base64_str = BASE64_STANDARD.encode(data);
         let value_ref = ValueRef::new(serde_json::Value::String(base64_str));
-        self.put_blob(value_ref, BlobType::Binary)
+        self.put_blob(value_ref, BlobType::Binary, metadata)
     }
 
     /// Retrieve raw binary data by blob ID.

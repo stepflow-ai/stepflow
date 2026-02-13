@@ -89,6 +89,19 @@ pub enum BlobValueError {
     InvalidBinaryData,
 }
 
+/// Non-content metadata associated with a blob.
+///
+/// This metadata is stored alongside the blob but is **not** part of the
+/// content hash (the blob ID is SHA-256 of data only). Use `..Default::default()`
+/// when constructing to remain forward-compatible as fields are added.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlobMetadata {
+    /// Optional filename for download convenience (e.g. `Content-Disposition` headers).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
 /// Structured blob data containing both the content and metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlobData {
@@ -96,12 +109,27 @@ pub struct BlobData {
     pub value: BlobValue,
     /// The blob ID (for convenience)
     pub blob_id: BlobId,
+    /// Non-content metadata (filename, etc.)
+    pub metadata: BlobMetadata,
 }
 
 impl BlobData {
     /// Create new blob data with typed value
     pub fn new(value: BlobValue, blob_id: BlobId) -> Self {
-        Self { value, blob_id }
+        Self {
+            value,
+            blob_id,
+            metadata: BlobMetadata::default(),
+        }
+    }
+
+    /// Create new blob data with typed value and metadata
+    pub fn with_metadata(value: BlobValue, blob_id: BlobId, metadata: BlobMetadata) -> Self {
+        Self {
+            value,
+            blob_id,
+            metadata,
+        }
     }
 
     /// Create blob data from ValueRef and type
@@ -112,6 +140,11 @@ impl BlobData {
     ) -> Result<Self, BlobValueError> {
         let value = BlobValue::from_value_ref(data, blob_type)?;
         Ok(Self::new(value, blob_id))
+    }
+
+    /// Get the filename if set
+    pub fn filename(&self) -> Option<&str> {
+        self.metadata.filename.as_deref()
     }
 
     /// Get the blob type

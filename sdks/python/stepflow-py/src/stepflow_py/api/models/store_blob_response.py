@@ -35,7 +35,10 @@ class StoreBlobResponse(BaseModel):
         description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         alias="blobId",
     )
-    __properties: ClassVar[list[str]] = ["blobId"]
+    filename: StrictStr | None = Field(
+        default=None, description="The filename if one was provided"
+    )
+    __properties: ClassVar[list[str]] = ["blobId", "filename"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -74,6 +77,11 @@ class StoreBlobResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # set to None if filename (nullable) is None
+        # and model_fields_set contains the field
+        if self.filename is None and "filename" in self.model_fields_set:
+            _dict["filename"] = None
+
         return _dict
 
     @classmethod
@@ -85,5 +93,7 @@ class StoreBlobResponse(BaseModel):
         if not isinstance(obj, dict):
             return cls.model_validate(obj)
 
-        _obj = cls.model_validate({"blobId": obj.get("blobId")})
+        _obj = cls.model_validate(
+            {"blobId": obj.get("blobId"), "filename": obj.get("filename")}
+        )
         return _obj
