@@ -29,12 +29,14 @@ from stepflow_py.worker.generated_protocol import (
     ComponentListParams,
     Error,
     Initialized,
+    InitializeParams,
     Method,
     MethodError,
     MethodRequest,
     MethodSuccess,
     Notification,
     ObservabilityContext,
+    RuntimeCapabilities,
 )
 from stepflow_py.worker.http_server import create_test_app
 from stepflow_py.worker.server import StepflowServer
@@ -757,3 +759,127 @@ async def test_bidirectional_sse(test_server):
         # Verify the stream is closed (no more events)
         next_event = await sse_events.next()
         assert next_event is None, "Should not receive any more events"
+
+
+# ---------------------------------------------------------------------------
+# Auto-blobification tests (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_initialize_with_blob_threshold(test_server):
+    """Test that initialize with blobThreshold reports supportsBlobRefs."""
+    # Send initialize request with blob threshold
+    init_request = MethodRequest(
+        jsonrpc="2.0",
+        id="init-blob-test",
+        method=Method.initialize,
+        params=InitializeParams(
+            runtimeProtocolVersion=1,
+            capabilities=RuntimeCapabilities(
+                blobApiUrl=f"{test_server.url}/blobs",
+                blobThreshold=100,
+            ),
+        ),
+    )
+    response = await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(init_request),
+        headers=POST_HEADERS,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == "init-blob-test"
+    assert "result" in data
+    result = data["result"]
+    assert result["serverProtocolVersion"] == 1
+    assert result["supportsBlobRefs"] is True
+
+
+@pytest.mark.asyncio
+async def test_auto_blobify_resolve_and_blobify(test_server):
+    """Test automatic blob resolution on input and blobification on output.
+
+    This test exercises the full Phase 2 wiring:
+    1. Initialize with a blob threshold to enable auto-blobification
+    2. Pre-populate a blob, send a blob ref as input — verify the component
+       receives the resolved value (not the blob ref)
+    3. With a low threshold, verify the component output is blobified
+    """
+    import hashlib
+
+    # --- Setup: initialize with low threshold ---
+    init_request = MethodRequest(
+        jsonrpc="2.0",
+        id="init-autoblob-test",
+        method=Method.initialize,
+        params=InitializeParams(
+            runtimeProtocolVersion=1,
+            capabilities=RuntimeCapabilities(
+                blobApiUrl=f"{test_server.url}/blobs",
+                blobThreshold=10,  # Very low threshold to trigger blobification
+            ),
+        ),
+    )
+    await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(init_request),
+        headers=POST_HEADERS,
+    )
+
+    # Send initialized notification
+    init_notification = Notification(method=Method.initialized, params=Initialized())
+    await test_server._httpx_client.post(
+        f"{test_server.url}/",
+        json=msgspec.to_builtins(init_notification),
+        headers=POST_HEADERS,
+    )
+
+    # --- Part 1: Auto-resolve blob refs in input ---
+    # Pre-populate the mock blob store with a known blob
+    message = "hello"
+    content_str = json.dumps(message, sort_keys=True)
+    blob_id = hashlib.sha256(content_str.encode()).hexdigest()
+    _test_blob_storage[blob_id] = {"data": message, "blobType": "data"}
+
+    # Send execute with a blob ref as the "message" field
+    blob_ref_input = {"message": {"$blob": blob_id}}
+
+    response = await test_server.send_request(
+        Method.components_execute,
+        component="/simple_component",
+        input_data=blob_ref_input,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "result" in data, f"Expected result, got: {data}"
+    output = data["result"]["output"]
+    # The component received the resolved string "hello",
+    # so output is {"processed_message": "Processed: hello"}.
+    # Since "Processed: hello" > 10 bytes, processed_message is also blobified.
+    assert "$blob" in output["processed_message"], (
+        f"Expected blob ref in processed_message, got: {output['processed_message']}"
+    )
+    blobified_id = output["processed_message"]["$blob"]
+    assert blobified_id in _test_blob_storage
+    assert _test_blob_storage[blobified_id]["data"] == "Processed: hello"
+
+    # --- Part 2: Auto-blobify large output ---
+    response2 = await test_server.send_request(
+        Method.components_execute,
+        component="/simple_component",
+        input_data={"message": "test"},
+    )
+
+    assert response2.status_code == 200
+    data2 = response2.json()
+    assert "result" in data2, f"Expected result, got: {data2}"
+    output2 = data2["result"]["output"]
+    # "Processed: test" > 10 bytes → blobified
+    assert "$blob" in output2["processed_message"], (
+        f"Expected blob ref, got: {output2['processed_message']}"
+    )
+    blob_id2 = output2["processed_message"]["$blob"]
+    assert blob_id2 in _test_blob_storage
+    assert _test_blob_storage[blob_id2]["data"] == "Processed: test"

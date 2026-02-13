@@ -48,7 +48,7 @@ pub struct BlobApiConfig {
     /// replaced with a `$blob` reference.
     ///
     /// Set to `0` to disable automatic blobification.
-    /// Default: `0` (disabled)
+    /// Default: 1 MB (1048576 bytes)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blob_threshold: Option<usize>,
 }
@@ -63,9 +63,15 @@ impl Default for BlobApiConfig {
     }
 }
 
+/// Default blob threshold: 1 MB.
+pub const DEFAULT_BLOB_THRESHOLD: usize = 1_048_576;
+
 impl BlobApiConfig {
     /// Get the effective blob threshold (0 means disabled).
+    ///
+    /// Returns the configured threshold, or [`DEFAULT_BLOB_THRESHOLD`] (1 MB) if not set.
+    /// Set `blob_threshold: 0` in config to explicitly disable.
     pub fn effective_blob_threshold(&self) -> usize {
-        self.blob_threshold.unwrap_or(0)
+        self.blob_threshold.unwrap_or(DEFAULT_BLOB_THRESHOLD)
     }
 }

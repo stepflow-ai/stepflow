@@ -589,6 +589,11 @@ class StepflowServer:
                     if self._blob_threshold > 0:
                         from stepflow_py.worker.blob_ref import blobify_inputs
 
+                        # Convert Structs/dataclasses to dicts for blobification
+                        if not isinstance(
+                            output, dict | list | str | int | float | bool | type(None)
+                        ):
+                            output = msgspec.to_builtins(output)
                         output, _created_ids = await blobify_inputs(
                             output, self._blob_threshold
                         )
