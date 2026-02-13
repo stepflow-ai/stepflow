@@ -15,6 +15,7 @@
 //! These functions operate on JSON values, replacing large top-level fields with
 //! blob refs (blobification) and replacing blob refs with their inline data (resolution).
 
+use error_stack::ResultExt as _;
 use serde_json::Value;
 use stepflow_core::BlobId;
 use stepflow_core::blob::BlobType;
@@ -47,18 +48,26 @@ pub async fn blobify_inputs(
 
     let mut created_blob_ids = Vec::new();
 
-    for (_key, value) in map.iter_mut() {
+    for (key, value) in map.iter_mut() {
         // Skip values that are already blob refs
         if is_blob_ref(value) {
             continue;
         }
 
-        let serialized = serde_json::to_vec(value).unwrap_or_default();
+        // serde_json::to_vec is infallible for serde_json::Value
+        let serialized =
+            serde_json::to_vec(value).expect("serde_json::Value serialization is infallible");
         let size = serialized.len();
 
         if size > threshold {
             let value_ref = ValueRef::new(value.clone());
             let blob_id = blob_store.put_blob(value_ref, BlobType::Data).await?;
+            log::debug!(
+                "Blobified field {:?} ({} bytes) -> {}",
+                key,
+                size,
+                &blob_id.to_string()[..12]
+            );
             let blob_ref = BlobRef::new(blob_id.clone(), BlobType::Data, Some(size as u64));
             *value = blob_ref.to_value();
             created_blob_ids.push(blob_id);
@@ -138,7 +147,7 @@ fn resolve_blob_refs_inner(
     depth: usize,
 ) -> futures::future::BoxFuture<'_, error_stack::Result<Value, StateError>> {
     Box::pin(async move {
-        if depth > MAX_RESOLVE_DEPTH {
+        if depth >= MAX_RESOLVE_DEPTH {
             return Ok(value);
         }
 
@@ -149,12 +158,21 @@ fn resolve_blob_refs_inner(
             return Ok(value);
         }
 
+        log::debug!("Resolving {} blob ref(s) in parallel", ids.len());
+
         // Fetch all blobs in parallel
         let ids_vec: Vec<BlobId> = ids.into_iter().collect();
-        let fetches = ids_vec
-            .iter()
-            .map(|id| async { blob_store.get_blob(id).await.map(|data| (id.clone(), data)) });
-        let results: Vec<(BlobId, _)> = futures::future::try_join_all(fetches).await?;
+        let fetches = ids_vec.iter().map(|id| {
+            let id = id.clone();
+            async move {
+                let data = blob_store
+                    .get_blob(&id)
+                    .await
+                    .attach_printable_lazy(|| format!("blob_id={id}"));
+                data.map(|d| (id, d))
+            }
+        });
+        let results = futures::future::try_join_all(fetches).await?;
         let resolved: std::collections::HashMap<BlobId, Value> = results
             .into_iter()
             .map(|(id, data)| (id, data.data().as_ref().clone()))

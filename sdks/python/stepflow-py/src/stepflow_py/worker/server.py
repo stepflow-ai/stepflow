@@ -387,9 +387,13 @@ class StepflowServer:
                             blob_url,
                         )
 
-                # Extract blob threshold
+                # Extract blob threshold (only if blob API is reachable)
                 blob_threshold = request.params.capabilities.blobThreshold
-                if blob_threshold is not None and blob_threshold > 0:
+                if (
+                    blob_threshold is not None
+                    and blob_threshold > 0
+                    and self._blob_api_url is not None
+                ):
                     self._blob_threshold = blob_threshold
 
         # Report that we support blob refs (resolve in input, blobify in output)

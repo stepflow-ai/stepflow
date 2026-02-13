@@ -26,10 +26,13 @@ Example::
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from stepflow_py.api.models.blob_type import BlobType
+
+logger = logging.getLogger(__name__)
 
 BLOB_REF_KEY = "$blob"
 
@@ -109,6 +112,7 @@ async def blobify_inputs(
             ref = BlobRef(blob_id=blob_id, blob_type=BlobType.DATA, size=size)
             result[key] = ref.to_dict()
             created_ids.append(blob_id)
+            logger.debug("Blobified field %r (%d bytes) -> %s", key, size, blob_id[:12])
         else:
             result[key] = value
 
@@ -161,7 +165,7 @@ async def resolve_blob_refs(
     from stepflow_py.worker import blob_store
 
     max_depth = 8
-    if _depth > max_depth:
+    if _depth >= max_depth:
         return value
 
     # Collect all blob IDs in the current tree
@@ -169,6 +173,8 @@ async def resolve_blob_refs(
     _collect_blob_ids(value, ids)
     if not ids:
         return value
+
+    logger.debug("Resolving %d blob ref(s) in parallel", len(ids))
 
     # Batch-fetch all blobs in parallel
     resolved = await blob_store.get_blobs(ids)
