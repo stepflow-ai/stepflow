@@ -59,6 +59,13 @@ fi
 # Use --python flag on Intel Mac to ensure correct version
 run_check "Dependencies" uv sync ${PYTHON_VERSION:+--python $PYTHON_VERSION} || true
 
+# torch 2.2.2 (the only version with x86_64 macOS wheels, pinned by
+# agent-lifecycle-toolkit) was compiled against NumPy 1.x and crashes at
+# import time with NumPy 2.x.  Downgrade numpy after sync on Intel Mac.
+if [[ "$(uname -s)" == "Darwin" && "$(uname -m)" == "x86_64" ]]; then
+    run_check "NumPy compat fix" uv pip install ${PYTHON_VERSION:+--python $PYTHON_VERSION} 'numpy<2' || true
+fi
+
 # =============================================================================
 # LANGFLOW CHECKS
 # =============================================================================
