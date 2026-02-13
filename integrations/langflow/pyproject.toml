@@ -95,6 +95,14 @@ stepflow-langflow-server = "stepflow_langflow_integration.executor.standalone_se
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+# torch 2.2.2 (the only version with x86_64 macOS wheels, pinned by
+# agent-lifecycle-toolkit) was compiled against NumPy 1.x and crashes at
+# import time with NumPy 2.x.  Cap numpy on Intel Mac so uv resolves 1.26.x.
+override-dependencies = [
+    "numpy<2; platform_machine == 'x86_64' and sys_platform == 'darwin'",
+]
+
 [tool.uv.sources]
 stepflow-py = { path = "../../sdks/python/stepflow-py", editable = true }
 stepflow-orchestrator = { path = "../../sdks/python/stepflow-orchestrator", editable = true }
