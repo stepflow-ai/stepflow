@@ -193,6 +193,21 @@ impl BlobStore for InMemoryStateStore {
         .boxed()
     }
 
+    fn set_blob_filename(
+        &self,
+        blob_id: &BlobId,
+        filename: String,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let blob_id_str = blob_id.as_str().to_string();
+        async move {
+            if let Some(mut entry) = self.blobs.get_mut(&blob_id_str) {
+                entry.value_mut().filename = Some(filename);
+            }
+            Ok(())
+        }
+        .boxed()
+    }
+
     // Note: store_flow and get_flow use default implementations from the trait
 }
 

@@ -23,14 +23,14 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_py.api.models.blob_type import BlobType
 
 
 class StoreBlobRequest(BaseModel):
     """
-    Request to store a blob
+    Request to store a blob (JSON mode)
     """  # noqa: E501
 
     data: Any | None
@@ -39,7 +39,10 @@ class StoreBlobRequest(BaseModel):
         description='The type of blob (data or flow). Defaults to "data".',
         alias="blobType",
     )
-    __properties: ClassVar[list[str]] = ["data", "blobType"]
+    filename: StrictStr | None = Field(
+        default=None, description="Optional filename to associate with the blob."
+    )
+    __properties: ClassVar[list[str]] = ["data", "blobType", "filename"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -83,6 +86,11 @@ class StoreBlobRequest(BaseModel):
         if self.data is None and "data" in self.model_fields_set:
             _dict["data"] = None
 
+        # set to None if filename (nullable) is None
+        # and model_fields_set contains the field
+        if self.filename is None and "filename" in self.model_fields_set:
+            _dict["filename"] = None
+
         return _dict
 
     @classmethod
@@ -95,6 +103,10 @@ class StoreBlobRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"data": obj.get("data"), "blobType": obj.get("blobType")}
+            {
+                "data": obj.get("data"),
+                "blobType": obj.get("blobType"),
+                "filename": obj.get("filename"),
+            }
         )
         return _obj

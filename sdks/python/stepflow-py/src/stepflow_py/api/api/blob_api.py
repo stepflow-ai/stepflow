@@ -54,8 +54,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> GetBlobResponse:
-        """Get a blob by its ID
+        """Get a blob by its ID.
 
+        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
 
         :param blob_id: Blob ID to retrieve (required)
         :type blob_id: str
@@ -117,8 +118,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[GetBlobResponse]:
-        """Get a blob by its ID
+        """Get a blob by its ID.
 
+        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
 
         :param blob_id: Blob ID to retrieve (required)
         :type blob_id: str
@@ -180,8 +182,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get a blob by its ID
+        """Get a blob by its ID.
 
+        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
 
         :param blob_id: Blob ID to retrieve (required)
         :type blob_id: str
@@ -292,8 +295,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> StoreBlobResponse:
-        """Store a blob and return its content-based ID
+        """Store a blob and return its content-based ID.
 
+        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
 
         :param store_blob_request: (required)
         :type store_blob_request: StoreBlobRequest
@@ -355,8 +359,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[StoreBlobResponse]:
-        """Store a blob and return its content-based ID
+        """Store a blob and return its content-based ID.
 
+        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
 
         :param store_blob_request: (required)
         :type store_blob_request: StoreBlobRequest
@@ -418,8 +423,9 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Store a blob and return its content-based ID
+        """Store a blob and return its content-based ID.
 
+        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
 
         :param store_blob_request: (required)
         :type store_blob_request: StoreBlobRequest

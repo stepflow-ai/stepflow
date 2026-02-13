@@ -32,6 +32,8 @@ use crate::StateError;
 struct StoredBlob {
     blob_type: BlobType,
     data: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
 }
 
 /// Directory handle that is either an owned path or a temp directory (auto-cleaned on drop).
@@ -101,6 +103,41 @@ impl FilesystemBlobStore {
 }
 
 impl crate::BlobStore for FilesystemBlobStore {
+    fn set_blob_filename(
+        &self,
+        blob_id: &BlobId,
+        filename: String,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            let path = self.blob_path(&blob_id);
+
+            let bytes = std::fs::read(&path)
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!(
+                        "Failed to read blob file for filename update: {}",
+                        path.display()
+                    )
+                })?;
+
+            let mut stored: StoredBlob =
+                serde_json::from_slice(&bytes).change_context(StateError::Serialization)?;
+            stored.filename = Some(filename);
+
+            let json =
+                serde_json::to_vec_pretty(&stored).change_context(StateError::Serialization)?;
+            std::fs::write(&path, &json)
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("Failed to write blob file: {}", path.display())
+                })?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
     fn put_blob(
         &self,
         data: ValueRef,
@@ -129,6 +166,7 @@ impl crate::BlobStore for FilesystemBlobStore {
             let stored = StoredBlob {
                 blob_type,
                 data: data.as_ref().clone(),
+                filename: None,
             };
 
             let json =
@@ -177,9 +215,10 @@ impl crate::BlobStore for FilesystemBlobStore {
                     format!("Failed to deserialize blob file: {}", path.display())
                 })?;
 
-            let blob_data =
+            let mut blob_data =
                 BlobData::from_value_ref(ValueRef::new(stored.data), stored.blob_type, blob_id)
                     .change_context(StateError::Serialization)?;
+            blob_data.filename = stored.filename;
 
             Ok(Some(blob_data))
         }

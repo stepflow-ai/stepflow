@@ -71,6 +71,7 @@ impl BlobStoreComplianceTests {
         Self::test_get_blob_of_type_not_found(store).await;
         Self::test_binary_blob_round_trip(store).await;
         Self::test_binary_blob_deduplication(store).await;
+        Self::test_set_blob_filename(store).await;
     }
 
     /// Run all compliance tests with a fresh store for each test.
@@ -102,6 +103,7 @@ impl BlobStoreComplianceTests {
         Self::test_get_blob_of_type_not_found(&factory().await).await;
         Self::test_binary_blob_round_trip(&factory().await).await;
         Self::test_binary_blob_deduplication(&factory().await).await;
+        Self::test_set_blob_filename(&factory().await).await;
     }
 
     // =========================================================================
@@ -349,6 +351,54 @@ impl BlobStoreComplianceTests {
         assert_eq!(
             blob_id1, blob_id2,
             "Same binary content should produce same blob ID"
+        );
+    }
+
+    // =========================================================================
+    // Filename Metadata Tests
+    // =========================================================================
+
+    /// Test that filenames can be set and retrieved on blobs.
+    ///
+    /// Contract: set_blob_filename followed by get_blob returns the filename.
+    /// Blobs initially have no filename.
+    pub async fn test_set_blob_filename<B: BlobStore>(store: &B) {
+        let data = ValueRef::new(json!({"filename_test": true}));
+
+        let blob_id = store
+            .put_blob(data.clone(), BlobType::Data)
+            .await
+            .expect("put_blob should succeed");
+
+        // Initially no filename
+        let blob = store
+            .get_blob(&blob_id)
+            .await
+            .expect("get_blob should succeed");
+        assert_eq!(blob.filename(), None, "New blob should have no filename");
+
+        // Set a filename
+        store
+            .set_blob_filename(&blob_id, "test-file.json".to_string())
+            .await
+            .expect("set_blob_filename should succeed");
+
+        // Retrieve and check filename is set
+        let blob = store
+            .get_blob(&blob_id)
+            .await
+            .expect("get_blob should succeed");
+        assert_eq!(
+            blob.filename(),
+            Some("test-file.json"),
+            "Filename should be set after set_blob_filename"
+        );
+
+        // Data should be unchanged
+        assert_eq!(
+            blob.data().as_ref(),
+            data.as_ref(),
+            "Blob data should be unchanged after setting filename"
         );
     }
 

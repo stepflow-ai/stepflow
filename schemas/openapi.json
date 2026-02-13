@@ -18,7 +18,8 @@
         "tags": [
           "Blob"
         ],
-        "summary": "Store a blob and return its content-based ID",
+        "summary": "Store a blob and return its content-based ID.",
+        "description": "Supports two content types:\n- `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields.\n- `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.",
         "operationId": "store_blob",
         "requestBody": {
           "content": {
@@ -62,7 +63,8 @@
         "tags": [
           "Blob"
         ],
-        "summary": "Get a blob by its ID",
+        "summary": "Get a blob by its ID.",
+        "description": "Content negotiation via `Accept` header:\n- `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`.\n- `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.\n  For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.",
         "operationId": "get_blob",
         "parameters": [
           {
@@ -1307,7 +1309,7 @@
       },
       "GetBlobResponse": {
         "type": "object",
-        "description": "Response when retrieving a blob",
+        "description": "Response when retrieving a blob (JSON mode)",
         "required": [
           "data",
           "blobType",
@@ -1325,6 +1327,13 @@
           "blobId": {
             "$ref": "#/components/schemas/BlobId",
             "description": "The blob ID (for confirmation)"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The filename if one was set"
           }
         }
       },
@@ -1946,7 +1955,7 @@
       },
       "StoreBlobRequest": {
         "type": "object",
-        "description": "Request to store a blob",
+        "description": "Request to store a blob (JSON mode)",
         "required": [
           "data"
         ],
@@ -1958,6 +1967,13 @@
           "blobType": {
             "$ref": "#/components/schemas/BlobType",
             "description": "The type of blob (data or flow). Defaults to \"data\"."
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional filename to associate with the blob."
           }
         }
       },
@@ -1971,6 +1987,13 @@
           "blobId": {
             "$ref": "#/components/schemas/BlobId",
             "description": "The content-based blob ID (SHA-256 hash)"
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The filename if one was provided"
           }
         }
       },

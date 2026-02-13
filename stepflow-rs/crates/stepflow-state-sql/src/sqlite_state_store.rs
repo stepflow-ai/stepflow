@@ -199,7 +199,7 @@ impl BlobStore for SqliteStateStore {
     ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
-            let sql = "SELECT data, blob_type FROM blobs WHERE id = ?";
+            let sql = "SELECT data, blob_type, filename FROM blobs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(blob_id.as_str())
@@ -228,9 +228,31 @@ impl BlobStore for SqliteStateStore {
                 }
             };
 
-            let blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
+            let filename: Option<String> = row.get("filename");
+
+            let mut blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
                 .change_context(StateError::Internal)?;
+            blob_data.filename = filename;
             Ok(Some(blob_data))
+        }
+        .boxed()
+    }
+
+    fn set_blob_filename(
+        &self,
+        blob_id: &BlobId,
+        filename: String,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            let sql = "UPDATE blobs SET filename = ? WHERE id = ?";
+            sqlx::query(sql)
+                .bind(&filename)
+                .bind(blob_id.as_str())
+                .execute(&self.pool)
+                .await
+                .change_context(StateError::Internal)?;
+            Ok(())
         }
         .boxed()
     }

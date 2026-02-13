@@ -30,7 +30,7 @@ from stepflow_py.api.models.blob_type import BlobType
 
 class GetBlobResponse(BaseModel):
     """
-    Response when retrieving a blob
+    Response when retrieving a blob (JSON mode)
     """  # noqa: E501
 
     data: Any | None
@@ -39,7 +39,10 @@ class GetBlobResponse(BaseModel):
         description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         alias="blobId",
     )
-    __properties: ClassVar[list[str]] = ["data", "blobType", "blobId"]
+    filename: StrictStr | None = Field(
+        default=None, description="The filename if one was set"
+    )
+    __properties: ClassVar[list[str]] = ["data", "blobType", "blobId", "filename"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -83,6 +86,11 @@ class GetBlobResponse(BaseModel):
         if self.data is None and "data" in self.model_fields_set:
             _dict["data"] = None
 
+        # set to None if filename (nullable) is None
+        # and model_fields_set contains the field
+        if self.filename is None and "filename" in self.model_fields_set:
+            _dict["filename"] = None
+
         return _dict
 
     @classmethod
@@ -99,6 +107,7 @@ class GetBlobResponse(BaseModel):
                 "data": obj.get("data"),
                 "blobType": obj.get("blobType"),
                 "blobId": obj.get("blobId"),
+                "filename": obj.get("filename"),
             }
         )
         return _obj

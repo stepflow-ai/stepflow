@@ -167,6 +167,20 @@ pub trait BlobStore: Send + Sync {
         .boxed()
     }
 
+    /// Set the filename metadata for an existing blob.
+    ///
+    /// The filename is not part of the content hash — it is purely metadata
+    /// for download convenience (e.g., `Content-Disposition` headers).
+    ///
+    /// Default implementation is a no-op (returns Ok).
+    fn set_blob_filename(
+        &self,
+        _blob_id: &BlobId,
+        _filename: String,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async { Ok(()) }.boxed()
+    }
+
     /// Store raw binary data as a blob and return its content-based ID.
     ///
     /// The data is base64-encoded for storage via `put_blob` with `BlobType::Binary`.

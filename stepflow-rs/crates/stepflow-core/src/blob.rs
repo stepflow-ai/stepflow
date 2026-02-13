@@ -96,12 +96,27 @@ pub struct BlobData {
     pub value: BlobValue,
     /// The blob ID (for convenience)
     pub blob_id: BlobId,
+    /// Optional filename associated with the blob (not part of the content hash).
+    pub filename: Option<String>,
 }
 
 impl BlobData {
     /// Create new blob data with typed value
     pub fn new(value: BlobValue, blob_id: BlobId) -> Self {
-        Self { value, blob_id }
+        Self {
+            value,
+            blob_id,
+            filename: None,
+        }
+    }
+
+    /// Create new blob data with typed value and optional filename
+    pub fn with_filename(value: BlobValue, blob_id: BlobId, filename: Option<String>) -> Self {
+        Self {
+            value,
+            blob_id,
+            filename,
+        }
     }
 
     /// Create blob data from ValueRef and type
@@ -112,6 +127,11 @@ impl BlobData {
     ) -> Result<Self, BlobValueError> {
         let value = BlobValue::from_value_ref(data, blob_type)?;
         Ok(Self::new(value, blob_id))
+    }
+
+    /// Get the filename if set
+    pub fn filename(&self) -> Option<&str> {
+        self.filename.as_deref()
     }
 
     /// Get the blob type
