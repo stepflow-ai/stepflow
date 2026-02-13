@@ -25,6 +25,7 @@ use stepflow_plugin::{
     BlobApiUrl, DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext,
     StepflowEnvironment,
 };
+use stepflow_state::blob_ref_ops;
 use tokio::sync::RwLock;
 
 use crate::error::TransportError;
@@ -146,6 +147,12 @@ pub struct StepflowPlugin {
     /// Blob API URL to pass to workers during initialization.
     /// Set during ensure_initialized from the environment.
     blob_api_url: RwLock<Option<String>>,
+    /// Byte size threshold for automatic blobification of inputs/outputs.
+    /// 0 means disabled. Set during ensure_initialized from the environment.
+    blob_threshold: RwLock<usize>,
+    /// Whether the worker supports `$blob` references in inputs/outputs.
+    /// Set from the InitializeResult response.
+    supports_blob_refs: RwLock<bool>,
 }
 
 impl StepflowPlugin {
@@ -153,17 +160,30 @@ impl StepflowPlugin {
         Self {
             state: RwLock::new(state),
             blob_api_url: RwLock::new(None),
+            blob_threshold: RwLock::new(0),
+            supports_blob_refs: RwLock::new(false),
         }
     }
 
-    /// Create RuntimeCapabilities from the stored blob API URL.
+    /// Create RuntimeCapabilities from the stored blob API URL and threshold.
     async fn create_capabilities(&self) -> Option<RuntimeCapabilities> {
         let url = self.blob_api_url.read().await.clone();
-        if url.is_some() {
-            Some(RuntimeCapabilities { blob_api_url: url })
+        let threshold = *self.blob_threshold.read().await;
+        let blob_threshold = if threshold > 0 { Some(threshold) } else { None };
+
+        if url.is_some() || blob_threshold.is_some() {
+            Some(RuntimeCapabilities {
+                blob_api_url: url,
+                blob_threshold,
+            })
         } else {
             None
         }
+    }
+
+    /// Check if blobification should be applied (worker supports it and threshold is set).
+    async fn should_blobify(&self) -> bool {
+        *self.supports_blob_refs.read().await && *self.blob_threshold.read().await > 0
     }
 }
 
@@ -255,7 +275,7 @@ impl StepflowPlugin {
         // Reuse capabilities from initial initialization
         let capabilities = self.create_capabilities().await;
 
-        handle
+        let init_result = handle
             .method(
                 &InitializeParams {
                     runtime_protocol_version: 1,
@@ -271,6 +291,9 @@ impl StepflowPlugin {
             .await
             .change_context(PluginError::Execution)
             .attach_printable("Failed to initialize restarted subprocess")?;
+
+        // Update supports_blob_refs from restarted server
+        *self.supports_blob_refs.write().await = init_result.supports_blob_refs;
 
         handle
             .notify(&Initialized {})
@@ -340,9 +363,10 @@ impl Plugin for StepflowPlugin {
             return Ok(());
         }
 
-        // Store blob API URL from environment for use in initialization and restarts
+        // Store blob API URL and threshold from environment
         if let Some(blob_api_url) = env.get::<BlobApiUrl>() {
             *self.blob_api_url.write().await = blob_api_url.url().map(|s| s.to_string());
+            *self.blob_threshold.write().await = blob_api_url.blob_threshold();
         }
 
         let client = self.create_client().await?;
@@ -350,10 +374,10 @@ impl Plugin for StepflowPlugin {
         // Create observability context for initialization (trace only, no flow/run)
         let observability = ObservabilityContext::from_current_span();
 
-        // Create capabilities with blob API URL
+        // Create capabilities with blob API URL and threshold
         let capabilities = self.create_capabilities().await;
 
-        client
+        let init_result = client
             .method(
                 &InitializeParams {
                     runtime_protocol_version: 1,
@@ -368,6 +392,9 @@ impl Plugin for StepflowPlugin {
             )
             .await
             .change_context(PluginError::Initializing)?;
+
+        // Record whether this worker supports blob refs
+        *self.supports_blob_refs.write().await = init_result.supports_blob_refs;
 
         client
             .notify(&Initialized {})
@@ -412,6 +439,24 @@ impl Plugin for StepflowPlugin {
         const MAX_ATTEMPTS: u32 = 3;
         let can_restart = self.is_subprocess_mode().await;
 
+        // Blobify large input fields if the worker supports blob refs
+        let should_blobify = self.should_blobify().await;
+        let execute_input = if should_blobify {
+            let threshold = *self.blob_threshold.read().await;
+            let blob_store = run_context.blob_store();
+            let (blobified, _created_ids) = blob_ref_ops::blobify_inputs(
+                input.as_ref().clone(),
+                threshold,
+                blob_store.as_ref(),
+            )
+            .await
+            .change_context(PluginError::Execution)
+            .attach_printable("Failed to blobify input")?;
+            ValueRef::new(blobified)
+        } else {
+            input
+        };
+
         for attempt in 1..=MAX_ATTEMPTS {
             // Create observability context from run context and step
             let observability = ObservabilityContext::from_run_context(run_context, step);
@@ -423,7 +468,7 @@ impl Plugin for StepflowPlugin {
                 .method(
                     &ComponentExecuteParams {
                         component: component.clone(),
-                        input: input.clone(),
+                        input: execute_input.clone(),
                         attempt,
                         observability,
                     },
@@ -432,7 +477,23 @@ impl Plugin for StepflowPlugin {
                 .await;
 
             match result {
-                Ok(response) => return Ok(FlowResult::Success(response.output)),
+                Ok(response) => {
+                    // Resolve any blob refs in the output (safe no-op if none present)
+                    let output = if should_blobify {
+                        let blob_store = run_context.blob_store();
+                        let resolved = blob_ref_ops::resolve_blob_refs(
+                            response.output.as_ref().clone(),
+                            blob_store.as_ref(),
+                        )
+                        .await
+                        .change_context(PluginError::Execution)
+                        .attach_printable("Failed to resolve blob refs in output")?;
+                        ValueRef::new(resolved)
+                    } else {
+                        response.output
+                    };
+                    return Ok(FlowResult::Success(output));
+                }
                 Err(err) => {
                     // If we can restart (subprocess mode) and have attempts left, try to restart
                     if can_restart && attempt < MAX_ATTEMPTS {

@@ -167,6 +167,7 @@ impl StepflowConfig {
             .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)
+            .blob_threshold(self.blob_api.effective_blob_threshold())
             .blob_api_url(self.blob_api.url);
 
         if let Some(id) = orchestrator_id {

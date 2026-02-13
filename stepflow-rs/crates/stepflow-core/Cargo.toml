@@ -16,6 +16,7 @@ workspace = true
 doctest = false
 
 [dependencies]
+base64.workspace = true
 bit-set.workspace = true
 error-stack.workspace = true
 hex.workspace = true

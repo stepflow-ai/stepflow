@@ -74,13 +74,20 @@ class _HttpServerContext:
         self.instance_id = instance_id
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._http_client: Any = None  # Shared httpx.AsyncClient for blob operations
+        self._http_client_loop: asyncio.AbstractEventLoop | None = None
 
     async def get_http_client(self) -> Any:
         """Get or create the shared HTTP client for blob operations."""
-        if self._http_client is None:
+        loop = asyncio.get_running_loop()
+        if (
+            self._http_client is None
+            or self._http_client.is_closed
+            or self._http_client_loop is not loop
+        ):
             import httpx
 
             self._http_client = httpx.AsyncClient(timeout=30.0)
+            self._http_client_loop = loop
         return self._http_client
 
     async def close(self) -> None:

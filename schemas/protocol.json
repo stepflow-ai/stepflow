@@ -248,6 +248,14 @@
             "null"
           ],
           "description": "Base URL for the Blob HTTP API.\n\nWhen provided, component servers should use direct HTTP requests\n(`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations\ninstead of SSE bidirectional protocol."
+        },
+        "blobThreshold": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "description": "Byte size threshold for automatic blobification.\n\nWhen set to a non-zero value, the orchestrator may replace large input fields\nwith `$blob` references. Component servers that report `supports_blob_refs`\nshould resolve these references before processing. Component servers should\nalso blobify output fields exceeding this threshold.\n\nA value of 0 or `None` means automatic blobification is disabled."
         }
       }
     },
@@ -296,14 +304,18 @@
       "type": "object",
       "description": "Sent from the component server back to Stepflow with the result of initialization.\nThe component server will not be initialized until it receives the `initialized` notification.",
       "required": [
-        "server_protocol_version"
+        "serverProtocolVersion"
       ],
       "properties": {
-        "server_protocol_version": {
+        "serverProtocolVersion": {
           "type": "integer",
           "format": "int32",
           "description": "Version of the protocol being used by the component server.",
           "minimum": 0
+        },
+        "supportsBlobRefs": {
+          "type": "boolean",
+          "description": "Whether this component server supports `$blob` references in inputs/outputs.\n\nWhen `true`, the orchestrator may send `$blob` references in component inputs\nand expects the server to resolve them. The server may also return `$blob`\nreferences in outputs for the orchestrator to resolve.\n\nWhen `false` (default), the orchestrator will not send blob refs and will\nresolve any refs before delivering input to this server."
         }
       }
     },

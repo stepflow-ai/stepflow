@@ -44,14 +44,42 @@ pub struct RuntimeCapabilities {
     /// instead of SSE bidirectional protocol.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blob_api_url: Option<String>,
+
+    /// Byte size threshold for automatic blobification.
+    ///
+    /// When set to a non-zero value, the orchestrator may replace large input fields
+    /// with `$blob` references. Component servers that report `supports_blob_refs`
+    /// should resolve these references before processing. Component servers should
+    /// also blobify output fields exceeding this threshold.
+    ///
+    /// A value of 0 or `None` means automatic blobification is disabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<i64>)]
+    pub blob_threshold: Option<usize>,
 }
 
 /// Sent from the component server back to Stepflow with the result of initialization.
 /// The component server will not be initialized until it receives the `initialized` notification.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     /// Version of the protocol being used by the component server.
     pub server_protocol_version: u32,
+
+    /// Whether this component server supports `$blob` references in inputs/outputs.
+    ///
+    /// When `true`, the orchestrator may send `$blob` references in component inputs
+    /// and expects the server to resolve them. The server may also return `$blob`
+    /// references in outputs for the orchestrator to resolve.
+    ///
+    /// When `false` (default), the orchestrator will not send blob refs and will
+    /// resolve any refs before delivering input to this server.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub supports_blob_refs: bool,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 impl ProtocolMethod for InitializeParams {

@@ -11,6 +11,7 @@
 // the License.
 
 pub mod blob;
+pub mod blob_ref;
 pub mod component;
 pub mod environment;
 pub mod error_stack;
@@ -26,6 +27,7 @@ pub use flow_result::*;
 
 // Re-export commonly used types
 pub use blob::{BlobData, BlobId, BlobType};
+pub use blob_ref::BlobRef;
 pub use environment::StepflowEnvironment;
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use run_params::{GetRunParams, ResultOrder, SubmitRunParams};

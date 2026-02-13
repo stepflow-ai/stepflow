@@ -50,7 +50,7 @@ def test_method_request_default_jsonrpc():
 
 def test_method_success_default_jsonrpc():
     response = MethodSuccess(
-        id=str(UUID(int=42)), result=InitializeResult(server_protocol_version=1)
+        id=str(UUID(int=42)), result=InitializeResult(serverProtocolVersion=1)
     )
 
     # Encode to JSON
@@ -139,7 +139,7 @@ def test_all_message_types_have_jsonrpc():
             method=Method.initialize,
             params=InitializeParams(runtimeProtocolVersion=1),
         ),
-        MethodSuccess(id="success", result=InitializeResult(server_protocol_version=1)),
+        MethodSuccess(id="success", result=InitializeResult(serverProtocolVersion=1)),
         MethodError(id="error", error=Error(code=-32000, message="Test error")),
         Notification(method=Method.initialized, params=Initialized()),
     ]

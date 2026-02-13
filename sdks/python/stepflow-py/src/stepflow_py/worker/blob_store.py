@@ -29,11 +29,14 @@ Usage::
 
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 
 from stepflow_py.api.models.blob_type import BlobType
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Contextvars – private; callers use configure() / reset()
@@ -141,10 +144,17 @@ async def put_blob(data: Any, blob_type: BlobType = BlobType.DATA) -> str:
         "put_blob",
         attributes={"blob_type": blob_type.value},
     ):
-        resp = await client.post(url, json={"data": data, "blobType": blob_type.value})
-        resp.raise_for_status()
-        blob_id: str = resp.json()["blobId"]
-        return blob_id
+        try:
+            resp = await client.post(
+                url, json={"data": data, "blobType": blob_type.value}
+            )
+            resp.raise_for_status()
+            blob_id: str = resp.json()["blobId"]
+            return blob_id
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to store blob (type={blob_type.value}): {e}"
+            ) from e
 
 
 async def get_blob(blob_id: str) -> Any:
@@ -169,6 +179,109 @@ async def get_blob(blob_id: str) -> Any:
         "get_blob",
         attributes={"blob_id": blob_id},
     ):
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.json()["data"]
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()["data"]
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch blob {blob_id}: {e}") from e
+
+
+async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
+    """Retrieve multiple blobs in parallel.
+
+    Fetches all blob IDs concurrently using ``asyncio.gather``.
+
+    Args:
+        blob_ids: Set of blob IDs to retrieve.
+
+    Returns:
+        A mapping from blob ID to its JSON data.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import asyncio
+
+    if not blob_ids:
+        return {}
+
+    ids = list(blob_ids)
+    results = await asyncio.gather(*(get_blob(bid) for bid in ids))
+    return dict(zip(ids, results, strict=True))
+
+
+async def put_blob_binary(data: bytes) -> str:
+    """Store raw binary data as a blob and return its content-based ID.
+
+    The data is base64-encoded for transport. The blob ID is the SHA-256 hash
+    of the raw bytes (not the base64 encoding).
+
+    Args:
+        data: The raw bytes to store.
+
+    Returns:
+        The blob ID (SHA-256 hash) for the stored data.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import pybase64
+
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_blob_api_url()
+    client = _get_client()
+    b64_str = pybase64.standard_b64encode(data).decode("ascii")
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "put_blob_binary",
+        attributes={"size": len(data)},
+    ):
+        try:
+            resp = await client.post(
+                url, json={"data": b64_str, "blobType": BlobType.BINARY.value}
+            )
+            resp.raise_for_status()
+            blob_id: str = resp.json()["blobId"]
+            return blob_id
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to store binary blob ({len(data)} bytes): {e}"
+            ) from e
+
+
+async def get_blob_binary(blob_id: str) -> bytes:
+    """Retrieve raw binary data by blob ID.
+
+    The stored base64 data is decoded back to raw bytes.
+
+    Args:
+        blob_id: The blob ID to retrieve.
+
+    Returns:
+        The raw bytes associated with the blob ID.
+
+    Raises:
+        RuntimeError: If blob store is not configured.
+    """
+    import pybase64
+
+    from stepflow_py.worker.observability import get_tracer
+
+    url = _get_blob_api_url(blob_id)
+    client = _get_client()
+
+    tracer = get_tracer(__name__)
+    with tracer.start_as_current_span(
+        "get_blob_binary",
+        attributes={"blob_id": blob_id},
+    ):
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            b64_str = resp.json()["data"]
+            return pybase64.standard_b64decode(b64_str)
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch binary blob {blob_id}: {e}") from e

@@ -17,6 +17,8 @@
 
 use std::sync::Arc;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::{
@@ -160,6 +162,44 @@ pub trait BlobStore: Send + Sync {
             match self.get_blob_opt(&blob_id).await? {
                 Some(blob_data) if blob_data.blob_type() == expected_type => Ok(Some(blob_data)),
                 _ => Ok(None),
+            }
+        }
+        .boxed()
+    }
+
+    /// Store raw binary data as a blob and return its content-based ID.
+    ///
+    /// The data is base64-encoded for storage via `put_blob` with `BlobType::Binary`.
+    /// The blob ID is the SHA-256 hash of the raw bytes (not the base64 encoding).
+    fn put_blob_binary(
+        &self,
+        data: &[u8],
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let base64_str = BASE64_STANDARD.encode(data);
+        let value_ref = ValueRef::new(serde_json::Value::String(base64_str));
+        self.put_blob(value_ref, BlobType::Binary)
+    }
+
+    /// Retrieve raw binary data by blob ID.
+    ///
+    /// Returns the decoded binary data if the blob exists and is of type Binary.
+    fn get_blob_binary(
+        &self,
+        blob_id: &BlobId,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<u8>, StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            let blob_data = self.get_blob(&blob_id).await?;
+            match blob_data.as_binary() {
+                Some(bytes) => Ok(bytes.to_vec()),
+                None => {
+                    // Blob exists but is not binary type
+                    Err(error_stack::report!(StateError::Internal)).attach_printable(format!(
+                        "Blob '{}' is not a binary blob (type: {:?})",
+                        blob_id,
+                        blob_data.blob_type()
+                    ))
+                }
             }
         }
         .boxed()

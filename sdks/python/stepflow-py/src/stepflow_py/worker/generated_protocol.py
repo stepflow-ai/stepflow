@@ -109,6 +109,15 @@ class RuntimeCapabilities(Struct, kw_only=True):
         ]
         | None
     ) = None
+    blobThreshold: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Byte size threshold for automatic blobification.\n\nWhen set to a non-zero value, the orchestrator may replace large input fields\nwith `$blob` references. Component servers that report `supports_blob_refs`\nshould resolve these references before processing. Component servers should\nalso blobify output fields exceeding this threshold.\n\nA value of 0 or `None` means automatic blobification is disabled.'
+            ),
+        ]
+        | None
+    ) = None
 
 
 BlobId = Annotated[
@@ -120,13 +129,22 @@ BlobId = Annotated[
 
 
 class InitializeResult(Struct, kw_only=True):
-    server_protocol_version: Annotated[
+    serverProtocolVersion: Annotated[
         int,
         Meta(
             description='Version of the protocol being used by the component server.',
             ge=0,
         ),
     ]
+    supportsBlobRefs: (
+        Annotated[
+            bool,
+            Meta(
+                description='Whether this component server supports `$blob` references in inputs/outputs.\n\nWhen `true`, the orchestrator may send `$blob` references in component inputs\nand expects the server to resolve them. The server may also return `$blob`\nreferences in outputs for the orchestrator to resolve.\n\nWhen `false` (default), the orchestrator will not send blob refs and will\nresolve any refs before delivering input to this server.'
+            ),
+        ]
+        | None
+    ) = None
 
 
 class Initialized(Struct, kw_only=True):

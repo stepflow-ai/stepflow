@@ -98,6 +98,16 @@ class BlobApiConfig(Struct, kw_only=True):
         ]
         | None
     ) = None
+    blobThreshold: (
+        Annotated[
+            int | None,
+            Meta(
+                description="Byte size threshold for automatic blobification of component inputs/outputs.\n\nWhen a top-level field in a component's input or output exceeds this size\n(in bytes of JSON serialization), it is automatically stored as a blob and\nreplaced with a `$blob` reference.\n\nSet to `0` to disable automatic blobification.\nDefault: 1 MB (1048576 bytes)",
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
 
 
 BuiltinPluginConfig = Any

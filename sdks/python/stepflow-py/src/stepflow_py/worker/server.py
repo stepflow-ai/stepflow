@@ -110,6 +110,7 @@ class StepflowServer:
         self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
         self._initialized = False
         self._blob_api_url: str | None = None
+        self._blob_threshold: int = 0
 
         # Add LangChain registry functionality if available
         if _HAS_LANGCHAIN:
@@ -364,7 +365,7 @@ class StepflowServer:
 
     async def _handle_initialize(self, request: MethodRequest) -> MethodResponse:
         """Handle the initialize method."""
-        # Extract blob API URL from capabilities if provided
+        # Extract blob API URL and threshold from capabilities if provided
         if isinstance(request.params, InitializeParams):
             if request.params.capabilities is not None:
                 blob_url = request.params.capabilities.blobApiUrl
@@ -386,8 +387,20 @@ class StepflowServer:
                             blob_url,
                         )
 
-        # Return protocol version
-        result = InitializeResult(server_protocol_version=1)
+                # Extract blob threshold (only if blob API is reachable)
+                blob_threshold = request.params.capabilities.blobThreshold
+                if (
+                    blob_threshold is not None
+                    and blob_threshold > 0
+                    and self._blob_api_url is not None
+                ):
+                    self._blob_threshold = blob_threshold
+
+        # Report that we support blob refs (resolve in input, blobify in output)
+        result = InitializeResult(
+            serverProtocolVersion=1,
+            supportsBlobRefs=True,
+        )
 
         return MethodSuccess(id=request.id, result=result)
 
@@ -539,17 +552,24 @@ class StepflowServer:
                         ),
                     },
                 ):
+                    # Resolve blob refs in input before parsing
+                    raw_input = params.input
+                    if self._blob_threshold > 0:
+                        from stepflow_py.worker.blob_ref import resolve_blob_refs
+
+                        raw_input = await resolve_blob_refs(raw_input)
+
                     # Parse input using component's input type
                     # Handle types that msgspec doesn't support (dict, Any, object)
                     # by passing through the input as-is
                     try:
                         input_value: Any = msgspec.convert(
-                            params.input, type=component.input_type
+                            raw_input, type=component.input_type
                         )
                     except TypeError as type_err:
                         if "is not supported" in str(type_err):
                             # Type not supported by msgspec, pass through as-is
-                            input_value = params.input
+                            input_value = raw_input
                         else:
                             raise
 
@@ -568,6 +588,19 @@ class StepflowServer:
                         output = await component.function(*args, **path_params)
                     else:
                         output = component.function(*args, **path_params)
+
+                    # Blobify large output fields
+                    if self._blob_threshold > 0:
+                        from stepflow_py.worker.blob_ref import blobify_inputs
+
+                        # Convert Structs/dataclasses to dicts for blobification
+                        if not isinstance(
+                            output, dict | list | str | int | float | bool | type(None)
+                        ):
+                            output = msgspec.to_builtins(output)
+                        output, _created_ids = await blobify_inputs(
+                            output, self._blob_threshold
+                        )
 
                     result = ComponentExecuteResult(output=output)
                     logger.info(f"Component {params.component} executed successfully")

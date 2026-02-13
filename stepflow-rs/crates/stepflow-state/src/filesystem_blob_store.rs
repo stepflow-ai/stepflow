@@ -107,7 +107,8 @@ impl crate::BlobStore for FilesystemBlobStore {
         blob_type: BlobType,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
-            let blob_id = BlobId::from_content(&data).change_context(StateError::Serialization)?;
+            let blob_id =
+                BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
 
             let path = self.blob_path(&blob_id);
 

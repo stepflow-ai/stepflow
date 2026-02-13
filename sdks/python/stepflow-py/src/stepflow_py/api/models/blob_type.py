@@ -33,6 +33,7 @@ class BlobType(str, Enum):
     """
     FLOW = "flow"
     DATA = "data"
+    BINARY = "binary"
 
     @classmethod
     def from_json(cls, json_str: str) -> Self:
