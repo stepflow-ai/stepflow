@@ -163,12 +163,14 @@ impl BlobStore for InMemoryStateStore {
         &self,
         data: ValueRef,
         blob_type: BlobType,
+        metadata: stepflow_core::BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
             let blob_id =
                 BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
-            let blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
+            let mut blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
                 .change_context(StateError::Serialization)?;
+            blob_data.metadata = metadata;
 
             // Store the data (overwrites are fine since content is identical)
             self.blobs.insert(blob_id.as_str().to_string(), blob_data);
@@ -189,26 +191,6 @@ impl BlobStore for InMemoryStateStore {
                 .blobs
                 .get(&blob_id_str)
                 .map(|entry| entry.value().clone()))
-        }
-        .boxed()
-    }
-
-    fn set_blob_filename(
-        &self,
-        blob_id: &BlobId,
-        filename: String,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let blob_id_str = blob_id.as_str().to_string();
-        let blob_id = blob_id.clone();
-        async move {
-            if let Some(mut entry) = self.blobs.get_mut(&blob_id_str) {
-                entry.value_mut().filename = Some(filename);
-                Ok(())
-            } else {
-                Err(error_stack::report!(StateError::BlobNotFound {
-                    blob_id: blob_id.to_string()
-                }))
-            }
         }
         .boxed()
     }
@@ -702,7 +684,7 @@ mod tests {
 
         // Create blob
         let blob_id = store
-            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data)
+            .put_blob(value_ref.clone(), stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -716,7 +698,7 @@ mod tests {
         // Same content should produce same blob ID
         let value_ref2 = ValueRef::new(test_data.clone());
         let blob_id2 = store
-            .put_blob(value_ref2, stepflow_core::BlobType::Data)
+            .put_blob(value_ref2, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
         assert_eq!(blob_id, blob_id2);

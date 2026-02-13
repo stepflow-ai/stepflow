@@ -70,7 +70,11 @@ pub async fn submit_run(
     let flow_value = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
     let blob_store = env.blob_store();
     blob_store
-        .put_blob(flow_value, stepflow_core::BlobType::Flow)
+        .put_blob(
+            flow_value,
+            stepflow_core::BlobType::Flow,
+            Default::default(),
+        )
         .await
         .change_context(ExecutionError::StateStoreError)?;
 
@@ -242,7 +246,7 @@ mod tests {
         // Create blob through executor context
         let blob_id = executor
             .blob_store()
-            .put_blob(value_ref, stepflow_core::BlobType::Data)
+            .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -280,6 +284,7 @@ mod tests {
             .put_blob(
                 ValueRef::new(test_data.clone()),
                 stepflow_core::BlobType::Data,
+                Default::default(),
             )
             .await
             .unwrap();

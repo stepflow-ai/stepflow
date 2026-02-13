@@ -96,7 +96,7 @@ pub async fn store_flow(
         let blob_store = executor.blob_store();
         let flow_data = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
         blob_store
-            .put_blob(flow_data, BlobType::Flow)
+            .put_blob(flow_data, BlobType::Flow, Default::default())
             .await
             .map_err(|_| ErrorResponse {
                 code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,

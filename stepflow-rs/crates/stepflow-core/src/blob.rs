@@ -89,6 +89,19 @@ pub enum BlobValueError {
     InvalidBinaryData,
 }
 
+/// Non-content metadata associated with a blob.
+///
+/// This metadata is stored alongside the blob but is **not** part of the
+/// content hash (the blob ID is SHA-256 of data only). Use `..Default::default()`
+/// when constructing to remain forward-compatible as fields are added.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BlobMetadata {
+    /// Optional filename for download convenience (e.g. `Content-Disposition` headers).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+}
+
 /// Structured blob data containing both the content and metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlobData {
@@ -96,8 +109,8 @@ pub struct BlobData {
     pub value: BlobValue,
     /// The blob ID (for convenience)
     pub blob_id: BlobId,
-    /// Optional filename associated with the blob (not part of the content hash).
-    pub filename: Option<String>,
+    /// Non-content metadata (filename, etc.)
+    pub metadata: BlobMetadata,
 }
 
 impl BlobData {
@@ -106,16 +119,16 @@ impl BlobData {
         Self {
             value,
             blob_id,
-            filename: None,
+            metadata: BlobMetadata::default(),
         }
     }
 
-    /// Create new blob data with typed value and optional filename
-    pub fn with_filename(value: BlobValue, blob_id: BlobId, filename: Option<String>) -> Self {
+    /// Create new blob data with typed value and metadata
+    pub fn with_metadata(value: BlobValue, blob_id: BlobId, metadata: BlobMetadata) -> Self {
         Self {
             value,
             blob_id,
-            filename,
+            metadata,
         }
     }
 
@@ -131,7 +144,7 @@ impl BlobData {
 
     /// Get the filename if set
     pub fn filename(&self) -> Option<&str> {
-        self.filename.as_deref()
+        self.metadata.filename.as_deref()
     }
 
     /// Get the blob type

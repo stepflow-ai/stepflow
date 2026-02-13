@@ -61,7 +61,9 @@ pub async fn blobify_inputs(
 
         if size > threshold {
             let value_ref = ValueRef::new(value.clone());
-            let blob_id = blob_store.put_blob(value_ref, BlobType::Data).await?;
+            let blob_id = blob_store
+                .put_blob(value_ref, BlobType::Data, Default::default())
+                .await?;
             log::debug!(
                 "Blobified field {:?} ({} bytes) -> {}",
                 key,
@@ -244,7 +246,10 @@ mod tests {
 
         // Store a value
         let data = ValueRef::new(json!({"resolved": "data"}));
-        let blob_id = store.put_blob(data.clone(), BlobType::Data).await.unwrap();
+        let blob_id = store
+            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .await
+            .unwrap();
 
         // Create a value with a blob ref
         let blob_ref = BlobRef::new(blob_id, BlobType::Data, None);
@@ -259,7 +264,10 @@ mod tests {
         let store = InMemoryStateStore::new();
 
         let data = ValueRef::new(json!("hello"));
-        let blob_id = store.put_blob(data, BlobType::Data).await.unwrap();
+        let blob_id = store
+            .put_blob(data, BlobType::Data, Default::default())
+            .await
+            .unwrap();
 
         let blob_ref = BlobRef::new(blob_id, BlobType::Data, None);
         let input = json!([blob_ref.to_value(), "plain"]);

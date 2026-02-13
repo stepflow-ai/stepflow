@@ -18,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{BlobId, BlobType, workflow::ValueRef};
+use stepflow_core::{BlobId, BlobMetadata, BlobType, workflow::ValueRef};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
 use utoipa::ToSchema;
@@ -106,25 +106,19 @@ pub async fn store_blob(
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
+        let metadata = BlobMetadata {
+            filename: filename.clone(),
+            ..Default::default()
+        };
+
         let blob_id = blob_store
-            .put_blob_binary(&body)
+            .put_blob_binary(&body, metadata)
             .await
             .map_err(|_| ErrorResponse {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 message: "Failed to store binary blob".to_string(),
                 stack: vec![],
             })?;
-
-        if let Some(ref name) = filename {
-            blob_store
-                .set_blob_filename(&blob_id, name.clone())
-                .await
-                .map_err(|_| ErrorResponse {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    message: "Failed to set blob filename".to_string(),
-                    stack: vec![],
-                })?;
-        }
 
         Ok(Json(StoreBlobResponse { blob_id, filename }).into_response())
     } else {
@@ -137,25 +131,19 @@ pub async fn store_blob(
 
         let filename = req.filename.clone();
 
+        let metadata = BlobMetadata {
+            filename: filename.clone(),
+            ..Default::default()
+        };
+
         let blob_id = blob_store
-            .put_blob(req.data, req.blob_type)
+            .put_blob(req.data, req.blob_type, metadata)
             .await
             .map_err(|_| ErrorResponse {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 message: "Failed to store blob".to_string(),
                 stack: vec![],
             })?;
-
-        if let Some(ref name) = filename {
-            blob_store
-                .set_blob_filename(&blob_id, name.clone())
-                .await
-                .map_err(|_| ErrorResponse {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    message: "Failed to set blob filename".to_string(),
-                    stack: vec![],
-                })?;
-        }
 
         Ok(Json(StoreBlobResponse { blob_id, filename }).into_response())
     }
@@ -255,7 +243,7 @@ pub async fn get_blob(
             data: blob_data.data(),
             blob_type: blob_data.blob_type(),
             blob_id,
-            filename: blob_data.filename.clone(),
+            filename: blob_data.metadata.filename.clone(),
         })
         .into_response())
     }

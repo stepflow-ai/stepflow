@@ -162,6 +162,7 @@ impl BlobStore for SqliteStateStore {
         &self,
         data: ValueRef,
         blob_type: BlobType,
+        metadata: stepflow_core::BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
             // Generate content-based ID (binary blobs hash raw bytes, others hash JSON)
@@ -177,13 +178,15 @@ impl BlobStore for SqliteStateStore {
                 BlobType::Binary => "binary",
             };
 
-            // Store blob with type information
-            let sql = "INSERT OR IGNORE INTO blobs (id, data, blob_type) VALUES (?, ?, ?)";
+            // Store blob with type and metadata
+            let sql =
+                "INSERT OR IGNORE INTO blobs (id, data, blob_type, filename) VALUES (?, ?, ?, ?)";
 
             sqlx::query(sql)
                 .bind(blob_id.as_str())
                 .bind(&json_str)
                 .bind(type_str)
+                .bind(&metadata.filename)
                 .execute(&self.pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -230,34 +233,15 @@ impl BlobStore for SqliteStateStore {
 
             let filename: Option<String> = row.get("filename");
 
+            let metadata = stepflow_core::BlobMetadata {
+                filename,
+                ..Default::default()
+            };
+
             let mut blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
                 .change_context(StateError::Internal)?;
-            blob_data.filename = filename;
+            blob_data.metadata = metadata;
             Ok(Some(blob_data))
-        }
-        .boxed()
-    }
-
-    fn set_blob_filename(
-        &self,
-        blob_id: &BlobId,
-        filename: String,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let blob_id = blob_id.clone();
-        async move {
-            let sql = "UPDATE blobs SET filename = ? WHERE id = ?";
-            let result = sqlx::query(sql)
-                .bind(&filename)
-                .bind(blob_id.as_str())
-                .execute(&self.pool)
-                .await
-                .change_context(StateError::Internal)?;
-            if result.rows_affected() == 0 {
-                return Err(error_stack::report!(StateError::BlobNotFound {
-                    blob_id: blob_id.to_string()
-                }));
-            }
-            Ok(())
         }
         .boxed()
     }

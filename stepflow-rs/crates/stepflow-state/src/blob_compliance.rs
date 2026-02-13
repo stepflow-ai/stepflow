@@ -43,6 +43,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use serde_json::json;
+use stepflow_core::BlobMetadata;
 use stepflow_core::blob::BlobType;
 use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
 use stepflow_core::{BlobId, ValueExpr};
@@ -71,7 +72,7 @@ impl BlobStoreComplianceTests {
         Self::test_get_blob_of_type_not_found(store).await;
         Self::test_binary_blob_round_trip(store).await;
         Self::test_binary_blob_deduplication(store).await;
-        Self::test_set_blob_filename(store).await;
+        Self::test_blob_metadata_filename(store).await;
     }
 
     /// Run all compliance tests with a fresh store for each test.
@@ -103,7 +104,7 @@ impl BlobStoreComplianceTests {
         Self::test_get_blob_of_type_not_found(&factory().await).await;
         Self::test_binary_blob_round_trip(&factory().await).await;
         Self::test_binary_blob_deduplication(&factory().await).await;
-        Self::test_set_blob_filename(&factory().await).await;
+        Self::test_blob_metadata_filename(&factory().await).await;
     }
 
     // =========================================================================
@@ -117,7 +118,7 @@ impl BlobStoreComplianceTests {
         let data = ValueRef::new(json!({"key": "value", "number": 42}));
 
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
@@ -145,12 +146,12 @@ impl BlobStoreComplianceTests {
         let data = ValueRef::new(json!({"dedup": "test", "value": 123}));
 
         let blob_id1 = store
-            .put_blob(data.clone(), BlobType::Data)
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("first put_blob should succeed");
 
         let blob_id2 = store
-            .put_blob(data.clone(), BlobType::Data)
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("second put_blob should succeed");
 
@@ -168,7 +169,7 @@ impl BlobStoreComplianceTests {
 
         // Store as Data type
         let data_blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("put_blob Data should succeed");
 
@@ -182,7 +183,7 @@ impl BlobStoreComplianceTests {
         // Store different content as Flow type
         let flow_data = ValueRef::new(json!({"flow": "definition"}));
         let flow_blob_id = store
-            .put_blob(flow_data.clone(), BlobType::Flow)
+            .put_blob(flow_data.clone(), BlobType::Flow, Default::default())
             .await
             .expect("put_blob Flow should succeed");
 
@@ -271,7 +272,7 @@ impl BlobStoreComplianceTests {
 
         // Store as Data type
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
@@ -309,7 +310,7 @@ impl BlobStoreComplianceTests {
         let data = b"Hello, binary world! \x00\x01\x02\xff";
 
         let blob_id = store
-            .put_blob_binary(data)
+            .put_blob_binary(data, Default::default())
             .await
             .expect("put_blob_binary should succeed");
 
@@ -339,12 +340,12 @@ impl BlobStoreComplianceTests {
         let data = b"dedup binary test data";
 
         let blob_id1 = store
-            .put_blob_binary(data)
+            .put_blob_binary(data, Default::default())
             .await
             .expect("first put_blob_binary should succeed");
 
         let blob_id2 = store
-            .put_blob_binary(data)
+            .put_blob_binary(data, Default::default())
             .await
             .expect("second put_blob_binary should succeed");
 
@@ -358,32 +359,37 @@ impl BlobStoreComplianceTests {
     // Filename Metadata Tests
     // =========================================================================
 
-    /// Test that filenames can be set and retrieved on blobs.
+    /// Test that filenames can be stored and retrieved via BlobMetadata.
     ///
-    /// Contract: set_blob_filename followed by get_blob returns the filename.
-    /// Blobs initially have no filename.
-    pub async fn test_set_blob_filename<B: BlobStore>(store: &B) {
+    /// Contract: put_blob with metadata containing a filename, then get_blob returns
+    /// the filename. Blobs without metadata have no filename.
+    pub async fn test_blob_metadata_filename<B: BlobStore>(store: &B) {
         let data = ValueRef::new(json!({"filename_test": true}));
 
-        let blob_id = store
-            .put_blob(data.clone(), BlobType::Data)
+        // Store without filename
+        let blob_id_no_name = store
+            .put_blob(data.clone(), BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
-        // Initially no filename
         let blob = store
-            .get_blob(&blob_id)
+            .get_blob(&blob_id_no_name)
             .await
             .expect("get_blob should succeed");
-        assert_eq!(blob.filename(), None, "New blob should have no filename");
+        assert_eq!(blob.filename(), None, "Blob without metadata filename should have no filename");
 
-        // Set a filename
-        store
-            .set_blob_filename(&blob_id, "test-file.json".to_string())
+        // Store different data WITH a filename
+        let data2 = ValueRef::new(json!({"filename_test": "with_name"}));
+        let metadata = BlobMetadata {
+            filename: Some("test-file.json".to_string()),
+            ..Default::default()
+        };
+
+        let blob_id = store
+            .put_blob(data2.clone(), BlobType::Data, metadata)
             .await
-            .expect("set_blob_filename should succeed");
+            .expect("put_blob with metadata should succeed");
 
-        // Retrieve and check filename is set
         let blob = store
             .get_blob(&blob_id)
             .await
@@ -391,14 +397,14 @@ impl BlobStoreComplianceTests {
         assert_eq!(
             blob.filename(),
             Some("test-file.json"),
-            "Filename should be set after set_blob_filename"
+            "Filename should be returned from metadata"
         );
 
-        // Data should be unchanged
+        // Data should be correct
         assert_eq!(
             blob.data().as_ref(),
-            data.as_ref(),
-            "Blob data should be unchanged after setting filename"
+            data2.as_ref(),
+            "Blob data should match what was stored"
         );
     }
 

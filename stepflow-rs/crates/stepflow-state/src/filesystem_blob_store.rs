@@ -23,7 +23,7 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use stepflow_core::{BlobData, BlobId, BlobType, workflow::ValueRef};
+use stepflow_core::{BlobData, BlobId, BlobMetadata, BlobType, workflow::ValueRef};
 
 use crate::StateError;
 
@@ -103,60 +103,11 @@ impl FilesystemBlobStore {
 }
 
 impl crate::BlobStore for FilesystemBlobStore {
-    fn set_blob_filename(
-        &self,
-        blob_id: &BlobId,
-        filename: String,
-    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        let blob_id = blob_id.clone();
-        async move {
-            let path = self.blob_path(&blob_id);
-
-            let bytes = std::fs::read(&path).map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    error_stack::report!(StateError::BlobNotFound {
-                        blob_id: blob_id.to_string()
-                    })
-                } else {
-                    error_stack::report!(e)
-                        .change_context(StateError::Internal)
-                        .attach_printable(format!(
-                            "Failed to read blob file for filename update: {}",
-                            path.display()
-                        ))
-                }
-            })?;
-
-            let mut stored: StoredBlob =
-                serde_json::from_slice(&bytes).change_context(StateError::Serialization)?;
-            stored.filename = Some(filename);
-
-            let json =
-                serde_json::to_vec_pretty(&stored).change_context(StateError::Serialization)?;
-
-            // Write atomically: write to temp file then rename to avoid partial writes
-            let temp_path = path.with_extension("json.tmp");
-            std::fs::write(&temp_path, &json)
-                .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!("Failed to write blob file: {}", temp_path.display())
-                })?;
-
-            std::fs::rename(&temp_path, &path)
-                .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!("Failed to rename blob file: {}", path.display())
-                })?;
-
-            Ok(())
-        }
-        .boxed()
-    }
-
     fn put_blob(
         &self,
         data: ValueRef,
         blob_type: BlobType,
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
             let blob_id =
@@ -181,7 +132,7 @@ impl crate::BlobStore for FilesystemBlobStore {
             let stored = StoredBlob {
                 blob_type,
                 data: data.as_ref().clone(),
-                filename: None,
+                filename: metadata.filename,
             };
 
             let json =
@@ -230,10 +181,19 @@ impl crate::BlobStore for FilesystemBlobStore {
                     format!("Failed to deserialize blob file: {}", path.display())
                 })?;
 
-            let mut blob_data =
-                BlobData::from_value_ref(ValueRef::new(stored.data), stored.blob_type, blob_id)
-                    .change_context(StateError::Serialization)?;
-            blob_data.filename = stored.filename;
+            let metadata = BlobMetadata {
+                filename: stored.filename,
+                ..Default::default()
+            };
+            let blob_data = BlobData::with_metadata(
+                stepflow_core::blob::BlobValue::from_value_ref(
+                    ValueRef::new(stored.data),
+                    stored.blob_type,
+                )
+                .change_context(StateError::Serialization)?,
+                blob_id,
+                metadata,
+            );
 
             Ok(Some(blob_data))
         }
@@ -282,7 +242,10 @@ mod tests {
 
             // Store a blob
             let data = ValueRef::new(serde_json::json!({"cleanup": "test"}));
-            store.put_blob(data, BlobType::Data).await.unwrap();
+            store
+                .put_blob(data, BlobType::Data, Default::default())
+                .await
+                .unwrap();
 
             assert!(
                 dir_path.exists(),
