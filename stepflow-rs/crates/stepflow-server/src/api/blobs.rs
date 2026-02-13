@@ -73,7 +73,13 @@ pub struct GetBlobResponse {
 #[utoipa::path(
     post,
     path = "/blobs",
-    request_body = StoreBlobRequest,
+    request_body(content(
+        (StoreBlobRequest = "application/json"),
+        (Vec<u8> = "application/octet-stream"),
+    )),
+    params(
+        ("X-Blob-Filename" = Option<String>, Header, description = "Filename to associate with a binary blob (octet-stream uploads only)")
+    ),
     responses(
         (status = 200, description = "Blob stored successfully", body = StoreBlobResponse),
         (status = 400, description = "Invalid request"),
@@ -168,7 +174,10 @@ pub async fn store_blob(
         ("blob_id" = String, Path, description = "Blob ID to retrieve")
     ),
     responses(
-        (status = 200, description = "Blob retrieved successfully", body = GetBlobResponse),
+        (status = 200, description = "Blob retrieved successfully", content(
+            (GetBlobResponse = "application/json"),
+            (Vec<u8> = "application/octet-stream"),
+        )),
         (status = 404, description = "Blob not found"),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -228,14 +237,15 @@ pub async fn get_blob(
         );
 
         if let Some(filename) = blob_data.filename() {
-            // Sanitize filename for Content-Disposition header
-            let safe_filename = filename.replace('"', "\\\"");
-            response_headers.insert(
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{safe_filename}\"")
-                    .parse()
-                    .unwrap(),
-            );
+            // Sanitize filename for Content-Disposition header:
+            // - strip CR/LF to prevent header injection
+            // - escape double quotes
+            let safe_filename = filename
+                .replace(&['\r', '\n'][..], "_")
+                .replace('"', "\\\"");
+            if let Ok(value) = format!("attachment; filename=\"{safe_filename}\"").parse() {
+                response_headers.insert(header::CONTENT_DISPOSITION, value);
+            }
         }
 
         Ok((StatusCode::OK, response_headers, bytes).into_response())

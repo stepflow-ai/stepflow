@@ -199,11 +199,16 @@ impl BlobStore for InMemoryStateStore {
         filename: String,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let blob_id_str = blob_id.as_str().to_string();
+        let blob_id = blob_id.clone();
         async move {
             if let Some(mut entry) = self.blobs.get_mut(&blob_id_str) {
                 entry.value_mut().filename = Some(filename);
+                Ok(())
+            } else {
+                Err(error_stack::report!(StateError::BlobNotFound {
+                    blob_id: blob_id.to_string()
+                }))
             }
-            Ok(())
         }
         .boxed()
     }

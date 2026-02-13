@@ -21,11 +21,35 @@
         "summary": "Store a blob and return its content-based ID.",
         "description": "Supports two content types:\n- `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields.\n- `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.",
         "operationId": "store_blob",
+        "parameters": [
+          {
+            "name": "X-Blob-Filename",
+            "in": "header",
+            "description": "Filename to associate with a binary blob (octet-stream uploads only)",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StoreBlobRequest"
+              }
+            },
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
               }
             }
           },
@@ -84,6 +108,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GetBlobResponse"
+                }
+              },
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
                 }
               }
             }

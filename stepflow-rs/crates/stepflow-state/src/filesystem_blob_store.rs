@@ -112,14 +112,20 @@ impl crate::BlobStore for FilesystemBlobStore {
         async move {
             let path = self.blob_path(&blob_id);
 
-            let bytes = std::fs::read(&path)
-                .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!(
-                        "Failed to read blob file for filename update: {}",
-                        path.display()
-                    )
-                })?;
+            let bytes = std::fs::read(&path).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    error_stack::report!(StateError::BlobNotFound {
+                        blob_id: blob_id.to_string()
+                    })
+                } else {
+                    error_stack::report!(e)
+                        .change_context(StateError::Internal)
+                        .attach_printable(format!(
+                            "Failed to read blob file for filename update: {}",
+                            path.display()
+                        ))
+                }
+            })?;
 
             let mut stored: StoredBlob =
                 serde_json::from_slice(&bytes).change_context(StateError::Serialization)?;
@@ -127,10 +133,19 @@ impl crate::BlobStore for FilesystemBlobStore {
 
             let json =
                 serde_json::to_vec_pretty(&stored).change_context(StateError::Serialization)?;
-            std::fs::write(&path, &json)
+
+            // Write atomically: write to temp file then rename to avoid partial writes
+            let temp_path = path.with_extension("json.tmp");
+            std::fs::write(&temp_path, &json)
                 .change_context(StateError::Internal)
                 .attach_printable_lazy(|| {
-                    format!("Failed to write blob file: {}", path.display())
+                    format!("Failed to write blob file: {}", temp_path.display())
+                })?;
+
+            std::fs::rename(&temp_path, &path)
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("Failed to rename blob file: {}", path.display())
                 })?;
 
             Ok(())

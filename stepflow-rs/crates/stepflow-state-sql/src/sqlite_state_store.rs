@@ -246,12 +246,17 @@ impl BlobStore for SqliteStateStore {
         let blob_id = blob_id.clone();
         async move {
             let sql = "UPDATE blobs SET filename = ? WHERE id = ?";
-            sqlx::query(sql)
+            let result = sqlx::query(sql)
                 .bind(&filename)
                 .bind(blob_id.as_str())
                 .execute(&self.pool)
                 .await
                 .change_context(StateError::Internal)?;
+            if result.rows_affected() == 0 {
+                return Err(error_stack::report!(StateError::BlobNotFound {
+                    blob_id: blob_id.to_string()
+                }));
+            }
             Ok(())
         }
         .boxed()
