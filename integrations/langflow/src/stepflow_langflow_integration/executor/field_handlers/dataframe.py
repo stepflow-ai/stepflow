@@ -26,11 +26,13 @@ logger = logging.getLogger(__name__)
 
 def _is_data_list(value: list[Any]) -> bool:
     """Check if a list contains Data-like objects suitable for DataFrame conversion."""
+    non_null = [item for item in value if item is not None]
+    if not non_null:
+        return False
     return all(
         (isinstance(item, dict) and ("text" in item or "__class_name__" in item))
         or (hasattr(item, "__class__") and item.__class__.__name__ == "Data")
-        for item in value
-        if item is not None
+        for item in non_null
     )
 
 

@@ -213,6 +213,18 @@ class TestDataFrameFieldHandler:
         result = await handler.prepare(fields, None)
         assert result == {}
 
+    @pytest.mark.asyncio
+    async def test_skips_all_none_list(self):
+        handler = DataFrameFieldHandler()
+        fields = {
+            "data_input": (
+                [None, None],  # no non-null items
+                {"input_types": ["DataFrame"]},
+            ),
+        }
+        result = await handler.prepare(fields, None)
+        assert result == {}
+
 
 # ---------------------------------------------------------------------------
 # _apply_field_handlers
