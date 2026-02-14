@@ -41,9 +41,10 @@ def executor():
 
 
 class TestBaseExecutorEnvVarResolution:
-    """Tests for _resolve_env_variables in BaseExecutor."""
+    """Tests for env var resolution via _apply_field_handlers in BaseExecutor."""
 
-    def test_resolve_env_var_when_load_from_db(self, executor, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resolve_env_var_when_load_from_db(self, executor, monkeypatch):
         """Test that env vars are resolved for load_from_db fields."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-123")
 
@@ -55,11 +56,14 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = executor._resolve_env_variables(parameters, template)
+        result = await executor._apply_field_handlers(
+            parameters, template, executor._get_field_handlers()
+        )
 
         assert result["api_key"] == "sk-test-key-123"
 
-    def test_no_resolution_when_value_provided(self, executor, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_no_resolution_when_value_provided(self, executor, monkeypatch):
         """Test that env vars are NOT resolved when value is already set."""
         monkeypatch.setenv("OPENAI_API_KEY", "env-value")
 
@@ -71,12 +75,15 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = executor._resolve_env_variables(parameters, template)
+        result = await executor._apply_field_handlers(
+            parameters, template, executor._get_field_handlers()
+        )
 
         # Should keep the existing value
         assert result["api_key"] == "already-set-value"
 
-    def test_no_resolution_without_load_from_db(self, executor, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_no_resolution_without_load_from_db(self, executor, monkeypatch):
         """Test that env vars are NOT resolved without load_from_db flag."""
         monkeypatch.setenv("SOME_VAR", "env-value")
 
@@ -88,12 +95,15 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = executor._resolve_env_variables(parameters, template)
+        result = await executor._apply_field_handlers(
+            parameters, template, executor._get_field_handlers()
+        )
 
         # Should keep empty value
         assert result["param"] == ""
 
-    def test_error_when_env_var_missing(self, executor, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_error_when_env_var_missing(self, executor, monkeypatch):
         """Test that missing env var raises ExecutionError."""
         monkeypatch.delenv("MISSING_VAR", raising=False)
 
@@ -106,9 +116,12 @@ class TestBaseExecutorEnvVarResolution:
         }
 
         with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            executor._resolve_env_variables(parameters, template)
+            await executor._apply_field_handlers(
+                parameters, template, executor._get_field_handlers()
+            )
 
-    def test_multiple_env_vars(self, executor, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_multiple_env_vars(self, executor, monkeypatch):
         """Test resolving multiple env vars."""
         monkeypatch.setenv("API_KEY_1", "key1")
         monkeypatch.setenv("API_KEY_2", "key2")
@@ -120,20 +133,25 @@ class TestBaseExecutorEnvVarResolution:
             "regular": {"value": "default"},
         }
 
-        result = executor._resolve_env_variables(parameters, template)
+        result = await executor._apply_field_handlers(
+            parameters, template, executor._get_field_handlers()
+        )
 
         assert result["key1"] == "key1"
         assert result["key2"] == "key2"
         assert result["regular"] == "value"  # Unchanged
 
-    def test_non_dict_template_field_skipped(self, executor):
+    @pytest.mark.asyncio
+    async def test_non_dict_template_field_skipped(self, executor):
         """Test that non-dict template fields are skipped gracefully."""
         parameters = {"param": ""}
         template = {
             "param": "direct_value",  # Not a dict
         }
 
-        result = executor._resolve_env_variables(parameters, template)
+        result = await executor._apply_field_handlers(
+            parameters, template, executor._get_field_handlers()
+        )
 
         assert result["param"] == ""  # Unchanged
 
