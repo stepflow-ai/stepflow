@@ -26,6 +26,12 @@ from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
 from .base_executor import BaseExecutor
+from .field_handlers import (
+    DataFrameFieldHandler,
+    EnvVarFieldHandler,
+    FieldHandler,
+    StringCoercionFieldHandler,
+)
 
 
 class CustomCodeExecutor(BaseExecutor):
@@ -40,6 +46,18 @@ class CustomCodeExecutor(BaseExecutor):
         """Initialize custom code executor."""
         super().__init__()
         self.compiled_components: dict[str, Any] = {}
+
+    def _get_field_handlers(self) -> list[FieldHandler]:
+        """Return field handlers for custom code execution.
+
+        Includes all base handlers plus StringCoercion and DataFrame handlers
+        needed for Langflow type conversions.
+        """
+        return [
+            EnvVarFieldHandler(),
+            StringCoercionFieldHandler(),
+            DataFrameFieldHandler(),
+        ]
 
     async def _instantiate_component(
         self,
@@ -328,6 +346,11 @@ class CustomCodeExecutor(BaseExecutor):
             template, runtime_inputs
         )
 
+        # Apply field handlers (env vars, type coercions, etc.)
+        component_parameters = await self._apply_field_handlers(
+            component_parameters, template, self._get_field_handlers()
+        )
+
         # Apply component input defaults before configuring
         component_parameters = self._apply_component_input_defaults(
             component_instance, component_parameters
@@ -424,9 +447,14 @@ class CustomCodeExecutor(BaseExecutor):
     async def _prepare_component_parameters(
         self, template: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> dict[str, Any]:
-        """Prepare component parameters from template and runtime inputs."""
+        """Prepare component parameters from template and runtime inputs.
 
-        component_parameters = {}
+        Handles value-based deserialization (Langflow type markers, DataFrame
+        recovery). Template-field-based transformations (Message→str coercion,
+        List→DataFrame conversion, env var resolution) are handled by field
+        handlers applied after this method returns.
+        """
+        component_parameters: dict[str, Any] = {}
 
         # Process template parameters
         for key, field_def in template.items():
@@ -437,9 +465,6 @@ class CustomCodeExecutor(BaseExecutor):
                 input_types = field_def.get("input_types", [])
                 value = field_def["value"]
 
-                # Skip if this is a handle input with an empty value
-                # Handle inputs should get their values from runtime_inputs
-                # (connected steps)
                 if input_types and (value == "" or value is None):
                     continue
 
@@ -447,7 +472,7 @@ class CustomCodeExecutor(BaseExecutor):
 
         # Add runtime inputs (these override template values)
         for key, value in runtime_inputs.items():
-            # Convert Stepflow values back to Langflow types if needed
+            # Deserialize Langflow types from value markers
             if isinstance(value, dict) and (
                 "__langflow_type__" in value
                 or "__class_name__" in value
@@ -455,8 +480,8 @@ class CustomCodeExecutor(BaseExecutor):
             ):
                 actual_value = self.type_converter.deserialize_to_langflow_type(value)
 
-                # Check if DataFrame deserialization failed
-                # When deserialization fails, it returns the original dict
+                # DataFrame deserialization recovery: when deserialization fails
+                # (returns the original dict), manually reconstruct from split JSON
                 if (
                     isinstance(value, dict)
                     and value.get("__langflow_type__") == "DataFrame"
@@ -465,119 +490,56 @@ class CustomCodeExecutor(BaseExecutor):
                         and actual_value.__class__.__name__ == "DataFrame"
                     )
                 ):
-                    # DataFrame deserialization failed, try to manually recover
-                    # Use lfx.DataFrame (langflow.schema re-exports from lfx)
-                    import pandas as pd
-                    from lfx.schema.dataframe import DataFrame as LfxDataFrame
+                    actual_value = self._recover_dataframe(value, actual_value)
 
-                    # Parse the json_data string
-                    json_str = value.get("json_data")
-                    if json_str and isinstance(json_str, str):
-                        # Reconstruct DataFrame from split format
-                        import io
-
-                        json_io = io.StringIO(json_str)
-                        pd_df = pd.read_json(json_io, orient="split")
-
-                        # Convert to list of records (dicts, not Data objects)
-                        records = pd_df.to_dict(orient="records")
-
-                        # Replace NaN with None in records
-                        text_key = value.get("text_key", "text")
-                        default_value = value.get("default_value", "")
-
-                        def clean_value(v):
-                            """Clean pandas NaN values while handling arrays/lists."""
-                            try:
-                                # Handle scalar values
-                                return None if pd.isna(v) else v
-                            except (ValueError, TypeError):
-                                # If pd.isna raises ValueError (ambiguous array truth),
-                                # or TypeError (unhashable type), return the value as-is
-                                return v
-
-                        data_list = [
-                            {k: clean_value(v) for k, v in record.items()}
-                            for record in records
-                        ]
-
-                        # Create DataFrame with list of dicts (not Data objects)
-                        # Use lfx.DataFrame (langflow.schema re-exports from lfx)
-                        actual_value = LfxDataFrame(
-                            data=data_list,
-                            text_key=text_key,
-                            default_value=default_value,
-                        )
-
-                # Check if we need to convert Message to string for lfx components
-                # New lfx components (1.6.4+) are stricter about type validation
-                template_field = template.get(key, {})
-                field_type = template_field.get("type", "")
-
-                if (
-                    field_type == "str"
-                    and hasattr(actual_value, "__class__")
-                    and actual_value.__class__.__name__ == "Message"
-                    and hasattr(actual_value, "text")
-                ):
-                    # Extract text from Message for string-type fields
-                    component_parameters[key] = actual_value.text
-                else:
-                    component_parameters[key] = actual_value
+                component_parameters[key] = actual_value
             elif isinstance(value, list):
-                # Use the type converter's recursive deserialization for lists
-                # This will handle tool wrappers and other complex objects
-                actual_value = self.type_converter.deserialize_to_langflow_type(value)
-
-                # Check if component expects DataFrame input by looking at template
-                template_field = template.get(key, {})
-                input_types = template_field.get("input_types", [])
-
-                # Convert list to DataFrame if component accepts DataFrame
-                # This handles cases where File components output list[Data]
-                if "DataFrame" in input_types and actual_value:
-                    # Check if list contains Data-like objects (dicts with text,
-                    # or Data instances)
-                    is_data_list = all(
-                        (
-                            isinstance(item, dict)
-                            and ("text" in item or "__class_name__" in item)
-                        )
-                        or (
-                            hasattr(item, "__class__")
-                            and item.__class__.__name__ == "Data"
-                        )
-                        for item in actual_value
-                        if item is not None
-                    )
-
-                    if is_data_list:
-                        # Convert list to DataFrame
-                        try:
-                            from lfx.schema.dataframe import DataFrame
-
-                            dataframe = DataFrame(data=actual_value)
-                            component_parameters[key] = dataframe
-                        except Exception:
-                            # If DataFrame conversion fails, keep as list
-                            component_parameters[key] = actual_value
-                    else:
-                        component_parameters[key] = actual_value
-                else:
-                    component_parameters[key] = actual_value
+                # Recursively deserialize list items (tool wrappers, etc.)
+                component_parameters[key] = (
+                    self.type_converter.deserialize_to_langflow_type(value)
+                )
             else:
                 component_parameters[key] = value
 
-        # Resolve environment variables for load_from_db fields
-        # This handles API keys and other secrets from environment
-        component_parameters = self._resolve_env_variables(
-            component_parameters, template
-        )
-
-        # Defaults will be applied from component inputs definition during execution
-        # This respects the actual component specification rather than hardcoding
-
         return component_parameters
+
+    @staticmethod
+    def _recover_dataframe(raw_value: dict[str, Any], fallback: Any) -> Any:
+        """Attempt manual DataFrame recovery from split JSON format.
+
+        Called when ``type_converter.deserialize_to_langflow_type`` fails to
+        reconstruct a DataFrame. Falls back to *fallback* if recovery also fails.
+        """
+        try:
+            import io
+
+            import pandas as pd
+            from lfx.schema.dataframe import DataFrame as LfxDataFrame
+
+            json_str = raw_value.get("json_data")
+            if not json_str or not isinstance(json_str, str):
+                return fallback
+
+            pd_df = pd.read_json(io.StringIO(json_str), orient="split")
+            records = pd_df.to_dict(orient="records")
+
+            def clean_value(v: Any) -> Any:
+                try:
+                    return None if pd.isna(v) else v
+                except (ValueError, TypeError):
+                    return v
+
+            data_list = [
+                {k: clean_value(v) for k, v in record.items()} for record in records
+            ]
+
+            return LfxDataFrame(
+                data=data_list,
+                text_key=raw_value.get("text_key", "text"),
+                default_value=raw_value.get("default_value", ""),
+            )
+        except Exception:
+            return fallback
 
     def _apply_component_input_defaults(
         self, component_instance: Any, component_parameters: dict[str, Any]

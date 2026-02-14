@@ -15,13 +15,13 @@
 """Base executor class with shared functionality for Langflow component execution."""
 
 import inspect
-import os
 from abc import ABC, abstractmethod
 from typing import Any
 
 from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
+from .field_handlers import EnvVarFieldHandler, FieldHandler
 from .type_converter import TypeConverter
 
 
@@ -32,6 +32,7 @@ class BaseExecutor(ABC):
     - Execution method determination
     - Component input defaults application
     - Type conversion utilities
+    - Field handler dispatch
     - Common component execution flow
 
     Subclasses must implement `_instantiate_component` to define how components
@@ -63,6 +64,57 @@ class BaseExecutor(ABC):
         """
         pass
 
+    def _get_field_handlers(self) -> list[FieldHandler]:
+        """Return the field handlers to apply after parameter preparation.
+
+        Base implementation returns handlers for env var resolution.
+        Subclasses may override to add additional handlers (e.g.,
+        StringCoercionFieldHandler, DataFrameFieldHandler).
+        """
+        return [EnvVarFieldHandler()]
+
+    async def _apply_field_handlers(
+        self,
+        parameters: dict[str, Any],
+        template: dict[str, Any],
+        handlers: list[FieldHandler],
+    ) -> dict[str, Any]:
+        """Apply field handlers to transform parameter values.
+
+        For each handler, collects parameters whose template field matches,
+        then calls the handler's ``prepare()`` within its ``activate()``
+        context. Handlers are applied sequentially; parallel work happens
+        within each handler's ``prepare()`` call.
+
+        Args:
+            parameters: Current component parameters.
+            template: Template containing field definitions.
+            handlers: Ordered list of field handlers to apply.
+
+        Returns:
+            Parameters with handler transformations applied.
+        """
+        result = dict(parameters)
+
+        for handler in handlers:
+            # Collect fields matching this handler
+            matched: dict[str, tuple[Any, dict[str, Any]]] = {}
+            for key, value in result.items():
+                field_def = template.get(key, {})
+                if isinstance(field_def, dict) and handler.matches(field_def):
+                    matched[key] = (value, field_def)
+
+            if not matched:
+                continue
+
+            # Enter handler context and process matched fields
+            async with handler.activate() as ctx:
+                updates = await handler.prepare(matched, ctx)
+
+            result.update(updates)
+
+        return result
+
     async def _execute_component_instance(
         self,
         component_instance: Any,
@@ -91,6 +143,11 @@ class BaseExecutor(ABC):
         # Prepare parameters from template and runtime inputs
         component_parameters = await self._prepare_component_parameters(
             template, runtime_inputs
+        )
+
+        # Apply field handlers (env vars, type coercions, etc.)
+        component_parameters = await self._apply_field_handlers(
+            component_parameters, template, self._get_field_handlers()
         )
 
         # Apply component input defaults
@@ -175,9 +232,6 @@ class BaseExecutor(ABC):
         # Override with runtime inputs (deserialize Langflow types)
         for key, value in runtime_inputs.items():
             parameters[key] = self.type_converter.deserialize_to_langflow_type(value)
-
-        # Resolve environment variables for load_from_db fields
-        parameters = self._resolve_env_variables(parameters, template)
 
         return parameters
 
@@ -264,58 +318,3 @@ class BaseExecutor(ABC):
 
         # Use __dict__ to set graph even if it's a read-only property
         component_instance.__dict__["graph"] = GraphContext(session_id)
-
-    def _resolve_env_variables(
-        self, parameters: dict[str, Any], template: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Resolve environment variables for parameters marked with load_from_db.
-
-        For fields that have load_from_db=True and an empty/falsy value, this method
-        attempts to load the value from environment variables. The variable name is
-        taken from the template field's "value" key.
-
-        This enables API keys and other secrets to be loaded from the environment
-        rather than being passed explicitly as runtime variables.
-
-        Args:
-            parameters: Current component parameters
-            template: Template containing field definitions with load_from_db flags
-
-        Returns:
-            Parameters with environment variables resolved
-
-        Raises:
-            ExecutionError: If required environment variable is not set
-        """
-        result = dict(parameters)
-
-        for key, value in result.items():
-            # Skip if value is already set (truthy)
-            if value:
-                continue
-
-            # Check if template field is marked for loading from DB/env
-            template_field = template.get(key, {})
-            if not isinstance(template_field, dict):
-                continue
-
-            if not template_field.get("load_from_db", False):
-                continue
-
-            # Get the variable name from the template field's value
-            # This is the name of the environment variable to load
-            var_name = template_field.get("value", key)
-            if not var_name:
-                continue
-
-            # Attempt to load from environment
-            env_value = os.environ.get(var_name)
-            if env_value is None:
-                raise ExecutionError(
-                    f"Environment variable '{var_name}' for parameter '{key}' not set. "
-                    f"Either provide the value as a runtime variable or set the "
-                    f"environment variable."
-                )
-            result[key] = env_value
-
-        return result

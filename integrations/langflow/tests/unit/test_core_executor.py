@@ -306,7 +306,18 @@ class TestCoreExecutorPrepareParameters:
 
 
 class TestCoreExecutorEnvVarResolution:
-    """Tests for environment variable resolution in CoreExecutor."""
+    """Tests for environment variable resolution in CoreExecutor.
+
+    Env var resolution is handled by EnvVarFieldHandler via _apply_field_handlers,
+    which runs after _prepare_component_parameters in the execution flow.
+    """
+
+    async def _prepare_and_apply_handlers(self, executor, template, runtime_inputs):
+        """Mirrors the execution flow: prepare then apply handlers."""
+        params = await executor._prepare_component_parameters(template, runtime_inputs)
+        return await executor._apply_field_handlers(
+            params, template, executor._get_field_handlers()
+        )
 
     @pytest.mark.asyncio
     async def test_env_var_resolution_when_load_from_db(self, executor, monkeypatch):
@@ -321,7 +332,9 @@ class TestCoreExecutorEnvVarResolution:
         }
         runtime_inputs = {"api_key": ""}  # Empty runtime value triggers env lookup
 
-        result = await executor._prepare_component_parameters(template, runtime_inputs)
+        result = await self._prepare_and_apply_handlers(
+            executor, template, runtime_inputs
+        )
 
         assert result["api_key"] == "secret-key-value"
 
@@ -338,7 +351,9 @@ class TestCoreExecutorEnvVarResolution:
         }
         runtime_inputs = {"api_key": "runtime-value"}  # Non-empty runtime value
 
-        result = await executor._prepare_component_parameters(template, runtime_inputs)
+        result = await self._prepare_and_apply_handlers(
+            executor, template, runtime_inputs
+        )
 
         # Runtime value should be used, not env var
         assert result["api_key"] == "runtime-value"
@@ -358,7 +373,7 @@ class TestCoreExecutorEnvVarResolution:
         runtime_inputs = {"api_key": ""}  # Empty triggers env lookup
 
         with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            await executor._prepare_component_parameters(template, runtime_inputs)
+            await self._prepare_and_apply_handlers(executor, template, runtime_inputs)
 
     @pytest.mark.asyncio
     async def test_no_env_resolution_without_load_from_db(self, executor, monkeypatch):
@@ -373,7 +388,9 @@ class TestCoreExecutorEnvVarResolution:
         }
         runtime_inputs = {"param": ""}  # Empty value
 
-        result = await executor._prepare_component_parameters(template, runtime_inputs)
+        result = await self._prepare_and_apply_handlers(
+            executor, template, runtime_inputs
+        )
 
         # Should keep the empty value, not load from env
         assert result["param"] == ""
