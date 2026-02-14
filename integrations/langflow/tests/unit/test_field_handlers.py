@@ -30,7 +30,6 @@ from stepflow_langflow_integration.executor.field_handlers import (
     StringCoercionFieldHandler,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -310,9 +309,7 @@ class TestApplyFieldHandlers:
 
         parameters = {"x": "val"}
         template = {"x": {"type": "str"}}
-        await executor._apply_field_handlers(
-            parameters, template, [ContextHandler()]
-        )
+        await executor._apply_field_handlers(parameters, template, [ContextHandler()])
 
         assert received_contexts == ["my_context"]
 

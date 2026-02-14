@@ -313,7 +313,7 @@ class TestCoreExecutorEnvVarResolution:
     """
 
     async def _prepare_and_apply_handlers(self, executor, template, runtime_inputs):
-        """Helper that mirrors the execution flow: prepare params then apply handlers."""
+        """Mirrors the execution flow: prepare then apply handlers."""
         params = await executor._prepare_component_parameters(template, runtime_inputs)
         return await executor._apply_field_handlers(
             params, template, executor._get_field_handlers()
@@ -373,9 +373,7 @@ class TestCoreExecutorEnvVarResolution:
         runtime_inputs = {"api_key": ""}  # Empty triggers env lookup
 
         with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            await self._prepare_and_apply_handlers(
-                executor, template, runtime_inputs
-            )
+            await self._prepare_and_apply_handlers(executor, template, runtime_inputs)
 
     @pytest.mark.asyncio
     async def test_no_env_resolution_without_load_from_db(self, executor, monkeypatch):
