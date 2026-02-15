@@ -18,12 +18,11 @@
 # docling-serve instance for document processing.
 #
 # Architecture:
-#   stepflow-server → docling-worker:8080 → localhost:5001 (docling-serve)
+#   stepflow-server → load-balancer-docling → docling-worker:8080 → localhost:5001 (docling-serve)
 #
 # Future Work:
 # - PVC-mounted model cache for updates without image rebuilds
 # - GPU acceleration (use docling-serve-cu126 or docling-serve-cu128 images)
-# - Horizontal scaling with dedicated load balancer
 # - Model versioning and rollback support
 
 apiVersion: apps/v1
