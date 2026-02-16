@@ -380,14 +380,6 @@ For each phase:
 
 Each phase is independently deployable. Rollback = change the K8s deployment to point at the Python image.
 
-## Estimated Effort
-
-| Phase | Effort | Calendar | Dependencies |
-|-------|--------|----------|-------------|
-| Phase 1: Rust HTTP proxy | ~2-3 weeks | 1 month | None — existing Rust patterns |
-| Phase 2: Native chunking | ~2 weeks | 1 month | Phase 1 complete |
-| Phase 3: ONNX inference | ~4-6 weeks | 2-3 months | Phase 2 + profiling data |
-
 ## Future Consideration: Granite-Docling
 
 IBM recently released [Granite-Docling-258M](https://www.ibm.com/new/announcements/granite-docling-end-to-end-document-conversion), an ultra-compact vision-language model (Apache 2.0) that does document understanding in a single pass — replacing the multi-model pipeline (layout + TableFormer + OCR) with one VLM. At 258M parameters, it's feasible to run via [candle](https://github.com/huggingface/candle) (HuggingFace's Rust ML framework) on CPU.
