@@ -26,11 +26,14 @@ from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
 from .base_executor import BaseExecutor
-from .field_handlers import (
-    DataFrameFieldHandler,
-    EnvVarFieldHandler,
-    FieldHandler,
-    StringCoercionFieldHandler,
+from .handlers import (
+    BaseModelInputHandler,
+    DataFrameConversionInputHandler,
+    EnvVarInputHandler,
+    InputHandler,
+    LangflowTypeInputHandler,
+    StringCoercionInputHandler,
+    ToolWrapperInputHandler,
 )
 
 
@@ -47,16 +50,19 @@ class CustomCodeExecutor(BaseExecutor):
         super().__init__()
         self.compiled_components: dict[str, Any] = {}
 
-    def _get_field_handlers(self) -> list[FieldHandler]:
-        """Return field handlers for custom code execution.
+    def _get_input_handlers(self) -> list[InputHandler]:
+        """Return input handlers for custom code execution.
 
-        Includes all base handlers plus StringCoercion and DataFrame handlers
-        needed for Langflow type conversions.
+        Includes all base handlers plus StringCoercion and DataFrame
+        conversion needed for Langflow type transformations.
         """
         return [
-            EnvVarFieldHandler(),
-            StringCoercionFieldHandler(),
-            DataFrameFieldHandler(),
+            EnvVarInputHandler(),
+            LangflowTypeInputHandler(),
+            BaseModelInputHandler(),
+            ToolWrapperInputHandler(),
+            DataFrameConversionInputHandler(),
+            StringCoercionInputHandler(),
         ]
 
     async def _instantiate_component(
@@ -135,8 +141,6 @@ class CustomCodeExecutor(BaseExecutor):
                     ):
                         blob_data = await context.get_blob(blob_id)
                 except Exception as e:
-                    # No fallback component generation - require real component code
-                    # Failed to load blob - component code required
                     raise ExecutionError(
                         f"No component code found for blob {blob_id}. "
                         f"All components must have real Langflow code."
@@ -155,55 +159,6 @@ class CustomCodeExecutor(BaseExecutor):
             blob_ids.add(input_data["blob_id"])
 
         return blob_ids
-
-    def _serialize_langflow_objects(self, obj: Any) -> Any:
-        """Convert Langflow objects to JSON-serializable format.
-
-        Args:
-            obj: Object that may contain Langflow types
-
-        Returns:
-            JSON-serializable version of the object
-        """
-        if hasattr(obj, "__langflow_type__"):
-            # This is already a serialized Langflow object
-            return obj
-
-        # Handle lfx Data objects (langflow.schema re-exports these from lfx)
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Data":
-            try:
-                from lfx.schema.data import Data
-
-                if isinstance(obj, Data):
-                    # Convert Data object to serializable format
-                    return self.type_converter.serialize_langflow_object(obj)
-            except ImportError:
-                pass
-
-        # Handle lfx Message objects (langflow.schema re-exports these from lfx)
-        if hasattr(obj, "__class__") and obj.__class__.__name__ == "Message":
-            try:
-                from lfx.schema.message import Message
-
-                if isinstance(obj, Message):
-                    # Convert Message object to serializable format
-                    return self.type_converter.serialize_langflow_object(obj)
-            except ImportError:
-                pass
-
-        # Handle lists containing Langflow objects
-        if isinstance(obj, list):
-            return [self._serialize_langflow_objects(item) for item in obj]
-
-        # Handle dictionaries containing Langflow objects
-        if isinstance(obj, dict):
-            return {
-                key: self._serialize_langflow_objects(value)
-                for key, value in obj.items()
-            }
-
-        # Return unchanged for primitive types and unknown objects
-        return obj
 
     async def _compile_component(
         self, blob_data: dict[str, Any], blob_id: str | None = None
@@ -234,7 +189,7 @@ class CustomCodeExecutor(BaseExecutor):
                 **({"blob_id": blob_id} if blob_id else {}),
             },
         ):
-            # Patch PlaceholderGraph for lfx compatibility (needed for Agent components)
+            # Patch PlaceholderGraph for lfx compatibility
             self._patch_placeholder_graph()
 
             if not code or not code.strip():
@@ -307,17 +262,20 @@ class CustomCodeExecutor(BaseExecutor):
         compiled_component = self.compiled_components[blob_id]
         runtime_inputs = input_data.get("input", {})
 
-        # Execute the component
+        # Execute the component (returns serialized output)
         result = await self._execute_compiled_component(
             compiled_component, runtime_inputs
         )
 
-        return {"result": self.type_converter.serialize_langflow_object(result)}
+        return {"result": result}
 
     async def _execute_compiled_component(
         self, compiled_component: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> Any:
-        """Execute a pre-compiled component instance."""
+        """Execute a pre-compiled component instance.
+
+        Returns serialized output (output handlers handle serialization).
+        """
         component_class = compiled_component["class"]
         template = compiled_component["template"]
         execution_method = compiled_component["execution_method"]
@@ -341,76 +299,75 @@ class CustomCodeExecutor(BaseExecutor):
                     f"Failed to instantiate {component_type}: {e}"
                 ) from e
 
-        # Prepare parameters
-        component_parameters = await self._prepare_component_parameters(
-            template, runtime_inputs
-        )
+        # Prepare raw parameters
+        raw_params = await self._prepare_component_parameters(template, runtime_inputs)
 
-        # Apply field handlers (env vars, type coercions, etc.)
-        component_parameters = await self._apply_field_handlers(
-            component_parameters, template, self._get_field_handlers()
-        )
-
-        # Apply component input defaults before configuring
-        component_parameters = self._apply_component_input_defaults(
-            component_instance, component_parameters
-        )
-        session_id = component_parameters.get("session_id", "default_session")
-        component_instance._session_id = session_id
-        self._setup_graph_context(component_instance, session_id)
-
-        # Note: No conversion needed - langflow.schema types are lfx.schema types
-        # (langflow re-exports from lfx, so isinstance checks work correctly)
-        resolved_parameters = component_parameters
-
-        # Configure component
-        if hasattr(component_instance, "set_attributes"):
-            component_instance._parameters = resolved_parameters
-            component_instance.set_attributes(resolved_parameters)
-
-        # Execute component method with tracing
-        if not hasattr(component_instance, execution_method):
-            available = [m for m in dir(component_instance) if not m.startswith("_")]
-            raise ExecutionError(
-                f"Method {execution_method} not found in {component_type}. "
-                f"Available: {available}"
-            )
-
-        method = getattr(component_instance, execution_method)
-
-        with tracer.start_as_current_span(
-            f"execute_method:{execution_method}",
-            attributes={
-                "component_type": component_type,
-                "display_name": display_name,
-                "execution_method": execution_method,
-            },
+        # Handler pipeline: input transform → execute → output transform
+        async with self._handler_pipeline(raw_params, template) as (
+            component_parameters,
+            output_handlers,
         ):
-            try:
-                if inspect.iscoroutinefunction(method):
-                    result = await method()
-                else:
-                    # Handle sync methods safely
-                    result = await self._execute_sync_method_safely(
-                        method, component_type
-                    )
+            # Apply component input defaults before configuring
+            component_parameters = self._apply_component_input_defaults(
+                component_instance, component_parameters
+            )
+            session_id = component_parameters.get("session_id", "default_session")
+            component_instance._session_id = session_id
+            self._setup_graph_context(component_instance, session_id)
 
-                # Handle OpenSearch client objects (from as_vector_store)
-                # These aren't serializable, but for mustExecute we need confirmation
-                try:
-                    from opensearchpy import OpenSearch
+            resolved_parameters = component_parameters
 
-                    if isinstance(result, OpenSearch):
-                        return {"status": "success", "type": "OpenSearchVectorStore"}
-                except ImportError:
-                    pass
+            # Configure component
+            if hasattr(component_instance, "set_attributes"):
+                component_instance._parameters = resolved_parameters
+                component_instance.set_attributes(resolved_parameters)
 
-                # Serialize Langflow objects to JSON-compatible format before returning
-                return self._serialize_langflow_objects(result)
-            except Exception as e:
+            # Execute component method with tracing
+            if not hasattr(component_instance, execution_method):
+                available = [
+                    m for m in dir(component_instance) if not m.startswith("_")
+                ]
                 raise ExecutionError(
-                    f"Failed to execute {execution_method}: {e}"
-                ) from e
+                    f"Method {execution_method} not found in "
+                    f"{component_type}. Available: {available}"
+                )
+
+            method = getattr(component_instance, execution_method)
+
+            with tracer.start_as_current_span(
+                f"execute_method:{execution_method}",
+                attributes={
+                    "component_type": component_type,
+                    "display_name": display_name,
+                    "execution_method": execution_method,
+                },
+            ):
+                try:
+                    if inspect.iscoroutinefunction(method):
+                        result = await method()
+                    else:
+                        result = await self._execute_sync_method_safely(
+                            method, component_type
+                        )
+
+                    # Handle OpenSearch client objects
+                    try:
+                        from opensearchpy import OpenSearch
+
+                        if isinstance(result, OpenSearch):
+                            return {
+                                "status": "success",
+                                "type": "OpenSearchVectorStore",
+                            }
+                    except ImportError:
+                        pass
+
+                    # Serialize output through handlers
+                    return await self._apply_output_handlers(result, output_handlers)
+                except Exception as e:
+                    raise ExecutionError(
+                        f"Failed to execute {execution_method}: {e}"
+                    ) from e
 
     def _patch_placeholder_graph(self) -> None:
         """Patch PlaceholderGraph to add vertices attribute for lfx compatibility.
@@ -428,118 +385,16 @@ class CustomCodeExecutor(BaseExecutor):
             user_id: str | None = None
             session_id: str | None = None
             context: dict | None = None
-            vertices: list = []  # Add vertices attribute for lfx compatibility
+            vertices: list = []
 
-        # Patch lfx's PlaceholderGraph (langflow re-exports this, so patching
-        # lfx patches both). lfx 0.1.12+ uses PlaceholderGraph in
-        # agents/utils.py which imports from lfx.custom.custom_component.component
         try:
             from lfx.custom.custom_component import (
                 component as lfx_component_module,
             )
 
-            # Use type: ignore because we're dynamically patching a class
             lfx_component_module.PlaceholderGraph = EnhancedPlaceholderGraph  # type: ignore[assignment,misc]
         except ImportError:
-            # If lfx not available, that's okay
             pass
-
-    async def _prepare_component_parameters(
-        self, template: dict[str, Any], runtime_inputs: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Prepare component parameters from template and runtime inputs.
-
-        Handles value-based deserialization (Langflow type markers, DataFrame
-        recovery). Template-field-based transformations (Message→str coercion,
-        List→DataFrame conversion, env var resolution) are handled by field
-        handlers applied after this method returns.
-        """
-        component_parameters: dict[str, Any] = {}
-
-        # Process template parameters
-        for key, field_def in template.items():
-            if isinstance(field_def, dict) and "value" in field_def:
-                # Skip handle inputs (those with input_types) if they have
-                # empty/placeholder values. These are meant to receive data from
-                # connected steps, not use template defaults
-                input_types = field_def.get("input_types", [])
-                value = field_def["value"]
-
-                if input_types and (value == "" or value is None):
-                    continue
-
-                component_parameters[key] = value
-
-        # Add runtime inputs (these override template values)
-        for key, value in runtime_inputs.items():
-            # Deserialize Langflow types from value markers
-            if isinstance(value, dict) and (
-                "__langflow_type__" in value
-                or "__class_name__" in value
-                or "__tool_wrapper__" in value
-            ):
-                actual_value = self.type_converter.deserialize_to_langflow_type(value)
-
-                # DataFrame deserialization recovery: when deserialization fails
-                # (returns the original dict), manually reconstruct from split JSON
-                if (
-                    isinstance(value, dict)
-                    and value.get("__langflow_type__") == "DataFrame"
-                    and not (
-                        hasattr(actual_value, "__class__")
-                        and actual_value.__class__.__name__ == "DataFrame"
-                    )
-                ):
-                    actual_value = self._recover_dataframe(value, actual_value)
-
-                component_parameters[key] = actual_value
-            elif isinstance(value, list):
-                # Recursively deserialize list items (tool wrappers, etc.)
-                component_parameters[key] = (
-                    self.type_converter.deserialize_to_langflow_type(value)
-                )
-            else:
-                component_parameters[key] = value
-
-        return component_parameters
-
-    @staticmethod
-    def _recover_dataframe(raw_value: dict[str, Any], fallback: Any) -> Any:
-        """Attempt manual DataFrame recovery from split JSON format.
-
-        Called when ``type_converter.deserialize_to_langflow_type`` fails to
-        reconstruct a DataFrame. Falls back to *fallback* if recovery also fails.
-        """
-        try:
-            import io
-
-            import pandas as pd
-            from lfx.schema.dataframe import DataFrame as LfxDataFrame
-
-            json_str = raw_value.get("json_data")
-            if not json_str or not isinstance(json_str, str):
-                return fallback
-
-            pd_df = pd.read_json(io.StringIO(json_str), orient="split")
-            records = pd_df.to_dict(orient="records")
-
-            def clean_value(v: Any) -> Any:
-                try:
-                    return None if pd.isna(v) else v
-                except (ValueError, TypeError):
-                    return v
-
-            data_list = [
-                {k: clean_value(v) for k, v in record.items()} for record in records
-            ]
-
-            return LfxDataFrame(
-                data=data_list,
-                text_key=raw_value.get("text_key", "text"),
-                default_value=raw_value.get("default_value", ""),
-            )
-        except Exception:
-            return fallback
 
     def _apply_component_input_defaults(
         self, component_instance: Any, component_parameters: dict[str, Any]
@@ -553,21 +408,18 @@ class CustomCodeExecutor(BaseExecutor):
         Returns:
             Parameters with defaults applied from component inputs definition
         """
-        # Extract defaults from component inputs if available
         if hasattr(component_instance, "inputs"):
             for input_field in component_instance.inputs:
                 if hasattr(input_field, "name") and hasattr(input_field, "value"):
                     param_name = input_field.name
                     default_value = input_field.value
 
-                    # Only set default if missing and default is not None/empty
                     if (
                         param_name not in component_parameters
                         and default_value is not None
                         and default_value != ""
                     ):
                         component_parameters[param_name] = default_value
-                        # Applied default parameter value
 
         return component_parameters
 
@@ -591,6 +443,5 @@ class CustomCodeExecutor(BaseExecutor):
         return None
 
     async def _execute_sync_method_safely(self, method, component_type: str):
-        """Execute sync method safely in async context - real execution only."""
-        # Execute all sync methods directly - let components handle their execution
+        """Execute sync method safely in async context."""
         return method()

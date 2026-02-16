@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Field handler that resolves environment variables for ``load_from_db`` fields."""
+"""Input handler that resolves environment variables for ``load_from_db`` fields."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ import os
 from typing import Any
 
 from ...exceptions import ExecutionError
-from .base import FieldHandler
+from .base import InputHandler
 
 
-class EnvVarFieldHandler(FieldHandler):
+class EnvVarInputHandler(InputHandler):
     """Resolve empty parameter values from environment variables.
 
     Matches template fields with ``load_from_db=True``. For matched fields
@@ -31,7 +31,7 @@ class EnvVarFieldHandler(FieldHandler):
     named in the template field's ``value`` key.
     """
 
-    def matches(self, template_field: dict[str, Any]) -> bool:
+    def matches(self, *, template_field: dict[str, Any], value: Any) -> bool:
         return template_field.get("load_from_db", False) is True
 
     async def prepare(

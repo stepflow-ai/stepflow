@@ -308,16 +308,15 @@ class TestCoreExecutorPrepareParameters:
 class TestCoreExecutorEnvVarResolution:
     """Tests for environment variable resolution in CoreExecutor.
 
-    Env var resolution is handled by EnvVarFieldHandler via _apply_field_handlers,
+    Env var resolution is handled by EnvVarInputHandler via _handler_pipeline,
     which runs after _prepare_component_parameters in the execution flow.
     """
 
     async def _prepare_and_apply_handlers(self, executor, template, runtime_inputs):
         """Mirrors the execution flow: prepare then apply handlers."""
         params = await executor._prepare_component_parameters(template, runtime_inputs)
-        return await executor._apply_field_handlers(
-            params, template, executor._get_field_handlers()
-        )
+        async with executor._handler_pipeline(params, template) as (result, _):
+            return result
 
     @pytest.mark.asyncio
     async def test_env_var_resolution_when_load_from_db(self, executor, monkeypatch):
