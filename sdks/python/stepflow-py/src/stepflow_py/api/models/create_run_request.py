@@ -23,7 +23,7 @@ import pprint
 import re  # noqa: F401
 from typing import Annotated, Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
 from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
@@ -53,12 +53,23 @@ class CreateRunRequest(BaseModel):
         description="Maximum concurrency for batch execution (only used when input is an array)",
         alias="maxConcurrency",
     )
+    wait: StrictBool | None = Field(
+        default=None,
+        description="If true, block until the run completes and return the result (200 OK). If false (default), return immediately with status Running (202 Accepted).",
+    )
+    timeout_secs: Annotated[int, Field(strict=True, ge=0)] | None = Field(
+        default=None,
+        description="Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error.",
+        alias="timeoutSecs",
+    )
     __properties: ClassVar[list[str]] = [
         "flowId",
         "input",
         "overrides",
         "variables",
         "maxConcurrency",
+        "wait",
+        "timeoutSecs",
     ]
 
     model_config = ConfigDict(
@@ -106,6 +117,11 @@ class CreateRunRequest(BaseModel):
         if self.max_concurrency is None and "max_concurrency" in self.model_fields_set:
             _dict["maxConcurrency"] = None
 
+        # set to None if timeout_secs (nullable) is None
+        # and model_fields_set contains the field
+        if self.timeout_secs is None and "timeout_secs" in self.model_fields_set:
+            _dict["timeoutSecs"] = None
+
         return _dict
 
     @classmethod
@@ -126,6 +142,8 @@ class CreateRunRequest(BaseModel):
                 else None,
                 "variables": obj.get("variables"),
                 "maxConcurrency": obj.get("maxConcurrency"),
+                "wait": obj.get("wait"),
+                "timeoutSecs": obj.get("timeoutSecs"),
             }
         )
         return _obj

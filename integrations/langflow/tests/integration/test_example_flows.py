@@ -255,7 +255,10 @@ class TestExecutor:
         timeout: float = 60.0,
     ) -> dict:
         """Execute workflow with optional overrides using StepflowClient."""
-        # Submit the run
+        from stepflow_py.api.models import ExecutionStatus
+        from stepflow_py.api.models.flow_result_failed import FlowResultFailed
+        from stepflow_py.api.models.flow_result_success import FlowResultSuccess
+
         response = await self.client.run(
             flow_id=flow_id,
             input_data=input_data,
@@ -264,29 +267,27 @@ class TestExecutor:
             timeout=timeout,
         )
 
-        result = response.model_dump(by_alias=True, exclude_unset=True)
-
-        # Check if execution succeeded
-        if result.get("status") != "completed":
-            status = result.get("status")
+        if response.status != ExecutionStatus.COMPLETED:
+            dump = response.model_dump(by_alias=True, exclude_unset=True)
             raise AssertionError(
-                f"Workflow execution failed with status {status}. "
-                f"Full response: {result}"
+                f"Workflow execution failed with status {response.status}. "
+                f"Full response: {dump}"
             )
 
-        # Get the flow result and check its structure
-        flow_result = result.get("result")
-        if not flow_result:
-            raise AssertionError("No result field in response")
+        if not response.results:
+            raise AssertionError("No results in response")
 
-        # Handle both direct result and wrapped result formats
-        if isinstance(flow_result, dict) and flow_result.get("outcome") == "success":
-            return flow_result
-        elif isinstance(flow_result, dict) and "outcome" in flow_result:
-            raise AssertionError(f"Workflow execution failed: {flow_result}")
+        flow_result = response.results[0].result
+        if flow_result is None:
+            raise AssertionError("No result in first item")
+
+        actual = flow_result.actual_instance
+        if isinstance(actual, FlowResultSuccess):
+            return {"outcome": "success", "result": actual.result}
+        elif isinstance(actual, FlowResultFailed):
+            raise AssertionError(f"Workflow execution failed: {actual.error}")
         else:
-            # For cases where flow_result is the actual result data
-            return {"outcome": "success", "result": flow_result}
+            raise AssertionError(f"Unexpected result type: {type(actual)}")
 
 
 @pytest.fixture(scope="module")

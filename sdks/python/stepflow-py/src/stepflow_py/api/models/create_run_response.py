@@ -21,33 +21,64 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import Annotated, Any, ClassVar, Self
+from datetime import datetime
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_py.api.models.execution_status import ExecutionStatus
-from stepflow_py.api.models.flow_result import FlowResult
+from stepflow_py.api.models.item_result import ItemResult
+from stepflow_py.api.models.item_statistics import ItemStatistics
 
 
 class CreateRunResponse(BaseModel):
     """
-    Response for create run operations
+    Response for create run operations.  Shares the same base fields as `RunDetails` (GET /runs/{id}) via `RunSummary`, with optional item results when `wait=true`.
     """  # noqa: E501
 
-    run_id: StrictStr = Field(
-        description="The run ID (for single runs) or batch ID (for batch runs)",
-        alias="runId",
+    run_id: StrictStr = Field(alias="runId")
+    flow_id: StrictStr = Field(
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+        alias="flowId",
     )
-    item_count: Annotated[int, Field(strict=True, ge=0)] = Field(
-        description="Number of items in this run (1 for single runs, > 1 for batch runs)",
-        alias="itemCount",
+    flow_name: StrictStr | None = Field(default=None, alias="flowName")
+    status: ExecutionStatus
+    items: ItemStatistics | None = Field(
+        default=None, description="Statistics about items in this run."
     )
-    result: FlowResult | None = Field(
+    created_at: datetime = Field(alias="createdAt")
+    completed_at: datetime | None = Field(default=None, alias="completedAt")
+    root_run_id: StrictStr = Field(
+        description="Root run ID for this execution tree.  For top-level runs, this equals `run_id`. For sub-flows, this is the original run that started the tree.",
+        alias="rootRunId",
+    )
+    parent_run_id: StrictStr | None = Field(
         default=None,
-        description="The result of the flow execution (if completed, for single runs only)",
+        description="Parent run ID if this is a sub-flow.  None for top-level runs, Some(parent_id) for sub-flows.",
+        alias="parentRunId",
     )
-    status: ExecutionStatus = Field(description="The run status")
-    __properties: ClassVar[list[str]] = ["runId", "itemCount", "result", "status"]
+    orchestrator_id: StrictStr | None = Field(
+        default=None,
+        description="The orchestrator currently managing this run.  None means the run is orphaned (no orchestrator owns it). Set when the run is created and updated during recovery.",
+        alias="orchestratorId",
+    )
+    results: list[ItemResult] | None = Field(
+        default=None,
+        description="Item results, only populated when `wait=true` and the run has completed. Each entry contains the item's index, status, and result.",
+    )
+    __properties: ClassVar[list[str]] = [
+        "runId",
+        "flowId",
+        "flowName",
+        "status",
+        "items",
+        "createdAt",
+        "completedAt",
+        "rootRunId",
+        "parentRunId",
+        "orchestratorId",
+        "results",
+    ]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -86,13 +117,20 @@ class CreateRunResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of result
-        if self.result:
-            _dict["result"] = self.result.to_dict()
-        # set to None if result (nullable) is None
+        # override the default output from pydantic by calling `to_dict()` of items
+        if self.items:
+            _dict["items"] = self.items.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of each item in results (list)
+        _items = []
+        if self.results:
+            for _item_results in self.results:
+                if _item_results:
+                    _items.append(_item_results.to_dict())
+            _dict["results"] = _items
+        # set to None if results (nullable) is None
         # and model_fields_set contains the field
-        if self.result is None and "result" in self.model_fields_set:
-            _dict["result"] = None
+        if self.results is None and "results" in self.model_fields_set:
+            _dict["results"] = None
 
         return _dict
 
@@ -108,11 +146,20 @@ class CreateRunResponse(BaseModel):
         _obj = cls.model_validate(
             {
                 "runId": obj.get("runId"),
-                "itemCount": obj.get("itemCount"),
-                "result": FlowResult.from_dict(obj["result"])
-                if obj.get("result") is not None
-                else None,
+                "flowId": obj.get("flowId"),
+                "flowName": obj.get("flowName"),
                 "status": obj.get("status"),
+                "items": ItemStatistics.from_dict(obj["items"])
+                if obj.get("items") is not None
+                else None,
+                "createdAt": obj.get("createdAt"),
+                "completedAt": obj.get("completedAt"),
+                "rootRunId": obj.get("rootRunId"),
+                "parentRunId": obj.get("parentRunId"),
+                "orchestratorId": obj.get("orchestratorId"),
+                "results": [ItemResult.from_dict(_item) for _item in obj["results"]]
+                if obj.get("results") is not None
+                else None,
             }
         )
         return _obj

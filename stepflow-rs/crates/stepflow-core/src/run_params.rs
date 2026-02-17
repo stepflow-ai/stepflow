@@ -14,6 +14,12 @@ use crate::workflow::{ValueRef, WorkflowOverrides};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Default timeout in seconds for wait operations (5 minutes).
+///
+/// Used by the HTTP API and JSON-RPC protocol when `wait=true` and no
+/// explicit `timeout_secs` is provided.
+pub const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
+
 /// Optional parameters for submitting a run.
 ///
 /// Pass to `submit_run()` along with the required flow, flow_id, and inputs.

@@ -451,7 +451,7 @@
           "Run"
         ],
         "summary": "Create and execute a flow by hash",
-        "description": "Supports both single and batch execution:\n- Single input: Executes one run and returns the result directly\n- Multiple inputs: Executes batch and waits for all results",
+        "description": "Supports both single and batch execution:\n- Single input: Executes one run\n- Multiple inputs: Executes multiple runs (batch mode)\n\nBy default, returns immediately with 202 Accepted and status Running.\nSet `wait: true` in the request body to block until the run completes\nand return 200 OK with the result.",
         "operationId": "create_run",
         "requestBody": {
           "content": {
@@ -465,7 +465,17 @@
         },
         "responses": {
           "200": {
-            "description": "Flow run created successfully",
+            "description": "Flow run completed (wait=true)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRunResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Flow run accepted for execution",
             "content": {
               "application/json": {
                 "schema": {
@@ -492,6 +502,7 @@
           "Run"
         ],
         "summary": "Get execution details by ID",
+        "description": "Returns the current run status and details. Use `wait=true` to long-poll\nuntil the run reaches a terminal state (completed, failed, or cancelled).",
         "operationId": "get_run",
         "parameters": [
           {
@@ -502,6 +513,32 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "description": "If true, wait for the run to reach a terminal state before responding.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "timeoutSecs",
+            "in": "query",
+            "description": "Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
             }
           }
         ],
@@ -852,45 +889,45 @@
             ],
             "description": "Maximum concurrency for batch execution (only used when input is an array)",
             "minimum": 0
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "If true, block until the run completes and return the result (200 OK).\nIf false (default), return immediately with status Running (202 Accepted)."
+          },
+          "timeoutSecs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.",
+            "minimum": 0
           }
         }
       },
       "CreateRunResponse": {
-        "type": "object",
-        "description": "Response for create run operations",
-        "required": [
-          "runId",
-          "itemCount",
-          "status"
-        ],
-        "properties": {
-          "runId": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The run ID (for single runs) or batch ID (for batch runs)"
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RunSummary",
+            "description": "Run summary fields (run_id, flow_id, status, items, timestamps, etc.)"
           },
-          "itemCount": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Number of items in this run (1 for single runs, > 1 for batch runs)",
-            "minimum": 0
-          },
-          "result": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/FlowResult",
-                "description": "The result of the flow execution (if completed, for single runs only)"
+          {
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/ItemResult"
+                },
+                "description": "Item results, only populated when `wait=true` and the run has completed.\nEach entry contains the item's index, status, and result."
               }
-            ]
-          },
-          "status": {
-            "$ref": "#/components/schemas/ExecutionStatus",
-            "description": "The run status"
+            }
           }
-        }
+        ],
+        "description": "Response for create run operations.\n\nShares the same base fields as `RunDetails` (GET /runs/{id}) via `RunSummary`,\nwith optional item results when `wait=true`."
       },
       "Diagnostic": {
         "type": "object",

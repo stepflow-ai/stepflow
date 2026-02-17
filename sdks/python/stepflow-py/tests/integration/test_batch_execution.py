@@ -117,17 +117,27 @@ async def store_and_run_batch(
 
 
 def get_result_items(response: CreateRunResponse) -> list[dict]:
-    """Extract items from the result, handling the nested structure.
+    """Extract item results from the response.
 
-    For batch execution, the result contains an 'items' array with individual
-    flow results for each input item.
+    With the async API, results are returned directly on the response as a list
+    of ItemResult objects (when wait=true). Each is converted to a dict with
+    'outcome', 'result', etc.
     """
-    if response.result is None:
+    if response.results is None:
         return []
-    result_dict = response.result.model_dump(by_alias=True, exclude_unset=True)
-    if isinstance(result_dict, dict):
-        return result_dict.get("items", [])
-    return []
+    items = []
+    for item_result in response.results:
+        item_dict: dict = {}
+        if item_result.result is not None:
+            # FlowResult is a oneOf (Success/Failed) - dump to dict for uniform access
+            result_dict = item_result.result.model_dump(
+                by_alias=True, exclude_unset=True
+            )
+            item_dict.update(result_dict)
+        else:
+            item_dict["outcome"] = item_result.status.value
+        items.append(item_dict)
+    return items
 
 
 @pytest.mark.asyncio
@@ -141,7 +151,7 @@ async def test_batch_execution_basic(stepflow_client, simple_workflow, batch_inp
     assert response.status == ExecutionStatus.COMPLETED, (
         f"Batch execution failed with status {response.status}"
     )
-    assert response.item_count == 5, f"Expected 5 items, got {response.item_count}"
+    assert response.items.total == 5, f"Expected 5 items, got {response.items.total}"
 
     # For batch execution, result contains items array
     items = get_result_items(response)
@@ -166,7 +176,7 @@ async def test_batch_execution_with_max_concurrent(
     assert response.status == ExecutionStatus.COMPLETED, (
         f"Batch execution failed with status {response.status}"
     )
-    assert response.item_count == 5
+    assert response.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -183,7 +193,7 @@ async def test_batch_execution_results(stepflow_client, simple_workflow, batch_i
     response = await store_and_run_batch(stepflow_client, simple_workflow, batch_inputs)
 
     assert response.status == ExecutionStatus.COMPLETED
-    assert response.item_count == 5
+    assert response.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -225,7 +235,7 @@ async def test_batch_execution_with_failures(stepflow_client, simple_workflow):
     assert response.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED], (
         f"Unexpected status: {response.status}"
     )
-    assert response.item_count == 5
+    assert response.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -262,7 +272,7 @@ async def test_batch_execution_empty_inputs(stepflow_client, simple_workflow):
     )
 
     assert response.status == ExecutionStatus.COMPLETED
-    assert response.item_count == 0
+    assert response.items.total == 0
 
     items = get_result_items(response)
     assert len(items) == 0, f"Expected 0 results, got {len(items)}"
@@ -287,7 +297,7 @@ async def test_single_input_execution(stepflow_client, simple_workflow):
     assert response.status == ExecutionStatus.COMPLETED, (
         f"Execution failed with status {response.status}"
     )
-    assert response.item_count == 1
+    assert response.items.total == 1
 
     items = get_result_items(response)
     assert len(items) == 1, f"Expected 1 result, got {len(items)}"

@@ -30,6 +30,7 @@ from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
 if TYPE_CHECKING:
     from stepflow_py.api.models.create_run_response import CreateRunResponse
+    from stepflow_py.api.models.run_details import RunDetails
     from stepflow_py.api.models.store_flow_response import StoreFlowResponse
     from stepflow_py.config import StepflowConfig
 
@@ -223,8 +224,64 @@ class StepflowClient:
         overrides: dict[str, Any] | None = None,
         max_concurrency: int | None = None,
         timeout: float = 300.0,
+        wait_timeout: int | None = None,
     ) -> CreateRunResponse:
-        """Execute a flow and return the result.
+        """Execute a flow and wait for the result.
+
+        Submits the run with wait=true so the server blocks until completion
+        and returns the result directly.
+
+        Args:
+            flow_id: Flow ID from store_flow()
+            input_data: Single input dict or list for batch execution
+            variables: Runtime variables for $variable references
+            overrides: Step overrides (per step_id)
+            max_concurrency: Max parallel executions for batch mode
+            timeout: HTTP request timeout in seconds (client-side)
+            wait_timeout: Server-side wait timeout in seconds (default 300).
+                If the workflow takes longer, the server returns the current
+                status rather than an error. Set this higher than ``timeout``
+                is not useful since the HTTP connection will close first.
+
+        Returns:
+            CreateRunResponse with status and results
+        """
+        # Normalize input to list (API always expects array)
+        inputs = [input_data] if isinstance(input_data, dict) else input_data
+
+        # Build request kwargs, only including non-None values
+        # This ensures exclude_unset=True works correctly (unset != set to None)
+        request_kwargs: dict[str, Any] = {
+            "flowId": flow_id,
+            "input": inputs,
+            "wait": True,
+        }
+        if variables is not None:
+            request_kwargs["variables"] = variables
+        if overrides is not None:
+            request_kwargs["overrides"] = WorkflowOverrides.from_dict(overrides)
+        if max_concurrency is not None:
+            request_kwargs["maxConcurrency"] = max_concurrency
+        if wait_timeout is not None:
+            request_kwargs["timeoutSecs"] = wait_timeout
+
+        request = CreateRunRequest(**request_kwargs)
+        return await self._run_api.create_run(request, _request_timeout=timeout)
+
+    async def submit(
+        self,
+        flow_id: str,
+        input_data: dict[str, Any] | list[dict[str, Any]],
+        variables: dict[str, Any] | None = None,
+        overrides: dict[str, Any] | None = None,
+        max_concurrency: int | None = None,
+        timeout: float = 30.0,
+    ) -> CreateRunResponse:
+        """Submit a flow for execution without waiting for the result.
+
+        Returns immediately with status Running (202 Accepted).
+        Use ``get_run(run_id, wait=True)`` to long-poll for completion, or
+        ``get_run_items()`` to fetch results after completion.
 
         Args:
             flow_id: Flow ID from store_flow()
@@ -235,13 +292,11 @@ class StepflowClient:
             timeout: Request timeout in seconds
 
         Returns:
-            CreateRunResponse with status and result
+            CreateRunResponse with run_id and status (typically Running)
         """
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
-        # Build request kwargs, only including non-None values
-        # This ensures exclude_unset=True works correctly (unset != set to None)
         request_kwargs: dict[str, Any] = {
             "flowId": flow_id,
             "input": inputs,
@@ -255,6 +310,32 @@ class StepflowClient:
 
         request = CreateRunRequest(**request_kwargs)
         return await self._run_api.create_run(request, _request_timeout=timeout)
+
+    async def get_run(
+        self,
+        run_id: str,
+        *,
+        wait: bool = False,
+        wait_timeout: int | None = None,
+        timeout: float = 30.0,
+    ) -> RunDetails:
+        """Get run details by ID.
+
+        Args:
+            run_id: Run ID (UUID string)
+            wait: If True, long-poll until the run reaches a terminal state
+            wait_timeout: Server-side wait timeout in seconds (default 300)
+            timeout: HTTP request timeout in seconds (client-side)
+
+        Returns:
+            RunDetails with status, item statistics, and item details
+        """
+        return await self._run_api.get_run(
+            run_id,
+            wait=wait if wait else None,
+            timeout_secs=wait_timeout,
+            _request_timeout=timeout,
+        )
 
     async def get_run_items(
         self, run_id: str, timeout: float = 30.0

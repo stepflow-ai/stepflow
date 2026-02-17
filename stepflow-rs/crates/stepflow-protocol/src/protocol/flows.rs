@@ -37,6 +37,10 @@ pub struct SubmitRunProtocolParams {
     /// Optional workflow overrides to apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub overrides: Option<WorkflowOverrides>,
+    /// Maximum seconds to wait when wait=true (default 300). If the timeout elapses,
+    /// returns the current run status rather than an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
     /// Observability context for tracing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
@@ -62,6 +66,10 @@ pub struct GetRunProtocolParams {
     /// Order of results (byIndex or byCompletion).
     #[serde(default)]
     pub result_order: ResultOrder,
+    /// Maximum seconds to wait when wait=true (default 300). If the timeout elapses,
+    /// returns the current run status rather than an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
     /// Observability context for tracing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
