@@ -586,6 +586,15 @@
             }
           ]
         },
+        "timeoutSecs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "description": "Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.",
+          "minimum": 0
+        },
         "observability": {
           "oneOf": [
             {
@@ -629,6 +638,15 @@
         "resultOrder": {
           "$ref": "#/$defs/ResultOrder",
           "description": "Order of results (byIndex or byCompletion)."
+        },
+        "timeoutSecs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "description": "Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.",
+          "minimum": 0
         },
         "observability": {
           "oneOf": [

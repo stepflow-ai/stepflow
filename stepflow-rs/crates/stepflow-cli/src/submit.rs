@@ -142,6 +142,8 @@ pub async fn submit(
         overrides: overrides.clone(),
         variables: std::collections::HashMap::new(), // TODO: Add variables support to CLI submit
         max_concurrency,
+        wait: true,
+        timeout_secs: None,
     };
 
     let execute_url = service_url
@@ -173,74 +175,15 @@ pub async fn submit(
         MainError::Configuration
     })?;
 
-    // For single-item runs, the result is returned directly
-    // For multi-item runs, we need to fetch results from the items endpoint
-    if execute_result.item_count == 1 {
-        // Single item - result is in the response
-        match execute_result.result {
-            Some(result) => Ok(vec![result]),
-            None => {
-                log::error!("No result in response");
-                Err(MainError::Configuration.into())
-            }
-        }
-    } else {
-        // Multi-item - fetch results from items endpoint
-        fetch_batch_results(&client, &service_url, execute_result.run_id).await
-    }
-}
-
-/// Fetch results for a multi-item run from the items endpoint.
-async fn fetch_batch_results(
-    client: &reqwest::Client,
-    service_url: &Url,
-    run_id: uuid::Uuid,
-) -> Result<Vec<FlowResult>> {
-    // Use the items endpoint to get all results
-    let items_url = service_url
-        .join(&format!("/api/v1/runs/{}/items", run_id))
-        .map_err(|_| MainError::Configuration)?;
-
-    let response = client.get(items_url).send().await.map_err(|e| {
-        log::error!("Failed to get run items: {}", e);
-        MainError::Configuration
-    })?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        display_server_error(status, &error_text, "getting run items");
+    // With wait=true, results are always populated in the response
+    let items = execute_result.results.unwrap_or_default();
+    if items.is_empty() {
+        log::error!("No results in response");
         return Err(MainError::Configuration.into());
     }
 
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ItemsResponse {
-        items: Vec<ItemInfo>,
-    }
-
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ItemInfo {
-        result: Option<FlowResult>,
-    }
-
-    let items_result: ItemsResponse = response.json().await.map_err(|e| {
-        log::error!("Failed to parse items response: {}", e);
-        MainError::Configuration
-    })?;
-
-    // Collect results (filtering out None values)
-    let results: Vec<FlowResult> = items_result
-        .items
-        .into_iter()
-        .filter_map(|r| r.result)
-        .collect();
-
-    Ok(results)
+    // Extract FlowResult from each ItemResult
+    Ok(items.into_iter().filter_map(|item| item.result).collect())
 }
 
 #[cfg(test)]
