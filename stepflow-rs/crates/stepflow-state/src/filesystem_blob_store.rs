@@ -20,13 +20,13 @@
 //! Each blob file uses a trailing-metadata layout:
 //!
 //! ```text
-//! [CONTENT BYTES (variable)]  [METADATA JSON (variable)]  [CONTENT_LENGTH (4 bytes, LE u32)]
+//! [CONTENT BYTES (variable)]  [METADATA JSON (variable)]  [CONTENT_LENGTH (8 bytes, LE u64)]
 //! ```
 //!
 //! Reading strategy:
-//! 1. Read last 4 bytes as `u32` (little-endian) → `content_length`
+//! 1. Read last 8 bytes as `u64` (little-endian) → `content_length`
 //! 2. Content is bytes `0..content_length`
-//! 3. Metadata JSON is bytes `content_length..(file_size - 4)`
+//! 3. Metadata JSON is bytes `content_length..(file_size - 8)`
 //!
 //! ## Storage Modes
 //!
@@ -174,10 +174,10 @@ impl crate::BlobStore for FilesystemBlobStore {
                 .change_context(StateError::Serialization)
                 .attach_printable("Failed to serialize blob file metadata")?;
 
-            let content_length = content_bytes.len() as u32;
+            let content_length = content_bytes.len() as u64;
 
-            // Build complete buffer: [content][metadata_json][content_length LE u32]
-            let mut buf = Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 4);
+            // Build complete buffer: [content][metadata_json][content_length LE u64]
+            let mut buf = Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 8);
             buf.extend_from_slice(&content_bytes);
             buf.extend_from_slice(&metadata_bytes);
             buf.extend_from_slice(&content_length.to_le_bytes());
@@ -230,7 +230,7 @@ impl crate::BlobStore for FilesystemBlobStore {
 
             let file_size = bytes.len();
 
-            if file_size < 4 {
+            if file_size < 8 {
                 return Err(error_stack::report!(StateError::Serialization)).attach_printable(
                     format!(
                         "Corrupted blob file (too short: {} bytes): {}",
@@ -240,23 +240,23 @@ impl crate::BlobStore for FilesystemBlobStore {
                 );
             }
 
-            // Read last 4 bytes as content_length (u32 LE)
+            // Read last 8 bytes as content_length (u64 LE)
             let content_length =
-                u32::from_le_bytes(bytes[file_size - 4..].try_into().unwrap()) as usize;
+                u64::from_le_bytes(bytes[file_size - 8..].try_into().unwrap()) as usize;
 
-            if content_length > file_size - 4 {
+            if content_length > file_size - 8 {
                 return Err(error_stack::report!(StateError::Serialization)).attach_printable(
                     format!(
                         "Corrupted blob file (content_length {} exceeds available {} bytes): {}",
                         content_length,
-                        file_size - 4,
+                        file_size - 8,
                         path.display()
                     ),
                 );
             }
 
             let content = &bytes[..content_length];
-            let metadata_json = &bytes[content_length..file_size - 4];
+            let metadata_json = &bytes[content_length..file_size - 8];
 
             let file_metadata: BlobFileMetadata = serde_json::from_slice(metadata_json)
                 .change_context(StateError::Serialization)
@@ -376,11 +376,11 @@ mod tests {
     #[tokio::test]
     async fn test_corrupted_file_too_short() {
         let store = FilesystemBlobStore::temp().unwrap();
-        // Write only 3 bytes — less than the 4-byte footer
-        let blob_id = setup_corrupt_file(&store, &[0x01, 0x02, 0x03]);
+        // Write only 7 bytes — less than the 8-byte footer
+        let blob_id = setup_corrupt_file(&store, &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
 
         let result = store.get_blob_opt(&blob_id).await;
-        assert!(result.is_err(), "Should error on file shorter than 4 bytes");
+        assert!(result.is_err(), "Should error on file shorter than 8 bytes");
         let err_msg = format!("{:?}", result.unwrap_err());
         assert!(
             err_msg.contains("too short"),
@@ -391,7 +391,7 @@ mod tests {
     #[tokio::test]
     async fn test_corrupted_file_no_footer() {
         let store = FilesystemBlobStore::temp().unwrap();
-        // Write 100 bytes of 0xAB — last 4 bytes interpreted as content_length will be garbage
+        // Write 100 bytes of 0xAB — last 8 bytes interpreted as content_length will be garbage
         let blob_id = setup_corrupt_file(&store, &[0xAB; 100]);
 
         let result = store.get_blob_opt(&blob_id).await;
@@ -404,10 +404,10 @@ mod tests {
     #[tokio::test]
     async fn test_corrupted_content_length_too_large() {
         let store = FilesystemBlobStore::temp().unwrap();
-        // Build a file where content_length (last 4 bytes) exceeds available space.
-        // 10 bytes of padding + u32 LE of 9999
+        // Build a file where content_length (last 8 bytes) exceeds available space.
+        // 10 bytes of padding + u64 LE of 9999
         let mut data = vec![0u8; 10];
-        data.extend_from_slice(&9999u32.to_le_bytes());
+        data.extend_from_slice(&9999u64.to_le_bytes());
 
         let blob_id = setup_corrupt_file(&store, &data);
 
@@ -430,7 +430,7 @@ mod tests {
         let mut data = Vec::new();
         data.extend_from_slice(b"hello"); // content (5 bytes)
         data.extend_from_slice(b"!@#$%"); // invalid JSON metadata (5 bytes)
-        data.extend_from_slice(&5u32.to_le_bytes()); // content_length = 5
+        data.extend_from_slice(&5u64.to_le_bytes()); // content_length = 5
 
         let blob_id = setup_corrupt_file(&store, &data);
 
@@ -461,7 +461,7 @@ mod tests {
         let mut data = Vec::new();
         // No content bytes (content_length = 0)
         data.extend_from_slice(&metadata_json);
-        data.extend_from_slice(&0u32.to_le_bytes());
+        data.extend_from_slice(&0u64.to_le_bytes());
 
         let blob_id = setup_corrupt_file(&store, &data);
 
@@ -506,7 +506,7 @@ mod tests {
 
         // Extract content_length from footer
         let content_length =
-            u32::from_le_bytes(file_bytes[file_size - 4..].try_into().unwrap()) as usize;
+            u64::from_le_bytes(file_bytes[file_size - 8..].try_into().unwrap()) as usize;
 
         // Verify the content bytes are the original raw bytes (not base64-encoded)
         assert_eq!(
@@ -534,7 +534,7 @@ mod tests {
 
         // Extract content_length from footer
         let content_length =
-            u32::from_le_bytes(file_bytes[file_size - 4..].try_into().unwrap()) as usize;
+            u64::from_le_bytes(file_bytes[file_size - 8..].try_into().unwrap()) as usize;
 
         // Verify content bytes are valid JSON matching the original value
         let stored_json: serde_json::Value =
@@ -628,7 +628,7 @@ mod tests {
         };
         let content_bytes = serde_json::to_vec(data.as_ref()).unwrap();
         let metadata_bytes = serde_json::to_vec(&file_metadata).unwrap();
-        let content_length = content_bytes.len() as u32;
+        let content_length = content_bytes.len() as u64;
 
         let mut buf = Vec::new();
         buf.extend_from_slice(&content_bytes);
@@ -643,10 +643,11 @@ mod tests {
 
         // Now call put_blob — the dedup check (path.exists()) should catch it
         // and return Ok immediately
-        let result = store
-            .put_blob(data, blob_type, Default::default())
-            .await;
-        assert!(result.is_ok(), "put_blob should succeed when blob already exists");
+        let result = store.put_blob(data, blob_type, Default::default()).await;
+        assert!(
+            result.is_ok(),
+            "put_blob should succeed when blob already exists"
+        );
         assert_eq!(result.unwrap(), blob_id);
 
         // Verify the blob is readable
