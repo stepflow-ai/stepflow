@@ -177,8 +177,7 @@ impl crate::BlobStore for FilesystemBlobStore {
             let content_length = content_bytes.len() as u32;
 
             // Build complete buffer: [content][metadata_json][content_length LE u32]
-            let mut buf =
-                Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 4);
+            let mut buf = Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 4);
             buf.extend_from_slice(&content_bytes);
             buf.extend_from_slice(&metadata_bytes);
             buf.extend_from_slice(&content_length.to_le_bytes());
@@ -223,27 +222,28 @@ impl crate::BlobStore for FilesystemBlobStore {
             let file_size = bytes.len();
 
             if file_size < 4 {
-                return Err(error_stack::report!(StateError::Serialization))
-                    .attach_printable(format!(
+                return Err(error_stack::report!(StateError::Serialization)).attach_printable(
+                    format!(
                         "Corrupted blob file (too short: {} bytes): {}",
                         file_size,
                         path.display()
-                    ));
+                    ),
+                );
             }
 
             // Read last 4 bytes as content_length (u32 LE)
-            let content_length = u32::from_le_bytes(
-                bytes[file_size - 4..].try_into().unwrap(),
-            ) as usize;
+            let content_length =
+                u32::from_le_bytes(bytes[file_size - 4..].try_into().unwrap()) as usize;
 
             if content_length > file_size - 4 {
-                return Err(error_stack::report!(StateError::Serialization))
-                    .attach_printable(format!(
+                return Err(error_stack::report!(StateError::Serialization)).attach_printable(
+                    format!(
                         "Corrupted blob file (content_length {} exceeds available {} bytes): {}",
                         content_length,
                         file_size - 4,
                         path.display()
-                    ));
+                    ),
+                );
             }
 
             let content = &bytes[..content_length];
@@ -259,9 +259,7 @@ impl crate::BlobStore for FilesystemBlobStore {
                 })?;
 
             let blob_value = match file_metadata.blob_type {
-                BlobType::Binary => {
-                    stepflow_core::blob::BlobValue::Binary(content.to_vec())
-                }
+                BlobType::Binary => stepflow_core::blob::BlobValue::Binary(content.to_vec()),
                 BlobType::Data | BlobType::Flow => {
                     let json_value: serde_json::Value = serde_json::from_slice(content)
                         .change_context(StateError::Serialization)
@@ -357,12 +355,9 @@ mod tests {
     }
 
     /// Helper: create a fake blob ID and ensure its parent directory exists in the store.
-    fn setup_corrupt_file(
-        store: &FilesystemBlobStore,
-        content: &[u8],
-    ) -> BlobId {
-        let blob_id = BlobId::from_content(&ValueRef::new(serde_json::json!({"corrupt": "test"})))
-            .unwrap();
+    fn setup_corrupt_file(store: &FilesystemBlobStore, content: &[u8]) -> BlobId {
+        let blob_id =
+            BlobId::from_content(&ValueRef::new(serde_json::json!({"corrupt": "test"}))).unwrap();
         let path = blob_path_for(store, &blob_id);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, content).unwrap();
@@ -408,7 +403,10 @@ mod tests {
         let blob_id = setup_corrupt_file(&store, &data);
 
         let result = store.get_blob_opt(&blob_id).await;
-        assert!(result.is_err(), "Should error when content_length is too large");
+        assert!(
+            result.is_err(),
+            "Should error when content_length is too large"
+        );
         let err_msg = format!("{:?}", result.unwrap_err());
         assert!(
             err_msg.contains("content_length") || err_msg.contains("exceeds"),
@@ -498,9 +496,8 @@ mod tests {
         let file_size = file_bytes.len();
 
         // Extract content_length from footer
-        let content_length = u32::from_le_bytes(
-            file_bytes[file_size - 4..].try_into().unwrap(),
-        ) as usize;
+        let content_length =
+            u32::from_le_bytes(file_bytes[file_size - 4..].try_into().unwrap()) as usize;
 
         // Verify the content bytes are the original raw bytes (not base64-encoded)
         assert_eq!(
@@ -527,9 +524,8 @@ mod tests {
         let file_size = file_bytes.len();
 
         // Extract content_length from footer
-        let content_length = u32::from_le_bytes(
-            file_bytes[file_size - 4..].try_into().unwrap(),
-        ) as usize;
+        let content_length =
+            u32::from_le_bytes(file_bytes[file_size - 4..].try_into().unwrap()) as usize;
 
         // Verify content bytes are valid JSON matching the original value
         let stored_json: serde_json::Value =
