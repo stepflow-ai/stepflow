@@ -70,9 +70,9 @@ impl DirHandle {
 
 /// Filesystem-based implementation of [`BlobStore`](crate::BlobStore).
 ///
-/// Each blob is stored as a file named `<sha256_hash>` (no extension) in the configured
-/// directory. A two-character prefix subdirectory is used (like git) to avoid excessive
-/// files in a single directory: `<dir>/ab/abcdef1234...`.
+/// Each blob is stored as a file named `<sha256_hash>.blob` in the configured directory.
+/// A two-character prefix subdirectory is used (like git) to avoid excessive files in a
+/// single directory: `<dir>/ab/abcdef1234....blob`.
 pub struct FilesystemBlobStore {
     dir: DirHandle,
 }
@@ -107,13 +107,13 @@ impl FilesystemBlobStore {
         })
     }
 
-    /// Get the path where a blob with the given ID is stored (no extension).
+    /// Get the path where a blob with the given ID is stored.
     ///
-    /// Uses a two-character prefix directory structure: `<dir>/ab/abcdef1234...`
+    /// Uses a two-character prefix directory structure: `<dir>/ab/abcdef1234....blob`
     fn blob_path(&self, blob_id: &BlobId) -> PathBuf {
         let hash = blob_id.as_str();
         let prefix = &hash[..2];
-        self.dir.path().join(prefix).join(hash)
+        self.dir.path().join(prefix).join(format!("{hash}.blob"))
     }
 }
 
@@ -190,11 +190,20 @@ impl crate::BlobStore for FilesystemBlobStore {
                     format!("Failed to write blob file: {}", temp_path.display())
                 })?;
 
-            std::fs::rename(&temp_path, &path)
-                .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!("Failed to rename blob file: {}", path.display())
-                })?;
+            if let Err(e) = std::fs::rename(&temp_path, &path) {
+                // If the final path now exists, another writer raced us and won.
+                // Content-addressed storage means the content is identical, so treat as success.
+                if path.exists() {
+                    // Clean up our temp file since the blob was already written
+                    let _ = std::fs::remove_file(&temp_path);
+                    return Ok(blob_id);
+                }
+                return Err(e)
+                    .change_context(StateError::Internal)
+                    .attach_printable_lazy(|| {
+                        format!("Failed to rename blob file: {}", path.display())
+                    });
+            }
 
             Ok(blob_id)
         }
@@ -594,5 +603,58 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(blob_id, blob_id2, "Dedup should find the existing blob");
+    }
+
+    #[tokio::test]
+    async fn test_rename_race_condition() {
+        // Simulate a race condition: two writers both pass the exists() check,
+        // both write .tmp files, and one renames first. The second rename fails
+        // but should succeed because the final .blob file already exists.
+        let store = FilesystemBlobStore::temp().unwrap();
+        let data = ValueRef::new(serde_json::json!({"race": "condition"}));
+        let blob_type = BlobType::Data;
+
+        // Compute the blob ID and path
+        let blob_id = BlobId::compute(&data, &blob_type).unwrap();
+        let path = blob_path_for(&store, &blob_id);
+
+        // Manually create the prefix dir and write the final .blob file
+        // (simulating another writer that won the race)
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        let file_metadata = BlobFileMetadata {
+            blob_type: BlobType::Data,
+            filename: None,
+        };
+        let content_bytes = serde_json::to_vec(data.as_ref()).unwrap();
+        let metadata_bytes = serde_json::to_vec(&file_metadata).unwrap();
+        let content_length = content_bytes.len() as u32;
+
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&content_bytes);
+        buf.extend_from_slice(&metadata_bytes);
+        buf.extend_from_slice(&content_length.to_le_bytes());
+        std::fs::write(&path, &buf).unwrap();
+
+        // Also create a .tmp file to simulate our in-progress write
+        let tmp_path = path.with_extension("tmp");
+        std::fs::write(&tmp_path, &buf).unwrap();
+        assert!(tmp_path.exists(), "tmp file should exist before put_blob");
+
+        // Now call put_blob — the dedup check (path.exists()) should catch it
+        // and return Ok immediately
+        let result = store
+            .put_blob(data, blob_type, Default::default())
+            .await;
+        assert!(result.is_ok(), "put_blob should succeed when blob already exists");
+        assert_eq!(result.unwrap(), blob_id);
+
+        // Verify the blob is readable
+        let blob_data = store.get_blob_opt(&blob_id).await.unwrap().unwrap();
+        assert_eq!(blob_data.blob_type(), BlobType::Data);
+        assert_eq!(
+            blob_data.data().as_ref(),
+            &serde_json::json!({"race": "condition"})
+        );
     }
 }
