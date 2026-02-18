@@ -160,64 +160,22 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = None
 
 
-class BackoffConfig1(Struct, kw_only=True):
+class BackoffConfigConstant(Struct, kw_only=True):
     type: Literal['constant']
-    delayMs: (
-        Annotated[int, Meta(description='Delay in milliseconds (default: 1000).', ge=0)]
-        | None
-    ) = None
+    delayMs: Annotated[int, Meta(ge=0)] | None = None
 
 
-class BackoffConfig2(Struct, kw_only=True):
+class BackoffConfigExponential(Struct, kw_only=True):
     type: Literal['exponential']
-    minDelayMs: (
-        Annotated[
-            int,
-            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
-        ]
-        | None
-    ) = None
-    maxDelayMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
-            ),
-        ]
-        | None
-    ) = None
-    factor: (
-        Annotated[float, Meta(description='Multiplier per attempt (default: 2.0).')]
-        | None
-    ) = None
+    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    factor: float | None = None
 
 
-class BackoffConfig3(Struct, kw_only=True):
+class BackoffConfigFibonacci(Struct, kw_only=True):
     type: Literal['fibonacci']
-    minDelayMs: (
-        Annotated[
-            int,
-            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
-        ]
-        | None
-    ) = None
-    maxDelayMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
-            ),
-        ]
-        | None
-    ) = None
-
-
-BackoffConfig = Annotated[
-    BackoffConfig1 | BackoffConfig2 | BackoffConfig3,
-    Meta(
-        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
-    ),
-]
+    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
 
 
 class Schema(Struct, kw_only=True):
@@ -337,25 +295,12 @@ StepflowTransport = Annotated[
 ]
 
 
-class RetryConfig(Struct, kw_only=True):
-    maxAttempts: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Maximum number of execution attempts (default: 3).', ge=0
-            ),
-        ]
-        | None
-    ) = None
-    backoff: (
-        Annotated[
-            BackoffConfig,
-            Meta(
-                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
-            ),
-        ]
-        | None
-    ) = None
+BackoffConfig = Annotated[
+    BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
+    Meta(
+        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
+    ),
+]
 
 
 FlowResult = Annotated[
@@ -408,8 +353,25 @@ StorageConfig = Annotated[
 ]
 
 
-class StepflowPluginConfig(Struct, kw_only=True):
-    retry: RetryConfig | None = None
+class RetryConfig(Struct, kw_only=True):
+    maxAttempts: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum number of execution attempts (default: 3).', ge=0
+            ),
+        ]
+        | None
+    ) = None
+    backoff: (
+        Annotated[
+            BackoffConfig,
+            Meta(
+                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
+            ),
+        ]
+        | None
+    ) = None
 
 
 MockComponentBehavior = Annotated[
@@ -467,14 +429,18 @@ class RoutingConfig(Struct, kw_only=True):
     ]
 
 
-class SupportedPlugin1(StepflowPluginConfig, kw_only=True):
-    type: Literal['stepflow']
+class StepflowPluginConfig(Struct, kw_only=True):
+    retry: RetryConfig | None = None
 
 
 class MockComponent(Struct, kw_only=True):
     input_schema: Schema
     output_schema: Schema
     behaviors: Dict[str, MockComponentBehavior]
+
+
+class SupportedPlugin1(StepflowPluginConfig, kw_only=True):
+    type: Literal['stepflow']
 
 
 class MockPlugin(Struct, kw_only=True):

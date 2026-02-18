@@ -31,7 +31,6 @@ import pytest
 
 from helpers import (
     ORCH1_URL,
-    clear_tracker,
     count_step_executions,
     docker_kill,
     docker_start,

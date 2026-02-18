@@ -58,7 +58,7 @@ impl RetryConfig {
 }
 
 /// Backoff strategy for retry delays. Each variant carries only its relevant parameters.
-#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum BackoffConfig {
     /// Fixed delay between retries.
@@ -91,6 +91,131 @@ pub enum BackoffConfig {
         #[serde(default = "BackoffConfig::default_max_delay_ms")]
         max_delay_ms: u64,
     },
+}
+
+/// Helper to build a backoff variant schema with `type` discriminator property.
+fn backoff_variant_schema(
+    title: &str,
+    description: &str,
+    extra_properties: &[(&str, utoipa::openapi::schema::Schema)],
+) -> utoipa::openapi::schema::Schema {
+    use utoipa::openapi::schema::*;
+
+    let mut builder = ObjectBuilder::new()
+        .schema_type(SchemaType::Type(Type::Object))
+        .title(Some(title))
+        .description(Some(description))
+        .property(
+            "type",
+            ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)),
+        )
+        .required("type");
+
+    for (name, prop_schema) in extra_properties {
+        builder = builder.property(*name, prop_schema.clone());
+    }
+
+    Schema::Object(builder.build())
+}
+
+impl utoipa::PartialSchema for BackoffConfig {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::*;
+
+        let mut discriminator = Discriminator::new("type");
+        discriminator.mapping = [
+            (
+                "constant".to_string(),
+                "#/components/schemas/BackoffConfigConstant".to_string(),
+            ),
+            (
+                "exponential".to_string(),
+                "#/components/schemas/BackoffConfigExponential".to_string(),
+            ),
+            (
+                "fibonacci".to_string(),
+                "#/components/schemas/BackoffConfigFibonacci".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        RefOr::T(schema::Schema::OneOf(
+            schema::OneOfBuilder::new()
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigConstant",
+                )))
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigExponential",
+                )))
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigFibonacci",
+                )))
+                .description(Some(
+                    "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
+                ))
+                .discriminator(Some(discriminator))
+                .build(),
+        ))
+    }
+}
+
+impl utoipa::ToSchema for BackoffConfig {
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::openapi::RefOr;
+        use utoipa::openapi::schema::*;
+
+        let uint_schema = || {
+            Schema::Object(
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::Type(Type::Integer))
+                    .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64)))
+                    .minimum(Some(0.0))
+                    .build(),
+            )
+        };
+
+        let constant = backoff_variant_schema(
+            "BackoffConfigConstant",
+            "Fixed delay between retries.",
+            &[("delayMs", uint_schema())],
+        );
+        schemas.push(("BackoffConfigConstant".to_string(), RefOr::T(constant)));
+
+        let exponential = backoff_variant_schema(
+            "BackoffConfigExponential",
+            "Exponential backoff (delay doubles each attempt by default).",
+            &[
+                ("minDelayMs", uint_schema()),
+                ("maxDelayMs", uint_schema()),
+                (
+                    "factor",
+                    Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::Number))
+                            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Float)))
+                            .build(),
+                    ),
+                ),
+            ],
+        );
+        schemas.push((
+            "BackoffConfigExponential".to_string(),
+            RefOr::T(exponential),
+        ));
+
+        let fibonacci = backoff_variant_schema(
+            "BackoffConfigFibonacci",
+            "Fibonacci backoff (delay follows the Fibonacci sequence).",
+            &[("minDelayMs", uint_schema()), ("maxDelayMs", uint_schema())],
+        );
+        schemas.push(("BackoffConfigFibonacci".to_string(), RefOr::T(fibonacci)));
+    }
 }
 
 impl Default for BackoffConfig {

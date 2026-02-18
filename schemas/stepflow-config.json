@@ -483,81 +483,92 @@
     "BackoffConfig": {
       "oneOf": [
         {
-          "type": "object",
-          "description": "Fixed delay between retries.",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "delayMs": {
-              "type": "integer",
-              "format": "int64",
-              "description": "Delay in milliseconds (default: 1000).",
-              "minimum": 0
-            },
-            "type": {
-              "type": "string",
-              "const": "constant"
-            }
-          }
+          "$ref": "#/$defs/BackoffConfigConstant"
         },
         {
-          "type": "object",
-          "description": "Exponential backoff (delay doubles each attempt by default).",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "minDelayMs": {
-              "type": "integer",
-              "format": "int64",
-              "description": "Starting delay in milliseconds (default: 1000).",
-              "minimum": 0
-            },
-            "maxDelayMs": {
-              "type": "integer",
-              "format": "int64",
-              "description": "Maximum delay cap in milliseconds (default: 10000).",
-              "minimum": 0
-            },
-            "factor": {
-              "type": "number",
-              "format": "float",
-              "description": "Multiplier per attempt (default: 2.0)."
-            },
-            "type": {
-              "type": "string",
-              "const": "exponential"
-            }
-          }
+          "$ref": "#/$defs/BackoffConfigExponential"
         },
         {
-          "type": "object",
-          "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "minDelayMs": {
-              "type": "integer",
-              "format": "int64",
-              "description": "Starting delay in milliseconds (default: 1000).",
-              "minimum": 0
-            },
-            "maxDelayMs": {
-              "type": "integer",
-              "format": "int64",
-              "description": "Maximum delay cap in milliseconds (default: 10000).",
-              "minimum": 0
-            },
-            "type": {
-              "type": "string",
-              "const": "fibonacci"
-            }
-          }
+          "$ref": "#/$defs/BackoffConfigFibonacci"
         }
       ],
-      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters."
+      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
+      "discriminator": {
+        "propertyName": "type",
+        "mapping": {
+          "constant": "#/$defs/BackoffConfigConstant",
+          "exponential": "#/$defs/BackoffConfigExponential",
+          "fibonacci": "#/$defs/BackoffConfigFibonacci"
+        }
+      }
+    },
+    "BackoffConfigConstant": {
+      "type": "object",
+      "title": "BackoffConfigConstant",
+      "description": "Fixed delay between retries.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "delayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        }
+      }
+    },
+    "BackoffConfigExponential": {
+      "type": "object",
+      "title": "BackoffConfigExponential",
+      "description": "Exponential backoff (delay doubles each attempt by default).",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "maxDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "factor": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "BackoffConfigFibonacci": {
+      "type": "object",
+      "title": "BackoffConfigFibonacci",
+      "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "maxDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        }
+      }
     },
     "MockComponent": {
       "type": "object",
