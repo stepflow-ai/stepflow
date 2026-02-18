@@ -21,6 +21,7 @@ to a JSONL file, and returns the input payload along with execution metadata.
 import asyncio
 import json
 import os
+import signal
 import time
 from datetime import datetime, timezone
 
@@ -29,6 +30,10 @@ import msgspec
 from stepflow_py.worker import StepflowContext, StepflowServer
 
 TRACKER_FILE = os.environ.get("TRACKER_FILE", "/tracker/executions.jsonl")
+
+# SIGUSR1 handler for test-triggered crashes. Calling os._exit() causes the
+# container's PID 1 to exit, which Docker's restart policy will auto-restart.
+signal.signal(signal.SIGUSR1, lambda *_: os._exit(1))
 
 server = StepflowServer()
 

@@ -145,13 +145,32 @@ def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 
 def docker_kill(*services: str):
-    """Send SIGKILL to Docker Compose service(s)."""
+    """Send SIGKILL to Docker Compose service(s).
+
+    Note: Docker treats this as a manual stop — the restart policy does NOT
+    trigger. Use crash_worker() for a realistic internal crash that Docker
+    auto-restarts.
+    """
     _compose("kill", *services)
 
 
 def docker_start(*services: str):
     """Start stopped Docker Compose service(s)."""
     _compose("start", *services)
+
+
+def crash_worker():
+    """Crash the worker process from inside the container.
+
+    Sends SIGUSR1 to PID 1 (the main Python process), which has a handler
+    that calls os._exit(1). Because the process exits internally, Docker's
+    ``restart: unless-stopped`` policy auto-restarts the container.
+    """
+    _compose(
+        "exec", "-T", "worker",
+        "python", "-c", "import os, signal; os.kill(1, signal.SIGUSR1)",
+        check=False,  # the exec may fail if the container dies mid-command
+    )
 
 
 def compose_down():

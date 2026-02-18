@@ -30,6 +30,7 @@ import pytest
 from helpers import (
     ORCH1_URL,
     count_step_executions,
+    crash_worker,
     docker_kill,
     docker_start,
     get_step_tracker_records,
@@ -49,9 +50,10 @@ WORKFLOWS = Path(__file__).parent / "workflows"
 async def test_worker_crash_single_retry(compose_env):
     """Scenario D: Worker crashes once, orchestrator retries and succeeds.
 
-    The orchestrator's retry mechanism (with fibonacci backoff) should
-    re-send the request after the worker restarts. We kill the worker
-    right after step1 completes so the crash hits step2.
+    crash_worker() sends SIGUSR1 to the worker's PID 1, causing os._exit(1).
+    Docker's ``restart: unless-stopped`` policy auto-restarts the container.
+    The orchestrator's fibonacci backoff keeps retrying until the worker is
+    back, then the step succeeds.
     """
     # 1. Submit a sequential run (step1=5s, step2=5s, step3=5s)
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
@@ -63,14 +65,11 @@ async def test_worker_crash_single_retry(compose_env):
         "step1 did not complete"
     )
 
-    # 3. Kill the worker — step2 is starting or in-progress, so this
-    #    interrupts step2's execution.
-    docker_kill("worker")
+    # 3. Crash the worker — step2 is starting or in-progress, so this
+    #    interrupts step2's execution. Docker auto-restarts the container.
+    crash_worker()
 
-    # 4. Immediately restart the worker. The orchestrator's fibonacci backoff
-    #    (2s, 2s, 4s...) gives the worker time to come back before retries
-    #    are exhausted.
-    docker_start("worker")
+    # 4. Wait for the auto-restarted worker to become healthy.
     wait_for_worker_health(timeout=30)
 
     # 5. The orchestrator should retry step2 and the run should complete.
@@ -119,8 +118,11 @@ async def test_worker_crash_exhausts_retries(compose_env):
         "step1 did not start executing"
     )
 
-    # 3. Kill the worker and leave it dead. With max_attempts=3 and fibonacci
-    #    backoff (2s, 2s), all retries exhaust in ~5s.
+    # 3. Kill the worker and leave it dead. We use docker_kill (not
+    #    crash_worker) because docker_kill is a manual stop that prevents
+    #    Docker's restart policy from bringing it back.
+    #    With max_attempts=3 and fibonacci backoff (2s, 2s), retries exhaust
+    #    in ~5s.
     docker_kill("worker")
 
     # 4. The run should have failed (all retries exhausted)
