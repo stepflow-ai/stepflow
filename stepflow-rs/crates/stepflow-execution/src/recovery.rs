@@ -133,6 +133,15 @@ pub async fn recover_orphaned_runs(
     let runs_to_recover =
         claim_for_recovery(lease_manager, &metadata_store, &orchestrator_id, limit).await?;
 
+    // Filter out runs that are already being actively executed by this process.
+    // This prevents the periodic recovery loop from re-recovering runs that are
+    // in-progress (they show up as status=Running with our orchestrator_id).
+    let active = env.active_executions();
+    let runs_to_recover: Vec<_> = runs_to_recover
+        .into_iter()
+        .filter(|r| !active.contains(&r.root_run_id))
+        .collect();
+
     if runs_to_recover.is_empty() {
         log::info!("No runs to recover");
         return Ok(RecoveryResult::new());
@@ -766,6 +775,68 @@ mod tests {
         result.record_failure(run2, "test error".to_string());
         assert_eq!(result.failed, 1);
         assert_eq!(result.failed_runs, vec![(run2, "test error".to_string())]);
+    }
+
+    /// Recovery must skip runs that are already tracked in ActiveExecutions.
+    /// Without this filter, periodic recovery would re-recover runs that are
+    /// actively executing (they appear as status=Running + our orchestrator_id).
+    #[tokio::test]
+    async fn test_recovery_skips_active_executions() {
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Store a valid flow
+        let flow = Arc::new(create_test_flow());
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        // Create a run that appears to need recovery
+        let run_id = uuid::Uuid::now_v7();
+        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(params)
+            .await
+            .expect("should create run");
+
+        // Add journal entries so recovery would succeed
+        let entry = JournalEntry::new(
+            run_id,
+            run_id,
+            JournalEvent::RunCreated {
+                flow_id,
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: None,
+            },
+        );
+        journal.append(entry).await.expect("should append");
+
+        // Register this run as already active (simulates an in-flight execution)
+        let active = env.active_executions();
+        active.spawn(run_id, async {
+            // Long-running task to keep it active during the test
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        });
+        assert!(active.contains(&run_id));
+
+        // Recovery should skip the active run
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        assert_eq!(
+            result.recovered, 0,
+            "Should not recover a run that is already active"
+        );
+        assert_eq!(result.failed, 0);
+
+        // Clean up
+        active.shutdown();
     }
 
     /// Integration test: Create a partial execution, abort it, and verify recovery resumes it.
