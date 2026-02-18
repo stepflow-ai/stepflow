@@ -199,9 +199,35 @@ def read_tracker_records() -> list[dict]:
     return records
 
 
-def count_step_executions(records: list[dict], step_label: str) -> int:
-    """Count how many times a specific step_label appears in tracker records."""
-    return sum(1 for r in records if r.get("step_label") == step_label)
+def count_step_executions(
+    records: list[dict],
+    step_label: str,
+    run_id: str | None = None,
+) -> int:
+    """Count how many times a specific step_label appears in tracker records.
+
+    If run_id is provided, only count records matching both run_id and step_label.
+    """
+    return sum(
+        1
+        for r in records
+        if r.get("step_label") == step_label
+        and (run_id is None or r.get("run_id") == run_id)
+    )
+
+
+def get_step_tracker_records(
+    records: list[dict],
+    step_label: str,
+    run_id: str | None = None,
+) -> list[dict]:
+    """Get tracker records for a specific step_label (and optionally run_id)."""
+    return [
+        r
+        for r in records
+        if r.get("step_label") == step_label
+        and (run_id is None or r.get("run_id") == run_id)
+    ]
 
 
 def clear_tracker():
@@ -212,12 +238,30 @@ def clear_tracker():
     )
 
 
-def poll_tracker_for_step(step_label: str, timeout: float = 30) -> bool:
+def poll_tracker_for_step(
+    step_label: str,
+    run_id: str | None = None,
+    timeout: float = 30,
+) -> bool:
     """Poll tracker until a given step_label appears, or timeout."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         records = read_tracker_records()
-        if count_step_executions(records, step_label) > 0:
+        if count_step_executions(records, step_label, run_id=run_id) > 0:
             return True
         time.sleep(1)
     return False
+
+
+def wait_for_worker_health(timeout: float = 30):
+    """Wait for the worker container to become healthy after restart."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get("http://localhost:8080/health", timeout=2)
+            if resp.status_code == 200:
+                return
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+            pass
+        time.sleep(1)
+    raise TimeoutError(f"Worker not healthy within {timeout}s")

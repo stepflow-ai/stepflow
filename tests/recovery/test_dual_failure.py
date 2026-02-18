@@ -32,6 +32,7 @@ from helpers import (
     count_step_executions,
     docker_kill,
     docker_start,
+    get_step_tracker_records,
     poll_tracker_for_step,
     read_tracker_records,
     store_flow,
@@ -95,15 +96,27 @@ async def test_dual_failure_recovery(compose_env):
     records = read_tracker_records()
 
     # Verify recovery produced new work for both runs
-    assert count_step_executions(records, "step3") >= 1, (
+    assert count_step_executions(records, "step3", run_a_id) >= 1, (
         "step3 should have been executed by recovery — sequential run did not produce new work"
     )
-    assert count_step_executions(records, "aggregate") >= 1, (
+    assert count_step_executions(records, "aggregate", run_b_id) >= 1, (
         "aggregate should have been executed by recovery — parallel run did not produce new work"
     )
 
     # All steps executed at least once (at-least-once semantics).
     for label in ["step1", "step2"]:
-        assert count_step_executions(records, label) >= 1, f"{label} should have executed"
+        assert count_step_executions(records, label, run_a_id) >= 1, f"{label} should have executed"
     for label in ["parallel_a", "parallel_b", "parallel_c", "parallel_d"]:
-        assert count_step_executions(records, label) >= 1, f"{label} should have executed"
+        assert count_step_executions(records, label, run_b_id) >= 1, f"{label} should have executed"
+
+    # Attempt tracking: step1 completed before the crash, not retried.
+    step1_records = get_step_tracker_records(records, "step1", run_a_id)
+    assert step1_records[0]["attempt"] == 1, "step1 should not have been retried"
+    assert step1_records[0]["tracker_attempt"] == 1, "step1 should have a single execution"
+
+    # step3 and aggregate dispatched fresh by the recovered orchestrators.
+    step3_records = get_step_tracker_records(records, "step3", run_a_id)
+    assert step3_records[-1]["attempt"] == 1, "step3 should be attempt 1 (fresh dispatch)"
+
+    agg_records = get_step_tracker_records(records, "aggregate", run_b_id)
+    assert agg_records[-1]["attempt"] == 1, "aggregate should be attempt 1 (fresh dispatch)"

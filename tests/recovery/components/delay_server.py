@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 import msgspec
 
-from stepflow_py.worker import StepflowServer
+from stepflow_py.worker import StepflowContext, StepflowServer
 
 TRACKER_FILE = os.environ.get("TRACKER_FILE", "/tracker/executions.jsonl")
 
@@ -45,10 +45,35 @@ class DelayOutput(msgspec.Struct):
     step_label: str
     executed_at: str
     duration: float
+    attempt: int
+    tracker_attempt: int
+
+
+def _count_tracker_records(run_id: str, step_label: str) -> int:
+    """Count existing tracker records for this run_id + step_label."""
+    count = 0
+    try:
+        with open(TRACKER_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    if (
+                        record.get("run_id") == run_id
+                        and record.get("step_label") == step_label
+                    ):
+                        count += 1
+                except json.JSONDecodeError:
+                    continue
+    except FileNotFoundError:
+        pass
+    return count
 
 
 @server.component
-async def delay(input: DelayInput) -> DelayOutput:
+async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
     start = time.monotonic()
 
     # Sleep in small increments to allow clean shutdown
@@ -63,12 +88,18 @@ async def delay(input: DelayInput) -> DelayOutput:
     if input.should_fail:
         raise RuntimeError(f"Intentional failure for step {input.step_label}")
 
+    run_id = context.run_id or ""
+    tracker_attempt = _count_tracker_records(run_id, input.step_label) + 1
+
     # Write tracker record
     record = {
+        "run_id": run_id,
         "step_label": input.step_label,
         "executed_at": executed_at,
         "duration": duration,
         "pid": os.getpid(),
+        "attempt": context.attempt,
+        "tracker_attempt": tracker_attempt,
     }
     try:
         with open(TRACKER_FILE, "a") as f:
@@ -81,6 +112,8 @@ async def delay(input: DelayInput) -> DelayOutput:
         step_label=input.step_label,
         executed_at=executed_at,
         duration=duration,
+        attempt=context.attempt,
+        tracker_attempt=tracker_attempt,
     )
 
 

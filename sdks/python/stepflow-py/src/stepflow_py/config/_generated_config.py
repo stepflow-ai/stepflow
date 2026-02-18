@@ -160,6 +160,66 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = None
 
 
+class BackoffConfig1(Struct, kw_only=True):
+    type: Literal['constant']
+    delayMs: (
+        Annotated[int, Meta(description='Delay in milliseconds (default: 1000).', ge=0)]
+        | None
+    ) = None
+
+
+class BackoffConfig2(Struct, kw_only=True):
+    type: Literal['exponential']
+    minDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | None
+    ) = None
+    maxDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
+            ),
+        ]
+        | None
+    ) = None
+    factor: (
+        Annotated[float, Meta(description='Multiplier per attempt (default: 2.0).')]
+        | None
+    ) = None
+
+
+class BackoffConfig3(Struct, kw_only=True):
+    type: Literal['fibonacci']
+    minDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | None
+    ) = None
+    maxDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
+            ),
+        ]
+        | None
+    ) = None
+
+
+BackoffConfig = Annotated[
+    BackoffConfig1 | BackoffConfig2 | BackoffConfig3,
+    Meta(
+        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
+    ),
+]
+
+
 class Schema(Struct, kw_only=True):
     pass
 
@@ -277,6 +337,27 @@ StepflowTransport = Annotated[
 ]
 
 
+class RetryConfig(Struct, kw_only=True):
+    maxAttempts: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum number of execution attempts (default: 3).', ge=0
+            ),
+        ]
+        | None
+    ) = None
+    backoff: (
+        Annotated[
+            BackoffConfig,
+            Meta(
+                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
+            ),
+        ]
+        | None
+    ) = None
+
+
 FlowResult = Annotated[
     FlowResultSuccess | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
@@ -328,7 +409,7 @@ StorageConfig = Annotated[
 
 
 class StepflowPluginConfig(Struct, kw_only=True):
-    pass
+    retry: RetryConfig | None = None
 
 
 MockComponentBehavior = Annotated[

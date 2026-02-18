@@ -33,10 +33,15 @@ def compose_env():
     """Start a fresh Docker Compose environment for each test.
 
     Tears down volumes for clean state, builds and starts all services,
-    and waits for health checks before yielding.
+    and waits for health checks before yielding. Retries once on startup
+    failure (transient SQLite migration races between orchestrators).
     """
     compose_down()
-    compose_up()
+    try:
+        compose_up()
+    except Exception:
+        compose_down()
+        compose_up()
 
     wait_for_health(ORCH1_URL, timeout=60)
     wait_for_health(ORCH2_URL, timeout=60)

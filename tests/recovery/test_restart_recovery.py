@@ -35,6 +35,7 @@ from helpers import (
     count_step_executions,
     docker_kill,
     docker_start,
+    get_step_tracker_records,
     poll_tracker_for_step,
     read_tracker_records,
     store_flow,
@@ -80,15 +81,28 @@ async def test_restart_recovery_sequential(compose_env):
     records = read_tracker_records()
 
     # Verify recovery produced new work: step3 must now be present
-    assert count_step_executions(records, "step3") >= 1, (
+    assert count_step_executions(records, "step3", run_id) >= 1, (
         "step3 should have been executed by recovery — recovery did not produce new work"
     )
     # step1 completed and was journaled before the kill — must not re-execute
-    assert count_step_executions(records, "step1") == 1, (
+    assert count_step_executions(records, "step1", run_id) == 1, (
         "step1 should not be re-executed after recovery"
     )
     # step2 may have been in-flight when killed (at-least-once semantics)
-    assert count_step_executions(records, "step2") >= 1, "step2 should have executed"
+    assert count_step_executions(records, "step2", run_id) >= 1, "step2 should have executed"
+
+    # Attempt tracking: step1 was completed before the crash, so it should
+    # show attempt=1 (no retries needed) and tracker_attempt=1 (single execution).
+    step1_records = get_step_tracker_records(records, "step1", run_id)
+    assert step1_records[0]["attempt"] == 1, "step1 should not have been retried"
+    assert step1_records[0]["tracker_attempt"] == 1, "step1 should have a single execution"
+
+    # step3 was dispatched fresh by the recovered orchestrator.
+    # attempt=1 because attempt counts are not journaled, so they reset on
+    # recovery. This is a known bug — see #637.
+    step3_records = get_step_tracker_records(records, "step3", run_id)
+    assert step3_records[-1]["attempt"] == 1, "step3 should be attempt 1 (fresh dispatch, #637)"
+    assert step3_records[-1]["tracker_attempt"] == 1, "step3 should have a single execution"
 
 
 @pytest.mark.asyncio
@@ -117,9 +131,14 @@ async def test_restart_recovery_parallel(compose_env):
     records = read_tracker_records()
 
     # Verify recovery produced new work: aggregate must now be present
-    assert count_step_executions(records, "aggregate") >= 1, (
+    assert count_step_executions(records, "aggregate", run_id) >= 1, (
         "aggregate should have been executed by recovery — recovery did not produce new work"
     )
     # All parallel steps must have executed at least once (at-least-once semantics).
     for label in ["parallel_a", "parallel_b", "parallel_c", "parallel_d"]:
-        assert count_step_executions(records, label) >= 1, f"{label} should have executed"
+        assert count_step_executions(records, label, run_id) >= 1, f"{label} should have executed"
+
+    # Attempt tracking: aggregate was dispatched fresh by the recovered orchestrator.
+    agg_records = get_step_tracker_records(records, "aggregate", run_id)
+    assert agg_records[-1]["attempt"] == 1, "aggregate should be attempt 1 (fresh dispatch)"
+    assert agg_records[-1]["tracker_attempt"] == 1, "aggregate should have a single execution"
