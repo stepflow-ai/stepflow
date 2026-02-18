@@ -1,0 +1,191 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+"""Worker crash scenarios.
+
+These tests verify the orchestrator's retry behavior when the worker
+process crashes during component execution. The orchestrator retries
+with configurable fibonacci backoff while the worker restarts.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from pathlib import Path
+
+import pytest
+
+from helpers import (
+    ORCH1_URL,
+    count_step_executions,
+    crash_worker,
+    docker_kill,
+    docker_start,
+    get_step_tracker_records,
+    poll_tracker_for_step,
+    read_tracker_records,
+    store_flow,
+    submit_run,
+    wait_for_health,
+    wait_for_run,
+    wait_for_worker_health,
+)
+
+WORKFLOWS = Path(__file__).parent / "workflows"
+
+
+@pytest.mark.asyncio
+async def test_worker_crash_single_retry(compose_env):
+    """Scenario D: Worker crashes once, orchestrator retries and succeeds.
+
+    crash_worker() sends SIGUSR1 to the worker's PID 1, causing os._exit(1).
+    Docker's ``restart: unless-stopped`` policy auto-restarts the container.
+    The orchestrator's fibonacci backoff keeps retrying until the worker is
+    back, then the step succeeds.
+    """
+    # 1. Submit a sequential run (step1=5s, step2=5s, step3=5s)
+    flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
+    run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "worker_crash"}})
+
+    # 2. Wait for step1 to complete. Once the tracker record appears,
+    #    step1 is done and step2 is about to start (or just started).
+    assert poll_tracker_for_step("step1", run_id=run_id, timeout=15), (
+        "step1 did not complete"
+    )
+
+    # 3. Crash the worker — step2 is starting or in-progress, so this
+    #    interrupts step2's execution. Docker auto-restarts the container.
+    crash_worker()
+
+    # 4. Wait for the auto-restarted worker to become healthy.
+    wait_for_worker_health(timeout=30)
+
+    # 5. The orchestrator should retry step2 and the run should complete.
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=120)
+    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+
+    # 6. Verify attempt tracking
+    records = read_tracker_records()
+
+    # step1 completed before the crash — should have exactly 1 execution.
+    assert count_step_executions(records, "step1", run_id) == 1, (
+        "step1 should not be re-executed — it completed before the crash"
+    )
+    step1_records = get_step_tracker_records(records, "step1", run_id)
+    assert step1_records[0]["attempt"] == 1, "step1 should be attempt 1 (completed before crash)"
+
+    # step2 was interrupted by the crash. The orchestrator should have retried.
+    # The successful execution should show attempt >= 2.
+    step2_records = get_step_tracker_records(records, "step2", run_id)
+    assert len(step2_records) >= 1, "step2 should have at least one tracker record"
+    successful_record = step2_records[-1]
+    assert successful_record["attempt"] >= 2, (
+        f"step2 should show attempt >= 2 after worker crash retry, got {successful_record['attempt']}"
+    )
+
+    # All three steps should have completed
+    for label in ["step1", "step2", "step3"]:
+        assert count_step_executions(records, label, run_id) >= 1, (
+            f"{label} should have executed"
+        )
+
+
+@pytest.mark.asyncio
+async def test_worker_crash_exhausts_retries(compose_env):
+    """Scenario E: Worker stays down, orchestrator exhausts retries.
+
+    Kill the worker and leave it dead. All retry attempts get connection
+    errors. The run should end in failed state.
+    """
+    # 1. Submit a sequential run
+    flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
+    run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "exhaust_retries"}})
+
+    # 2. Wait for step1 to start executing
+    assert poll_tracker_for_step("step1", run_id=run_id, timeout=15), (
+        "step1 did not start executing"
+    )
+
+    # 3. Kill the worker and leave it dead. We use docker_kill (not
+    #    crash_worker) because docker_kill is a manual stop that prevents
+    #    Docker's restart policy from bringing it back.
+    #    With max_attempts=3 and fibonacci backoff (2s, 2s), retries exhaust
+    #    in ~5s.
+    docker_kill("worker")
+
+    # 4. The run should have failed (all retries exhausted)
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=30)
+    assert result["status"] == "failed", f"Expected failed, got {result['status']}"
+
+    # 5. Restart worker for cleanup (next test starts fresh via compose_down,
+    #    but restart here in case of test ordering changes)
+    docker_start("worker")
+
+
+@pytest.mark.asyncio
+async def test_worker_and_orchestrator_crash(compose_env):
+    """Scenario F: Both worker and orchestrator crash, full recovery.
+
+    After both restart, the orchestrator recovers from journal and
+    re-dispatches incomplete steps to the now-healthy worker.
+    """
+    # 1. Submit a sequential run and wait for step1 to complete
+    flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
+    run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "dual_crash"}})
+
+    assert poll_tracker_for_step("step1", run_id=run_id, timeout=15), (
+        "step1 did not complete"
+    )
+    # Give step2 a moment to start dispatching
+    await asyncio.sleep(2)
+
+    # 2. Kill orchestrator first (step2 may be in-flight)
+    docker_kill("orchestrator-1")
+
+    # 3. Kill worker (destroys any in-progress work)
+    docker_kill("worker")
+
+    # 4. Wait a moment, then restart worker first (so it's ready for requests)
+    await asyncio.sleep(3)
+    docker_start("worker")
+    wait_for_worker_health(timeout=30)
+
+    # 5. Restart orchestrator — it should recover from journal
+    docker_start("orchestrator-1")
+    wait_for_health(ORCH1_URL, timeout=30)
+
+    # 6. Wait for the run to complete
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
+    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+
+    # 7. Verify step1 was not re-executed (journaled before crash)
+    records = read_tracker_records()
+    assert count_step_executions(records, "step1", run_id) == 1, (
+        "step1 should not be re-executed — it was journaled before the crash"
+    )
+
+    # All steps completed
+    for label in ["step1", "step2", "step3"]:
+        assert count_step_executions(records, label, run_id) >= 1, (
+            f"{label} should have executed"
+        )
+
+    # step3 dispatched fresh by the recovered orchestrator.
+    # attempt=1 because attempt counts are not journaled, so they reset on
+    # recovery. This is a known bug — see #637.
+    step3_records = get_step_tracker_records(records, "step3", run_id)
+    assert step3_records[-1]["attempt"] == 1, (
+        "step3 should be attempt 1 — attempt count resets on recovery (#637)"
+    )

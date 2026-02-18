@@ -55,7 +55,15 @@ pub async fn orphan_claiming_loop(
     // Check if the lease manager supports push-based orphan notification
     if let Some(mut orphan_receiver) = lease_manager.watch_orphans() {
         info!("Using push-based orphan notification");
-        run_push_mode(&env, &orchestrator_id, &cancel_token, &mut orphan_receiver).await;
+        run_push_mode(
+            &env,
+            &orchestrator_id,
+            &config,
+            interval,
+            &cancel_token,
+            &mut orphan_receiver,
+        )
+        .await;
     } else {
         // Fall back to polling mode
         info!("Using polling-based orphan detection");
@@ -65,17 +73,26 @@ pub async fn orphan_claiming_loop(
     info!("Orphan claiming loop exiting");
 }
 
-/// Run the orphan claiming loop in push-based mode.
+/// Run the orphan claiming loop in push-based mode with periodic fallback.
 ///
 /// Push notifications are treated as wake-up signals indicating orphans may be available.
 /// We don't target the specific notified run because it may have already been claimed
 /// by another orchestrator by the time we process the notification.
+///
+/// A periodic timer also fires to catch orphans that become available asynchronously
+/// (e.g., when the heartbeat loop marks runs as orphaned after detecting a stale
+/// orchestrator, which may happen slightly after the etcd lease-expiry notification).
 async fn run_push_mode(
     env: &Arc<StepflowEnvironment>,
     orchestrator_id: &OrchestratorId,
+    config: &RecoveryConfig,
+    interval: Duration,
     cancel_token: &CancellationToken,
     orphan_receiver: &mut tokio::sync::mpsc::UnboundedReceiver<uuid::Uuid>,
 ) {
+    let mut interval_timer = tokio::time::interval(interval);
+    interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
     loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
@@ -85,6 +102,11 @@ async fn run_push_mode(
             Some(_notified_run_id) = orphan_receiver.recv() => {
                 // Notification is a wake-up signal; claim whatever orphans are available
                 handle_orphan_recovery(env, orchestrator_id).await;
+            }
+            _ = interval_timer.tick() => {
+                // Periodic fallback: pick up orphans that the heartbeat loop has
+                // marked in the metadata store since the last push notification.
+                handle_periodic_recovery(env, orchestrator_id, config.max_claims_per_check).await;
             }
         }
     }

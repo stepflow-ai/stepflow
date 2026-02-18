@@ -1,0 +1,52 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: sequential_delay
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        data:
+          type: object
+    output:
+      type: object
+steps:
+- id: step1
+  component: /test/delay
+  input:
+    seconds: 5
+    step_label: "step1"
+    payload:
+      $input: data
+
+- id: step2
+  component: /test/delay
+  input:
+    seconds: 5
+    step_label: "step2"
+    payload:
+      $step: step1
+      path: "$.payload"
+
+- id: step3
+  component: /test/delay
+  input:
+    seconds: 5
+    step_label: "step3"
+    payload:
+      $step: step2
+      path: "$.payload"
+
+output:
+  step1_result:
+    $step: step1
+    path: "$.payload"
+  step2_result:
+    $step: step2
+    path: "$.payload"
+  step3_result:
+    $step: step3
+    path: "$.payload"
+  final_label:
+    $step: step3
+    path: "$.step_label"

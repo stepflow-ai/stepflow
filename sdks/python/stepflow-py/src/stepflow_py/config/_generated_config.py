@@ -160,6 +160,24 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = None
 
 
+class BackoffConfigConstant(Struct, kw_only=True):
+    type: Literal['constant']
+    delayMs: Annotated[int, Meta(ge=0)] | None = None
+
+
+class BackoffConfigExponential(Struct, kw_only=True):
+    type: Literal['exponential']
+    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    factor: float | None = None
+
+
+class BackoffConfigFibonacci(Struct, kw_only=True):
+    type: Literal['fibonacci']
+    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
+    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
+
+
 class Schema(Struct, kw_only=True):
     pass
 
@@ -277,6 +295,14 @@ StepflowTransport = Annotated[
 ]
 
 
+BackoffConfig = Annotated[
+    BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
+    Meta(
+        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
+    ),
+]
+
+
 FlowResult = Annotated[
     FlowResultSuccess | FlowResultFailed,
     Meta(description='The results of a step execution.', title='FlowResult'),
@@ -327,8 +353,25 @@ StorageConfig = Annotated[
 ]
 
 
-class StepflowPluginConfig(Struct, kw_only=True):
-    pass
+class RetryConfig(Struct, kw_only=True):
+    maxAttempts: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum number of execution attempts (default: 3).', ge=0
+            ),
+        ]
+        | None
+    ) = None
+    backoff: (
+        Annotated[
+            BackoffConfig,
+            Meta(
+                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
+            ),
+        ]
+        | None
+    ) = None
 
 
 MockComponentBehavior = Annotated[
@@ -386,14 +429,18 @@ class RoutingConfig(Struct, kw_only=True):
     ]
 
 
-class SupportedPlugin1(StepflowPluginConfig, kw_only=True):
-    type: Literal['stepflow']
+class StepflowPluginConfig(Struct, kw_only=True):
+    retry: RetryConfig | None = None
 
 
 class MockComponent(Struct, kw_only=True):
     input_schema: Schema
     output_schema: Schema
     behaviors: Dict[str, MockComponentBehavior]
+
+
+class SupportedPlugin1(StepflowPluginConfig, kw_only=True):
+    type: Literal['stepflow']
 
 
 class MockPlugin(Struct, kw_only=True):
