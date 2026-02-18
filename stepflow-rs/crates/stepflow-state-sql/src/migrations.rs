@@ -43,12 +43,6 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     })
     .await?;
 
-    // Migrate blobs.data column from TEXT to BLOB for raw binary storage
-    apply_migration(pool, "005_blobs_data_to_blob_type", || {
-        migrate_blobs_data_to_blob(pool)
-    })
-    .await?;
-
     Ok(())
 }
 
@@ -139,7 +133,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         r#"
             CREATE TABLE IF NOT EXISTS blobs (
                 id TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
+                data BLOB NOT NULL,
                 blob_type TEXT NOT NULL DEFAULT 'data',
                 filename TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -301,58 +295,6 @@ async fn add_orchestrator_id_column(pool: &SqlitePool) -> Result<(), StateError>
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_runs_orchestrator_id ON runs(orchestrator_id)")
         .execute(pool)
-        .await
-        .change_context(StateError::Initialization)?;
-
-    Ok(())
-}
-
-/// Migrate blobs.data column from TEXT to BLOB for raw binary storage.
-///
-/// SQLite doesn't support ALTER COLUMN, so we create a new table with the
-/// correct schema, copy data, drop the old table, then rename the new one.
-///
-/// We create the replacement table with a temp name and rename it to `blobs`
-/// at the end. The `legacy_alter_table` pragma prevents SQLite from updating
-/// FK references in other tables during the final rename, so `runs.flow_id
-/// REFERENCES blobs(id)` continues to work correctly.
-async fn migrate_blobs_data_to_blob(pool: &SqlitePool) -> Result<(), StateError> {
-    let mut tx = pool
-        .begin()
-        .await
-        .change_context(StateError::Initialization)?;
-
-    let statements = [
-        // Create replacement table with BLOB column
-        r#"CREATE TABLE _blobs_new (
-            id TEXT PRIMARY KEY,
-            data BLOB NOT NULL,
-            blob_type TEXT NOT NULL DEFAULT 'data',
-            filename TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )"#,
-        // Copy existing data (TEXT → BLOB via CAST)
-        "INSERT INTO _blobs_new (id, data, blob_type, filename, created_at) SELECT id, CAST(data AS BLOB), blob_type, filename, created_at FROM blobs",
-        // Drop old table and indexes
-        "DROP TABLE blobs",
-        // Prevent SQLite from updating FK references in other tables during rename
-        "PRAGMA legacy_alter_table = ON",
-        // Rename new table to blobs
-        "ALTER TABLE _blobs_new RENAME TO blobs",
-        "PRAGMA legacy_alter_table = OFF",
-        // Recreate index
-        "CREATE INDEX IF NOT EXISTS idx_blobs_type ON blobs(blob_type)",
-    ];
-
-    for sql in statements {
-        sqlx::query(sql)
-            .execute(&mut *tx)
-            .await
-            .change_context(StateError::Initialization)
-            .attach_printable_lazy(|| format!("Failed during blobs TEXT->BLOB migration: {sql}"))?;
-    }
-
-    tx.commit()
         .await
         .change_context(StateError::Initialization)?;
 

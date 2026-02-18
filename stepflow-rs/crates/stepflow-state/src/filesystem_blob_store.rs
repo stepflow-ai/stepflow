@@ -457,7 +457,7 @@ mod tests {
         let raw_bytes = b"Hello, binary world! \x00\x01\x02\xff";
 
         let blob_id = store
-            .put_blob_binary(raw_bytes, Default::default())
+            .put_blob_bytes(raw_bytes, BlobType::Binary, Default::default())
             .await
             .unwrap();
 

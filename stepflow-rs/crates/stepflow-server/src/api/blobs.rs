@@ -111,7 +111,7 @@ pub async fn store_blob(
         };
 
         let blob_id = blob_store
-            .put_blob_binary(&body, metadata)
+            .put_blob_bytes(&body, BlobType::Binary, metadata)
             .await
             .map_err(|_| ErrorResponse {
                 code: StatusCode::INTERNAL_SERVER_ERROR,

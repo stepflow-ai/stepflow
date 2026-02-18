@@ -21,9 +21,9 @@
 //! - [`put_blob_bytes`](BlobStore::put_blob_bytes) — store raw content bytes
 //! - [`get_blob_bytes`](BlobStore::get_blob_bytes) — retrieve raw content bytes
 //!
-//! All typed convenience methods (`put_blob`, `get_blob_opt`, `put_blob_binary`,
-//! `store_flow`, etc.) are provided as default implementations that handle
-//! serialization/deserialization and delegate to the core methods.
+//! All typed convenience methods (`put_blob`, `get_blob_opt`, `store_flow`, etc.)
+//! are provided as default implementations that handle serialization/deserialization
+//! and delegate to the core methods.
 
 use std::sync::Arc;
 
@@ -197,44 +197,6 @@ pub trait BlobStore: Send + Sync {
                 Some(blob_data) if blob_data.blob_type() == expected_type => Ok(Some(blob_data)),
                 _ => Ok(None),
             }
-        }
-        .boxed()
-    }
-
-    /// Store raw binary data as a blob and return its content-based ID.
-    ///
-    /// Delegates directly to [`put_blob_bytes`](Self::put_blob_bytes) with
-    /// `BlobType::Binary`. No base64 encoding is performed.
-    fn put_blob_binary(
-        &self,
-        data: &[u8],
-        metadata: BlobMetadata,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        self.put_blob_bytes(data, BlobType::Binary, metadata)
-    }
-
-    /// Retrieve raw binary data by blob ID.
-    ///
-    /// Calls [`get_blob_bytes`](Self::get_blob_bytes) and returns the raw
-    /// content bytes directly. Returns an error if the blob is not binary type.
-    fn get_blob_binary(
-        &self,
-        blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<u8>, StateError>> {
-        let blob_id = blob_id.clone();
-        async move {
-            let raw = self.get_blob_bytes(&blob_id).await?.ok_or_else(|| {
-                error_stack::report!(StateError::BlobNotFound {
-                    blob_id: blob_id.to_string(),
-                })
-            })?;
-            if raw.blob_type != BlobType::Binary {
-                return Err(error_stack::report!(StateError::Internal)).attach_printable(format!(
-                    "Blob '{}' is not a binary blob (type: {:?})",
-                    blob_id, raw.blob_type
-                ));
-            }
-            Ok(raw.content)
         }
         .boxed()
     }

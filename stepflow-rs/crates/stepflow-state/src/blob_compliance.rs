@@ -305,25 +305,28 @@ impl BlobStoreComplianceTests {
 
     /// Test that binary data can be stored and retrieved correctly.
     ///
-    /// Contract: put_blob_binary followed by get_blob_binary returns the same bytes.
+    /// Contract: put_blob_bytes with Binary type followed by get_blob_bytes
+    /// returns the same bytes.
     pub async fn test_binary_blob_round_trip<B: BlobStore>(store: &B) {
         let data = b"Hello, binary world! \x00\x01\x02\xff";
 
         let blob_id = store
-            .put_blob_binary(data, Default::default())
+            .put_blob_bytes(data, BlobType::Binary, Default::default())
             .await
-            .expect("put_blob_binary should succeed");
+            .expect("put_blob_bytes should succeed");
 
-        let retrieved = store
-            .get_blob_binary(&blob_id)
+        let raw = store
+            .get_blob_bytes(&blob_id)
             .await
-            .expect("get_blob_binary should succeed");
+            .expect("get_blob_bytes should succeed")
+            .expect("Blob should exist");
 
         assert_eq!(
-            retrieved.as_slice(),
+            raw.content.as_slice(),
             data,
             "Retrieved binary data should match stored data"
         );
+        assert_eq!(raw.blob_type, BlobType::Binary);
 
         // Also verify via get_blob that the type is correct
         let blob_data = store
@@ -340,14 +343,14 @@ impl BlobStoreComplianceTests {
         let data = b"dedup binary test data";
 
         let blob_id1 = store
-            .put_blob_binary(data, Default::default())
+            .put_blob_bytes(data, BlobType::Binary, Default::default())
             .await
-            .expect("first put_blob_binary should succeed");
+            .expect("first put_blob_bytes should succeed");
 
         let blob_id2 = store
-            .put_blob_binary(data, Default::default())
+            .put_blob_bytes(data, BlobType::Binary, Default::default())
             .await
-            .expect("second put_blob_binary should succeed");
+            .expect("second put_blob_bytes should succeed");
 
         assert_eq!(
             blob_id1, blob_id2,
