@@ -69,7 +69,7 @@ fn default_auto_migrate() -> bool {
 
 /// SQLite-based MetadataStore, BlobStore, and ExecutionJournal implementation.
 pub struct SqliteStateStore {
-    pool: SqlitePool,
+    pub(crate) pool: SqlitePool,
     /// Notifier for run completion events
     completion_notifier: RunCompletionNotifier,
 }
@@ -83,6 +83,19 @@ impl SqliteStateStore {
             .await
             .change_context(StateError::Connection)
             .attach_printable_lazy(|| format!("Database URL: {}", config.database_url))?;
+
+        // Enable WAL mode for safe concurrent access from multiple processes
+        // and set a busy timeout so writers wait rather than fail immediately.
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await
+            .change_context(StateError::Connection)
+            .attach_printable("Failed to set WAL journal mode")?;
+        sqlx::query("PRAGMA busy_timeout=5000")
+            .execute(&pool)
+            .await
+            .change_context(StateError::Connection)
+            .attach_printable("Failed to set busy timeout")?;
 
         if config.auto_migrate {
             migrations::run_migrations(&pool).await?;

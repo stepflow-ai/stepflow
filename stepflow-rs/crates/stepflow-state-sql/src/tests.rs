@@ -406,3 +406,87 @@ async fn sqlite_blob_compliance() {
     })
     .await;
 }
+
+// =========================================================================
+// Migration Idempotency Tests
+// =========================================================================
+
+/// Migrations must be idempotent: calling run_migrations twice on the same
+/// database must succeed. This exercises the `INSERT OR IGNORE` and
+/// concurrent-failure-recheck logic in `apply_migration`.
+#[tokio::test]
+async fn test_migrations_idempotent() {
+    // First call creates all tables and records migrations
+    let store = SqliteStateStore::in_memory().await.unwrap();
+
+    // Second call on the same pool should be a no-op (all migrations already applied)
+    crate::migrations::run_migrations(&store.pool)
+        .await
+        .unwrap();
+}
+
+/// Two separate pools connected to the same file-based SQLite database must
+/// both be able to run migrations without conflict. This simulates two
+/// orchestrators starting concurrently against a shared database.
+#[tokio::test]
+async fn test_migrations_concurrent_pools() {
+    use sqlx::sqlite::SqlitePoolOptions;
+    use tempfile::NamedTempFile;
+
+    let tmp = NamedTempFile::new().unwrap();
+    let url = format!("sqlite:{}?mode=rwc", tmp.path().display());
+
+    let pool1 = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .unwrap();
+    let pool2 = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .unwrap();
+
+    // Enable WAL mode on both (mirrors production setup)
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool1)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA busy_timeout=5000")
+        .execute(&pool1)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool2)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA busy_timeout=5000")
+        .execute(&pool2)
+        .await
+        .unwrap();
+
+    // Run migrations from both pools concurrently
+    let (r1, r2) = tokio::join!(
+        crate::migrations::run_migrations(&pool1),
+        crate::migrations::run_migrations(&pool2),
+    );
+
+    r1.expect("pool1 migrations should succeed");
+    r2.expect("pool2 migrations should succeed");
+
+    // Verify both can read/write after migrations
+    let store1 = SqliteStateStore::new(crate::SqliteStateStoreConfig {
+        database_url: url.clone(),
+        max_connections: 1,
+        auto_migrate: false, // Already migrated
+    })
+    .await
+    .unwrap();
+
+    let test_data = serde_json::json!({"test": "concurrent"});
+    let value_ref = stepflow_core::workflow::ValueRef::new(test_data);
+    store1
+        .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
+        .await
+        .unwrap();
+}

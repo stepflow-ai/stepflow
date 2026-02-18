@@ -1,0 +1,88 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.17
+    command:
+      - etcd
+      - --name=etcd0
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+
+  orchestrator-1:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.server
+    command:
+      - stepflow-server
+      - --port
+      - "7841"
+      - --config
+      - /app/config/stepflow-config.yml
+      - --orchestrator-id
+      - orch-1
+    ports:
+      - "7841:7841"
+    volumes:
+      - shared-db:/app/data
+      - ./stepflow-config.yml:/app/config/stepflow-config.yml:ro
+    depends_on:
+      etcd:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7841/api/v1/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 10s
+
+  orchestrator-2:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.server
+    command:
+      - stepflow-server
+      - --port
+      - "7842"
+      - --config
+      - /app/config/stepflow-config.yml
+      - --orchestrator-id
+      - orch-2
+    ports:
+      - "7842:7842"
+    volumes:
+      - shared-db:/app/data
+      - ./stepflow-config.yml:/app/config/stepflow-config.yml:ro
+    depends_on:
+      etcd:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7842/api/v1/health"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 10s
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: tests/recovery/Dockerfile.worker
+    ports:
+      - "8080:8080"
+    volumes:
+      - shared-tracker:/tracker
+    environment:
+      TRACKER_FILE: /tracker/executions.jsonl
+
+volumes:
+  shared-db:
+  shared-tracker:

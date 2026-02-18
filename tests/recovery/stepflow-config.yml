@@ -1,0 +1,31 @@
+plugins:
+  builtin:
+    type: builtin
+  test-worker:
+    type: stepflow
+    url: "http://worker:8080"
+
+routes:
+  "/test/{*component}":
+    - plugin: test-worker
+  "/{*component}":
+    - plugin: builtin
+
+storageConfig:
+  type: sqlite
+  databaseUrl: "sqlite:data/workflow_state.db?mode=rwc"
+  autoMigrate: true
+  maxConnections: 5
+
+leaseManager:
+  type: etcd
+  endpoints:
+    - "http://etcd:2379"
+
+recovery:
+  enabled: true
+  checkIntervalSecs: 3
+  leaseTtlSecs: 6
+
+blobApi:
+  enabled: false

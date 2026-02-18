@@ -1,0 +1,68 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: parallel_delay
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        data:
+          type: object
+    output:
+      type: object
+steps:
+- id: parallel_a
+  component: /test/delay
+  input:
+    seconds: 3
+    step_label: "parallel_a"
+    payload:
+      $input: data
+
+- id: parallel_b
+  component: /test/delay
+  input:
+    seconds: 5
+    step_label: "parallel_b"
+    payload:
+      $input: data
+
+- id: parallel_c
+  component: /test/delay
+  input:
+    seconds: 6
+    step_label: "parallel_c"
+    payload:
+      $input: data
+
+- id: parallel_d
+  component: /test/delay
+  input:
+    seconds: 7
+    step_label: "parallel_d"
+    payload:
+      $input: data
+
+- id: aggregate
+  component: /test/delay
+  input:
+    seconds: 2
+    step_label: "aggregate"
+    payload:
+      a:
+        $step: parallel_a
+        path: "$.step_label"
+      b:
+        $step: parallel_b
+        path: "$.step_label"
+      c:
+        $step: parallel_c
+        path: "$.step_label"
+      d:
+        $step: parallel_d
+        path: "$.step_label"
+
+output:
+  result:
+    $step: aggregate
+    path: "$.payload"
