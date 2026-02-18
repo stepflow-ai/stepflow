@@ -33,15 +33,14 @@
 //! - **Explicit directory**: Blobs are stored in a user-specified directory
 //! - **Temporary directory**: A temp directory is created and cleaned up on drop
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use stepflow_core::{BlobData, BlobId, BlobMetadata, BlobType, workflow::ValueRef};
+use stepflow_core::{BlobId, BlobMetadata, BlobType};
 
 use crate::StateError;
+use crate::blob_store::RawBlob;
 
 /// On-disk metadata stored after blob content.
 #[derive(Serialize, Deserialize)]
@@ -118,15 +117,16 @@ impl FilesystemBlobStore {
 }
 
 impl crate::BlobStore for FilesystemBlobStore {
-    fn put_blob(
+    fn put_blob_bytes(
         &self,
-        data: ValueRef,
+        content: &[u8],
         blob_type: BlobType,
         metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let content = content.to_vec();
         async move {
             let blob_id =
-                BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
+                BlobId::from_binary(&content).change_context(StateError::Serialization)?;
 
             let path = self.blob_path(&blob_id);
 
@@ -144,28 +144,6 @@ impl crate::BlobStore for FilesystemBlobStore {
                     })?;
             }
 
-            // Get raw content bytes based on blob type
-            let content_bytes = match blob_type {
-                BlobType::Binary => {
-                    // Decode base64 from the ValueRef to get raw bytes
-                    let base64_str = data
-                        .as_ref()
-                        .as_str()
-                        .ok_or_else(|| error_stack::report!(StateError::Serialization))
-                        .attach_printable("Binary blob data is not a string")?;
-                    BASE64_STANDARD
-                        .decode(base64_str)
-                        .change_context(StateError::Serialization)
-                        .attach_printable("Failed to decode base64 binary blob data")?
-                }
-                BlobType::Data | BlobType::Flow => {
-                    // Serialize JSON compactly
-                    serde_json::to_vec(data.as_ref())
-                        .change_context(StateError::Serialization)
-                        .attach_printable("Failed to serialize blob data as JSON")?
-                }
-            };
-
             let file_metadata = BlobFileMetadata {
                 blob_type,
                 filename: metadata.filename,
@@ -174,11 +152,11 @@ impl crate::BlobStore for FilesystemBlobStore {
                 .change_context(StateError::Serialization)
                 .attach_printable("Failed to serialize blob file metadata")?;
 
-            let content_length = content_bytes.len() as u64;
+            let content_length = content.len() as u64;
 
             // Build complete buffer: [content][metadata_json][content_length LE u64]
-            let mut buf = Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 8);
-            buf.extend_from_slice(&content_bytes);
+            let mut buf = Vec::with_capacity(content.len() + metadata_bytes.len() + 8);
+            buf.extend_from_slice(&content);
             buf.extend_from_slice(&metadata_bytes);
             buf.extend_from_slice(&content_length.to_le_bytes());
 
@@ -210,10 +188,10 @@ impl crate::BlobStore for FilesystemBlobStore {
         .boxed()
     }
 
-    fn get_blob_opt(
+    fn get_blob_bytes(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
             let path = self.blob_path(&blob_id);
@@ -255,7 +233,7 @@ impl crate::BlobStore for FilesystemBlobStore {
                 );
             }
 
-            let content = &bytes[..content_length];
+            let content = bytes[..content_length].to_vec();
             let metadata_json = &bytes[content_length..file_size - 8];
 
             let file_metadata: BlobFileMetadata = serde_json::from_slice(metadata_json)
@@ -267,30 +245,13 @@ impl crate::BlobStore for FilesystemBlobStore {
                     )
                 })?;
 
-            let blob_value = match file_metadata.blob_type {
-                BlobType::Binary => stepflow_core::blob::BlobValue::Binary(content.to_vec()),
-                BlobType::Data | BlobType::Flow => {
-                    let json_value: serde_json::Value = serde_json::from_slice(content)
-                        .change_context(StateError::Serialization)
-                        .attach_printable_lazy(|| {
-                            format!(
-                                "Failed to deserialize blob content as JSON: {}",
-                                path.display()
-                            )
-                        })?;
-                    stepflow_core::blob::BlobValue::from_value_ref(
-                        ValueRef::new(json_value),
-                        file_metadata.blob_type,
-                    )
-                    .change_context(StateError::Serialization)?
-                }
-            };
-
-            let metadata = BlobMetadata {
-                filename: file_metadata.filename,
-            };
-
-            Ok(Some(BlobData::with_metadata(blob_value, blob_id, metadata)))
+            Ok(Some(RawBlob {
+                content,
+                blob_type: file_metadata.blob_type,
+                metadata: BlobMetadata {
+                    filename: file_metadata.filename,
+                },
+            }))
         }
         .boxed()
     }
@@ -310,6 +271,7 @@ mod tests {
     use super::*;
     use crate::BlobStore as _;
     use crate::blob_compliance::BlobStoreComplianceTests;
+    use stepflow_core::workflow::ValueRef;
 
     #[tokio::test]
     async fn filesystem_blob_compliance_temp() {

@@ -17,14 +17,10 @@ use std::collections::{HashMap, HashSet};
 use stepflow_core::status::ExecutionStatus;
 
 use crate::{
-    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo,
+    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RawBlob, RootJournalInfo,
     RunCompletionNotifier, SequenceNumber, state_store::CreateRunParams,
 };
-use stepflow_core::{
-    FlowResult,
-    blob::{BlobData, BlobId, BlobType},
-    workflow::{ValueRef, WorkflowOverrides},
-};
+use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
@@ -70,8 +66,8 @@ struct JournalState {
 /// single-process execution. Uses DashMap for concurrent access with
 /// fine-grained locking per key.
 pub struct InMemoryStateStore {
-    /// Map from blob ID (SHA-256 hash) to stored JSON data
-    blobs: DashMap<String, BlobData>,
+    /// Map from blob ID (SHA-256 hash) to raw blob content
+    blobs: DashMap<String, RawBlob>,
     /// Map from run_id to combined run state
     runs: DashMap<Uuid, RunState>,
     /// Notifier for run completion events
@@ -159,31 +155,36 @@ impl Default for InMemoryStateStore {
 }
 
 impl BlobStore for InMemoryStateStore {
-    fn put_blob(
+    fn put_blob_bytes(
         &self,
-        data: ValueRef,
+        content: &[u8],
         blob_type: BlobType,
-        metadata: stepflow_core::BlobMetadata,
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let content = content.to_vec();
         async move {
             let blob_id =
-                BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
-            let mut blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
-                .change_context(StateError::Serialization)?;
-            blob_data.metadata = metadata;
+                BlobId::from_binary(&content).change_context(StateError::Serialization)?;
 
-            // Store the data (overwrites are fine since content is identical)
-            self.blobs.insert(blob_id.as_str().to_string(), blob_data);
+            // Store raw bytes (overwrites are fine since content is identical)
+            self.blobs.insert(
+                blob_id.as_str().to_string(),
+                RawBlob {
+                    content,
+                    blob_type,
+                    metadata,
+                },
+            );
 
             Ok(blob_id)
         }
         .boxed()
     }
 
-    fn get_blob_opt(
+    fn get_blob_bytes(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id_str = blob_id.as_str().to_string();
 
         async move {
@@ -194,8 +195,6 @@ impl BlobStore for InMemoryStateStore {
         }
         .boxed()
     }
-
-    // Note: store_flow and get_flow use default implementations from the trait
 }
 
 impl MetadataStore for InMemoryStateStore {
@@ -673,6 +672,7 @@ impl ExecutionJournal for InMemoryStateStore {
 mod tests {
     use super::*;
     use serde_json::json;
+    use stepflow_core::workflow::ValueRef;
 
     #[tokio::test]
     async fn test_blob_storage() {

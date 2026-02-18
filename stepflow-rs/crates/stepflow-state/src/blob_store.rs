@@ -12,73 +12,129 @@
 
 //! BlobStore trait for content-addressed blob storage.
 //!
-//! This trait provides operations for storing and retrieving blobs (JSON data and
-//! workflow definitions) using content-based addressing (SHA-256 hashes).
+//! This trait provides operations for storing and retrieving blobs (JSON data,
+//! workflow definitions, and raw binary) using content-based addressing (SHA-256 hashes).
+//!
+//! ## Design
+//!
+//! Implementors provide two core methods that deal in raw bytes:
+//! - [`put_blob_bytes`](BlobStore::put_blob_bytes) — store raw content bytes
+//! - [`get_blob_bytes`](BlobStore::get_blob_bytes) — retrieve raw content bytes
+//!
+//! All typed convenience methods (`put_blob`, `get_blob_opt`, `put_blob_binary`,
+//! `store_flow`, etc.) are provided as default implementations that handle
+//! serialization/deserialization and delegate to the core methods.
 
 use std::sync::Arc;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::{
     BlobData, BlobId, BlobMetadata, BlobType,
+    blob::BlobValue,
     workflow::{Flow, ValueRef},
 };
 
 use crate::StateError;
 
+/// Raw blob content with type and metadata, as stored on disk/database.
+///
+/// This is the low-level representation used by [`BlobStore`] implementations.
+/// Typed access (JSON, Flow, Binary) is provided by [`BlobData`] via the
+/// convenience methods on the trait.
+#[derive(Debug, Clone)]
+pub struct RawBlob {
+    /// The raw content bytes.
+    ///
+    /// For `BlobType::Data` and `BlobType::Flow`, this is compact JSON.
+    /// For `BlobType::Binary`, this is the raw binary data.
+    pub content: Vec<u8>,
+    /// The type of blob.
+    pub blob_type: BlobType,
+    /// Non-content metadata (filename, etc.).
+    pub metadata: BlobMetadata,
+}
+
 /// Trait for content-addressed blob storage.
 ///
-/// Blobs are immutable JSON data identified by SHA-256 hashes of their content.
+/// Blobs are immutable data identified by SHA-256 hashes of their content.
 /// This provides automatic deduplication and deterministic IDs.
+///
+/// Implementors only need to provide [`put_blob_bytes`](Self::put_blob_bytes) and
+/// [`get_blob_bytes`](Self::get_blob_bytes). All other methods are provided as defaults.
 pub trait BlobStore: Send + Sync {
-    /// Store JSON data as a blob and return its content-based ID.
+    /// Store raw content bytes as a blob and return its content-based ID.
     ///
-    /// The blob ID is generated as a SHA-256 hash of the JSON content,
+    /// The blob ID is generated as a SHA-256 hash of `content`,
     /// providing deterministic IDs and automatic deduplication.
     ///
     /// # Arguments
-    /// * `data` - The JSON data to store as a blob
+    /// * `content` - The raw bytes to store (JSON bytes for Data/Flow, raw bytes for Binary)
     /// * `blob_type` - The type of blob being stored
     /// * `metadata` - Non-content metadata (filename, etc.)
+    fn put_blob_bytes(
+        &self,
+        content: &[u8],
+        blob_type: BlobType,
+        metadata: BlobMetadata,
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
+
+    /// Retrieve raw blob content by blob ID.
     ///
-    /// # Returns
-    /// The blob ID for the stored data
+    /// Implementors should return `Ok(None)` when the blob is not found,
+    /// reserving `Err` for actual failures (connection issues, corruption, etc.).
+    fn get_blob_bytes(
+        &self,
+        blob_id: &BlobId,
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>>;
+
+    // =========================================================================
+    // Convenience methods — all provided as defaults
+    // =========================================================================
+
+    /// Store JSON data as a blob and return its content-based ID.
+    ///
+    /// Serializes the `ValueRef` to compact JSON bytes and delegates to
+    /// [`put_blob_bytes`](Self::put_blob_bytes).
+    ///
+    /// For `BlobType::Binary`, the `ValueRef` must contain a base64-encoded string
+    /// which will be decoded to raw bytes before storage.
     fn put_blob(
         &self,
         data: ValueRef,
         blob_type: BlobType,
         metadata: BlobMetadata,
-    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        async move {
+            let content = serialize_for_storage(&data, &blob_type)
+                .change_context(StateError::Serialization)?;
+            self.put_blob_bytes(&content, blob_type, metadata).await
+        }
+        .boxed()
+    }
 
     /// Retrieve blob data with type information by blob ID.
     ///
-    /// Implementors should return `Ok(None)` when the blob is not found,
-    /// reserving `Err` for actual failures (connection issues, etc.).
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID to retrieve
-    ///
-    /// # Returns
-    /// * `Ok(Some(data))` - The blob was found
-    /// * `Ok(None)` - The blob was not found
-    /// * `Err(e)` - An actual error occurred
+    /// Calls [`get_blob_bytes`](Self::get_blob_bytes) and reconstructs
+    /// a typed [`BlobData`] from the raw bytes.
     fn get_blob_opt(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+        let blob_id = blob_id.clone();
+        async move {
+            match self.get_blob_bytes(&blob_id).await? {
+                Some(raw) => {
+                    let blob_data = raw_blob_to_blob_data(raw, blob_id)?;
+                    Ok(Some(blob_data))
+                }
+                None => Ok(None),
+            }
+        }
+        .boxed()
+    }
 
     /// Retrieve blob data, returning an error if not found.
-    ///
-    /// This is a convenience method that calls `get_blob_opt` and converts
-    /// `None` to a `BlobNotFound` error.
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID to retrieve
-    ///
-    /// # Returns
-    /// The blob data with type information, or an error if not found
     fn get_blob(
         &self,
         blob_id: &BlobId,
@@ -96,65 +152,40 @@ pub trait BlobStore: Send + Sync {
 
     /// Store a workflow as a blob and return its blob ID.
     ///
-    /// This is a convenience method that serializes the workflow to JSON
-    /// and stores it using `put_blob` with `BlobType::Flow`.
-    ///
-    /// # Arguments
-    /// * `workflow` - The workflow to store
-    ///
-    /// # Returns
-    /// The blob ID of the stored workflow
+    /// Serializes the workflow to compact JSON bytes and stores with `BlobType::Flow`.
     fn store_flow(
         &self,
         workflow: Arc<Flow>,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
         async move {
-            let flow_data = ValueRef::new(
-                serde_json::to_value(workflow.as_ref())
-                    .change_context(StateError::Serialization)?,
-            );
-            self.put_blob(flow_data, BlobType::Flow, BlobMetadata::default())
+            let content =
+                serde_json::to_vec(workflow.as_ref()).change_context(StateError::Serialization)?;
+            self.put_blob_bytes(&content, BlobType::Flow, BlobMetadata::default())
                 .await
         }
         .boxed()
     }
 
     /// Retrieve a workflow by its blob ID.
-    ///
-    /// This is a convenience method that retrieves the blob using `get_blob_of_type`
-    /// and deserializes it as a Flow.
-    ///
-    /// # Arguments
-    /// * `flow_id` - The blob ID of the workflow
-    ///
-    /// # Returns
-    /// The workflow if found, or None if not found or not a Flow type
     fn get_flow(
         &self,
         flow_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<Arc<Flow>>, StateError>> {
         let flow_id = flow_id.clone();
         async move {
-            match self.get_blob_of_type(&flow_id, BlobType::Flow).await? {
-                Some(blob_data) => {
-                    let flow: Flow = serde_json::from_value(blob_data.data().as_ref().clone())
+            match self.get_blob_bytes(&flow_id).await? {
+                Some(raw) if raw.blob_type == BlobType::Flow => {
+                    let flow: Flow = serde_json::from_slice(&raw.content)
                         .change_context(StateError::Serialization)?;
                     Ok(Some(Arc::new(flow)))
                 }
-                None => Ok(None),
+                _ => Ok(None),
             }
         }
         .boxed()
     }
 
     /// Retrieve blob data only if it matches the expected type.
-    ///
-    /// # Arguments
-    /// * `blob_id` - The blob ID to retrieve
-    /// * `expected_type` - The expected blob type
-    ///
-    /// # Returns
-    /// The blob data if found and type matches, None if not found or type mismatch, or error
     fn get_blob_of_type<'a>(
         &'a self,
         blob_id: &BlobId,
@@ -172,40 +203,86 @@ pub trait BlobStore: Send + Sync {
 
     /// Store raw binary data as a blob and return its content-based ID.
     ///
-    /// The data is base64-encoded for storage via `put_blob` with `BlobType::Binary`.
-    /// The blob ID is the SHA-256 hash of the raw bytes (not the base64 encoding).
+    /// Delegates directly to [`put_blob_bytes`](Self::put_blob_bytes) with
+    /// `BlobType::Binary`. No base64 encoding is performed.
     fn put_blob_binary(
         &self,
         data: &[u8],
         metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
-        let base64_str = BASE64_STANDARD.encode(data);
-        let value_ref = ValueRef::new(serde_json::Value::String(base64_str));
-        self.put_blob(value_ref, BlobType::Binary, metadata)
+        self.put_blob_bytes(data, BlobType::Binary, metadata)
     }
 
     /// Retrieve raw binary data by blob ID.
     ///
-    /// Returns the decoded binary data if the blob exists and is of type Binary.
+    /// Calls [`get_blob_bytes`](Self::get_blob_bytes) and returns the raw
+    /// content bytes directly. Returns an error if the blob is not binary type.
     fn get_blob_binary(
         &self,
         blob_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Vec<u8>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
-            let blob_data = self.get_blob(&blob_id).await?;
-            match blob_data.as_binary() {
-                Some(bytes) => Ok(bytes.to_vec()),
-                None => {
-                    // Blob exists but is not binary type
-                    Err(error_stack::report!(StateError::Internal)).attach_printable(format!(
-                        "Blob '{}' is not a binary blob (type: {:?})",
-                        blob_id,
-                        blob_data.blob_type()
-                    ))
-                }
+            let raw = self.get_blob_bytes(&blob_id).await?.ok_or_else(|| {
+                error_stack::report!(StateError::BlobNotFound {
+                    blob_id: blob_id.to_string(),
+                })
+            })?;
+            if raw.blob_type != BlobType::Binary {
+                return Err(error_stack::report!(StateError::Internal)).attach_printable(format!(
+                    "Blob '{}' is not a binary blob (type: {:?})",
+                    blob_id, raw.blob_type
+                ));
             }
+            Ok(raw.content)
         }
         .boxed()
     }
+}
+
+/// Serialize a `ValueRef` to raw content bytes for storage.
+///
+/// For `BlobType::Binary`, decodes the base64-encoded string in the ValueRef.
+/// For `BlobType::Data` and `BlobType::Flow`, serializes to compact JSON.
+fn serialize_for_storage(
+    data: &ValueRef,
+    blob_type: &BlobType,
+) -> error_stack::Result<Vec<u8>, StateError> {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+
+    match blob_type {
+        BlobType::Binary => {
+            let base64_str = data
+                .as_ref()
+                .as_str()
+                .ok_or_else(|| error_stack::report!(StateError::Serialization))
+                .attach_printable("Binary blob data is not a base64 string")?;
+            BASE64_STANDARD
+                .decode(base64_str)
+                .change_context(StateError::Serialization)
+                .attach_printable("Failed to decode base64 binary blob data")
+        }
+        BlobType::Data | BlobType::Flow => serde_json::to_vec(data.as_ref())
+            .change_context(StateError::Serialization)
+            .attach_printable("Failed to serialize blob data as JSON"),
+    }
+}
+
+/// Reconstruct a typed `BlobData` from a `RawBlob`.
+fn raw_blob_to_blob_data(
+    raw: RawBlob,
+    blob_id: BlobId,
+) -> error_stack::Result<BlobData, StateError> {
+    let value = match raw.blob_type {
+        BlobType::Binary => BlobValue::Binary(raw.content),
+        BlobType::Data | BlobType::Flow => {
+            let json_value: serde_json::Value = serde_json::from_slice(&raw.content)
+                .change_context(StateError::Serialization)
+                .attach_printable("Failed to deserialize blob content as JSON")?;
+            BlobValue::from_value_ref(ValueRef::new(json_value), raw.blob_type)
+                .change_context(StateError::Serialization)?
+        }
+    };
+    Ok(BlobData::with_metadata(value, blob_id, raw.metadata))
 }
