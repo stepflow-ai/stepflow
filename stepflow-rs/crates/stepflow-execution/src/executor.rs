@@ -67,11 +67,12 @@ pub async fn submit_run(
     let max_concurrency = params.max_concurrency.unwrap_or(item_count);
 
     // Ensure the flow is stored as a blob
-    let flow_value = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
+    let flow_content =
+        serde_json::to_vec(flow.as_ref()).change_context(ExecutionError::StateStoreError)?;
     let blob_store = env.blob_store();
     blob_store
         .put_blob(
-            flow_value,
+            &flow_content,
             stepflow_core::BlobType::Flow,
             Default::default(),
         )
@@ -231,7 +232,6 @@ pub async fn get_run(
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_core::workflow::ValueRef;
     use stepflow_plugin::StepflowEnvironmentBuilder;
 
     #[tokio::test]
@@ -241,20 +241,26 @@ mod tests {
 
         // Test data
         let test_data = json!({"message": "Hello from executor!", "count": 123});
-        let value_ref = ValueRef::new(test_data.clone());
+        let content = serde_json::to_vec(&test_data).unwrap();
 
         // Create blob through executor context
         let blob_id = executor
             .blob_store()
-            .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
+            .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 
         // Retrieve blob through executor context
-        let retrieved = executor.blob_store().get_blob(&blob_id).await.unwrap();
+        let raw = executor
+            .blob_store()
+            .get_blob(&blob_id)
+            .await
+            .unwrap()
+            .expect("Blob should exist");
 
         // Verify data matches
-        assert_eq!(retrieved.data().as_ref(), &test_data);
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, test_data);
     }
 
     #[tokio::test]
@@ -279,22 +285,32 @@ mod tests {
 
         // Create blob through executor context
         let test_data = json!({"custom": "state store test"});
+        let content = serde_json::to_vec(&test_data).unwrap();
         let blob_id = executor
             .blob_store()
-            .put_blob(
-                ValueRef::new(test_data.clone()),
-                stepflow_core::BlobType::Data,
-                Default::default(),
-            )
+            .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 
         // Verify we can retrieve through the direct blob store
-        let retrieved_direct = blob_store.get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved_direct.data().as_ref(), &test_data);
+        let raw_direct = blob_store
+            .get_blob(&blob_id)
+            .await
+            .unwrap()
+            .expect("Blob should exist");
+        let retrieved_direct: serde_json::Value =
+            serde_json::from_slice(&raw_direct.content).unwrap();
+        assert_eq!(retrieved_direct, test_data);
 
         // And through the executor context
-        let retrieved_executor = executor.blob_store().get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved_executor.data().as_ref(), &test_data);
+        let raw_executor = executor
+            .blob_store()
+            .get_blob(&blob_id)
+            .await
+            .unwrap()
+            .expect("Blob should exist");
+        let retrieved_executor: serde_json::Value =
+            serde_json::from_slice(&raw_executor.content).unwrap();
+        assert_eq!(retrieved_executor, test_data);
     }
 }

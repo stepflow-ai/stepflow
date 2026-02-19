@@ -45,7 +45,7 @@ use std::sync::Arc;
 use serde_json::json;
 use stepflow_core::BlobMetadata;
 use stepflow_core::blob::BlobType;
-use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
+use stepflow_core::workflow::{FlowBuilder, StepBuilder};
 use stepflow_core::{BlobId, ValueExpr};
 
 use crate::BlobStore;
@@ -66,8 +66,7 @@ impl BlobStoreComplianceTests {
         Self::test_blob_deduplication(store).await;
         Self::test_blob_types(store).await;
         Self::test_flow_round_trip(store).await;
-        Self::test_get_blob_opt_not_found(store).await;
-        Self::test_get_nonexistent_blob(store).await;
+        Self::test_get_blob_not_found(store).await;
         Self::test_get_blob_of_type_with_wrong_type(store).await;
         Self::test_get_blob_of_type_not_found(store).await;
         Self::test_binary_blob_round_trip(store).await;
@@ -98,8 +97,7 @@ impl BlobStoreComplianceTests {
         Self::test_blob_deduplication(&factory().await).await;
         Self::test_blob_types(&factory().await).await;
         Self::test_flow_round_trip(&factory().await).await;
-        Self::test_get_blob_opt_not_found(&factory().await).await;
-        Self::test_get_nonexistent_blob(&factory().await).await;
+        Self::test_get_blob_not_found(&factory().await).await;
         Self::test_get_blob_of_type_with_wrong_type(&factory().await).await;
         Self::test_get_blob_of_type_not_found(&factory().await).await;
         Self::test_binary_blob_round_trip(&factory().await).await;
@@ -115,25 +113,24 @@ impl BlobStoreComplianceTests {
     ///
     /// Contract: put_blob followed by get_blob returns the same data.
     pub async fn test_blob_round_trip<B: BlobStore>(store: &B) {
-        let data = ValueRef::new(json!({"key": "value", "number": 42}));
+        let data = json!({"key": "value", "number": 42});
+        let content = serde_json::to_vec(&data).unwrap();
 
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
-        let retrieved = store
+        let raw = store
             .get_blob(&blob_id)
             .await
-            .expect("get_blob should succeed");
+            .expect("get_blob should succeed")
+            .expect("Blob should exist");
 
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, data, "Retrieved data should match stored data");
         assert_eq!(
-            retrieved.data().as_ref(),
-            data.as_ref(),
-            "Retrieved data should match stored data"
-        );
-        assert_eq!(
-            retrieved.blob_type(),
+            raw.blob_type,
             BlobType::Data,
             "Retrieved blob type should match"
         );
@@ -143,15 +140,16 @@ impl BlobStoreComplianceTests {
     ///
     /// Contract: Blob IDs are content-addressed, so identical content produces identical IDs.
     pub async fn test_blob_deduplication<B: BlobStore>(store: &B) {
-        let data = ValueRef::new(json!({"dedup": "test", "value": 123}));
+        let data = json!({"dedup": "test", "value": 123});
+        let content = serde_json::to_vec(&data).unwrap();
 
         let blob_id1 = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("first put_blob should succeed");
 
         let blob_id2 = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("second put_blob should succeed");
 
@@ -165,64 +163,55 @@ impl BlobStoreComplianceTests {
     ///
     /// Contract: The blob type specified during put_blob is returned by get_blob.
     pub async fn test_blob_types<B: BlobStore>(store: &B) {
-        let data = ValueRef::new(json!({"test": "blob_types"}));
+        let data = json!({"test": "blob_types"});
+        let content = serde_json::to_vec(&data).unwrap();
 
         // Store as Data type
         let data_blob_id = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("put_blob Data should succeed");
 
         let data_blob = store
             .get_blob(&data_blob_id)
             .await
-            .expect("get_blob should succeed");
+            .expect("get_blob should succeed")
+            .expect("Blob should exist");
 
-        assert_eq!(data_blob.blob_type(), BlobType::Data);
+        assert_eq!(data_blob.blob_type, BlobType::Data);
 
         // Store different content as Flow type
-        let flow_data = ValueRef::new(json!({"flow": "definition"}));
+        let flow_data = json!({"flow": "definition"});
+        let flow_content = serde_json::to_vec(&flow_data).unwrap();
         let flow_blob_id = store
-            .put_blob(flow_data.clone(), BlobType::Flow, Default::default())
+            .put_blob(&flow_content, BlobType::Flow, Default::default())
             .await
             .expect("put_blob Flow should succeed");
 
         let flow_blob = store
             .get_blob(&flow_blob_id)
             .await
-            .expect("get_blob should succeed");
+            .expect("get_blob should succeed")
+            .expect("Blob should exist");
 
-        assert_eq!(flow_blob.blob_type(), BlobType::Flow);
+        assert_eq!(flow_blob.blob_type, BlobType::Flow);
     }
 
-    /// Test that get_blob_opt returns None for non-existent blob.
+    /// Test that get_blob returns None for non-existent blob.
     ///
-    /// Contract: get_blob_opt returns Ok(None) for unknown blob ID.
-    pub async fn test_get_blob_opt_not_found<B: BlobStore>(store: &B) {
-        let fake_id = BlobId::from_content(&ValueRef::new(json!({"nonexistent": true}))).unwrap();
+    /// Contract: get_blob returns Ok(None) for unknown blob ID.
+    pub async fn test_get_blob_not_found<B: BlobStore>(store: &B) {
+        let fake_content = serde_json::to_vec(&json!({"nonexistent": true})).unwrap();
+        let fake_id = BlobId::from_binary(&fake_content).unwrap();
 
         let result = store
-            .get_blob_opt(&fake_id)
+            .get_blob(&fake_id)
             .await
-            .expect("get_blob_opt should not error for not found");
+            .expect("get_blob should not error for not found");
 
         assert!(
             result.is_none(),
-            "get_blob_opt with unknown ID should return None"
-        );
-    }
-
-    /// Test that get_blob returns an error for non-existent blob.
-    ///
-    /// Contract: get_blob with an unknown ID returns a BlobNotFound error.
-    pub async fn test_get_nonexistent_blob<B: BlobStore>(store: &B) {
-        let fake_id = BlobId::from_content(&ValueRef::new(json!({"nonexistent": true}))).unwrap();
-
-        let result = store.get_blob(&fake_id).await;
-
-        assert!(
-            result.is_err(),
-            "get_blob with unknown ID should return error"
+            "get_blob with unknown ID should return None"
         );
     }
 
@@ -268,11 +257,12 @@ impl BlobStoreComplianceTests {
     ///
     /// Contract: get_blob_of_type returns None if blob exists but type doesn't match.
     pub async fn test_get_blob_of_type_with_wrong_type<B: BlobStore>(store: &B) {
-        let data = ValueRef::new(json!({"test": "wrong_type"}));
+        let data = json!({"test": "wrong_type"});
+        let content = serde_json::to_vec(&data).unwrap();
 
         // Store as Data type
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
@@ -305,20 +295,20 @@ impl BlobStoreComplianceTests {
 
     /// Test that binary data can be stored and retrieved correctly.
     ///
-    /// Contract: put_blob_bytes with Binary type followed by get_blob_bytes
+    /// Contract: put_blob with Binary type followed by get_blob
     /// returns the same bytes.
     pub async fn test_binary_blob_round_trip<B: BlobStore>(store: &B) {
         let data = b"Hello, binary world! \x00\x01\x02\xff";
 
         let blob_id = store
-            .put_blob_bytes(data, BlobType::Binary, Default::default())
+            .put_blob(data, BlobType::Binary, Default::default())
             .await
-            .expect("put_blob_bytes should succeed");
+            .expect("put_blob should succeed");
 
         let raw = store
-            .get_blob_bytes(&blob_id)
+            .get_blob(&blob_id)
             .await
-            .expect("get_blob_bytes should succeed")
+            .expect("get_blob should succeed")
             .expect("Blob should exist");
 
         assert_eq!(
@@ -327,13 +317,6 @@ impl BlobStoreComplianceTests {
             "Retrieved binary data should match stored data"
         );
         assert_eq!(raw.blob_type, BlobType::Binary);
-
-        // Also verify via get_blob that the type is correct
-        let blob_data = store
-            .get_blob(&blob_id)
-            .await
-            .expect("get_blob should succeed");
-        assert_eq!(blob_data.blob_type(), BlobType::Binary);
     }
 
     /// Test that storing the same binary data twice returns the same blob ID.
@@ -343,14 +326,14 @@ impl BlobStoreComplianceTests {
         let data = b"dedup binary test data";
 
         let blob_id1 = store
-            .put_blob_bytes(data, BlobType::Binary, Default::default())
+            .put_blob(data, BlobType::Binary, Default::default())
             .await
-            .expect("first put_blob_bytes should succeed");
+            .expect("first put_blob should succeed");
 
         let blob_id2 = store
-            .put_blob_bytes(data, BlobType::Binary, Default::default())
+            .put_blob(data, BlobType::Binary, Default::default())
             .await
-            .expect("second put_blob_bytes should succeed");
+            .expect("second put_blob should succeed");
 
         assert_eq!(
             blob_id1, blob_id2,
@@ -367,58 +350,59 @@ impl BlobStoreComplianceTests {
     /// Contract: put_blob with metadata containing a filename, then get_blob returns
     /// the filename. Blobs without metadata have no filename.
     pub async fn test_blob_metadata_filename<B: BlobStore>(store: &B) {
-        let data = ValueRef::new(json!({"filename_test": true}));
+        let data = json!({"filename_test": true});
+        let content = serde_json::to_vec(&data).unwrap();
 
         // Store without filename
         let blob_id_no_name = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .expect("put_blob should succeed");
 
-        let blob = store
+        let raw = store
             .get_blob(&blob_id_no_name)
             .await
-            .expect("get_blob should succeed");
+            .expect("get_blob should succeed")
+            .expect("Blob should exist");
         assert_eq!(
-            blob.filename(),
-            None,
+            raw.metadata.filename, None,
             "Blob without metadata filename should have no filename"
         );
 
         // Store different data WITH a filename
-        let data2 = ValueRef::new(json!({"filename_test": "with_name"}));
+        let data2 = json!({"filename_test": "with_name"});
+        let content2 = serde_json::to_vec(&data2).unwrap();
         let metadata = BlobMetadata {
             filename: Some("test-file.json".to_string()),
         };
 
         let blob_id = store
-            .put_blob(data2.clone(), BlobType::Data, metadata)
+            .put_blob(&content2, BlobType::Data, metadata)
             .await
             .expect("put_blob with metadata should succeed");
 
-        let blob = store
+        let raw = store
             .get_blob(&blob_id)
             .await
-            .expect("get_blob should succeed");
+            .expect("get_blob should succeed")
+            .expect("Blob should exist");
         assert_eq!(
-            blob.filename(),
+            raw.metadata.filename.as_deref(),
             Some("test-file.json"),
             "Filename should be returned from metadata"
         );
 
         // Data should be correct
-        assert_eq!(
-            blob.data().as_ref(),
-            data2.as_ref(),
-            "Blob data should match what was stored"
-        );
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, data2, "Blob data should match what was stored");
     }
 
     /// Test that get_blob_of_type returns None for non-existent blob.
     ///
     /// Contract: get_blob_of_type returns None (not error) for unknown blob ID.
     pub async fn test_get_blob_of_type_not_found<B: BlobStore>(store: &B) {
-        let fake_id = BlobId::from_content(&ValueRef::new(json!({"not_found": true}))).unwrap();
+        let fake_content = serde_json::to_vec(&json!({"not_found": true})).unwrap();
+        let fake_id = BlobId::from_binary(&fake_content).unwrap();
 
         let result = store
             .get_blob_of_type(&fake_id, BlobType::Data)

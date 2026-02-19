@@ -18,7 +18,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use stepflow_core::{BlobId, BlobMetadata, BlobType, workflow::ValueRef};
+use stepflow_core::{BlobId, BlobMetadata, BlobType};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
 use utoipa::ToSchema;
@@ -30,7 +30,7 @@ use crate::error::ErrorResponse;
 #[serde(rename_all = "camelCase")]
 pub struct StoreBlobRequest {
     /// The JSON data to store
-    pub data: ValueRef,
+    pub data: serde_json::Value,
     /// The type of blob (data or flow). Defaults to "data".
     #[serde(default)]
     pub blob_type: BlobType,
@@ -55,7 +55,7 @@ pub struct StoreBlobResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetBlobResponse {
     /// The blob data
-    pub data: ValueRef,
+    pub data: serde_json::Value,
     /// The blob type
     pub blob_type: BlobType,
     /// The blob ID (for confirmation)
@@ -111,7 +111,7 @@ pub async fn store_blob(
         };
 
         let blob_id = blob_store
-            .put_blob_bytes(&body, BlobType::Binary, metadata)
+            .put_blob(&body, BlobType::Binary, metadata)
             .await
             .map_err(|_| ErrorResponse {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -134,8 +134,14 @@ pub async fn store_blob(
             filename: filename.clone(),
         };
 
+        let content = serde_json::to_vec(&req.data).map_err(|_| ErrorResponse {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to serialize blob data".to_string(),
+            stack: vec![],
+        })?;
+
         let blob_id = blob_store
-            .put_blob(req.data, req.blob_type, metadata)
+            .put_blob(&content, req.blob_type, metadata)
             .await
             .map_err(|_| ErrorResponse {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -176,8 +182,8 @@ pub async fn get_blob(
 ) -> Result<Response, ErrorResponse> {
     let blob_store = env.blob_store();
 
-    let blob_data = blob_store
-        .get_blob_opt(&blob_id)
+    let raw = blob_store
+        .get_blob(&blob_id)
         .await
         .map_err(|_| ErrorResponse {
             code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -196,19 +202,7 @@ pub async fn get_blob(
         .unwrap_or("application/json");
 
     if accept.contains("application/octet-stream") {
-        // Return raw bytes
-        let bytes: Vec<u8> = match blob_data.as_binary() {
-            Some(binary) => binary.to_vec(),
-            None => {
-                // For non-binary blobs, return JSON-serialized bytes
-                serde_json::to_vec(blob_data.data().as_ref()).map_err(|_| ErrorResponse {
-                    code: StatusCode::INTERNAL_SERVER_ERROR,
-                    message: "Failed to serialize blob data".to_string(),
-                    stack: vec![],
-                })?
-            }
-        };
-
+        // Return raw bytes directly
         let mut response_headers = HeaderMap::new();
         response_headers.insert(
             header::CONTENT_TYPE,
@@ -216,13 +210,13 @@ pub async fn get_blob(
         );
         response_headers.insert(
             "x-blob-type",
-            format!("{:?}", blob_data.blob_type())
+            format!("{:?}", raw.blob_type)
                 .to_lowercase()
                 .parse()
                 .unwrap(),
         );
 
-        if let Some(filename) = blob_data.filename() {
+        if let Some(ref filename) = raw.metadata.filename {
             // Sanitize filename for Content-Disposition header:
             // - strip CR/LF to prevent header injection
             // - escape double quotes
@@ -234,14 +228,21 @@ pub async fn get_blob(
             }
         }
 
-        Ok((StatusCode::OK, response_headers, bytes).into_response())
+        Ok((StatusCode::OK, response_headers, raw.content).into_response())
     } else {
-        // Return JSON
+        // Return JSON — deserialize content bytes back to Value
+        let data: serde_json::Value =
+            serde_json::from_slice(&raw.content).map_err(|_| ErrorResponse {
+                code: StatusCode::INTERNAL_SERVER_ERROR,
+                message: "Failed to deserialize blob data".to_string(),
+                stack: vec![],
+            })?;
+
         Ok(Json(GetBlobResponse {
-            data: blob_data.data(),
-            blob_type: blob_data.blob_type(),
+            data,
+            blob_type: raw.blob_type,
             blob_id,
-            filename: blob_data.metadata.filename.clone(),
+            filename: raw.metadata.filename,
         })
         .into_response())
     }

@@ -27,22 +27,23 @@ async fn test_blob_storage() {
 
     // Create test data
     let test_data = json!({"hello": "world", "number": 42});
-    let value_ref = ValueRef::new(test_data.clone());
+    let content = serde_json::to_vec(&test_data).unwrap();
 
     // Store blob
     let blob_id = store
-        .put_blob(
-            value_ref.clone(),
-            stepflow_core::BlobType::Data,
-            Default::default(),
-        )
+        .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
         .await
         .unwrap();
 
     // Retrieve blob
-    let retrieved = store.get_blob(&blob_id).await.unwrap();
+    let raw = store
+        .get_blob(&blob_id)
+        .await
+        .unwrap()
+        .expect("Blob should exist");
 
-    assert_eq!(retrieved.data().as_ref(), &test_data);
+    let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+    assert_eq!(retrieved, test_data);
 }
 
 #[tokio::test]
@@ -50,19 +51,15 @@ async fn test_blob_deduplication() {
     let store = SqliteStateStore::in_memory().await.unwrap();
 
     let test_data = json!({"test": "data"});
-    let value_ref = ValueRef::new(test_data);
+    let content = serde_json::to_vec(&test_data).unwrap();
 
     // Store the same data twice
     let blob_id1 = store
-        .put_blob(
-            value_ref.clone(),
-            stepflow_core::BlobType::Data,
-            Default::default(),
-        )
+        .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
         .await
         .unwrap();
     let blob_id2 = store
-        .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
+        .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
         .await
         .unwrap();
 

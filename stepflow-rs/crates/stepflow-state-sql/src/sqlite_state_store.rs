@@ -171,7 +171,7 @@ impl SqliteStateStore {
 }
 
 impl BlobStore for SqliteStateStore {
-    fn put_blob_bytes(
+    fn put_blob(
         &self,
         content: &[u8],
         blob_type: BlobType,
@@ -205,7 +205,7 @@ impl BlobStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_blob_bytes(
+    fn get_blob(
         &self,
         blob_id: &BlobId,
     ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {

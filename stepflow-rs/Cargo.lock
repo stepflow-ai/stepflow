@@ -4960,7 +4960,6 @@ dependencies = [
 name = "stepflow-state"
 version = "0.9.0"
 dependencies = [
- "base64 0.22.1",
  "bytes",
  "chrono",
  "dashmap",
