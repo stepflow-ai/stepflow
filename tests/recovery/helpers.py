@@ -105,7 +105,7 @@ async def wait_for_run(
                 data = resp.json()
                 if data.get("status") in terminal:
                     return data
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             await asyncio.sleep(2)
             continue
 
@@ -192,7 +192,7 @@ def wait_for_health(url: str, timeout: float = 60):
             resp = httpx.get(f"{url}/api/v1/health", timeout=2)
             if resp.status_code == 200:
                 return
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             pass
         time.sleep(1)
     raise TimeoutError(f"Service at {url} not healthy within {timeout}s")
@@ -281,7 +281,7 @@ def wait_for_worker_health(timeout: float = 30):
             resp = httpx.get("http://localhost:8080/health", timeout=2)
             if resp.status_code == 200:
                 return
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             pass
         time.sleep(1)
     raise TimeoutError(f"Worker not healthy within {timeout}s")
