@@ -123,7 +123,7 @@ def shared_config():
 
     # Add OpenAI API key for embedding model serialization
     # This is needed because when Embeddings objects are serialized and passed between
-    # components, the TypeConverter resolves environment variable placeholders
+    # components, the BaseModelOutputHandler resolves environment variable placeholders
     if "OPENAI_API_KEY" in env_vars:
         plugin_env["OPENAI_API_KEY"] = env_vars["OPENAI_API_KEY"]
 

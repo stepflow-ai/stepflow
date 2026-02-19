@@ -41,7 +41,7 @@ def executor():
 
 
 class TestBaseExecutorEnvVarResolution:
-    """Tests for env var resolution via _apply_field_handlers in BaseExecutor."""
+    """Tests for env var resolution via _handler_pipeline in BaseExecutor."""
 
     @pytest.mark.asyncio
     async def test_resolve_env_var_when_load_from_db(self, executor, monkeypatch):
@@ -56,11 +56,8 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = await executor._apply_field_handlers(
-            parameters, template, executor._get_field_handlers()
-        )
-
-        assert result["api_key"] == "sk-test-key-123"
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result["api_key"] == "sk-test-key-123"
 
     @pytest.mark.asyncio
     async def test_no_resolution_when_value_provided(self, executor, monkeypatch):
@@ -75,12 +72,9 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = await executor._apply_field_handlers(
-            parameters, template, executor._get_field_handlers()
-        )
-
-        # Should keep the existing value
-        assert result["api_key"] == "already-set-value"
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            # Should keep the existing value
+            assert result["api_key"] == "already-set-value"
 
     @pytest.mark.asyncio
     async def test_no_resolution_without_load_from_db(self, executor, monkeypatch):
@@ -95,12 +89,9 @@ class TestBaseExecutorEnvVarResolution:
             },
         }
 
-        result = await executor._apply_field_handlers(
-            parameters, template, executor._get_field_handlers()
-        )
-
-        # Should keep empty value
-        assert result["param"] == ""
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            # Should keep empty value
+            assert result["param"] == ""
 
     @pytest.mark.asyncio
     async def test_error_when_env_var_missing(self, executor, monkeypatch):
@@ -116,9 +107,8 @@ class TestBaseExecutorEnvVarResolution:
         }
 
         with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            await executor._apply_field_handlers(
-                parameters, template, executor._get_field_handlers()
-            )
+            async with executor._handler_pipeline(parameters, template) as (result, _):
+                pass
 
     @pytest.mark.asyncio
     async def test_multiple_env_vars(self, executor, monkeypatch):
@@ -133,13 +123,10 @@ class TestBaseExecutorEnvVarResolution:
             "regular": {"value": "default"},
         }
 
-        result = await executor._apply_field_handlers(
-            parameters, template, executor._get_field_handlers()
-        )
-
-        assert result["key1"] == "key1"
-        assert result["key2"] == "key2"
-        assert result["regular"] == "value"  # Unchanged
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result["key1"] == "key1"
+            assert result["key2"] == "key2"
+            assert result["regular"] == "value"  # Unchanged
 
     @pytest.mark.asyncio
     async def test_non_dict_template_field_skipped(self, executor):
@@ -149,11 +136,8 @@ class TestBaseExecutorEnvVarResolution:
             "param": "direct_value",  # Not a dict
         }
 
-        result = await executor._apply_field_handlers(
-            parameters, template, executor._get_field_handlers()
-        )
-
-        assert result["param"] == ""  # Unchanged
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result["param"] == ""  # Unchanged
 
 
 class TestBaseExecutorDetermineExecutionMethod:

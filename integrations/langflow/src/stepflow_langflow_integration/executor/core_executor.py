@@ -36,10 +36,6 @@ class CoreExecutor(BaseExecutor):
     directly, without needing to compile code from blob storage.
     """
 
-    def __init__(self):
-        """Initialize core executor."""
-        super().__init__()
-
     async def _instantiate_component(
         self,
         component_info: dict[str, Any],
@@ -101,8 +97,6 @@ class CoreExecutor(BaseExecutor):
         tracer = get_tracer(__name__)
 
         # Convert path to module path (slashes to dots)
-        # e.g., "lfx/components/docling/DoclingInlineComponent"
-        #    -> "lfx.components.docling.DoclingInlineComponent"
         module_path = component_path.replace("/", ".")
 
         # Split into module and class name
@@ -138,7 +132,7 @@ class CoreExecutor(BaseExecutor):
                 {"module_name": module_name, "class_name": class_name}
             )
 
-            # Execute using shared base class method
+            # Execute using shared base class method (returns serialized)
             result = await self._execute_component_instance(
                 component_instance=component_instance,
                 component_name=component_name,
@@ -147,4 +141,4 @@ class CoreExecutor(BaseExecutor):
                 runtime_inputs=runtime_inputs,
             )
 
-            return {"result": self.type_converter.serialize_langflow_object(result)}
+            return {"result": result}

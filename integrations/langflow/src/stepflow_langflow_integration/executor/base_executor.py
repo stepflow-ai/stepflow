@@ -16,13 +16,24 @@
 
 import inspect
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
 
 from stepflow_py.worker.observability import get_tracer
 
 from ..exceptions import ExecutionError
-from .field_handlers import EnvVarFieldHandler, FieldHandler
-from .type_converter import TypeConverter
+from .handlers import (
+    BaseModelInputHandler,
+    BaseModelOutputHandler,
+    DataFrameOutputHandler,
+    EnvVarInputHandler,
+    InputHandler,
+    LangflowTypeInputHandler,
+    LangflowTypeOutputHandler,
+    OutputHandler,
+    ToolWrapperInputHandler,
+)
 
 
 class BaseExecutor(ABC):
@@ -31,17 +42,12 @@ class BaseExecutor(ABC):
     Provides shared functionality for both core and custom code executors:
     - Execution method determination
     - Component input defaults application
-    - Type conversion utilities
-    - Field handler dispatch
+    - Input/output handler dispatch
     - Common component execution flow
 
     Subclasses must implement `_instantiate_component` to define how components
     are loaded and instantiated.
     """
-
-    def __init__(self):
-        """Initialize base executor with shared components."""
-        self.type_converter = TypeConverter()
 
     @abstractmethod
     async def _instantiate_component(
@@ -64,56 +70,97 @@ class BaseExecutor(ABC):
         """
         pass
 
-    def _get_field_handlers(self) -> list[FieldHandler]:
-        """Return the field handlers to apply after parameter preparation.
+    def _get_input_handlers(self) -> list[InputHandler]:
+        """Return the input handlers to apply during parameter preparation.
 
-        Base implementation returns handlers for env var resolution.
-        Subclasses may override to add additional handlers (e.g.,
-        StringCoercionFieldHandler, DataFrameFieldHandler).
+        Base implementation returns handlers for env var resolution and
+        type deserialization. Subclasses may override to add additional
+        handlers (e.g., StringCoercion, DataFrameConversion).
         """
-        return [EnvVarFieldHandler()]
+        return [
+            EnvVarInputHandler(),
+            LangflowTypeInputHandler(),
+            BaseModelInputHandler(),
+            ToolWrapperInputHandler(),
+        ]
 
-    async def _apply_field_handlers(
+    def _get_output_handlers(self) -> list[OutputHandler]:
+        """Return the output handlers to apply during result serialization.
+
+        Handlers are tried in order during the recursive tree walk;
+        the first match wins for each value.
+        """
+        return [
+            LangflowTypeOutputHandler(),
+            DataFrameOutputHandler(),
+            BaseModelOutputHandler(),
+        ]
+
+    @asynccontextmanager
+    async def _handler_pipeline(
         self,
         parameters: dict[str, Any],
         template: dict[str, Any],
-        handlers: list[FieldHandler],
-    ) -> dict[str, Any]:
-        """Apply field handlers to transform parameter values.
+    ) -> AsyncIterator[tuple[dict[str, Any], list[OutputHandler]]]:
+        """Enter handler contexts, apply input handlers, yield for execution.
 
-        For each handler, collects parameters whose template field matches,
-        then calls the handler's ``prepare()`` within its ``activate()``
-        context. Handlers are applied sequentially; parallel work happens
-        within each handler's ``prepare()`` call.
+        Uses ``AsyncExitStack`` to keep all input handler contexts alive
+        across input preparation, component execution, and output processing.
 
-        Args:
-            parameters: Current component parameters.
-            template: Template containing field definitions.
-            handlers: Ordered list of field handlers to apply.
-
-        Returns:
-            Parameters with handler transformations applied.
+        Yields:
+            Tuple of (prepared_parameters, output_handlers).
         """
-        result = dict(parameters)
+        input_handlers = self._get_input_handlers()
+        output_handlers = self._get_output_handlers()
 
-        for handler in handlers:
-            # Collect fields matching this handler
-            matched: dict[str, tuple[Any, dict[str, Any]]] = {}
-            for key, value in result.items():
-                field_def = template.get(key, {})
-                if isinstance(field_def, dict) and handler.matches(field_def):
-                    matched[key] = (value, field_def)
+        async with AsyncExitStack() as stack:
+            result = dict(parameters)
 
-            if not matched:
-                continue
+            for handler in input_handlers:
+                matched: dict[str, tuple[Any, dict[str, Any]]] = {}
+                for key, value in result.items():
+                    field_def = template.get(key, {})
+                    if not isinstance(field_def, dict):
+                        field_def = {}
+                    if handler.matches(template_field=field_def, value=value):
+                        matched[key] = (value, field_def)
 
-            # Enter handler context and process matched fields
-            async with handler.activate() as ctx:
+                if not matched:
+                    continue
+
+                ctx = await stack.enter_async_context(handler.activate())
                 updates = await handler.prepare(matched, ctx)
+                result.update(updates)
 
-            result.update(updates)
+            yield result, output_handlers
 
-        return result
+    async def _apply_output_handlers(
+        self, value: Any, handlers: list[OutputHandler]
+    ) -> Any:
+        """Recursively walk a value tree, applying output handlers.
+
+        For each value, tries handlers in order (first match wins).
+        Dicts and lists without a handler match are recursed into.
+        Primitives pass through unchanged.
+        """
+        for handler in handlers:
+            if handler.matches(value=value):
+                return await handler.process(value)
+
+        if isinstance(value, list):
+            return [await self._apply_output_handlers(item, handlers) for item in value]
+        if isinstance(value, dict):
+            return {
+                k: await self._apply_output_handlers(v, handlers)
+                for k, v in value.items()
+            }
+        if isinstance(value, str | int | float | bool | type(None)):
+            return value
+
+        raise ValueError(
+            f"Cannot serialize object of type {type(value).__name__}. "
+            "Only BaseModel objects and simple types are supported."
+        )
 
     async def _execute_component_instance(
         self,
@@ -126,7 +173,7 @@ class BaseExecutor(ABC):
         """Execute a component instance with the given parameters.
 
         This is the shared execution flow used by both executors after
-        the component has been instantiated.
+        the component has been instantiated. Returns serialized output.
 
         Args:
             component_instance: Instantiated component object
@@ -136,85 +183,91 @@ class BaseExecutor(ABC):
             runtime_inputs: Runtime input values
 
         Returns:
-            Component execution result (before serialization)
+            Serialized component execution result
         """
         tracer = get_tracer(__name__)
 
-        # Prepare parameters from template and runtime inputs
-        component_parameters = await self._prepare_component_parameters(
-            template, runtime_inputs
-        )
+        # Prepare raw parameters from template and runtime inputs
+        raw_params = await self._prepare_component_parameters(template, runtime_inputs)
 
-        # Apply field handlers (env vars, type coercions, etc.)
-        component_parameters = await self._apply_field_handlers(
-            component_parameters, template, self._get_field_handlers()
-        )
-
-        # Apply component input defaults
-        component_parameters = self._apply_component_input_defaults(
-            component_instance, component_parameters
-        )
-
-        # Set session_id and graph context
-        session_id = component_parameters.get("session_id", "default_session")
-        component_instance._session_id = session_id
-        self._setup_graph_context(component_instance, session_id)
-
-        # Configure component with parameters
-        if hasattr(component_instance, "set_attributes"):
-            component_instance._parameters = component_parameters
-            component_instance.set_attributes(component_parameters)
-
-        # Verify execution method exists
-        if not hasattr(component_instance, execution_method):
-            available = [m for m in dir(component_instance) if not m.startswith("_")]
-            raise ExecutionError(
-                f"Method {execution_method} not found in {component_name}. "
-                f"Available: {available}"
+        # Handler pipeline: input transform → execute → output transform
+        async with self._handler_pipeline(raw_params, template) as (
+            component_parameters,
+            output_handlers,
+        ):
+            # Apply component input defaults
+            component_parameters = self._apply_component_input_defaults(
+                component_instance, component_parameters
             )
 
-        method = getattr(component_instance, execution_method)
+            # Set session_id and graph context
+            session_id = component_parameters.get("session_id", "default_session")
+            component_instance._session_id = session_id
+            self._setup_graph_context(component_instance, session_id)
 
-        # Execute the method with tracing
-        with tracer.start_as_current_span(
-            f"execute_method:{execution_method}",
-            attributes={
-                "component_name": component_name,
-                "execution_method": execution_method,
-            },
-        ):
-            try:
-                if inspect.iscoroutinefunction(method):
-                    return await method()
-                else:
-                    return method()
-            except Exception as e:
+            # Configure component with parameters
+            if hasattr(component_instance, "set_attributes"):
+                component_instance._parameters = component_parameters
+                component_instance.set_attributes(component_parameters)
+
+            # Verify execution method exists
+            if not hasattr(component_instance, execution_method):
+                available = [
+                    m for m in dir(component_instance) if not m.startswith("_")
+                ]
                 raise ExecutionError(
-                    f"Error executing {execution_method} on {component_name} "
-                    f"({type(component_instance).__name__}): {e}"
-                ) from e
+                    f"Method {execution_method} not found in "
+                    f"{component_name}. Available: {available}"
+                )
+
+            method = getattr(component_instance, execution_method)
+
+            # Execute the method with tracing
+            with tracer.start_as_current_span(
+                f"execute_method:{execution_method}",
+                attributes={
+                    "component_name": component_name,
+                    "execution_method": execution_method,
+                },
+            ):
+                try:
+                    if inspect.iscoroutinefunction(method):
+                        result = await method()
+                    else:
+                        result = method()
+                except Exception as e:
+                    raise ExecutionError(
+                        f"Error executing {execution_method} on "
+                        f"{component_name} "
+                        f"({type(component_instance).__name__}): {e}"
+                    ) from e
+
+            # Serialize output through handlers
+            return await self._apply_output_handlers(result, output_handlers)
 
     async def _prepare_component_parameters(
         self, template: dict[str, Any], runtime_inputs: dict[str, Any]
     ) -> dict[str, Any]:
         """Prepare component parameters from template and runtime inputs.
 
-        This base implementation handles common parameter extraction.
-        Subclasses may override for more complex type conversion.
+        Extracts defaults from template fields and merges with raw runtime
+        inputs. No deserialization is performed here — input handlers
+        handle all type conversion.
 
         Args:
             template: Template containing field definitions
             runtime_inputs: Runtime input values
 
         Returns:
-            Merged parameters dictionary
+            Merged parameters dictionary (raw values, not deserialized)
         """
         parameters: dict[str, Any] = {}
 
         # Extract default values from template
         for key, field in template.items():
             if isinstance(field, dict) and "value" in field:
-                # Skip handle inputs with empty values (connected steps provide them)
+                # Skip handle inputs with empty values (connected steps
+                # provide them)
                 input_types = field.get("input_types", [])
                 value = field["value"]
 
@@ -229,9 +282,8 @@ class BaseExecutor(ABC):
                 # Direct value
                 parameters[key] = field
 
-        # Override with runtime inputs (deserialize Langflow types)
-        for key, value in runtime_inputs.items():
-            parameters[key] = self.type_converter.deserialize_to_langflow_type(value)
+        # Override with raw runtime inputs (no deserialization — handlers do it)
+        parameters.update(runtime_inputs)
 
         return parameters
 
