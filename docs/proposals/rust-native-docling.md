@@ -339,38 +339,21 @@ The `MapComponent` is already general-purpose and has applications beyond docume
 
 With the `MapComponent`, the docling pipeline decomposes into a Stepflow flow where each stage is a routable, independently scalable component:
 
-```
-┌─────────────────┐
-│  PDF Backend     │  Sequential, single step
-│  (page split)    │  Produces: Vec<Page>
-└────────┬────────┘
-         │
-    ┌────▼────┐
-    │  /map   │  Parallel fan-out over pages
-    │         │  Sub-flow: layout analysis
-    └────┬────┘  Produces: Vec<PageLayout>
-         │
-┌────────▼────────┐
-│  Gather +        │  Sequential, pure computation
-│  Classify        │  Extracts table regions from layouts
-│  Regions         │  Produces: Vec<TableRegion> (+ text, figures)
-└────────┬────────┘
-         │
-    ┌────▼────┐
-    │  /map   │  Parallel fan-out over table regions
-    │         │  Sub-flow: TableFormer extraction
-    └────┬────┘  Produces: Vec<TableResult>
-         │
-┌────────▼────────┐
-│  Assembly        │  Sequential, document-global
-│                  │  Reads: all page layouts + table results
-│                  │  Produces: DoclingDocument
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Chunk           │  Phase 2 native Rust chunker
-│                  │  Produces: Vec<Chunk>
-└─────────────────┘
+```mermaid
+flowchart TD
+    A["PDF Backend\n<i>Sequential — page split</i>"] -->|"Vec&lt;Page&gt;"| B
+    B["🔀 /map\n<i>Parallel fan-out over pages</i>"] -->|"Vec&lt;PageLayout&gt;"| C
+    C["Gather + Classify Regions\n<i>Sequential — pure computation</i>"] -->|"Vec&lt;TableRegion&gt; + text + figures"| D
+    D["🔀 /map\n<i>Parallel fan-out over table regions</i>"] -->|"Vec&lt;TableResult&gt;"| E
+    E["Assembly\n<i>Sequential — document-global</i>"] -->|"DoclingDocument"| F
+    F["Chunk\n<i>Phase 2 native Rust chunker</i>"] -->|"Vec&lt;Chunk&gt;"| G((Output))
+
+    style B fill:#f59e0b,color:#000
+    style D fill:#f59e0b,color:#000
+    style A fill:#3b82f6,color:#fff
+    style C fill:#3b82f6,color:#fff
+    style E fill:#3b82f6,color:#fff
+    style F fill:#10b981,color:#fff
 ```
 
 **Two `/map` operations** handle the parallelism. The first fans out pages to layout analysis workers. The second fans out table regions to TableFormer workers. Each map's sub-flow is a single component invocation that routes to the appropriate worker pool via Stepflow's routing configuration.
