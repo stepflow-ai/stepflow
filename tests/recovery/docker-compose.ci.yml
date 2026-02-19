@@ -1,0 +1,16 @@
+# Compose override for CI: use pre-built stepflow-server binary instead of
+# building from source inside Docker. Layer on top of docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up
+#
+# Requires the stepflow-server binary to be present in tests/recovery/
+# (the build context). The check-recovery.sh script handles this.
+
+services:
+  orchestrator-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.server.prebuilt
+  orchestrator-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.server.prebuilt

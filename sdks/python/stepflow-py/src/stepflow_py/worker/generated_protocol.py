@@ -392,6 +392,16 @@ class GetRunProtocolParams(Struct, kw_only=True):
         ]
         | None
     ) = None
+    timeoutSecs: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
     observability: ObservabilityContext | None = None
 
 
@@ -429,6 +439,16 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
         | None
     ) = None
     overrides: WorkflowOverrides | None = None
+    timeoutSecs: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
+                ge=0,
+            ),
+        ]
+        | None
+    ) = None
     observability: ObservabilityContext | None = None
 
 

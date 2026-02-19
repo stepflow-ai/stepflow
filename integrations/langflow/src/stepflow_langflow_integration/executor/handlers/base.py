@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Base class for field handlers."""
+"""Base classes for input and output handlers."""
 
 from __future__ import annotations
 
@@ -22,17 +22,22 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 
-class FieldHandler(ABC):
-    """Abstract base class for template-field-based value transformations.
+class InputHandler(ABC):
+    """Abstract base class for input-side value transformations.
 
-    Subclasses declare which template fields they handle via ``matches()``,
-    optionally set up resources via ``activate()``, and transform values
-    in ``prepare()``.
+    Subclasses declare which fields they handle via ``matches()`` (using
+    template metadata and/or value content), optionally set up resources
+    via ``activate()``, and transform values in ``prepare()``.
     """
 
     @abstractmethod
-    def matches(self, template_field: dict[str, Any]) -> bool:
-        """Return True if this handler should process the given template field."""
+    def matches(self, *, template_field: dict[str, Any], value: Any) -> bool:
+        """Return True if this handler should process the given field.
+
+        Args:
+            template_field: Template field metadata (type, input_types, etc.).
+            value: The current runtime value for this field.
+        """
         ...
 
     @asynccontextmanager
@@ -59,5 +64,40 @@ class FieldHandler(ABC):
         Returns:
             Mapping of ``{key: resolved_value}`` for fields whose values
             changed. Fields omitted from the result keep their original value.
+        """
+        ...
+
+
+class OutputHandler(ABC):
+    """Abstract base class for output-side value transformations.
+
+    Subclasses declare which values they handle via ``matches()`` (using
+    Python type checks or value inspection) and transform values in
+    ``process()``.
+
+    Output handlers are applied during a recursive tree walk of the
+    execution result. Each handler processes a single matched value;
+    the executor handles recursion into dicts/lists.
+    """
+
+    @abstractmethod
+    def matches(self, *, value: Any) -> bool:
+        """Return True if this handler should process the given value.
+
+        Args:
+            value: The Python object to potentially serialize/transform.
+        """
+        ...
+
+    @abstractmethod
+    async def process(self, value: Any) -> Any:
+        """Transform a single matched value.
+
+        Args:
+            value: The matched Python object.
+
+        Returns:
+            The serialized/transformed value (must be JSON-serializable
+            or a container of further values for the tree walker).
         """
         ...

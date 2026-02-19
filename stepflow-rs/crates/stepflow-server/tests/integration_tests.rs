@@ -252,7 +252,7 @@ async fn test_create_run_without_overrides() {
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
-    // Execute run without overrides
+    // Execute run without overrides (wait=true for synchronous result)
     let create_run_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -263,7 +263,7 @@ async fn test_create_run_without_overrides() {
                 "input": [{
                     "test_input": "Hello from run execution"
                 }],
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -284,7 +284,107 @@ async fn test_create_run_without_overrides() {
 
     assert!(execute_response["runId"].is_string());
     assert_eq!(execute_response["status"], "completed");
-    assert!(execute_response["result"].is_object());
+    // Response now includes RunSummary fields
+    assert!(execute_response["flowId"].is_string());
+    assert!(execute_response["items"].is_object());
+    assert!(execute_response["createdAt"].is_string());
+    // Results are populated with wait=true
+    assert!(execute_response["results"].is_array());
+    assert_eq!(execute_response["results"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_create_run_async_default() {
+    init_test_logging();
+
+    let (mut app, _executor) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+
+    // Store the flow
+    let store_request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flow": workflow
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let store_response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(store_request)
+        .await
+        .unwrap();
+    let store_body = to_bytes(store_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
+    let flow_id = store_result["flowId"].as_str().unwrap();
+
+    // Execute run without wait (default async behavior)
+    let create_run_request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": [{
+                    "test_input": "Hello from async run"
+                }]
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(create_run_request)
+        .await
+        .unwrap();
+
+    // Should return 202 Accepted (async)
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let execute_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert!(execute_response["runId"].is_string());
+    // Results should be null (not populated in async mode)
+    assert!(execute_response["results"].is_null());
+    // RunSummary fields should be present
+    assert!(execute_response["flowId"].is_string());
+    assert_eq!(execute_response["status"], "running");
+    let run_id = execute_response["runId"].as_str().unwrap();
+
+    // Now use GET /runs/{run_id}?wait=true to wait for completion
+    let wait_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}?wait=true"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(wait_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let details_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(details_response["runId"], run_id);
+    assert_eq!(details_response["status"], "completed");
 }
 
 #[tokio::test]
@@ -321,7 +421,7 @@ async fn test_create_run_with_overrides() {
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
-    // Execute run with overrides
+    // Execute run with overrides (wait=true for synchronous result)
     let create_run_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -350,7 +450,7 @@ async fn test_create_run_with_overrides() {
                         }
                     }
                 },
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -371,7 +471,7 @@ async fn test_create_run_with_overrides() {
 
     assert!(execute_response["runId"].is_string());
     assert_eq!(execute_response["status"], "completed");
-    assert!(execute_response["result"].is_object());
+    assert!(execute_response["results"].is_array());
 
     // The overrides should have been applied during execution
     // We can't easily verify the exact changes without inspecting internal state,
@@ -413,6 +513,7 @@ async fn test_create_run_with_invalid_overrides() {
     let flow_id = store_result["flowId"].as_str().unwrap();
 
     // Execute run with overrides that reference a non-existent step
+    // (validation errors are returned synchronously regardless of wait)
     let create_run_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -431,8 +532,7 @@ async fn test_create_run_with_invalid_overrides() {
                             }
                         }
                     }
-                },
-                "debug": false
+                }
             }))
             .unwrap(),
         ))
@@ -491,7 +591,7 @@ async fn test_create_run_empty_overrides() {
     let store_result: serde_json::Value = serde_json::from_slice(&store_body).unwrap();
     let flow_id = store_result["flowId"].as_str().unwrap();
 
-    // Execute run with empty overrides object
+    // Execute run with empty overrides object (wait=true for synchronous result)
     let create_run_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -503,7 +603,7 @@ async fn test_create_run_empty_overrides() {
                     "test_input": "Hello"
                 }],
                 "overrides": {},
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -524,7 +624,7 @@ async fn test_create_run_empty_overrides() {
 
     assert!(execute_response["runId"].is_string());
     assert_eq!(execute_response["status"], "completed");
-    assert!(execute_response["result"].is_object());
+    assert!(execute_response["results"].is_array());
 }
 
 #[tokio::test]
@@ -630,7 +730,7 @@ async fn test_hash_based_execution() {
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let flow_id = store_response["flowId"].as_str().unwrap();
 
-    // Execute flow using hash (non-debug mode)
+    // Execute flow using hash (wait=true for synchronous result)
     let execute_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -639,7 +739,7 @@ async fn test_hash_based_execution() {
             serde_json::to_string(&json!({
                 "flowId": flow_id,
                 "input": [{"message": "test input"}],
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -656,8 +756,10 @@ async fn test_hash_based_execution() {
     assert!(execute_response["runId"].is_string());
     assert_eq!(execute_response["status"], "completed");
     // Workflow completes successfully with null output as defined in workflow
-    assert_eq!(execute_response["result"]["outcome"], "success");
-    assert!(execute_response["result"]["result"].is_null());
+    let results = execute_response["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["result"]["outcome"], "success");
+    assert!(results[0]["result"]["result"].is_null());
 }
 
 #[tokio::test]
@@ -695,7 +797,7 @@ async fn test_run_details() {
             serde_json::to_string(&json!({
                 "flowId": flow_id,
                 "input": [{"message": "test input"}],
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -941,7 +1043,7 @@ async fn test_status_updates_during_regular_execution() {
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let flow_id = store_response["flowId"].as_str().unwrap();
 
-    // Execute workflow in regular mode
+    // Execute workflow (wait=true for synchronous result)
     let execute_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -950,7 +1052,7 @@ async fn test_status_updates_during_regular_execution() {
             serde_json::to_string(&json!({
                 "flowId": flow_id,
                 "input": [{}],
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -965,7 +1067,8 @@ async fn test_status_updates_during_regular_execution() {
 
     // Verify execution completed successfully
     assert_eq!(execute_response["status"], "completed");
-    assert_eq!(execute_response["result"]["outcome"], "success");
+    let results = execute_response["results"].as_array().unwrap();
+    assert_eq!(results[0]["result"]["outcome"], "success");
 
     // Check step statuses after completion
     let steps_request = Request::builder()
@@ -1045,7 +1148,7 @@ async fn test_status_transitions_with_error_handling() {
     let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let flow_id = store_response["flowId"].as_str().unwrap();
 
-    // Execute workflow (should fail)
+    // Execute workflow (should fail; wait=true for synchronous result)
     let execute_request = Request::builder()
         .uri("/api/v1/runs")
         .method("POST")
@@ -1054,7 +1157,7 @@ async fn test_status_transitions_with_error_handling() {
             serde_json::to_string(&json!({
                 "flowId": flow_id,
                 "input": [{}],
-                "debug": false
+                "wait": true
             }))
             .unwrap(),
         ))
@@ -1069,7 +1172,8 @@ async fn test_status_transitions_with_error_handling() {
 
     // Verify execution failed
     assert_eq!(execute_response["status"], "failed");
-    assert_eq!(execute_response["result"]["outcome"], "failed");
+    let results = execute_response["results"].as_array().unwrap();
+    assert_eq!(results[0]["result"]["outcome"], "failed");
 
     // Check step status shows failure
     let steps_request = Request::builder()
@@ -1093,4 +1197,107 @@ async fn test_status_transitions_with_error_handling() {
 
     // The key test for error handling is that the workflow overall failed (verified above)
     // and that step information is accessible via the improved dictionary API
+}
+
+#[tokio::test]
+async fn test_blob_json_round_trip() {
+    init_test_logging();
+
+    let (app, _executor) = create_basic_test_server().await;
+
+    let test_data = json!({"message": "Hello, blobs!", "number": 42, "nested": {"key": "value"}});
+
+    // Store a JSON blob
+    let store_request = Request::builder()
+        .uri("/api/v1/blobs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "data": test_data,
+                "blobType": "data"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let blob_id = store_response["blobId"].as_str().unwrap();
+    assert!(!blob_id.is_empty());
+
+    // Retrieve the blob as JSON
+    let get_request = Request::builder()
+        .uri(format!("/api/v1/blobs/{blob_id}"))
+        .header("accept", "application/json")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(get_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(get_response["data"], test_data);
+    assert_eq!(get_response["blobType"], "data");
+    assert_eq!(get_response["blobId"], blob_id);
+}
+
+#[tokio::test]
+async fn test_blob_binary_round_trip() {
+    init_test_logging();
+
+    let (app, _executor) = create_basic_test_server().await;
+
+    let binary_data: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD, 0x42, 0x43];
+
+    // Store a binary blob
+    let store_request = Request::builder()
+        .uri("/api/v1/blobs")
+        .method("POST")
+        .header("content-type", "application/octet-stream")
+        .header("x-blob-filename", "test-file.bin")
+        .body(Body::from(binary_data.clone()))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let blob_id = store_response["blobId"].as_str().unwrap();
+    assert!(!blob_id.is_empty());
+    assert_eq!(store_response["filename"], "test-file.bin");
+
+    // Retrieve the blob as binary
+    let get_request = Request::builder()
+        .uri(format!("/api/v1/blobs/{blob_id}"))
+        .header("accept", "application/octet-stream")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(get_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Check headers
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(response.headers().get("x-blob-type").unwrap(), "binary");
+    let disposition = response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(disposition.contains("test-file.bin"));
+
+    // Check body matches original bytes
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(body.as_ref(), binary_data.as_slice());
 }

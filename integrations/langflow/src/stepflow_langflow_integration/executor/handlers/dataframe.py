@@ -12,14 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Field handler that converts Data lists to DataFrames."""
+"""Handlers for DataFrame conversion (input) and serialization (output)."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from .base import FieldHandler
+from .base import InputHandler, OutputHandler
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +36,17 @@ def _is_data_list(value: list[Any]) -> bool:
     )
 
 
-class DataFrameFieldHandler(FieldHandler):
+class DataFrameConversionInputHandler(InputHandler):
     """Convert lists of Data objects to DataFrames for DataFrame-typed fields.
 
-    Matches template fields whose ``input_types`` include ``"DataFrame"``.
-    When the runtime value is a non-empty list of Data-like objects (dicts
-    with ``text``/``__class_name__`` keys, or ``Data`` instances), converts
-    it to an ``lfx.schema.dataframe.DataFrame``.
+    Matches template fields whose ``input_types`` include ``"DataFrame"``
+    and whose runtime value is a non-empty list of Data-like objects.
     """
 
-    def matches(self, template_field: dict[str, Any]) -> bool:
-        return "DataFrame" in template_field.get("input_types", [])
+    def matches(self, *, template_field: dict[str, Any], value: Any) -> bool:
+        if "DataFrame" not in template_field.get("input_types", []):
+            return False
+        return isinstance(value, list) and len(value) > 0
 
     async def prepare(
         self, fields: dict[str, tuple[Any, dict[str, Any]]], context: Any
@@ -65,7 +65,30 @@ class DataFrameFieldHandler(FieldHandler):
 
                 result[key] = DataFrame(data=value)
             except Exception:
-                # If DataFrame conversion fails, keep as list
                 logger.debug("DataFrame conversion failed for field %r", key)
 
         return result
+
+
+class DataFrameOutputHandler(OutputHandler):
+    """Serialize DataFrame objects to split JSON format.
+
+    Uses ``orient="split"`` for ~45% size reduction compared to records format.
+    """
+
+    def matches(self, *, value: Any) -> bool:
+        try:
+            from lfx.schema.dataframe import DataFrame
+
+            return isinstance(value, DataFrame)
+        except ImportError:
+            return False
+
+    async def process(self, value: Any) -> Any:
+        json_str = value.to_json(orient="split")
+        return {
+            "__langflow_type__": "DataFrame",
+            "json_data": json_str,
+            "text_key": getattr(value, "text_key", "text"),
+            "default_value": getattr(value, "default_value", ""),
+        }

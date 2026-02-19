@@ -20,6 +20,9 @@ FROM rust:1.90-bookworm AS builder
 
 WORKDIR /build
 
+# Install protobuf compiler (needed by etcd-client crate)
+RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+
 # Copy workspace files from stepflow-rs directory
 COPY stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock ./
 COPY stepflow-rs/crates ./crates

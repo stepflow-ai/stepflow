@@ -63,7 +63,11 @@ async fn create_migrations_table(pool: &SqlitePool) -> Result<(), StateError> {
     Ok(())
 }
 
-/// Apply a migration if it hasn't been applied yet
+/// Apply a migration if it hasn't been applied yet.
+///
+/// Handles concurrent execution from multiple processes sharing the same
+/// database: if the migration function fails but another process has already
+/// recorded this migration, we treat it as success.
 async fn apply_migration<F, Fut>(
     pool: &SqlitePool,
     name: &str,
@@ -89,11 +93,30 @@ where
         return Ok(());
     }
 
-    // Apply the migration
-    migration_fn().await?;
+    // Apply the migration. If it fails, check whether another process already
+    // applied it concurrently (e.g. duplicate column from ALTER TABLE race).
+    if let Err(e) = migration_fn().await {
+        let recheck =
+            sqlx::query("SELECT COUNT(*) as count FROM _stepflow_migrations WHERE name = ?")
+                .bind(name)
+                .fetch_one(pool)
+                .await
+                .change_context(StateError::Initialization)?;
+
+        let recheck_count: i64 = recheck
+            .try_get("count")
+            .change_context(StateError::Initialization)?;
+
+        if recheck_count > 0 {
+            // Another process applied this migration concurrently — safe to proceed
+            return Ok(());
+        }
+        // Migration genuinely failed
+        return Err(e);
+    }
 
     // Record that migration was applied
-    sqlx::query("INSERT INTO _stepflow_migrations (name) VALUES (?)")
+    sqlx::query("INSERT OR IGNORE INTO _stepflow_migrations (name) VALUES (?)")
         .bind(name)
         .execute(pool)
         .await
@@ -110,7 +133,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         r#"
             CREATE TABLE IF NOT EXISTS blobs (
                 id TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
+                data BLOB NOT NULL,
                 blob_type TEXT NOT NULL DEFAULT 'data',
                 filename TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP

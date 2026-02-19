@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Unit tests for field handlers."""
+"""Unit tests for input/output handlers."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -23,11 +23,11 @@ import pytest
 
 from stepflow_langflow_integration.exceptions import ExecutionError
 from stepflow_langflow_integration.executor.base_executor import BaseExecutor
-from stepflow_langflow_integration.executor.field_handlers import (
-    DataFrameFieldHandler,
-    EnvVarFieldHandler,
-    FieldHandler,
-    StringCoercionFieldHandler,
+from stepflow_langflow_integration.executor.handlers import (
+    DataFrameConversionInputHandler,
+    EnvVarInputHandler,
+    InputHandler,
+    StringCoercionInputHandler,
 )
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ from stepflow_langflow_integration.executor.field_handlers import (
 
 
 class ConcreteTestExecutor(BaseExecutor):
-    """Concrete BaseExecutor subclass for testing _apply_field_handlers."""
+    """Concrete BaseExecutor subclass for testing _handler_pipeline."""
 
     async def _instantiate_component(
         self,
@@ -46,27 +46,39 @@ class ConcreteTestExecutor(BaseExecutor):
 
 
 # ---------------------------------------------------------------------------
-# EnvVarFieldHandler
+# EnvVarInputHandler
 # ---------------------------------------------------------------------------
 
 
-class TestEnvVarFieldHandler:
+class TestEnvVarInputHandler:
     def test_matches_load_from_db_true(self):
-        handler = EnvVarFieldHandler()
-        assert handler.matches({"load_from_db": True, "value": "MY_VAR"}) is True
+        handler = EnvVarInputHandler()
+        assert (
+            handler.matches(
+                template_field={"load_from_db": True, "value": "MY_VAR"}, value=""
+            )
+            is True
+        )
 
     def test_no_match_without_load_from_db(self):
-        handler = EnvVarFieldHandler()
-        assert handler.matches({"type": "str", "value": "hello"}) is False
+        handler = EnvVarInputHandler()
+        assert (
+            handler.matches(
+                template_field={"type": "str", "value": "hello"}, value="hello"
+            )
+            is False
+        )
 
     def test_no_match_load_from_db_false(self):
-        handler = EnvVarFieldHandler()
-        assert handler.matches({"load_from_db": False}) is False
+        handler = EnvVarInputHandler()
+        assert (
+            handler.matches(template_field={"load_from_db": False}, value="") is False
+        )
 
     @pytest.mark.asyncio
     async def test_resolves_env_var(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
-        handler = EnvVarFieldHandler()
+        handler = EnvVarInputHandler()
         fields = {
             "api_key": (
                 "",  # empty value
@@ -79,7 +91,7 @@ class TestEnvVarFieldHandler:
     @pytest.mark.asyncio
     async def test_skips_truthy_value(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "env-value")
-        handler = EnvVarFieldHandler()
+        handler = EnvVarInputHandler()
         fields = {
             "api_key": (
                 "already-set",
@@ -92,7 +104,7 @@ class TestEnvVarFieldHandler:
     @pytest.mark.asyncio
     async def test_raises_on_missing_env_var(self, monkeypatch):
         monkeypatch.delenv("MISSING_VAR", raising=False)
-        handler = EnvVarFieldHandler()
+        handler = EnvVarInputHandler()
         fields = {
             "api_key": ("", {"load_from_db": True, "value": "MISSING_VAR"}),
         }
@@ -103,7 +115,7 @@ class TestEnvVarFieldHandler:
     async def test_multiple_env_vars(self, monkeypatch):
         monkeypatch.setenv("KEY1", "val1")
         monkeypatch.setenv("KEY2", "val2")
-        handler = EnvVarFieldHandler()
+        handler = EnvVarInputHandler()
         fields = {
             "k1": ("", {"load_from_db": True, "value": "KEY1"}),
             "k2": ("", {"load_from_db": True, "value": "KEY2"}),
@@ -114,24 +126,34 @@ class TestEnvVarFieldHandler:
 
 
 # ---------------------------------------------------------------------------
-# StringCoercionFieldHandler
+# StringCoercionInputHandler
 # ---------------------------------------------------------------------------
 
 
-class TestStringCoercionFieldHandler:
-    def test_matches_str_type(self):
-        handler = StringCoercionFieldHandler()
-        assert handler.matches({"type": "str"}) is True
+class TestStringCoercionInputHandler:
+    def test_matches_str_type_with_message_value(self):
+        handler = StringCoercionInputHandler()
+        msg = MagicMock()
+        msg.__class__ = type("Message", (), {})
+        msg.text = "hello"
+        assert handler.matches(template_field={"type": "str"}, value=msg) is True
 
     def test_no_match_other_types(self):
-        handler = StringCoercionFieldHandler()
-        assert handler.matches({"type": "int"}) is False
-        assert handler.matches({"type": "file"}) is False
-        assert handler.matches({}) is False
+        handler = StringCoercionInputHandler()
+        assert handler.matches(template_field={"type": "int"}, value="hello") is False
+        assert handler.matches(template_field={"type": "file"}, value="hello") is False
+        assert handler.matches(template_field={}, value="hello") is False
+
+    def test_no_match_str_type_with_plain_string(self):
+        handler = StringCoercionInputHandler()
+        assert (
+            handler.matches(template_field={"type": "str"}, value="already a string")
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_coerces_message_to_text(self):
-        handler = StringCoercionFieldHandler()
+        handler = StringCoercionInputHandler()
         msg = MagicMock()
         msg.__class__ = type("Message", (), {})
         msg.text = "hello world"
@@ -140,38 +162,57 @@ class TestStringCoercionFieldHandler:
         assert result == {"input_value": "hello world"}
 
     @pytest.mark.asyncio
-    async def test_passes_through_plain_string(self):
-        handler = StringCoercionFieldHandler()
-        fields = {"input_value": ("already a string", {"type": "str"})}
-        result = await handler.prepare(fields, None)
-        assert result == {}  # no changes
-
-    @pytest.mark.asyncio
     async def test_passes_through_non_message_objects(self):
-        handler = StringCoercionFieldHandler()
+        handler = StringCoercionInputHandler()
         fields = {"input_value": (42, {"type": "str"})}
         result = await handler.prepare(fields, None)
         assert result == {}
 
 
 # ---------------------------------------------------------------------------
-# DataFrameFieldHandler
+# DataFrameConversionInputHandler
 # ---------------------------------------------------------------------------
 
 
-class TestDataFrameFieldHandler:
-    def test_matches_dataframe_in_input_types(self):
-        handler = DataFrameFieldHandler()
-        assert handler.matches({"input_types": ["DataFrame", "Data"]}) is True
+class TestDataFrameConversionInputHandler:
+    def test_matches_dataframe_in_input_types_with_list(self):
+        handler = DataFrameConversionInputHandler()
+        data_list = [{"text": "row1"}]
+        assert (
+            handler.matches(
+                template_field={"input_types": ["DataFrame", "Data"]},
+                value=data_list,
+            )
+            is True
+        )
 
     def test_no_match_without_dataframe(self):
-        handler = DataFrameFieldHandler()
-        assert handler.matches({"input_types": ["Message"]}) is False
-        assert handler.matches({}) is False
+        handler = DataFrameConversionInputHandler()
+        assert (
+            handler.matches(template_field={"input_types": ["Message"]}, value=[])
+            is False
+        )
+        assert handler.matches(template_field={}, value=[]) is False
+
+    def test_no_match_empty_list(self):
+        handler = DataFrameConversionInputHandler()
+        assert (
+            handler.matches(template_field={"input_types": ["DataFrame"]}, value=[])
+            is False
+        )
+
+    def test_no_match_non_list(self):
+        handler = DataFrameConversionInputHandler()
+        assert (
+            handler.matches(
+                template_field={"input_types": ["DataFrame"]}, value="not a list"
+            )
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_converts_data_list(self):
-        handler = DataFrameFieldHandler()
+        handler = DataFrameConversionInputHandler()
         data_list = [
             {"text": "row1", "value": 1},
             {"text": "row2", "value": 2},
@@ -188,21 +229,21 @@ class TestDataFrameFieldHandler:
 
     @pytest.mark.asyncio
     async def test_skips_empty_list(self):
-        handler = DataFrameFieldHandler()
+        handler = DataFrameConversionInputHandler()
         fields = {"data_input": ([], {"input_types": ["DataFrame"]})}
         result = await handler.prepare(fields, None)
         assert result == {}
 
     @pytest.mark.asyncio
     async def test_skips_non_list(self):
-        handler = DataFrameFieldHandler()
+        handler = DataFrameConversionInputHandler()
         fields = {"data_input": ("not a list", {"input_types": ["DataFrame"]})}
         result = await handler.prepare(fields, None)
         assert result == {}
 
     @pytest.mark.asyncio
     async def test_skips_non_data_list(self):
-        handler = DataFrameFieldHandler()
+        handler = DataFrameConversionInputHandler()
         fields = {
             "data_input": (
                 [1, 2, 3],  # not Data-like
@@ -214,7 +255,7 @@ class TestDataFrameFieldHandler:
 
     @pytest.mark.asyncio
     async def test_skips_all_none_list(self):
-        handler = DataFrameFieldHandler()
+        handler = DataFrameConversionInputHandler()
         fields = {
             "data_input": (
                 [None, None],  # no non-null items
@@ -226,11 +267,11 @@ class TestDataFrameFieldHandler:
 
 
 # ---------------------------------------------------------------------------
-# _apply_field_handlers
+# _handler_pipeline
 # ---------------------------------------------------------------------------
 
 
-class TestApplyFieldHandlers:
+class TestHandlerPipeline:
     @pytest.fixture
     def executor(self):
         return ConcreteTestExecutor()
@@ -240,16 +281,16 @@ class TestApplyFieldHandlers:
         """Handlers should be applied sequentially, each seeing previous results."""
         call_order: list[str] = []
 
-        class HandlerA(FieldHandler):
-            def matches(self, template_field):
+        class HandlerA(InputHandler):
+            def matches(self, *, template_field, value):
                 return template_field.get("handle_a", False)
 
             async def prepare(self, fields, context):
                 call_order.append("A")
                 return {k: v + "_A" for k, (v, _) in fields.items()}
 
-        class HandlerB(FieldHandler):
-            def matches(self, template_field):
+        class HandlerB(InputHandler):
+            def matches(self, *, template_field, value):
                 return template_field.get("handle_b", False)
 
             async def prepare(self, fields, context):
@@ -258,19 +299,21 @@ class TestApplyFieldHandlers:
 
         parameters = {"x": "val"}
         template = {"x": {"handle_a": True, "handle_b": True}}
-        handlers = [HandlerA(), HandlerB()]
-        result = await executor._apply_field_handlers(parameters, template, handlers)
 
-        assert call_order == ["A", "B"]
-        assert result["x"] == "val_A_B"
+        executor._get_input_handlers = lambda: [HandlerA(), HandlerB()]
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert call_order == ["A", "B"]
+            assert result["x"] == "val_A_B"
 
     @pytest.mark.asyncio
     async def test_skips_handlers_with_no_matches(self, executor):
         """activate() should not be called when no fields match."""
         activated = []
 
-        class TrackingHandler(FieldHandler):
-            def matches(self, template_field):
+        class TrackingHandler(InputHandler):
+            def matches(self, *, template_field, value):
                 return False  # never matches
 
             @asynccontextmanager
@@ -283,20 +326,21 @@ class TestApplyFieldHandlers:
 
         parameters = {"x": "val"}
         template = {"x": {"type": "str"}}
-        result = await executor._apply_field_handlers(
-            parameters, template, [TrackingHandler()]
-        )
 
-        assert activated == []  # activate was never called
-        assert result == {"x": "val"}
+        executor._get_input_handlers = lambda: [TrackingHandler()]
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert activated == []  # activate was never called
+            assert result == {"x": "val"}
 
     @pytest.mark.asyncio
     async def test_passes_context_from_activate(self, executor):
         """Context yielded by activate() should be passed to prepare()."""
         received_contexts: list[Any] = []
 
-        class ContextHandler(FieldHandler):
-            def matches(self, template_field):
+        class ContextHandler(InputHandler):
+            def matches(self, *, template_field, value):
                 return True
 
             @asynccontextmanager
@@ -309,43 +353,56 @@ class TestApplyFieldHandlers:
 
         parameters = {"x": "val"}
         template = {"x": {"type": "str"}}
-        await executor._apply_field_handlers(parameters, template, [ContextHandler()])
+
+        executor._get_input_handlers = lambda: [ContextHandler()]
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (_, __):
+            pass
 
         assert received_contexts == ["my_context"]
 
     @pytest.mark.asyncio
-    async def test_non_dict_template_fields_skipped(self, executor):
-        """Fields with non-dict template entries should not be passed to handlers."""
+    async def test_non_dict_template_fields_get_empty_metadata(self, executor):
+        """Non-dict template entries are normalised to {} before matching.
 
-        class AlwaysMatchHandler(FieldHandler):
-            def matches(self, template_field):
-                return True
+        Handlers that require specific metadata keys won't match them.
+        """
+
+        class RequiresTypeHandler(InputHandler):
+            def matches(self, *, template_field, value):
+                return "type" in template_field
 
             async def prepare(self, fields, context):
                 return {k: "changed" for k in fields}
 
         parameters = {"x": "val", "y": "val2"}
         template = {"x": {"type": "str"}, "y": "direct_value"}
-        result = await executor._apply_field_handlers(
-            parameters, template, [AlwaysMatchHandler()]
-        )
 
-        assert result["x"] == "changed"
-        assert result["y"] == "val2"  # not passed to handler
+        executor._get_input_handlers = lambda: [RequiresTypeHandler()]
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result["x"] == "changed"
+            assert result["y"] == "val2"  # not matched (no "type" key)
 
     @pytest.mark.asyncio
     async def test_empty_handlers_is_noop(self, executor):
         parameters = {"x": "val"}
         template = {"x": {"type": "str"}}
-        result = await executor._apply_field_handlers(parameters, template, [])
-        assert result == {"x": "val"}
+
+        executor._get_input_handlers = lambda: []
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result == {"x": "val"}
 
     @pytest.mark.asyncio
     async def test_handler_updates_are_merged(self, executor):
         """Only keys returned by prepare() should be updated."""
 
-        class SelectiveHandler(FieldHandler):
-            def matches(self, template_field):
+        class SelectiveHandler(InputHandler):
+            def matches(self, *, template_field, value):
                 return True
 
             async def prepare(self, fields, context):
@@ -354,9 +411,10 @@ class TestApplyFieldHandlers:
 
         parameters = {"a": "orig_a", "b": "orig_b"}
         template = {"a": {"type": "str"}, "b": {"type": "str"}}
-        result = await executor._apply_field_handlers(
-            parameters, template, [SelectiveHandler()]
-        )
 
-        assert result["a"] == "updated"
-        assert result["b"] == "orig_b"
+        executor._get_input_handlers = lambda: [SelectiveHandler()]
+        executor._get_output_handlers = lambda: []
+
+        async with executor._handler_pipeline(parameters, template) as (result, _):
+            assert result["a"] == "updated"
+            assert result["b"] == "orig_b"

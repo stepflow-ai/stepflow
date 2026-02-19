@@ -11,7 +11,9 @@
 // the License.
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use backon::BackoffBuilder as _;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -36,10 +38,251 @@ use crate::protocol::{
 };
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
+/// Configuration for retry behavior when component execution fails.
+#[derive(Default, Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryConfig {
+    /// Maximum number of execution attempts (default: 3).
+    pub max_attempts: Option<u32>,
+    /// Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).
+    #[serde(default)]
+    pub backoff: BackoffConfig,
+}
+
+impl RetryConfig {
+    const DEFAULT_MAX_ATTEMPTS: u32 = 3;
+
+    fn max_attempts(&self) -> u32 {
+        self.max_attempts.unwrap_or(Self::DEFAULT_MAX_ATTEMPTS)
+    }
+}
+
+/// Backoff strategy for retry delays. Each variant carries only its relevant parameters.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum BackoffConfig {
+    /// Fixed delay between retries.
+    #[serde(rename_all = "camelCase")]
+    Constant {
+        /// Delay in milliseconds (default: 1000).
+        #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        delay_ms: u64,
+    },
+    /// Exponential backoff (delay doubles each attempt by default).
+    #[serde(rename_all = "camelCase")]
+    Exponential {
+        /// Starting delay in milliseconds (default: 1000).
+        #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        min_delay_ms: u64,
+        /// Maximum delay cap in milliseconds (default: 10000).
+        #[serde(default = "BackoffConfig::default_max_delay_ms")]
+        max_delay_ms: u64,
+        /// Multiplier per attempt (default: 2.0).
+        #[serde(default = "BackoffConfig::default_factor")]
+        factor: f32,
+    },
+    /// Fibonacci backoff (delay follows the Fibonacci sequence).
+    #[serde(rename_all = "camelCase")]
+    Fibonacci {
+        /// Starting delay in milliseconds (default: 1000).
+        #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        min_delay_ms: u64,
+        /// Maximum delay cap in milliseconds (default: 10000).
+        #[serde(default = "BackoffConfig::default_max_delay_ms")]
+        max_delay_ms: u64,
+    },
+}
+
+/// Helper to build a backoff variant schema with `type` discriminator property.
+fn backoff_variant_schema(
+    title: &str,
+    description: &str,
+    extra_properties: &[(&str, utoipa::openapi::schema::Schema)],
+) -> utoipa::openapi::schema::Schema {
+    use utoipa::openapi::schema::*;
+
+    let mut builder = ObjectBuilder::new()
+        .schema_type(SchemaType::Type(Type::Object))
+        .title(Some(title))
+        .description(Some(description))
+        .property(
+            "type",
+            ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)),
+        )
+        .required("type");
+
+    for (name, prop_schema) in extra_properties {
+        builder = builder.property(*name, prop_schema.clone());
+    }
+
+    Schema::Object(builder.build())
+}
+
+impl utoipa::PartialSchema for BackoffConfig {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::*;
+
+        let mut discriminator = Discriminator::new("type");
+        discriminator.mapping = [
+            (
+                "constant".to_string(),
+                "#/components/schemas/BackoffConfigConstant".to_string(),
+            ),
+            (
+                "exponential".to_string(),
+                "#/components/schemas/BackoffConfigExponential".to_string(),
+            ),
+            (
+                "fibonacci".to_string(),
+                "#/components/schemas/BackoffConfigFibonacci".to_string(),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        RefOr::T(schema::Schema::OneOf(
+            schema::OneOfBuilder::new()
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigConstant",
+                )))
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigExponential",
+                )))
+                .item(RefOr::Ref(Ref::new(
+                    "#/components/schemas/BackoffConfigFibonacci",
+                )))
+                .description(Some(
+                    "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
+                ))
+                .discriminator(Some(discriminator))
+                .build(),
+        ))
+    }
+}
+
+impl utoipa::ToSchema for BackoffConfig {
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        use utoipa::openapi::RefOr;
+        use utoipa::openapi::schema::*;
+
+        let uint_schema = || {
+            Schema::Object(
+                ObjectBuilder::new()
+                    .schema_type(SchemaType::Type(Type::Integer))
+                    .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64)))
+                    .minimum(Some(0.0))
+                    .build(),
+            )
+        };
+
+        let constant = backoff_variant_schema(
+            "BackoffConfigConstant",
+            "Fixed delay between retries.",
+            &[("delayMs", uint_schema())],
+        );
+        schemas.push(("BackoffConfigConstant".to_string(), RefOr::T(constant)));
+
+        let exponential = backoff_variant_schema(
+            "BackoffConfigExponential",
+            "Exponential backoff (delay doubles each attempt by default).",
+            &[
+                ("minDelayMs", uint_schema()),
+                ("maxDelayMs", uint_schema()),
+                (
+                    "factor",
+                    Schema::Object(
+                        ObjectBuilder::new()
+                            .schema_type(SchemaType::Type(Type::Number))
+                            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Float)))
+                            .build(),
+                    ),
+                ),
+            ],
+        );
+        schemas.push((
+            "BackoffConfigExponential".to_string(),
+            RefOr::T(exponential),
+        ));
+
+        let fibonacci = backoff_variant_schema(
+            "BackoffConfigFibonacci",
+            "Fibonacci backoff (delay follows the Fibonacci sequence).",
+            &[("minDelayMs", uint_schema()), ("maxDelayMs", uint_schema())],
+        );
+        schemas.push(("BackoffConfigFibonacci".to_string(), RefOr::T(fibonacci)));
+    }
+}
+
+impl Default for BackoffConfig {
+    fn default() -> Self {
+        Self::Fibonacci {
+            min_delay_ms: Self::default_min_delay_ms(),
+            max_delay_ms: Self::default_max_delay_ms(),
+        }
+    }
+}
+
+impl BackoffConfig {
+    fn default_min_delay_ms() -> u64 {
+        1000
+    }
+
+    fn default_max_delay_ms() -> u64 {
+        10000
+    }
+
+    fn default_factor() -> f32 {
+        2.0
+    }
+
+    /// Build a backoff iterator based on the configured strategy.
+    /// Jitter is always enabled to prevent thundering herd effects.
+    fn build(&self) -> Box<dyn Iterator<Item = Duration> + Send> {
+        match self {
+            Self::Constant { delay_ms } => Box::new(
+                backon::ConstantBuilder::default()
+                    .with_delay(Duration::from_millis(*delay_ms))
+                    .with_jitter()
+                    .build(),
+            ),
+            Self::Exponential {
+                min_delay_ms,
+                max_delay_ms,
+                factor,
+            } => Box::new(
+                backon::ExponentialBuilder::default()
+                    .with_min_delay(Duration::from_millis(*min_delay_ms))
+                    .with_max_delay(Duration::from_millis(*max_delay_ms))
+                    .with_factor(*factor)
+                    .with_jitter()
+                    .build(),
+            ),
+            Self::Fibonacci {
+                min_delay_ms,
+                max_delay_ms,
+            } => Box::new(
+                backon::FibonacciBuilder::default()
+                    .with_min_delay(Duration::from_millis(*min_delay_ms))
+                    .with_max_delay(Duration::from_millis(*max_delay_ms))
+                    .with_jitter()
+                    .build(),
+            ),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
+    /// Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<RetryConfig>,
 }
 
 /// Configuration for Stepflow plugin transport.
@@ -133,10 +376,12 @@ impl PluginConfig for StepflowPluginConfig {
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedSubprocess(launcher),
+                    self.retry.unwrap_or_default(),
                 )))
             }
             StepflowTransport::Remote { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
                 StepflowPluginState::UninitializedRemote(url),
+                self.retry.unwrap_or_default(),
             ))),
         }
     }
@@ -153,15 +398,18 @@ pub struct StepflowPlugin {
     /// Whether the worker supports `$blob` references in inputs/outputs.
     /// Set from the InitializeResult response.
     supports_blob_refs: RwLock<bool>,
+    /// Retry configuration for component execution failures.
+    retry_config: RetryConfig,
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState) -> Self {
+    fn new(state: StepflowPluginState, retry_config: RetryConfig) -> Self {
         Self {
             state: RwLock::new(state),
             blob_api_url: RwLock::new(None),
             blob_threshold: RwLock::new(0),
             supports_blob_refs: RwLock::new(false),
+            retry_config,
         }
     }
 
@@ -436,8 +684,9 @@ impl Plugin for StepflowPlugin {
         step: Option<&StepId>,
         input: ValueRef,
     ) -> Result<FlowResult> {
-        const MAX_ATTEMPTS: u32 = 3;
+        let max_attempts = self.retry_config.max_attempts();
         let can_restart = self.is_subprocess_mode().await;
+        let mut backoff = self.retry_config.backoff.build();
 
         // Blobify large input fields if the worker supports blob refs
         let should_blobify = self.should_blobify().await;
@@ -457,7 +706,7 @@ impl Plugin for StepflowPlugin {
             input
         };
 
-        for attempt in 1..=MAX_ATTEMPTS {
+        for attempt in 1..=max_attempts {
             // Create observability context from run context and step
             let observability = ObservabilityContext::from_run_context(run_context, step);
 
@@ -495,27 +744,40 @@ impl Plugin for StepflowPlugin {
                     return Ok(FlowResult::Success(output));
                 }
                 Err(err) => {
-                    // If we can restart (subprocess mode) and have attempts left, try to restart
-                    if can_restart && attempt < MAX_ATTEMPTS {
-                        log::warn!(
-                            "Component execution failed (attempt {}/{}), restarting subprocess: {}",
-                            attempt,
-                            MAX_ATTEMPTS,
-                            err
-                        );
+                    if attempt < max_attempts {
+                        if can_restart {
+                            // Subprocess mode: restart the process then retry
+                            log::warn!(
+                                "Component execution failed (attempt {}/{}), restarting subprocess: {}",
+                                attempt,
+                                max_attempts,
+                                err
+                            );
 
-                        // Try to restart the subprocess
-                        if let Err(restart_err) = self.restart_subprocess().await {
-                            log::error!("Failed to restart subprocess: {}", restart_err);
-                            // If restart fails, return the original error
-                            return Err(err).change_context(PluginError::Execution);
+                            // Try to restart the subprocess
+                            if let Err(restart_err) = self.restart_subprocess().await {
+                                log::error!("Failed to restart subprocess: {}", restart_err);
+                                // If restart fails, return the original error
+                                return Err(err).change_context(PluginError::Execution);
+                            }
+                        } else {
+                            // Remote mode: wait with backoff for external restart (Docker/k8s)
+                            let delay = backoff.next().unwrap_or(Duration::from_millis(1000));
+                            log::warn!(
+                                "Component execution failed (attempt {}/{}), retrying in {:?}: {}",
+                                attempt,
+                                max_attempts,
+                                delay,
+                                err
+                            );
+                            tokio::time::sleep(delay).await;
                         }
 
                         // Continue to next attempt
                         continue;
                     }
 
-                    // No more retries or can't restart - return error
+                    // No more retries - return error
                     return Err(err).change_context(PluginError::Execution);
                 }
             }

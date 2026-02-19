@@ -20,7 +20,6 @@ use serde_json::Value;
 use stepflow_core::BlobId;
 use stepflow_core::blob::BlobType;
 use stepflow_core::blob_ref::{BlobRef, is_blob_ref};
-use stepflow_core::workflow::ValueRef;
 
 use crate::{BlobStore, StateError};
 
@@ -60,9 +59,8 @@ pub async fn blobify_inputs(
         let size = serialized.len();
 
         if size > threshold {
-            let value_ref = ValueRef::new(value.clone());
             let blob_id = blob_store
-                .put_blob(value_ref, BlobType::Data, Default::default())
+                .put_blob(&serialized, BlobType::Data, Default::default())
                 .await?;
             log::debug!(
                 "Blobified field {:?} ({} bytes) -> {}",
@@ -167,18 +165,23 @@ fn resolve_blob_refs_inner(
         let fetches = ids_vec.iter().map(|id| {
             let id = id.clone();
             async move {
-                let data = blob_store
+                let raw = blob_store
                     .get_blob(&id)
                     .await
-                    .attach_printable_lazy(|| format!("blob_id={id}"));
-                data.map(|d| (id, d))
+                    .attach_printable_lazy(|| format!("blob_id={id}"))?
+                    .ok_or_else(|| {
+                        error_stack::report!(StateError::BlobNotFound {
+                            blob_id: id.to_string(),
+                        })
+                    })?;
+                let value: Value = serde_json::from_slice(&raw.content)
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| format!("blob_id={id}"))?;
+                Ok::<_, error_stack::Report<StateError>>((id, value))
             }
         });
-        let results = futures::future::try_join_all(fetches).await?;
-        let resolved: std::collections::HashMap<BlobId, Value> = results
-            .into_iter()
-            .map(|(id, data)| (id, data.data().as_ref().clone()))
-            .collect();
+        let results: Vec<(BlobId, Value)> = futures::future::try_join_all(fetches).await?;
+        let resolved: std::collections::HashMap<BlobId, Value> = results.into_iter().collect();
 
         // Replace refs with fetched data
         let result = replace_blob_refs(value, &resolved);
@@ -245,9 +248,10 @@ mod tests {
         let store = InMemoryStateStore::new();
 
         // Store a value
-        let data = ValueRef::new(json!({"resolved": "data"}));
+        let data = json!({"resolved": "data"});
+        let content = serde_json::to_vec(&data).unwrap();
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -263,9 +267,10 @@ mod tests {
     async fn test_resolve_blob_refs_nested_in_array() {
         let store = InMemoryStateStore::new();
 
-        let data = ValueRef::new(json!("hello"));
+        let data = json!("hello");
+        let content = serde_json::to_vec(&data).unwrap();
         let blob_id = store
-            .put_blob(data, BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
 

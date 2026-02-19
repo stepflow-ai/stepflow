@@ -309,6 +309,22 @@
       "allOf": [
         {
           "$ref": "#/$defs/StepflowTransport"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "retry": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/RetryConfig",
+                  "description": "Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff)."
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -423,6 +439,25 @@
       ],
       "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server"
     },
+    "RetryConfig": {
+      "type": "object",
+      "description": "Configuration for retry behavior when component execution fails.",
+      "properties": {
+        "maxAttempts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "description": "Maximum number of execution attempts (default: 3).",
+          "minimum": 0
+        },
+        "backoff": {
+          "$ref": "#/$defs/BackoffConfig",
+          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max)."
+        }
+      }
+    },
     "HealthCheckConfig": {
       "type": "object",
       "description": "Configuration for health check polling when launching subprocess servers.",
@@ -441,6 +476,96 @@
           "type": "integer",
           "format": "int64",
           "description": "Delay between health check attempts in milliseconds. Default: 100",
+          "minimum": 0
+        }
+      }
+    },
+    "BackoffConfig": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BackoffConfigConstant"
+        },
+        {
+          "$ref": "#/$defs/BackoffConfigExponential"
+        },
+        {
+          "$ref": "#/$defs/BackoffConfigFibonacci"
+        }
+      ],
+      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
+      "discriminator": {
+        "propertyName": "type",
+        "mapping": {
+          "constant": "#/$defs/BackoffConfigConstant",
+          "exponential": "#/$defs/BackoffConfigExponential",
+          "fibonacci": "#/$defs/BackoffConfigFibonacci"
+        }
+      }
+    },
+    "BackoffConfigConstant": {
+      "type": "object",
+      "title": "BackoffConfigConstant",
+      "description": "Fixed delay between retries.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "delayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        }
+      }
+    },
+    "BackoffConfigExponential": {
+      "type": "object",
+      "title": "BackoffConfigExponential",
+      "description": "Exponential backoff (delay doubles each attempt by default).",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "maxDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "factor": {
+          "type": "number",
+          "format": "float"
+        }
+      }
+    },
+    "BackoffConfigFibonacci": {
+      "type": "object",
+      "title": "BackoffConfigFibonacci",
+      "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "maxDelayMs": {
+          "type": "integer",
+          "format": "int64",
           "minimum": 0
         }
       }

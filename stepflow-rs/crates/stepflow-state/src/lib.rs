@@ -31,7 +31,7 @@ mod noop_lease_manager;
 mod state_store;
 
 pub use active_executions::ActiveExecutions;
-pub use blob_store::BlobStore;
+pub use blob_store::{BlobStore, RawBlob};
 pub use completion_notifier::RunCompletionNotifier;
 pub use environment_ext::{
     ActiveExecutionsExt, BlobStoreExt, ExecutionJournalExt, LeaseManagerExt, MetadataStoreExt,

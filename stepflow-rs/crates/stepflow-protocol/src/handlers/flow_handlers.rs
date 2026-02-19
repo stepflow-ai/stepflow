@@ -12,7 +12,7 @@
 
 use futures::future::{BoxFuture, FutureExt as _};
 use std::sync::Arc;
-use stepflow_core::GetRunParams;
+use stepflow_core::{DEFAULT_WAIT_TIMEOUT_SECS, GetRunParams};
 use stepflow_plugin::RunContext;
 use stepflow_state::BlobStoreExt as _;
 use tokio::sync::mpsc;
@@ -42,14 +42,19 @@ impl MethodHandler for SubmitRunHandler {
             async move |request: crate::protocol::SubmitRunProtocolParams| {
                 // Fetch the flow from the blob store
                 let flow_id = &request.flow_id;
-                let blob_data = env.blob_store().get_blob(flow_id).await.map_err(|e| {
-                    log::error!("Failed to get flow blob: {e}");
-                    Error::not_found("flow", flow_id.as_str())
-                })?;
-                let flow = blob_data
-                    .as_flow()
-                    .ok_or_else(|| Error::internal("Invalid flow blob"))?
-                    .clone();
+                let raw = env
+                    .blob_store()
+                    .get_blob(flow_id)
+                    .await
+                    .map_err(|e| {
+                        log::error!("Failed to get flow blob: {e}");
+                        Error::not_found("flow", flow_id.as_str())
+                    })?
+                    .ok_or_else(|| Error::not_found("flow", flow_id.as_str()))?;
+                let flow: std::sync::Arc<stepflow_core::workflow::Flow> = std::sync::Arc::new(
+                    serde_json::from_slice(&raw.content)
+                        .map_err(|_| Error::internal("Invalid flow blob"))?,
+                );
 
                 // Build submit params
                 let params = stepflow_core::SubmitRunParams {
@@ -74,12 +79,19 @@ impl MethodHandler for SubmitRunHandler {
 
                 // If wait=true, wait for completion and fetch results
                 let run_status = if request.wait {
-                    stepflow_execution::wait_for_completion(&env, run_status.run_id)
-                        .await
-                        .map_err(|e| {
-                            log::error!("Failed to wait for run completion: {e}");
-                            Error::internal("Failed to wait for run completion")
-                        })?;
+                    let timeout_duration = std::time::Duration::from_secs(
+                        request.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS),
+                    );
+                    // Ignore timeout — return current status either way
+                    if let Ok(Err(e)) = tokio::time::timeout(
+                        timeout_duration,
+                        stepflow_execution::wait_for_completion(&env, run_status.run_id),
+                    )
+                    .await
+                    {
+                        log::error!("Failed while waiting for run completion: {e}");
+                        return Err(Error::internal("Failed to wait for run completion"));
+                    }
 
                     // Fetch final status with results
 
@@ -124,14 +136,21 @@ impl MethodHandler for GetRunHandler {
                     Error::invalid_value("run_id", "valid UUID")
                 })?;
 
-                // If wait=true, wait for completion first
+                // If wait=true, wait for completion first (with timeout)
                 if request.wait {
-                    stepflow_execution::wait_for_completion(&env, run_id)
-                        .await
-                        .map_err(|e| {
-                            log::error!("Failed to wait for run completion: {e}");
-                            Error::internal("Failed to wait for run completion")
-                        })?;
+                    let timeout_duration = std::time::Duration::from_secs(
+                        request.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS),
+                    );
+                    // Ignore timeout — return current status either way
+                    if let Ok(Err(e)) = tokio::time::timeout(
+                        timeout_duration,
+                        stepflow_execution::wait_for_completion(&env, run_id),
+                    )
+                    .await
+                    {
+                        log::error!("Failed while waiting for run completion: {e}");
+                        return Err(Error::internal("Failed to wait for run completion"));
+                    }
                 }
 
                 let params = GetRunParams {

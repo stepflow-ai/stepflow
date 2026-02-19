@@ -12,6 +12,7 @@
 
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
     response::Json,
 };
 use indexmap::IndexMap;
@@ -20,10 +21,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{
-    BlobId, FlowResult,
+    BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowResult,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary};
+use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunStatus, RunSummary};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{BlobStoreExt as _, MetadataStoreExt as _};
 use utoipa::ToSchema;
@@ -55,21 +56,50 @@ pub struct CreateRunRequest {
     /// Maximum concurrency for batch execution (only used when input is an array)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_concurrency: Option<usize>,
+    /// If true, block until the run completes and return the result (200 OK).
+    /// If false (default), return immediately with status Running (202 Accepted).
+    #[serde(default)]
+    pub wait: bool,
+    /// Maximum seconds to wait when wait=true (default 300). If the timeout elapses,
+    /// returns the current run status rather than an error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timeout_secs: Option<u64>,
 }
 
-/// Response for create run operations
+/// Response for create run operations.
+///
+/// Shares the same base fields as `RunDetails` (GET /runs/{id}) via `RunSummary`,
+/// with optional item results when `wait=true`.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunResponse {
-    /// The run ID (for single runs) or batch ID (for batch runs)
-    pub run_id: Uuid,
-    /// Number of items in this run (1 for single runs, > 1 for batch runs)
-    pub item_count: u32,
-    /// The result of the flow execution (if completed, for single runs only)
+    /// Run summary fields (run_id, flow_id, status, items, timestamps, etc.)
+    #[serde(flatten)]
+    pub summary: RunSummary,
+    /// Item results, only populated when `wait=true` and the run has completed.
+    /// Each entry contains the item's index, status, and result.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<FlowResult>,
-    /// The run status
-    pub status: ExecutionStatus,
+    pub results: Option<Vec<ItemResult>>,
+}
+
+impl From<RunStatus> for CreateRunResponse {
+    fn from(status: RunStatus) -> Self {
+        Self {
+            summary: RunSummary {
+                run_id: status.run_id,
+                flow_id: status.flow_id,
+                flow_name: status.flow_name,
+                status: status.status,
+                items: status.items,
+                created_at: status.created_at,
+                completed_at: status.completed_at,
+                root_run_id: status.root_run_id,
+                parent_run_id: status.parent_run_id,
+                orchestrator_id: None,
+            },
+            results: status.results,
+        }
+    }
 }
 
 /// Response for listing runs
@@ -168,14 +198,19 @@ pub struct RunFlowResponse {
 /// Create and execute a flow by hash
 ///
 /// Supports both single and batch execution:
-/// - Single input: Executes one run and returns the result directly
-/// - Multiple inputs: Executes batch and waits for all results
+/// - Single input: Executes one run
+/// - Multiple inputs: Executes multiple runs (batch mode)
+///
+/// By default, returns immediately with 202 Accepted and status Running.
+/// Set `wait: true` in the request body to block until the run completes
+/// and return 200 OK with the result.
 #[utoipa::path(
     post,
     path = "/runs",
     request_body = CreateRunRequest,
     responses(
-        (status = 200, description = "Flow run created successfully", body = CreateRunResponse),
+        (status = 200, description = "Flow run completed (wait=true)", body = CreateRunResponse),
+        (status = 202, description = "Flow run accepted for execution", body = CreateRunResponse),
         (status = 400, description = "Invalid request"),
         (status = 404, description = "Flow not found"),
         (status = 500, description = "Internal server error")
@@ -185,7 +220,7 @@ pub struct RunFlowResponse {
 pub async fn create_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<CreateRunRequest>,
-) -> Result<Json<CreateRunResponse>, ErrorResponse> {
+) -> Result<(StatusCode, Json<CreateRunResponse>), ErrorResponse> {
     let blob_store = executor.blob_store();
 
     // Get the flow from the blob store
@@ -194,7 +229,8 @@ pub async fn create_run(
         .await?
         .ok_or_else(|| error_stack::report!(ServerError::WorkflowNotFound(req.flow_id.clone())))?;
 
-    let item_count = req.input.len() as u32;
+    let wait = req.wait;
+    let timeout_secs = req.timeout_secs;
 
     // Execute the run
     let variables = if req.variables.is_empty() {
@@ -211,43 +247,62 @@ pub async fn create_run(
     let run_status =
         stepflow_execution::submit_run(&executor, flow, req.flow_id, req.input, params).await?;
 
-    // Wait for completion and get final results
-    stepflow_execution::wait_for_completion(&executor, run_status.run_id).await?;
-    let run_status = stepflow_execution::get_run(
-        &executor,
-        run_status.run_id,
-        stepflow_core::GetRunParams {
-            include_results: true,
-            ..Default::default()
-        },
-    )
-    .await?;
+    if wait {
+        // Wait for completion with timeout, then return results
+        let timeout_duration =
+            std::time::Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS));
+        if let Ok(Err(e)) = tokio::time::timeout(
+            timeout_duration,
+            stepflow_execution::wait_for_completion(&executor, run_status.run_id),
+        )
+        .await
+        {
+            return Err(e.into());
+        }
 
-    // For single-item runs, extract the result directly into the response
-    let result = if item_count == 1 {
-        run_status
-            .results
-            .as_ref()
-            .and_then(|r| r.first())
-            .and_then(|item| item.result.clone())
+        let run_status = stepflow_execution::get_run(
+            &executor,
+            run_status.run_id,
+            stepflow_core::GetRunParams {
+                include_results: true,
+                ..Default::default()
+            },
+        )
+        .await?;
+
+        Ok((StatusCode::OK, Json(CreateRunResponse::from(run_status))))
     } else {
-        None // Batch results should be fetched via items endpoint
-    };
+        // Return immediately with 202 Accepted
+        Ok((
+            StatusCode::ACCEPTED,
+            Json(CreateRunResponse::from(run_status)),
+        ))
+    }
+}
 
-    Ok(Json(CreateRunResponse {
-        run_id: run_status.run_id,
-        item_count,
-        result,
-        status: run_status.status,
-    }))
+/// Query parameters for getting a run by ID
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct GetRunQuery {
+    /// If true, wait for the run to reach a terminal state before responding.
+    #[serde(default)]
+    pub wait: Option<bool>,
+    /// Maximum seconds to wait when wait=true (default 300). If the timeout elapses,
+    /// returns the current run status rather than an error.
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 /// Get execution details by ID
+///
+/// Returns the current run status and details. Use `wait=true` to long-poll
+/// until the run reaches a terminal state (completed, failed, or cancelled).
 #[utoipa::path(
     get,
     path = "/runs/{run_id}",
     params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
+        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
+        GetRunQuery
     ),
     responses(
         (status = 200, description = "Run details retrieved successfully", body = RunDetails),
@@ -260,7 +315,23 @@ pub async fn create_run(
 pub async fn get_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Path(run_id): Path<Uuid>,
+    Query(query): Query<GetRunQuery>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
+    // If wait=true, block until the run reaches a terminal state (with timeout)
+    if query.wait.unwrap_or(false) {
+        let timeout_duration =
+            std::time::Duration::from_secs(query.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS));
+        // Ignore timeout — return current status either way, but propagate actual errors
+        if let Ok(Err(e)) = tokio::time::timeout(
+            timeout_duration,
+            stepflow_execution::wait_for_completion(&executor, run_id),
+        )
+        .await
+        {
+            return Err(e.into());
+        }
+    }
+
     let metadata_store = executor.metadata_store();
 
     // Get execution details

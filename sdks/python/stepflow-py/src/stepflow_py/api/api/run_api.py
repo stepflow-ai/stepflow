@@ -306,7 +306,7 @@ class RunApi:
     ) -> CreateRunResponse:
         """Create and execute a flow by hash
 
-        Supports both single and batch execution: - Single input: Executes one run and returns the result directly - Multiple inputs: Executes batch and waits for all results
+        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
 
         :param create_run_request: (required)
         :type create_run_request: CreateRunRequest
@@ -342,6 +342,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "CreateRunResponse",
+            "202": "CreateRunResponse",
             "400": None,
             "404": None,
             "500": None,
@@ -371,7 +372,7 @@ class RunApi:
     ) -> ApiResponse[CreateRunResponse]:
         """Create and execute a flow by hash
 
-        Supports both single and batch execution: - Single input: Executes one run and returns the result directly - Multiple inputs: Executes batch and waits for all results
+        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
 
         :param create_run_request: (required)
         :type create_run_request: CreateRunRequest
@@ -407,6 +408,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "CreateRunResponse",
+            "202": "CreateRunResponse",
             "400": None,
             "404": None,
             "500": None,
@@ -436,7 +438,7 @@ class RunApi:
     ) -> RESTResponseType:
         """Create and execute a flow by hash
 
-        Supports both single and batch execution: - Single input: Executes one run and returns the result directly - Multiple inputs: Executes batch and waits for all results
+        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
 
         :param create_run_request: (required)
         :type create_run_request: CreateRunRequest
@@ -472,6 +474,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "CreateRunResponse",
+            "202": "CreateRunResponse",
             "400": None,
             "404": None,
             "500": None,
@@ -786,6 +789,18 @@ class RunApi:
     async def get_run(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        wait: Annotated[
+            StrictBool | None,
+            Field(
+                description="If true, wait for the run to reach a terminal state before responding."
+            ),
+        ] = None,
+        timeout_secs: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -798,9 +813,14 @@ class RunApi:
     ) -> RunDetails:
         """Get execution details by ID
 
+        Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param wait: If true, wait for the run to reach a terminal state before responding.
+        :type wait: bool
+        :param timeout_secs: Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error.
+        :type timeout_secs: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -825,6 +845,8 @@ class RunApi:
 
         _param = self._get_run_serialize(
             run_id=run_id,
+            wait=wait,
+            timeout_secs=timeout_secs,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -850,6 +872,18 @@ class RunApi:
     async def get_run_with_http_info(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        wait: Annotated[
+            StrictBool | None,
+            Field(
+                description="If true, wait for the run to reach a terminal state before responding."
+            ),
+        ] = None,
+        timeout_secs: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -862,9 +896,14 @@ class RunApi:
     ) -> ApiResponse[RunDetails]:
         """Get execution details by ID
 
+        Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param wait: If true, wait for the run to reach a terminal state before responding.
+        :type wait: bool
+        :param timeout_secs: Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error.
+        :type timeout_secs: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -889,6 +928,8 @@ class RunApi:
 
         _param = self._get_run_serialize(
             run_id=run_id,
+            wait=wait,
+            timeout_secs=timeout_secs,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -914,6 +955,18 @@ class RunApi:
     async def get_run_without_preload_content(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        wait: Annotated[
+            StrictBool | None,
+            Field(
+                description="If true, wait for the run to reach a terminal state before responding."
+            ),
+        ] = None,
+        timeout_secs: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error."
+            ),
+        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -926,9 +979,14 @@ class RunApi:
     ) -> RESTResponseType:
         """Get execution details by ID
 
+        Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
         :param run_id: Run ID (UUID) (required)
         :type run_id: str
+        :param wait: If true, wait for the run to reach a terminal state before responding.
+        :type wait: bool
+        :param timeout_secs: Maximum seconds to wait when wait=true (default 300). If the timeout elapses, returns the current run status rather than an error.
+        :type timeout_secs: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -953,6 +1011,8 @@ class RunApi:
 
         _param = self._get_run_serialize(
             run_id=run_id,
+            wait=wait,
+            timeout_secs=timeout_secs,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -973,6 +1033,8 @@ class RunApi:
     def _get_run_serialize(
         self,
         run_id,
+        wait,
+        timeout_secs,
         _request_auth,
         _content_type,
         _headers,
@@ -995,6 +1057,12 @@ class RunApi:
         if run_id is not None:
             _path_params["run_id"] = run_id
         # process the query parameters
+        if wait is not None:
+            _query_params.append(("wait", wait))
+
+        if timeout_secs is not None:
+            _query_params.append(("timeoutSecs", timeout_secs))
+
         # process the header parameters
         # process the form parameters
         # process the body parameter

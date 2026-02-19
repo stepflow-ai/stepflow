@@ -31,3 +31,4 @@ uuid.workspace = true
 utoipa.workspace = true
 
 [dev-dependencies]
+tempfile = "3"
