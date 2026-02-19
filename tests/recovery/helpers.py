@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ import httpx
 import yaml
 
 COMPOSE_FILE = str(Path(__file__).parent / "docker-compose.yml")
+COMPOSE_OVERRIDE = os.environ.get("COMPOSE_OVERRIDE")
 
 ORCH1_URL = "http://localhost:7841"
 ORCH2_URL = "http://localhost:7842"
@@ -103,7 +105,7 @@ async def wait_for_run(
                 data = resp.json()
                 if data.get("status") in terminal:
                     return data
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             await asyncio.sleep(2)
             continue
 
@@ -136,12 +138,11 @@ async def wait_for_run_on_either(
 # ---------------------------------------------------------------------------
 
 def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["docker", "compose", "-f", COMPOSE_FILE, *args],
-        check=check,
-        capture_output=True,
-        text=True,
-    )
+    cmd = ["docker", "compose", "-f", COMPOSE_FILE]
+    if COMPOSE_OVERRIDE:
+        cmd.extend(["-f", str(Path(__file__).parent / COMPOSE_OVERRIDE)])
+    cmd.extend(args)
+    return subprocess.run(cmd, check=check, capture_output=True, text=True)
 
 
 def docker_kill(*services: str):
@@ -191,7 +192,7 @@ def wait_for_health(url: str, timeout: float = 60):
             resp = httpx.get(f"{url}/api/v1/health", timeout=2)
             if resp.status_code == 200:
                 return
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             pass
         time.sleep(1)
     raise TimeoutError(f"Service at {url} not healthy within {timeout}s")
@@ -280,7 +281,7 @@ def wait_for_worker_health(timeout: float = 30):
             resp = httpx.get("http://localhost:8080/health", timeout=2)
             if resp.status_code == 200:
                 return
-        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             pass
         time.sleep(1)
     raise TimeoutError(f"Worker not healthy within {timeout}s")

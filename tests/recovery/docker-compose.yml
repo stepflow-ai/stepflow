@@ -65,6 +65,10 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
+      # Start after orchestrator-1 is healthy so SQLite migrations complete
+      # before the second orchestrator tries to access the shared database.
+      orchestrator-1:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7842/api/v1/health"]
       interval: 3s
