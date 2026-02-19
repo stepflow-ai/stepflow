@@ -7,10 +7,15 @@
 
 ## Summary
 
-This proposal describes incrementally replacing the Python-based Docling integration with Rust, moving from a thin HTTP proxy to native document processing over three phases. Each phase delivers standalone value while structurally enabling the next. The entire approach works **without forking or modifying any docling project code**.
+This proposal describes two complementary strategies for scaling document processing in Stepflow:
 
-**Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar (~31s/paper avg on CPU)  
-**End state:** Rust component server with native PDF parsing, ONNX inference, and chunking — falling back to docling-serve for unsupported formats.
+1. **Rust-native migration** — incrementally replacing the Python-based Docling integration with Rust over three phases, from HTTP proxy to native ONNX inference
+2. **Pipeline disaggregation** — decomposing docling's monolithic pipeline into independently scalable Stepflow stages using a new `MapComponent` for parallel fan-out/fan-in
+
+Each phase delivers standalone value while structurally enabling the next. The entire approach works **without forking or modifying any docling project code**.
+
+**Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar (~31s/paper avg, monolithic sequential pipeline)  
+**End state:** Disaggregated Stepflow flow with per-stage parallelism, Rust-native processing for the common path, and docling-serve fallback for complex formats. A single 50-page document that today takes ~37s can be parallelized across layout workers to ~4s + assembly overhead.
 
 ## Motivation
 
@@ -286,6 +291,189 @@ async fn convert(&self, sources, options) -> Result<ConversionResult> {
 2. Verify ONNX model weights load correctly via `ort` with expected accuracy
 3. Analyze actual document corpus distribution (% born-digital PDF vs. scanned vs. DOCX)
 
+## Pipeline Disaggregation: Stepflow-Native Document Processing
+
+### Motivation
+
+Phases 1-3 progressively replace the Python worker and selectively move processing into Rust, but they preserve docling's fundamental architecture: a **monolithic, single-document, sequential pipeline**. Each worker pod runs the complete stack — layout analysis, TableFormer, OCR, assembly — for one document at a time. Scaling means replicating whole pipelines, so every pod carries the full memory footprint even when most documents never need OCR and only 28% of pages contain tables.
+
+Stepflow can do something fundamentally different: **disaggregate the pipeline into independently scalable stages with data-driven routing.** This transforms the cost model from `N pods × full_memory` to `N_layout × layout_memory + N_table × table_memory + N_ocr × ocr_memory`, and unlocks document-internal parallelism that docling's architecture cannot achieve.
+
+### Prerequisite: MapComponent (Parallel Fan-Out/Fan-In)
+
+The disaggregated pipeline requires a general-purpose parallel map primitive that does not currently exist in Stepflow. The existing `IterateComponent` (`stepflow-builtins/src/iterate.rs`) provides sequential sub-flow execution via `run_context.execute_flow()` — the same infrastructure supports parallel execution.
+
+**New builtin: `/map`**
+
+```rust
+/// Input for the map component
+struct MapInput {
+    /// The workflow to apply to each item
+    flow: Flow,
+    /// The list of items to process in parallel
+    items: Vec<ValueRef>,
+    /// Maximum concurrent executions (default: unbounded)
+    max_concurrency: Option<u32>,
+    /// Maximum time for all items to complete (default: 3600s)
+    timeout_secs: Option<u64>,
+}
+
+/// Output from the map component
+struct MapOutput {
+    /// Results in the same order as input items
+    results: Vec<ValueRef>,
+    /// Per-item status for partial failure support
+    statuses: Vec<ItemStatus>,
+    /// Count of successful/failed/skipped items
+    summary: MapSummary,
+}
+
+/// Per-item execution status
+enum ItemStatus {
+    Success,
+    Failed { error: String },
+    Skipped { reason: String },
+}
+```
+
+Implementation follows the same pattern as `IterateComponent::execute` but fans out instead of looping:
+
+```rust
+let results: Vec<(ValueRef, ItemStatus)> = futures::stream::iter(input.items)
+    .enumerate()
+    .map(|(idx, item)| {
+        let flow = flow.clone();
+        let flow_id = flow_id.clone();
+        let run_context = run_context.clone();
+        async move {
+            match run_context.execute_flow(flow, flow_id, item, None).await {
+                Ok(FlowResult::Success(value)) => (value, ItemStatus::Success),
+                Ok(FlowResult::Failed(err)) => (
+                    ValueRef::default(),
+                    ItemStatus::Failed { error: err.message },
+                ),
+                Err(e) => (
+                    ValueRef::default(),
+                    ItemStatus::Failed { error: e.to_string() },
+                ),
+            }
+        }
+    })
+    .buffer_unordered(max_concurrency)
+    .collect()
+    .await;
+```
+
+The `MapComponent` is general-purpose and has applications beyond document processing — batch API calls, parallel data transformations, fan-out to multiple LLM providers, etc. It should live in `stepflow-builtins` alongside `IterateComponent`.
+
+**Partial failure is first-class.** The `statuses` vector allows downstream steps to handle incomplete results gracefully. For document processing, the assembly step can produce a DoclingDocument with placeholders for failed regions rather than failing the entire document.
+
+### Docling Pipeline as a Stepflow Flow
+
+Once the `MapComponent` exists, the docling pipeline decomposes into a Stepflow flow where each stage is a routable, independently scalable component:
+
+```
+┌─────────────────┐
+│  PDF Backend     │  Sequential, single step
+│  (page split)    │  Produces: Vec<Page>
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │  /map   │  Parallel fan-out over pages
+    │         │  Sub-flow: layout analysis
+    └────┬────┘  Produces: Vec<PageLayout>
+         │
+┌────────▼────────┐
+│  Gather +        │  Sequential, pure computation
+│  Classify        │  Extracts table regions from layouts
+│  Regions         │  Produces: Vec<TableRegion> (+ text, figures)
+└────────┬────────┘
+         │
+    ┌────▼────┐
+    │  /map   │  Parallel fan-out over table regions
+    │         │  Sub-flow: TableFormer extraction
+    └────┬────┘  Produces: Vec<TableResult>
+         │
+┌────────▼────────┐
+│  Assembly        │  Sequential, document-global
+│                  │  Reads: all page layouts + table results
+│                  │  Produces: DoclingDocument
+└────────┬────────┘
+         │
+┌────────▼────────┐
+│  Chunk           │  Phase 2 native Rust chunker
+│                  │  Produces: Vec<Chunk>
+└─────────────────┘
+```
+
+**Two `/map` operations** handle the parallelism. The first fans out pages to layout analysis workers. The second fans out table regions to TableFormer workers. Each map's sub-flow is a single component invocation that routes to the appropriate worker pool via Stepflow's routing configuration.
+
+### Scaling Properties
+
+This architecture fundamentally changes how resources are allocated:
+
+| Stage | Workers carry | Scales with |
+|-------|--------------|-------------|
+| PDF backend | Minimal (text extraction) | Document throughput |
+| Layout analysis | ONNX layout model (~100MB) | Total page count |
+| TableFormer | TableFormer model (~200MB) | Table count (28% of pages) |
+| OCR | OCR engine (~500MB+) | Scanned page count |
+| Assembly + Chunking | No models (pure computation) | Document throughput |
+
+For a SaaS platform with unknown document mixes, this is critical. The system auto-balances: table workers stay idle when tenants submit born-digital PDFs, OCR workers spin up when someone uploads scanned invoices. No single pod carries models it doesn't use.
+
+**Document-internal parallelism:** A single 50-page document currently processes sequentially at ~733ms/page = ~37s. With fan-out to 10 layout workers, that drops to ~4s for layout + assembly overhead. This is parallelism that docling's monolithic architecture cannot achieve regardless of pod count.
+
+### Intermediate Data and Blob Storage
+
+Page images (~100-200KB at 72dpi) flow between stages via Stepflow's content-addressed blob storage. The overhead per stage transition is a blob PUT + blob GET at local-network latency (single-digit milliseconds) — negligible compared to the 633ms+ per-stage processing time. Content-addressing provides automatic deduplication if the same document is processed multiple times.
+
+Intermediate blobs (page images, region crops) are ephemeral — only needed between adjacent stages. The flow should include cleanup metadata or TTL so that intermediate artifacts are garbage-collected after assembly completes.
+
+### OCR as a Conditional Stage
+
+OCR is the most expensive operation (13s/page) and is only needed for scanned documents. In the disaggregated pipeline, OCR becomes a conditional branch:
+
+1. The PDF backend step detects whether the document has a usable text layer
+2. If yes (born-digital): pages route to layout analysis → text extraction from PDF layer
+3. If no (scanned): pages route to OCR workers → text extraction from OCR output → then layout analysis
+
+The `force_ocr` option overrides this detection. Routing is expressed in the flow definition, not in code.
+
+### Relationship to Phases 1-3
+
+The disaggregated pipeline builds on top of the phased work, not instead of it:
+
+- **Phase 1** (Rust proxy) provides the component server skeleton and docling-serve integration
+- **Phase 2** (native chunking) becomes the final stage in the disaggregated flow
+- **Phase 3** (ONNX inference) provides the native layout analysis and TableFormer components that replace docling-serve calls within the fan-out sub-flows
+- **MapComponent** is built in parallel as a general-purpose Stepflow primitive
+- **Pipeline flow definition** can be authored once MapComponent + Phase 1 are complete, initially using docling-serve for all processing stages, then progressively replacing stages with native implementations as Phases 2 and 3 deliver
+
+This means the disaggregated architecture can be deployed incrementally: start with docling-serve handling every stage (same processing, better parallelism and observability), then swap in native implementations per-stage as they mature.
+
+### Observability Benefits
+
+Per-stage execution as Stepflow steps means fastrace automatically captures per-stage latency distributions. Instead of "this document took 31 seconds," operators see:
+
+- PDF backend: 1.2s (12 pages)
+- Layout analysis: 7.6s (12 pages × 633ms, parallelized to 2.5s wall-clock across 4 workers)
+- TableFormer: 3.5s (2 tables)
+- Assembly: 180ms
+- Chunking: 45ms
+
+This profiling data — previously identified as a prerequisite for Phase 3 scope decisions — is generated as a byproduct of the disaggregated architecture.
+
+### Design Considerations
+
+**Assembly is the synchronization barrier.** Assembly requires all layout and extraction results before producing the DoclingDocument. The reading order algorithm needs the full spatial layout across all pages to determine heading hierarchy and cross-page references. This is inherently sequential and document-global, but also pure computation (fast, no ML). The data model for "bag of parallel region results → ordered document tree" requires careful design.
+
+**Multi-tenant fairness.** A 500-page document from Tenant A generates 500 layout tasks. Without fairness controls, Tenant B's 3-page document queues behind them. Per-tenant queuing or priority scheduling at the stage level is needed for production SaaS. Disaggregation makes this more tractable than monolithic pods (preemption at task boundaries vs. blocking the entire pod), but the fairness policy must be designed explicitly. NATS JetStream's consumer model (per-tenant subjects, weighted consumers) is a natural fit. Not required for initial deployment but should not be precluded by the architecture.
+
+**Partial failure semantics.** If TableFormer fails on 1 of 12 tables, the assembly step should produce a DoclingDocument with a placeholder for the failed table and a warning — not fail the entire document. The `MapComponent`'s per-item `ItemStatus` enables this: assembly receives `MapOutput` with both successful and failed items and handles each appropriately. This matches or improves docling-serve's current behavior for enterprise workloads where losing an entire 500-page contract because of one malformed table is unacceptable.
+
+**Metering and cost attribution.** Per-stage execution enables per-page, per-table, per-OCR-page metering for SaaS billing — more granular than the current per-document model. Stepflow traces provide the attribution data. Design should not preclude this but it is not required for initial deployment.
+
 ## No-Fork Analysis
 
 A critical constraint: all three phases must work **without modifying any docling project code**. This is achievable because we consume only public interfaces.
@@ -386,13 +574,33 @@ IBM recently released [Granite-Docling-258M](https://www.ibm.com/new/announcemen
 
 This could simplify Phase 3 further: instead of orchestrating three separate ONNX models, run a single small VLM. However, the multi-model pipeline is proven and well-understood while Granite-Docling is new. Worth monitoring as it matures.
 
+## Estimated Effort
+
+| Work Item | Estimate | Dependencies |
+|-----------|----------|-------------|
+| Phase 1: Rust component server | 2-3 weeks | None |
+| MapComponent | 1-2 weeks | None (parallel with Phase 1) |
+| Phase 2: Native chunking | 2 weeks | Phase 1 |
+| Pipeline flow definition (docling-serve backed) | 1 week | Phase 1 + MapComponent |
+| Phase 3: ONNX layout analysis | 3-4 weeks | Phase 1 |
+| Phase 3: ONNX TableFormer | 2-3 weeks | Phase 3 layout |
+| Disaggregated native stages | 1-2 weeks | Phase 3 + pipeline flow |
+
+The MapComponent and Phase 1 can proceed in parallel. The pipeline flow definition can be authored and tested with docling-serve backends as soon as both are complete, providing parallelism and observability wins before any native processing is implemented.
+
 ## Open Questions
 
-1. **Profiling data needed:** Before committing to Phase 3 scope, instrument docling-serve to determine exact per-component time breakdown on our actual workloads. This determines whether layout analysis, table recognition, or something else is the highest-ROI target.
+1. **Profiling data needed:** Before committing to Phase 3 scope, instrument docling-serve to determine exact per-component time breakdown on our actual workloads. The disaggregated pipeline generates this data as a byproduct once deployed with docling-serve backends. This determines whether layout analysis, table recognition, or something else is the highest-ROI target.
 
 2. **DOCX in scope for native processing?** Enterprise workloads are expected to be mostly DOCX + PDF. DOCX falls back to docling-serve in this proposal, but if it represents >50% of volume, a Rust DOCX parser (using the existing `docx-rs` crate) could be worth evaluating for a later phase.
 
 3. **Model quantization:** Independent of the Rust rewrite, INT8 quantized ONNX models can be 2-4x faster on CPU. This optimization composes with Phase 3 and could be explored in parallel.
+
+4. **MapComponent concurrency control:** What is the right default for `max_concurrency`? Unbounded fan-out of a 500-page document could overwhelm downstream workers. Options: static limit, adaptive based on worker pool size, or backpressure from the routing/load-balancer layer.
+
+5. **Assembly algorithm specification:** The reading order and heading hierarchy reconstruction algorithm needs detailed specification. The Docling technical report describes the approach at a high level, but the implementation details (cross-page heading inheritance, figure/table caption association) require study of the `docling-core` source.
+
+6. **Intermediate blob lifecycle:** Design the TTL or explicit cleanup mechanism for ephemeral page images and region crops. Should this be flow-level metadata, a storage-layer feature, or an explicit cleanup step in the flow?
 
 ## References
 
@@ -408,3 +616,5 @@ This could simplify Phase 3 further: instead of orchestrating three separate ONN
 - [HuggingFace `ort` crate](https://github.com/pykeio/ort) — ONNX Runtime Rust bindings
 - [HuggingFace `tokenizers` crate](https://github.com/huggingface/tokenizers) — Native Rust tokenizer
 - [Granite-Docling announcement](https://www.ibm.com/new/announcements/granite-docling-end-to-end-document-conversion)
+- [`IterateComponent` source](../../stepflow-rs/crates/stepflow-builtins/src/iterate.rs) — Pattern for `MapComponent` implementation
+- [`RunContext::execute_flow`](../../stepflow-rs/crates/stepflow-plugin/) — Sub-flow execution infrastructure used by both iterate and map
