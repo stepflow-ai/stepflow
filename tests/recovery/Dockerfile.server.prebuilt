@@ -29,7 +29,7 @@ RUN apt-get update && \
 COPY stepflow-server /usr/local/bin/stepflow-server
 RUN chmod +x /usr/local/bin/stepflow-server
 
-RUN useradd -m -u 1000 stepflow
+RUN useradd -m -u 10000 stepflow
 RUN mkdir -p /app/config /app/data && chown -R stepflow:stepflow /app
 
 USER stepflow
