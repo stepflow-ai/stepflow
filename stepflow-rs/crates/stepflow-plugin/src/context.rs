@@ -199,8 +199,7 @@ impl RunContext {
             .await
             .change_context(crate::PluginError::Execution)?
             .ok_or_else(|| {
-                error_stack::report!(crate::PluginError::Execution)
-                    .attach_printable(format!("Flow blob not found: {}", flow_id))
+                error_stack::report!(crate::PluginError::FlowNotFound(flow_id.clone()))
             })?;
 
         // Deserialize the flow from raw bytes

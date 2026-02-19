@@ -481,9 +481,13 @@ async fn test_migrations_concurrent_pools() {
     .unwrap();
 
     let test_data = serde_json::json!({"test": "concurrent"});
-    let value_ref = stepflow_core::workflow::ValueRef::new(test_data);
+    let blob_bytes = serde_json::to_vec(&test_data).unwrap();
     store1
-        .put_blob(value_ref, stepflow_core::BlobType::Data, Default::default())
+        .put_blob(
+            &blob_bytes,
+            stepflow_core::BlobType::Data,
+            Default::default(),
+        )
         .await
         .unwrap();
 }

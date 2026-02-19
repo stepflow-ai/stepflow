@@ -12,6 +12,7 @@
 
 use std::borrow::Cow;
 
+use stepflow_core::BlobId;
 use stepflow_core::workflow::Component;
 use thiserror::Error;
 
@@ -25,6 +26,8 @@ pub enum PluginError {
     UnknownComponent(Component),
     #[error("error executing component")]
     Execution,
+    #[error("flow not found: {0}")]
+    FlowNotFound(BlobId),
     #[error("error importing user-defined function")]
     UdfImport,
     #[error("error executing user-defined function")]

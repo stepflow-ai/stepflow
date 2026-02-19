@@ -77,9 +77,6 @@ impl BuiltinComponent for PutBlobComponent {
         let input: PutBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        // DEBUG: Log what's being stored
-        log::debug!("put_blob storing data: {:?}", input.data);
-
         // Serialize to bytes and create the blob through the run context
         let content = serde_json::to_vec(&input.data).change_context(BuiltinError::Internal)?;
         let blob_id = run_context
@@ -170,8 +167,6 @@ impl BuiltinComponent for GetBlobComponent {
 
         let data: serde_json::Value =
             serde_json::from_slice(&raw.content).change_context(BuiltinError::Internal)?;
-
-        log::debug!("get_blob retrieved data: {:?}", data);
 
         let output = GetBlobOutput { data };
 
