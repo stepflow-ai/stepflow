@@ -270,33 +270,35 @@ impl FlowExecutor {
                 && let Some(tasks) = self.scheduler.select_next(max_to_start).into_tasks()
             {
                 // Build TaskAttempt records and increment attempt counters before
-                // spawning. This journal write serves as both the durability barrier
-                // (ensuring prior task results survive crashes) and the attempt record.
-                let task_attempts: Vec<TaskAttempt> = tasks
-                    .iter()
-                    .map(|task| {
-                        let run_state = self
-                            .run_state_mut(task.run_id)
-                            .expect("run should exist for scheduled task");
-                        let item = run_state.items_state_mut().item_mut(task.item_index);
-                        item.record_attempt(task.step_index);
-                        TaskAttempt {
-                            item_index: task.item_index,
-                            step_index: task.step_index,
-                            attempt: item.attempt_count(task.step_index),
-                        }
-                    })
-                    .collect();
+                // spawning. Tasks may belong to different runs (parent and subflows),
+                // so we group attempts by run_id and write a separate TasksStarted
+                // event per run. This ensures recovery can filter by run_id correctly.
+                let mut attempts_by_run: HashMap<uuid::Uuid, Vec<TaskAttempt>> = HashMap::new();
 
-                // Write TasksStarted event — this must be durable before we spawn
+                for task in tasks.iter() {
+                    let run_state = self
+                        .run_state_mut(task.run_id)
+                        .expect("run should exist for scheduled task");
+                    let item = run_state.items_state_mut().item_mut(task.item_index);
+                    let attempt = item.record_attempt(task.step_index);
+
+                    attempts_by_run
+                        .entry(task.run_id)
+                        .or_default()
+                        .push(TaskAttempt::new(task.item_index, task.step_index, attempt));
+                }
+
+                // Write TasksStarted events — these must be durable before we spawn
                 // the task futures, so that recovery knows these tasks were attempted.
-                self.write_journal(
-                    self.root_run_id,
-                    JournalEvent::TasksStarted {
-                        tasks: task_attempts,
-                    },
-                )
-                .await?;
+                for (run_id, task_attempts) in &attempts_by_run {
+                    self.write_journal(
+                        *run_id,
+                        JournalEvent::TasksStarted {
+                            tasks: task_attempts.clone(),
+                        },
+                    )
+                    .await?;
+                }
 
                 for task in tasks.into_iter() {
                     let future = self.prepare_task_future(task)?;

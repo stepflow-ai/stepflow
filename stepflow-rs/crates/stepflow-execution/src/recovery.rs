@@ -1043,11 +1043,7 @@ mod tests {
                 run_id,
                 run_id,
                 JournalEvent::TasksStarted {
-                    tasks: vec![stepflow_state::TaskAttempt {
-                        item_index: 0,
-                        step_index: 0,
-                        attempt: 1,
-                    }],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
                 },
             ))
             .await
@@ -1187,16 +1183,8 @@ mod tests {
                 run_id,
                 JournalEvent::TasksStarted {
                     tasks: vec![
-                        stepflow_state::TaskAttempt {
-                            item_index: 0,
-                            step_index: 0,
-                            attempt: 1,
-                        },
-                        stepflow_state::TaskAttempt {
-                            item_index: 0,
-                            step_index: 1,
-                            attempt: 1,
-                        },
+                        stepflow_state::TaskAttempt::new(0, 0, 1),
+                        stepflow_state::TaskAttempt::new(0, 1, 1),
                     ],
                 },
             ))

@@ -204,11 +204,13 @@ impl RunState {
                 tasks
             }
             JournalEvent::TasksStarted { tasks } => {
-                // Record attempt counts for each task being started
+                // Restore attempt counts from the journal. We use set_attempt_at_least
+                // so that replaying multiple events (or a compacted journal with a single
+                // high-value entry) always converges to the correct count.
                 for task_attempt in tasks {
                     self.items_state
                         .item_mut(task_attempt.item_index)
-                        .record_attempt(task_attempt.step_index);
+                        .set_attempt_at_least(task_attempt.step_index, task_attempt.attempt);
                 }
                 Vec::new()
             }
@@ -969,21 +971,13 @@ mod tests {
 
         // Start step0 (attempt 1)
         state.apply_event(&JournalEvent::TasksStarted {
-            tasks: vec![stepflow_state::TaskAttempt {
-                item_index: 0,
-                step_index: 0,
-                attempt: 1,
-            }],
+            tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
         });
         assert_eq!(state.items_state().item(0).attempt_count(0), 1);
 
         // Simulate crash + recovery: step0 started again (attempt 2)
         state.apply_event(&JournalEvent::TasksStarted {
-            tasks: vec![stepflow_state::TaskAttempt {
-                item_index: 0,
-                step_index: 0,
-                attempt: 2,
-            }],
+            tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 2)],
         });
         assert_eq!(state.items_state().item(0).attempt_count(0), 2);
 
@@ -1031,16 +1025,8 @@ mod tests {
         // Start both steps in one batch
         state.apply_event(&JournalEvent::TasksStarted {
             tasks: vec![
-                stepflow_state::TaskAttempt {
-                    item_index: 0,
-                    step_index: 0,
-                    attempt: 1,
-                },
-                stepflow_state::TaskAttempt {
-                    item_index: 0,
-                    step_index: 1,
-                    attempt: 1,
-                },
+                stepflow_state::TaskAttempt::new(0, 0, 1),
+                stepflow_state::TaskAttempt::new(0, 1, 1),
             ],
         });
 
@@ -1071,11 +1057,7 @@ mod tests {
                 }],
             },
             JournalEvent::TasksStarted {
-                tasks: vec![stepflow_state::TaskAttempt {
-                    item_index: 0,
-                    step_index: 0,
-                    attempt: 1,
-                }],
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
             },
             JournalEvent::TaskCompleted {
                 item_index: 0,
@@ -1083,11 +1065,7 @@ mod tests {
                 result: FlowResult::Success(ValueRef::new(json!({"step0": "done"}))),
             },
             JournalEvent::TasksStarted {
-                tasks: vec![stepflow_state::TaskAttempt {
-                    item_index: 0,
-                    step_index: 1,
-                    attempt: 1,
-                }],
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
             },
             // Crash here - step1 was in-flight, never completed
         ];
@@ -1118,5 +1096,57 @@ mod tests {
 
         // After recovery, when the executor starts step1 again, it will be attempt 2
         // (attempt_count=1 from journal + 1 for the new attempt)
+    }
+
+    #[test]
+    fn test_recovery_from_compacted_journal_high_attempt() {
+        // After journal compaction, we may have a single TasksStarted entry with
+        // attempt > 1. Replaying it should restore the correct count directly
+        // (not increment from 0).
+        let run_id = Uuid::now_v7();
+        let flow = create_chain_flow();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let events = vec![
+            JournalEvent::RunInitialized {
+                needed_steps: vec![stepflow_state::ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0, 1, 2],
+                }],
+            },
+            // Compacted: only the latest TasksStarted for step0 remains (attempt=3)
+            JournalEvent::TasksStarted {
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 3)],
+            },
+            // step0 completed on attempt 3
+            JournalEvent::TaskCompleted {
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"step0": "done"}))),
+            },
+            // step1 started (attempt=1) but crashed before completing
+            JournalEvent::TasksStarted {
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
+            },
+        ];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+        for event in &events {
+            state.apply_event(event);
+        }
+
+        let item = state.items_state().item(0);
+
+        // step0 should reflect the compacted attempt=3
+        assert_eq!(item.attempt_count(0), 3);
+        assert!(item.is_completed(0));
+
+        // step1 at attempt=1, not completed (in-flight at crash)
+        assert_eq!(item.attempt_count(1), 1);
+        assert!(!item.is_completed(1));
+
+        // step2 never started
+        assert_eq!(item.attempt_count(2), 0);
     }
 }

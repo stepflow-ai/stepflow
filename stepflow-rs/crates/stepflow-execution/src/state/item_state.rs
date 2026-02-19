@@ -151,8 +151,20 @@ impl ItemState {
     }
 
     /// Record that a step is being attempted (increments the attempt counter).
-    pub fn record_attempt(&mut self, step_index: usize) {
+    /// Returns the new attempt count.
+    pub fn record_attempt(&mut self, step_index: usize) -> u32 {
         self.attempts[step_index] += 1;
+        self.attempts[step_index]
+    }
+
+    /// Set the attempt count to at least the given value.
+    ///
+    /// Used during journal replay to restore attempt counts from recorded
+    /// `TasksStarted` events. Takes the max of the current and given value
+    /// so that replaying events in order or from a compacted journal both
+    /// produce the correct count.
+    pub fn set_attempt_at_least(&mut self, step_index: usize, attempt: u32) {
+        self.attempts[step_index] = self.attempts[step_index].max(attempt);
     }
 
     /// Add a step to the needed set.

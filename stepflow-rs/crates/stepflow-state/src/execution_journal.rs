@@ -150,6 +150,17 @@ pub struct TaskAttempt {
     pub attempt: u32,
 }
 
+impl TaskAttempt {
+    /// Create a new task attempt record.
+    pub fn new(item_index: u32, step_index: usize, attempt: u32) -> Self {
+        Self {
+            item_index,
+            step_index,
+            attempt,
+        }
+    }
+}
+
 /// Execution events recorded in the journal.
 ///
 /// These events capture the state transitions during workflow execution
