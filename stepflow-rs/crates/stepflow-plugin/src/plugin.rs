@@ -48,12 +48,15 @@ pub trait Plugin: Send + Sync {
     /// * `run_context` - The run context with flow, environment, and subflow submission
     /// * `step` - The step being executed (None for workflow-level operations)
     /// * `input` - The resolved input values
+    /// * `attempt` - The execution attempt number (1-based). Increases on every retry
+    ///   regardless of cause (orchestrator crash, transport failure, etc.)
     async fn execute(
         &self,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
+        attempt: u32,
     ) -> Result<FlowResult>;
 }
 

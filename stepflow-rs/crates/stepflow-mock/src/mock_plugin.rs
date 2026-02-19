@@ -225,6 +225,7 @@ impl Plugin for MockPlugin {
         _run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
         input: ValueRef,
+        _attempt: u32,
     ) -> Result<FlowResult> {
         let mock_component = self
             .components

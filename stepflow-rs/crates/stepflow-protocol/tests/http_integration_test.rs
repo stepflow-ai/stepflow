@@ -170,7 +170,7 @@ async fn test_http_protocol_integration() {
 
                                 let execute_result = timeout(
                                     Duration::from_secs(5),
-                                    plugin.execute(component, &run_context, None, input_ref),
+                                    plugin.execute(component, &run_context, None, input_ref, 1),
                                 )
                                 .await;
 

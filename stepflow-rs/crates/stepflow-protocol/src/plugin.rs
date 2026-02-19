@@ -683,8 +683,9 @@ impl Plugin for StepflowPlugin {
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
+        attempt: u32,
     ) -> Result<FlowResult> {
-        let max_attempts = self.retry_config.max_attempts();
+        let max_retries = self.retry_config.max_attempts();
         let can_restart = self.is_subprocess_mode().await;
         let mut backoff = self.retry_config.backoff.build();
 
@@ -706,7 +707,12 @@ impl Plugin for StepflowPlugin {
             input
         };
 
-        for attempt in 1..=max_attempts {
+        // The component sees a unified attempt counter that increases regardless
+        // of retry reason (orchestrator crash, transport failure, etc.).
+        // `attempt` is the orchestrator-level count; transport retries add to it.
+        for retry in 0..max_retries {
+            let component_attempt = attempt + retry;
+
             // Create observability context from run context and step
             let observability = ObservabilityContext::from_run_context(run_context, step);
 
@@ -718,7 +724,7 @@ impl Plugin for StepflowPlugin {
                     &ComponentExecuteParams {
                         component: component.clone(),
                         input: execute_input.clone(),
-                        attempt,
+                        attempt: component_attempt,
                         observability,
                     },
                     Some(Arc::clone(run_context)),
@@ -744,13 +750,14 @@ impl Plugin for StepflowPlugin {
                     return Ok(FlowResult::Success(output));
                 }
                 Err(err) => {
-                    if attempt < max_attempts {
+                    if retry + 1 < max_retries {
                         if can_restart {
                             // Subprocess mode: restart the process then retry
                             log::warn!(
-                                "Component execution failed (attempt {}/{}), restarting subprocess: {}",
-                                attempt,
-                                max_attempts,
+                                "Component execution failed (attempt {}, retry {}/{}), restarting subprocess: {}",
+                                component_attempt,
+                                retry + 1,
+                                max_retries,
                                 err
                             );
 
@@ -764,16 +771,17 @@ impl Plugin for StepflowPlugin {
                             // Remote mode: wait with backoff for external restart (Docker/k8s)
                             let delay = backoff.next().unwrap_or(Duration::from_millis(1000));
                             log::warn!(
-                                "Component execution failed (attempt {}/{}), retrying in {:?}: {}",
-                                attempt,
-                                max_attempts,
+                                "Component execution failed (attempt {}, retry {}/{}), retrying in {:?}: {}",
+                                component_attempt,
+                                retry + 1,
+                                max_retries,
                                 delay,
                                 err
                             );
                             tokio::time::sleep(delay).await;
                         }
 
-                        // Continue to next attempt
+                        // Continue to next retry
                         continue;
                     }
 

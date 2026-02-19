@@ -137,6 +137,7 @@ async fn execute_step_async(
     input: ValueRef,
     run_context: &Arc<RunContext>,
     step_id: &StepId,
+    attempt: u32,
 ) -> Result<FlowResult> {
     use stepflow_observability::fastrace::prelude::*;
 
@@ -160,7 +161,7 @@ async fn execute_step_async(
 
         // Execute the component
         let result = match plugin
-            .execute(&component, run_context, Some(step_id), input)
+            .execute(&component, run_context, Some(step_id), input, attempt)
             .await
         {
             Ok(result) => result,
@@ -224,7 +225,7 @@ async fn execute_step_async(
 /// # Example
 ///
 /// ```ignore
-/// let runner = StepRunner::new(step_index, step_input, run_context);
+/// let runner = StepRunner::new(step_index, step_input, run_context, attempt);
 ///
 /// let result = runner.run().await;
 /// ```
@@ -237,6 +238,8 @@ pub struct StepRunner {
     step_input: FlowResult,
     /// Run context containing run hierarchy, environment, flow, and subflow submission.
     run_context: Arc<RunContext>,
+    /// Execution attempt number (1-based, increases across all retry causes).
+    attempt: u32,
 }
 
 impl StepRunner {
@@ -248,13 +251,19 @@ impl StepRunner {
     ///
     /// The `run_context` provides run hierarchy information (run_id, root_run_id),
     /// the flow and flow_id, environment access, and optionally a subflow submitter.
-    pub fn new(step_index: usize, step_input: FlowResult, run_context: Arc<RunContext>) -> Self {
+    pub fn new(
+        step_index: usize,
+        step_input: FlowResult,
+        run_context: Arc<RunContext>,
+        attempt: u32,
+    ) -> Self {
         let step = run_context.flow.step(step_index).clone();
         Self {
             step,
             step_index,
             step_input,
             run_context,
+            attempt,
         }
     }
 
@@ -300,6 +309,7 @@ impl StepRunner {
             input,
             &self.run_context,
             &step_id,
+            self.attempt,
         )
         .await?;
 

@@ -625,6 +625,7 @@ impl FlowExecutor {
         let flow = item.flow().clone();
         let step = flow.step(task.step_index);
         let step_input = step.input.resolve(item);
+        let attempt = item.attempt_count(task.step_index);
 
         // Create StepId for error handling (before moving flow into runner)
         let step_id = StepId::for_step(flow.clone(), task.step_index);
@@ -641,7 +642,7 @@ impl FlowExecutor {
         );
 
         // Create step runner with all execution context
-        let runner = StepRunner::new(task.step_index, step_input, run_context);
+        let runner = StepRunner::new(task.step_index, step_input, run_context, attempt);
 
         // Create an owned future that runs the step and handles errors
         let future = async move {

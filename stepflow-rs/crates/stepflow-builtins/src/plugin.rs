@@ -79,6 +79,7 @@ impl Plugin for Builtins {
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
+        _attempt: u32,
     ) -> Result<FlowResult> {
         let component = registry::get_component(component)?;
         component

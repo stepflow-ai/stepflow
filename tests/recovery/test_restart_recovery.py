@@ -97,11 +97,20 @@ async def test_restart_recovery_sequential(compose_env):
     assert step1_records[0]["tracker_attempt"] == 1, "step1 should have a single execution"
 
     # step3 was dispatched fresh by the recovered orchestrator.
-    # attempt=1 because attempt counts are not journaled, so they reset on
-    # recovery. This is a known bug — see #637.
+    # It was never started before the crash, so attempt=1 is correct.
     step3_records = get_step_tracker_records(records, "step3", run_id)
-    assert step3_records[-1]["attempt"] == 1, "step3 should be attempt 1 (fresh dispatch, #637)"
+    assert step3_records[-1]["attempt"] == 1, "step3 should be attempt 1 (fresh dispatch)"
     assert step3_records[-1]["tracker_attempt"] == 1, "step3 should have a single execution"
+
+    # step2 was in-flight when the orchestrator crashed. After recovery,
+    # the journal replay sees TasksStarted(attempt=1) with no TaskCompleted,
+    # so the re-dispatch should be attempt=2.
+    step2_records = get_step_tracker_records(records, "step2", run_id)
+    if len(step2_records) > 1:
+        # step2 was re-executed after recovery — the recovery attempt should be >= 2
+        assert step2_records[-1]["attempt"] >= 2, (
+            "step2 re-execution after recovery should show attempt >= 2"
+        )
 
 
 @pytest.mark.asyncio

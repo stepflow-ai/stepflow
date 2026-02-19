@@ -442,6 +442,7 @@ impl Plugin for McpPlugin {
         _run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
         input: ValueRef,
+        _attempt: u32,
     ) -> Result<FlowResult> {
         let tool_name = component_path_to_tool_name(component.path())
             .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
