@@ -299,78 +299,45 @@ Phases 1-3 progressively replace the Python worker and selectively move processi
 
 Stepflow can do something fundamentally different: **disaggregate the pipeline into independently scalable stages with data-driven routing.** This transforms the cost model from `N pods × full_memory` to `N_layout × layout_memory + N_table × table_memory + N_ocr × ocr_memory`, and unlocks document-internal parallelism that docling's architecture cannot achieve.
 
-### Prerequisite: MapComponent (Parallel Fan-Out/Fan-In)
+### Existing Primitive: MapComponent (Parallel Fan-Out/Fan-In)
 
-The disaggregated pipeline requires a general-purpose parallel map primitive that does not currently exist in Stepflow. The existing `IterateComponent` (`stepflow-builtins/src/iterate.rs`) provides sequential sub-flow execution via `run_context.execute_flow()` — the same infrastructure supports parallel execution.
+The disaggregated pipeline requires a parallel map primitive — and one already exists. The `MapComponent` (`stepflow-builtins/src/map.rs`) provides exactly the fan-out/fan-in pattern needed, backed by robust subflow infrastructure:
 
-**New builtin: `/map`**
+**Current `/map` builtin:**
 
 ```rust
-/// Input for the map component
+// Input
 struct MapInput {
-    /// The workflow to apply to each item
-    flow: Flow,
-    /// The list of items to process in parallel
-    items: Vec<ValueRef>,
-    /// Maximum concurrent executions (default: unbounded)
-    max_concurrency: Option<u32>,
-    /// Maximum time for all items to complete (default: 3600s)
-    timeout_secs: Option<u64>,
+    workflow: Flow,              // Sub-flow to apply to each item
+    items: Vec<ValueRef>,        // Items to process in parallel
+    max_concurrency: Option<usize>,  // Concurrency limit
 }
 
-/// Output from the map component
+// Output  
 struct MapOutput {
-    /// Results in the same order as input items
-    results: Vec<ValueRef>,
-    /// Per-item status for partial failure support
-    statuses: Vec<ItemStatus>,
-    /// Count of successful/failed/skipped items
-    summary: MapSummary,
-}
-
-/// Per-item execution status
-enum ItemStatus {
-    Success,
-    Failed { error: String },
-    Skipped { reason: String },
+    results: Vec<FlowResult>,    // Per-item results (Success or Failed)
+    successful: u32,
+    failed: u32,
 }
 ```
 
-Implementation follows the same pattern as `IterateComponent::execute` but fans out instead of looping:
+The implementation delegates to `RunContext::execute_batch()`, which submits all items to the parent executor via `SubflowSubmitter`. The subflow infrastructure (`stepflow-plugin/src/subflow.rs`) handles run hierarchy tracking, channel-based submission, and result collection from the metadata store with ordering preserved.
 
-```rust
-let results: Vec<(ValueRef, ItemStatus)> = futures::stream::iter(input.items)
-    .enumerate()
-    .map(|(idx, item)| {
-        let flow = flow.clone();
-        let flow_id = flow_id.clone();
-        let run_context = run_context.clone();
-        async move {
-            match run_context.execute_flow(flow, flow_id, item, None).await {
-                Ok(FlowResult::Success(value)) => (value, ItemStatus::Success),
-                Ok(FlowResult::Failed(err)) => (
-                    ValueRef::default(),
-                    ItemStatus::Failed { error: err.message },
-                ),
-                Err(e) => (
-                    ValueRef::default(),
-                    ItemStatus::Failed { error: e.to_string() },
-                ),
-            }
-        }
-    })
-    .buffer_unordered(max_concurrency)
-    .collect()
-    .await;
-```
+**Partial failure is already supported.** Each item produces an independent `FlowResult::Success` or `FlowResult::Failed`. Downstream steps (e.g., assembly) can pattern-match on each result to handle incomplete regions gracefully — producing a DoclingDocument with placeholders for failed extractions rather than failing the entire document.
 
-The `MapComponent` is general-purpose and has applications beyond document processing — batch API calls, parallel data transformations, fan-out to multiple LLM providers, etc. It should live in `stepflow-builtins` alongside `IterateComponent`.
+**Required work for disaggregated pipeline support:**
 
-**Partial failure is first-class.** The `statuses` vector allows downstream steps to handle incomplete results gracefully. For document processing, the assembly step can produce a DoclingDocument with placeholders for failed regions rather than failing the entire document.
+1. **Wire `max_concurrency` through the executor.** The parameter is accepted by `MapComponent` and passed to `execute_batch()` → `SubflowSubmitter::submit()`, but the executor currently has `// TODO: support max_concurrency` and hardcodes `None`. This needs to be connected so that a 500-page document doesn't fan out unbounded and overwhelm downstream workers.
+
+2. **Validate with nested fan-out.** The docling pipeline requires two levels of `/map` (pages → layout, then table regions → TableFormer). The `SubflowSubmitter::for_run()` method supports nested hierarchies, but this pattern needs integration testing to verify trace propagation and result collection work correctly with nested parallelism.
+
+3. **Consider timeout support.** Long-running fan-out operations (e.g., OCR on many scanned pages) should have a per-item or overall timeout. This could be added to `MapInput` or handled at the executor level.
+
+The `MapComponent` is already general-purpose and has applications beyond document processing — batch API calls, parallel data transformations, fan-out to multiple LLM providers, etc.
 
 ### Docling Pipeline as a Stepflow Flow
 
-Once the `MapComponent` exists, the docling pipeline decomposes into a Stepflow flow where each stage is a routable, independently scalable component:
+With the `MapComponent`, the docling pipeline decomposes into a Stepflow flow where each stage is a routable, independently scalable component:
 
 ```
 ┌─────────────────┐
@@ -447,8 +414,8 @@ The disaggregated pipeline builds on top of the phased work, not instead of it:
 - **Phase 1** (Rust proxy) provides the component server skeleton and docling-serve integration
 - **Phase 2** (native chunking) becomes the final stage in the disaggregated flow
 - **Phase 3** (ONNX inference) provides the native layout analysis and TableFormer components that replace docling-serve calls within the fan-out sub-flows
-- **MapComponent** is built in parallel as a general-purpose Stepflow primitive
-- **Pipeline flow definition** can be authored once MapComponent + Phase 1 are complete, initially using docling-serve for all processing stages, then progressively replacing stages with native implementations as Phases 2 and 3 deliver
+- **MapComponent** already exists; remaining work is wiring `max_concurrency` through the executor and validating nested fan-out
+- **Pipeline flow definition** can be authored once `max_concurrency` is wired + Phase 1 is complete, initially using docling-serve for all processing stages, then progressively replacing stages with native implementations as Phases 2 and 3 deliver
 
 This means the disaggregated architecture can be deployed incrementally: start with docling-serve handling every stage (same processing, better parallelism and observability), then swap in native implementations per-stage as they mature.
 
@@ -579,14 +546,14 @@ This could simplify Phase 3 further: instead of orchestrating three separate ONN
 | Work Item | Estimate | Dependencies |
 |-----------|----------|-------------|
 | Phase 1: Rust component server | 2-3 weeks | None |
-| MapComponent | 1-2 weeks | None (parallel with Phase 1) |
+| MapComponent: wire max_concurrency + nested validation | 2-3 days | None (parallel with Phase 1) |
 | Phase 2: Native chunking | 2 weeks | Phase 1 |
-| Pipeline flow definition (docling-serve backed) | 1 week | Phase 1 + MapComponent |
+| Pipeline flow definition (docling-serve backed) | 1 week | Phase 1 + MapComponent concurrency |
 | Phase 3: ONNX layout analysis | 3-4 weeks | Phase 1 |
 | Phase 3: ONNX TableFormer | 2-3 weeks | Phase 3 layout |
 | Disaggregated native stages | 1-2 weeks | Phase 3 + pipeline flow |
 
-The MapComponent and Phase 1 can proceed in parallel. The pipeline flow definition can be authored and tested with docling-serve backends as soon as both are complete, providing parallelism and observability wins before any native processing is implemented.
+The MapComponent already exists with the core fan-out/fan-in pattern. The remaining work is wiring `max_concurrency` through the executor and validating nested fan-out. The pipeline flow definition can be authored and tested with docling-serve backends as soon as Phase 1 and the concurrency work are complete, providing parallelism and observability wins before any native processing is implemented.
 
 ## Open Questions
 
@@ -596,7 +563,7 @@ The MapComponent and Phase 1 can proceed in parallel. The pipeline flow definiti
 
 3. **Model quantization:** Independent of the Rust rewrite, INT8 quantized ONNX models can be 2-4x faster on CPU. This optimization composes with Phase 3 and could be explored in parallel.
 
-4. **MapComponent concurrency control:** What is the right default for `max_concurrency`? Unbounded fan-out of a 500-page document could overwhelm downstream workers. Options: static limit, adaptive based on worker pool size, or backpressure from the routing/load-balancer layer.
+4. **MapComponent concurrency control:** The existing `max_concurrency` parameter is accepted but not yet wired through the executor (`// TODO` in `RunContext::execute_batch` and `execute_via_channel`). What is the right default? Options: static limit, adaptive based on worker pool size, or backpressure from the routing/load-balancer layer.
 
 5. **Assembly algorithm specification:** The reading order and heading hierarchy reconstruction algorithm needs detailed specification. The Docling technical report describes the approach at a high level, but the implementation details (cross-page heading inheritance, figure/table caption association) require study of the `docling-core` source.
 
