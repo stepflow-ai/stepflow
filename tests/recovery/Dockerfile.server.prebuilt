@@ -15,11 +15,15 @@
 # Lightweight runtime image for a pre-built stepflow-server binary.
 # Used by docker-compose.ci.yml to avoid the slow multi-stage Rust build.
 # Build context: tests/recovery/ (binary must be copied there first)
+#
+# Uses ubuntu:24.04 to match the CI runner (ubuntu-latest) glibc version.
+# debian:bookworm-slim has glibc 2.36 which is too old for binaries built
+# on Ubuntu 24.04 (glibc 2.39).
 
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates libssl3 curl && \
+    apt-get install -y ca-certificates libssl3t64 curl && \
     rm -rf /var/lib/apt/lists/*
 
 COPY stepflow-server /usr/local/bin/stepflow-server
