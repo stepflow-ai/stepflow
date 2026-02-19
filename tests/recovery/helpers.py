@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ import httpx
 import yaml
 
 COMPOSE_FILE = str(Path(__file__).parent / "docker-compose.yml")
+COMPOSE_OVERRIDE = os.environ.get("COMPOSE_OVERRIDE")
 
 ORCH1_URL = "http://localhost:7841"
 ORCH2_URL = "http://localhost:7842"
@@ -136,12 +138,11 @@ async def wait_for_run_on_either(
 # ---------------------------------------------------------------------------
 
 def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["docker", "compose", "-f", COMPOSE_FILE, *args],
-        check=check,
-        capture_output=True,
-        text=True,
-    )
+    cmd = ["docker", "compose", "-f", COMPOSE_FILE]
+    if COMPOSE_OVERRIDE:
+        cmd.extend(["-f", str(Path(__file__).parent / COMPOSE_OVERRIDE)])
+    cmd.extend(args)
+    return subprocess.run(cmd, check=check, capture_output=True, text=True)
 
 
 def docker_kill(*services: str):

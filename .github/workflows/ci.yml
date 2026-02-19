@@ -49,6 +49,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
       docs: ${{ steps.filter.outputs.docs }}
       langflow: ${{ steps.filter.outputs.langflow }}
+      recovery: ${{ steps.filter.outputs.recovery }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -69,6 +70,8 @@ jobs:
               - 'integrations/langflow/**'
               - 'stepflow-rs/**'
               - 'sdks/python/**'
+            recovery:
+              - 'tests/recovery/**'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
@@ -181,12 +184,25 @@ jobs:
         shell: bash
         run: ./scripts/test-integration.sh -v
 
+  # Recovery integration tests (Docker Compose with orchestrator crash/recovery)
+  recovery-tests:
+    name: Recovery Tests
+    needs: changes
+    if: >-
+      needs.changes.outputs.rust == 'true' ||
+      needs.changes.outputs.python == 'true' ||
+      needs.changes.outputs.recovery == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/recovery-tests
+
   # Final aggregation job - ensures all required checks pass
   # This job is required by branch protection rules
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, langflow-checks, licensure, integration-checks]
+    needs: [changes, rust-checks, python-checks, docs-checks, langflow-checks, licensure, integration-checks, recovery-tests]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -217,6 +233,10 @@ jobs:
             echo "::error::Integration checks failed"
             exit 1
           fi
+          if [[ "${{ needs.recovery-tests.result }}" == "failure" || "${{ needs.recovery-tests.result }}" == "cancelled" ]]; then
+            echo "::error::Recovery tests failed"
+            exit 1
+          fi
 
           # Check if required jobs were skipped when they should have run
           if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-checks.result }}" == "skipped" ]]; then
@@ -237,6 +257,10 @@ jobs:
           fi
           if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true") && "${{ needs.integration-checks.result }}" == "skipped" ]]; then
             echo "::error::Rust or Python changes detected but integration-checks was skipped"
+            exit 1
+          fi
+          if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true" || "${{ needs.changes.outputs.recovery }}" == "true") && "${{ needs.recovery-tests.result }}" == "skipped" ]]; then
+            echo "::error::Rust, Python, or recovery changes detected but recovery-tests was skipped"
             exit 1
           fi
 
