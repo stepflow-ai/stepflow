@@ -53,6 +53,11 @@ run_check "Dependencies" uv sync --all-extras --group dev || true
 # PYTHON SDK CHECKS
 # =============================================================================
 
+# Verify generated types match schemas BEFORE codegen-fix regenerates them.
+# This catches PRs that change schemas without updating generated Python types.
+run_check "Codegen check" --fix "uv run poe codegen-fix" uv run poe codegen-check || true
+
+# Regenerate types so subsequent checks (format, lint, type, test) use latest code.
 run_check "Codegen" uv run poe codegen-fix || true
 
 run_check "Formatting" --fix "uv run poe fmt-fix" uv run poe fmt-check || true
@@ -64,12 +69,6 @@ run_check "Type checking" uv run poe type-check || true
 run_check "Dep check" uv run poe dep-check || true
 
 run_check "Tests" uv run poe test || true
-
-# =============================================================================
-# ADDITIONAL CHECKS
-# =============================================================================
-
-run_check "Codegen check" --fix "uv run poe codegen-fix" uv run poe codegen-check || true
 
 # =============================================================================
 # RESULTS SUMMARY
