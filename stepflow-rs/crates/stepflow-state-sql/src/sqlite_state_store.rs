@@ -21,7 +21,7 @@ use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
 use stepflow_state::{
-    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RawBlob, RootJournalInfo,
+    BlobStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob, RootJournalInfo,
     RunCompletionNotifier, SequenceNumber, StateError,
 };
 use uuid::Uuid;
@@ -899,7 +899,8 @@ impl MetadataStore for SqliteStateStore {
 impl ExecutionJournal for SqliteStateStore {
     fn write(
         &self,
-        entry: JournalEntry,
+        root_run_id: Uuid,
+        event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
         let pool = self.pool.clone();
 
@@ -909,7 +910,7 @@ impl ExecutionJournal for SqliteStateStore {
             let max_seq_sql =
                 "SELECT COALESCE(MAX(sequence), -1) as max_seq FROM journal_entries WHERE root_run_id = ?";
             let row = sqlx::query(max_seq_sql)
-                .bind(entry.root_run_id.to_string())
+                .bind(root_run_id.to_string())
                 .fetch_one(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -917,21 +918,34 @@ impl ExecutionJournal for SqliteStateStore {
             let max_seq: i64 = row.get("max_seq");
             let next_seq = SequenceNumber::new((max_seq + 1) as u64);
 
-            // Serialize the event
-            let event_type = match &entry.event {
-                stepflow_state::JournalEvent::RunCreated { .. } => "run_created",
-                stepflow_state::JournalEvent::RunInitialized { .. } => "run_initialized",
-                stepflow_state::JournalEvent::RunCompleted { .. } => "run_completed",
-                stepflow_state::JournalEvent::TasksStarted { .. } => "tasks_started",
-                stepflow_state::JournalEvent::TaskCompleted { .. } => "task_completed",
-                stepflow_state::JournalEvent::StepsUnblocked { .. } => "steps_unblocked",
-                stepflow_state::JournalEvent::ItemCompleted { .. } => "item_completed",
+            // Extract a representative run_id for the SQL column (used for indexing/debugging).
+            // For TasksStarted with multiple runs, we use the first run's ID.
+            let run_id = match &event {
+                JournalEvent::RunCreated { run_id, .. }
+                | JournalEvent::RunInitialized { run_id, .. }
+                | JournalEvent::RunCompleted { run_id, .. }
+                | JournalEvent::TaskCompleted { run_id, .. }
+                | JournalEvent::StepsUnblocked { run_id, .. }
+                | JournalEvent::ItemCompleted { run_id, .. } => *run_id,
+                JournalEvent::TasksStarted { runs } => {
+                    runs.first().map(|r| r.run_id).unwrap_or(root_run_id)
+                }
+            };
+
+            let event_type = match &event {
+                JournalEvent::RunCreated { .. } => "run_created",
+                JournalEvent::RunInitialized { .. } => "run_initialized",
+                JournalEvent::RunCompleted { .. } => "run_completed",
+                JournalEvent::TasksStarted { .. } => "tasks_started",
+                JournalEvent::TaskCompleted { .. } => "task_completed",
+                JournalEvent::StepsUnblocked { .. } => "steps_unblocked",
+                JournalEvent::ItemCompleted { .. } => "item_completed",
             };
 
             let event_data =
-                serde_json::to_string(&entry.event).change_context(StateError::Serialization)?;
+                serde_json::to_string(&event).change_context(StateError::Serialization)?;
 
-            let timestamp = entry.timestamp.to_rfc3339();
+            let timestamp = chrono::Utc::now().to_rfc3339();
 
             let insert_sql = r#"
                 INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data)
@@ -939,9 +953,9 @@ impl ExecutionJournal for SqliteStateStore {
             "#;
 
             sqlx::query(insert_sql)
-                .bind(entry.run_id.to_string())
+                .bind(run_id.to_string())
                 .bind(next_seq.value() as i64)
-                .bind(entry.root_run_id.to_string())
+                .bind(root_run_id.to_string())
                 .bind(&timestamp)
                 .bind(event_type)
                 .bind(&event_data)
@@ -959,13 +973,13 @@ impl ExecutionJournal for SqliteStateStore {
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
         limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
-            // Read all entries for this root run's journal (across all runs in the tree)
+            // Read all events for this root run's journal (across all runs in the tree)
             let sql = r#"
-                SELECT run_id, sequence, timestamp, event_data
+                SELECT event_data
                 FROM journal_entries
                 WHERE root_run_id = ? AND sequence >= ?
                 ORDER BY sequence
@@ -980,30 +994,15 @@ impl ExecutionJournal for SqliteStateStore {
                 .await
                 .change_context(StateError::Internal)?;
 
-            let mut entries = Vec::new();
+            let mut events = Vec::new();
             for row in rows {
-                let sequence = SequenceNumber::new(row.get::<i64, _>("sequence") as u64);
-                let run_id_str: String = row.get("run_id");
-                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
-                let timestamp_str: String = row.get("timestamp");
-                let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
-                    .change_context(StateError::Internal)?
-                    .with_timezone(&chrono::Utc);
                 let event_data: String = row.get("event_data");
-                let event: stepflow_state::JournalEvent =
+                let event: JournalEvent =
                     serde_json::from_str(&event_data).change_context(StateError::Serialization)?;
-
-                let entry = JournalEntry {
-                    run_id,
-                    root_run_id,
-                    timestamp,
-                    event,
-                };
-
-                entries.push((sequence, entry));
+                events.push(event);
             }
 
-            Ok(entries)
+            Ok(events)
         }
         .boxed()
     }

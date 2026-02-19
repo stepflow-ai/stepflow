@@ -386,7 +386,7 @@ async fn recover_single_run(
     // Filter entries to only those belonging to this specific run
     let run_entries: Vec<_> = all_entries
         .into_iter()
-        .filter(|(_, entry)| entry.run_id == run_id)
+        .filter(|event| event.involves_run(run_id))
         .collect();
 
     if run_entries.is_empty() {
@@ -403,7 +403,7 @@ async fn recover_single_run(
     // This is the authoritative source - RunRecoveryInfo may have incomplete data.
     let (inputs, variables, parent_run_id) = run_entries
         .iter()
-        .find_map(|(_, entry)| match &entry.event {
+        .find_map(|event| match event {
             stepflow_state::JournalEvent::RunCreated {
                 inputs,
                 variables,
@@ -442,8 +442,8 @@ async fn recover_single_run(
     };
 
     // Apply events to reconstruct state
-    run_entries.iter().for_each(|(_, entry)| {
-        run_state.apply_event(&entry.event);
+    run_entries.iter().for_each(|event| {
+        run_state.apply_event(event);
     });
 
     log::info!(
@@ -482,7 +482,7 @@ mod tests {
 
     use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
     use stepflow_core::{BlobId, ValueExpr};
-    use stepflow_state::{CreateRunParams, ItemSteps, JournalEntry, JournalEvent};
+    use stepflow_state::{CreateRunParams, ItemSteps, JournalEvent, RunTaskAttempts};
 
     use crate::testing::MockExecutorBuilder;
 
@@ -542,17 +542,19 @@ mod tests {
             .expect("should create run");
 
         // Add a RunCreated journal entry (required for recovery)
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: fake_flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.write(entry).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: fake_flow_id,
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should fail because flow doesn't exist
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -638,16 +640,18 @@ mod tests {
             .expect("should create run");
 
         // Add a TaskCompleted event but NO RunCreated event
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        journal.write(entry).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should fail because no RunCreated event
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -692,59 +696,73 @@ mod tests {
             .expect("should create run");
 
         // Add journal entries that represent a completed run
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.write(entry1).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunInitialized {
-                needed_steps: vec![ItemSteps {
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
                     item_index: 0,
-                    step_indices: vec![0],
-                }],
-            },
-        );
-        journal.write(entry2).await.expect("should write");
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"result": "ok"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry3 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
-            },
-        );
-        journal.write(entry3).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::ItemCompleted {
+                    run_id,
+                    item_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"result": "ok"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry4 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::ItemCompleted {
-                item_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
-            },
-        );
-        journal.write(entry4).await.expect("should write");
-
-        let entry5 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.write(entry5).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should succeed because run is already complete
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -804,17 +822,19 @@ mod tests {
             .expect("should create run");
 
         // Add journal entries so recovery would succeed
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.write(entry).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id,
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Register this run as already active (simulates an in-flight execution)
         let active = env.active_executions();
@@ -899,42 +919,48 @@ mod tests {
         // - TaskCompleted for step0 only
         // - NO ItemCompleted, NO RunCompleted (simulates crash after step0)
 
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.write(entry1).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunInitialized {
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1], // Both steps needed
-                }],
-            },
-        );
-        journal.write(entry2).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0, 1], // Both steps needed
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
 
         // Step0 completed successfully
         let step0_result = ValueRef::new(json!({"result": "ok"}));
-        let entry3 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(step0_result),
-            },
-        );
-        journal.write(entry3).await.expect("should write");
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(step0_result),
+                },
+            )
+            .await
+            .expect("should write");
 
         // NO further entries - simulates crash after step0
 
@@ -1011,41 +1037,43 @@ mod tests {
 
         // Journal: RunCreated, RunInitialized, TasksStarted(step0 attempt=1), NO TaskCompleted
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::RunCreated {
+                    run_id,
                     flow_id: flow_id.clone(),
                     inputs: vec![ValueRef::new(json!({}))],
                     variables: HashMap::new(),
                     parent_run_id: None,
                 },
-            ))
+            )
             .await
             .expect("should write");
 
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::RunInitialized {
+                    run_id,
                     needed_steps: vec![ItemSteps {
                         item_index: 0,
                         step_indices: vec![0],
                     }],
                 },
-            ))
+            )
             .await
             .expect("should write");
 
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::TasksStarted {
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                    runs: vec![RunTaskAttempts {
+                        run_id,
+                        tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                    }],
                 },
-            ))
+            )
             .await
             .expect("should write");
 
@@ -1085,8 +1113,8 @@ mod tests {
 
         let tasks_started_events: Vec<_> = all_entries
             .iter()
-            .filter_map(|(_, entry)| match &entry.event {
-                JournalEvent::TasksStarted { tasks } => Some(tasks),
+            .filter_map(|event| match event {
+                JournalEvent::TasksStarted { runs } => Some(runs),
                 _ => None,
             })
             .collect();
@@ -1097,8 +1125,19 @@ mod tests {
             2,
             "Should have 2 TasksStarted events"
         );
-        assert_eq!(tasks_started_events[0][0].attempt, 1);
-        assert_eq!(tasks_started_events[1][0].attempt, 2);
+        // Find the tasks for this run in each event
+        let pre_crash_tasks: Vec<_> = tasks_started_events[0]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        let recovery_tasks: Vec<_> = tasks_started_events[1]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        assert_eq!(pre_crash_tasks[0].attempt, 1);
+        assert_eq!(recovery_tasks[0].attempt, 2);
     }
 
     /// Test that after recovery with multiple parallel tasks, a single batched
@@ -1150,44 +1189,46 @@ mod tests {
 
         // Journal: both steps started (attempt 1) but neither completed (crash)
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::RunCreated {
+                    run_id,
                     flow_id: flow_id.clone(),
                     inputs: vec![ValueRef::new(json!({}))],
                     variables: HashMap::new(),
                     parent_run_id: None,
                 },
-            ))
+            )
             .await
             .expect("should write");
 
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::RunInitialized {
+                    run_id,
                     needed_steps: vec![ItemSteps {
                         item_index: 0,
                         step_indices: vec![0, 1],
                     }],
                 },
-            ))
+            )
             .await
             .expect("should write");
 
         journal
-            .write(JournalEntry::new(
-                run_id,
+            .write(
                 run_id,
                 JournalEvent::TasksStarted {
-                    tasks: vec![
-                        stepflow_state::TaskAttempt::new(0, 0, 1),
-                        stepflow_state::TaskAttempt::new(0, 1, 1),
-                    ],
+                    runs: vec![RunTaskAttempts {
+                        run_id,
+                        tasks: vec![
+                            stepflow_state::TaskAttempt::new(0, 0, 1),
+                            stepflow_state::TaskAttempt::new(0, 1, 1),
+                        ],
+                    }],
                 },
-            ))
+            )
             .await
             .expect("should write");
 
@@ -1225,8 +1266,8 @@ mod tests {
 
         let tasks_started_events: Vec<_> = all_entries
             .iter()
-            .filter_map(|(_, entry)| match &entry.event {
-                JournalEvent::TasksStarted { tasks } => Some(tasks.clone()),
+            .filter_map(|event| match event {
+                JournalEvent::TasksStarted { runs } => Some(runs),
                 _ => None,
             })
             .collect();
@@ -1238,18 +1279,28 @@ mod tests {
             "Should have 2 TasksStarted events (pre-crash + recovery)"
         );
 
-        // First: both steps at attempt 1
-        assert_eq!(tasks_started_events[0].len(), 2);
-        assert!(tasks_started_events[0].iter().all(|t| t.attempt == 1));
+        // First: both steps at attempt 1 (gather all tasks across RunTaskAttempts)
+        let pre_crash_tasks: Vec<_> = tasks_started_events[0]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        assert_eq!(pre_crash_tasks.len(), 2);
+        assert!(pre_crash_tasks.iter().all(|t| t.attempt == 1));
 
         // Second (recovery): both steps at attempt 2, in a single batch
+        let recovery_tasks: Vec<_> = tasks_started_events[1]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
         assert_eq!(
-            tasks_started_events[1].len(),
+            recovery_tasks.len(),
             2,
             "Recovery should batch both tasks into a single TasksStarted event"
         );
         assert!(
-            tasks_started_events[1].iter().all(|t| t.attempt == 2),
+            recovery_tasks.iter().all(|t| t.attempt == 2),
             "Recovery attempts should be 2"
         );
     }

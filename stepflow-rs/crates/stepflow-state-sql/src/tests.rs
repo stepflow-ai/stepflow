@@ -16,9 +16,7 @@ use crate::SqliteStateStore;
 use serde_json::json;
 use std::collections::HashMap;
 use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
-use stepflow_state::{
-    BlobStore as _, ExecutionJournal as _, JournalEntry, JournalEvent, SequenceNumber,
-};
+use stepflow_state::{BlobStore as _, ExecutionJournal as _, JournalEvent, SequenceNumber};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -80,31 +78,33 @@ async fn test_journal_write_and_read() {
     // Append some journal entries
     // Use BlobId::from_content to generate a valid content-addressed ID
     let flow_id = BlobId::from_content(&ValueRef::new(json!({"test": "flow"}))).unwrap();
-    let entry1 = JournalEntry::new(
-        run_id,
-        root_run_id,
-        JournalEvent::RunCreated {
-            flow_id,
-            inputs: vec![ValueRef::new(json!({"key": "value"}))],
-            variables: HashMap::new(),
-            parent_run_id: None,
-        },
-    );
-
-    let seq1 = store.write(entry1).await.unwrap();
+    let seq1 = store
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id,
+                flow_id,
+                inputs: vec![ValueRef::new(json!({"key": "value"}))],
+                variables: HashMap::new(),
+                parent_run_id: None,
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq1.value(), 0);
 
-    let entry2 = JournalEntry::new(
-        run_id,
-        root_run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 0,
-            result: FlowResult::Success(ValueRef::new(json!({}))),
-        },
-    );
-
-    let seq2 = store.write(entry2).await.unwrap();
+    let seq2 = store
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({}))),
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq2.value(), 1);
 
     // Read entries from the beginning
@@ -113,8 +113,8 @@ async fn test_journal_write_and_read() {
         .await
         .unwrap();
     assert_eq!(entries.len(), 2);
-    assert_eq!(entries[0].0.value(), 0);
-    assert_eq!(entries[1].0.value(), 1);
+    assert!(matches!(entries[0], JournalEvent::RunCreated { .. }));
+    assert!(matches!(entries[1], JournalEvent::TaskCompleted { .. }));
 
     // Read from a specific sequence
     let entries_from_1 = store
@@ -122,7 +122,10 @@ async fn test_journal_write_and_read() {
         .await
         .unwrap();
     assert_eq!(entries_from_1.len(), 1);
-    assert_eq!(entries_from_1[0].0.value(), 1);
+    assert!(matches!(
+        entries_from_1[0],
+        JournalEvent::TaskCompleted { .. }
+    ));
 }
 
 #[tokio::test]
@@ -135,32 +138,36 @@ async fn test_journal_latest_sequence() {
     assert!(latest.is_none());
 
     // Add an entry
-    let entry = JournalEntry::new(
-        run_id,
-        run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 0,
-            result: FlowResult::Success(ValueRef::new(json!({}))),
-        },
-    );
-    store.write(entry).await.unwrap();
+    store
+        .write(
+            run_id,
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({}))),
+            },
+        )
+        .await
+        .unwrap();
 
     // Now latest should be 0
     let latest = store.latest_sequence(run_id).await.unwrap();
     assert_eq!(latest, Some(SequenceNumber::new(0)));
 
     // Add another entry
-    let entry2 = JournalEntry::new(
-        run_id,
-        run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 0,
-            result: FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
-        },
-    );
-    store.write(entry2).await.unwrap();
+    store
+        .write(
+            run_id,
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
+            },
+        )
+        .await
+        .unwrap();
 
     // Latest should now be 1
     let latest = store.latest_sequence(run_id).await.unwrap();
@@ -176,29 +183,33 @@ async fn test_journal_list_active_roots() {
 
     // Add entries for two root runs (each is its own execution tree)
     for i in 0..3 {
-        let entry = JournalEntry::new(
-            root_run_id1,
-            root_run_id1,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: i,
-                result: FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        store.write(entry).await.unwrap();
+        store
+            .write(
+                root_run_id1,
+                JournalEvent::TaskCompleted {
+                    run_id: root_run_id1,
+                    item_index: 0,
+                    step_index: i,
+                    result: FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .unwrap();
     }
 
     for i in 0..2 {
-        let entry = JournalEntry::new(
-            root_run_id2,
-            root_run_id2,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: i,
-                result: FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        store.write(entry).await.unwrap();
+        store
+            .write(
+                root_run_id2,
+                JournalEvent::TaskCompleted {
+                    run_id: root_run_id2,
+                    item_index: 0,
+                    step_index: i,
+                    result: FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .unwrap();
     }
 
     // List active root runs
@@ -229,16 +240,18 @@ async fn test_journal_read_with_limit() {
 
     // Add 10 entries
     for i in 0..10 {
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: i,
-                result: FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        store.write(entry).await.unwrap();
+        store
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: i,
+                    result: FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .unwrap();
     }
 
     // Read with limit of 3
@@ -247,8 +260,6 @@ async fn test_journal_read_with_limit() {
         .await
         .unwrap();
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].0.value(), 0);
-    assert_eq!(entries[2].0.value(), 2);
 
     // Read with limit starting from sequence 5
     let entries = store
@@ -256,8 +267,6 @@ async fn test_journal_read_with_limit() {
         .await
         .unwrap();
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].0.value(), 5);
-    assert_eq!(entries[2].0.value(), 7);
 }
 
 #[tokio::test]
@@ -274,55 +283,63 @@ async fn test_journal_subflow_shared_journal() {
     // This simulates real execution where parent spawns subflow mid-execution
 
     // Parent: TaskCompleted for step 0
-    let entry1 = JournalEntry::new(
-        parent_run_id,
-        root_run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 0,
-            result: FlowResult::Success(ValueRef::new(json!({"parent": 0}))),
-        },
-    );
-    let seq1 = store.write(entry1).await.unwrap();
+    let seq1 = store
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: parent_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"parent": 0}))),
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq1.value(), 0);
 
     // Subflow: TaskCompleted for step 0 (subflow begins)
-    let entry2 = JournalEntry::new(
-        subflow_run_id,
-        root_run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 0,
-            result: FlowResult::Success(ValueRef::new(json!({"subflow": 0}))),
-        },
-    );
-    let seq2 = store.write(entry2).await.unwrap();
+    let seq2 = store
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: subflow_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"subflow": 0}))),
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq2.value(), 1);
 
     // Subflow: TaskCompleted for step 1
-    let entry3 = JournalEntry::new(
-        subflow_run_id,
-        root_run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 1,
-            result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
-        },
-    );
-    let seq3 = store.write(entry3).await.unwrap();
+    let seq3 = store
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: subflow_run_id,
+                item_index: 0,
+                step_index: 1,
+                result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq3.value(), 2);
 
     // Parent: TaskCompleted for step 1 (after subflow completes)
-    let entry4 = JournalEntry::new(
-        parent_run_id,
-        root_run_id,
-        JournalEvent::TaskCompleted {
-            item_index: 0,
-            step_index: 1,
-            result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
-        },
-    );
-    let seq4 = store.write(entry4).await.unwrap();
+    let seq4 = store
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: parent_run_id,
+                item_index: 0,
+                step_index: 1,
+                result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
+            },
+        )
+        .await
+        .unwrap();
     assert_eq!(seq4.value(), 3);
 
     // Read all entries - should get all 4 in sequence order
@@ -332,28 +349,19 @@ async fn test_journal_subflow_shared_journal() {
         .unwrap();
     assert_eq!(all_entries.len(), 4);
 
-    // Verify sequence numbers are monotonic
-    for (i, (seq, _)) in all_entries.iter().enumerate() {
-        assert_eq!(seq.value(), i as u64);
-    }
-
     // Filter for parent events only
     let parent_entries: Vec<_> = all_entries
         .iter()
-        .filter(|(_, e)| e.run_id == parent_run_id)
+        .filter(|e| e.involves_run(parent_run_id))
         .collect();
     assert_eq!(parent_entries.len(), 2);
-    assert_eq!(parent_entries[0].0.value(), 0); // First parent event
-    assert_eq!(parent_entries[1].0.value(), 3); // Second parent event
 
     // Filter for subflow events only
     let subflow_entries: Vec<_> = all_entries
         .iter()
-        .filter(|(_, e)| e.run_id == subflow_run_id)
+        .filter(|e| e.involves_run(subflow_run_id))
         .collect();
     assert_eq!(subflow_entries.len(), 2);
-    assert_eq!(subflow_entries[0].0.value(), 1); // First subflow event
-    assert_eq!(subflow_entries[1].0.value(), 2); // Second subflow event
 
     // Verify list_active_roots only shows one root journal
     let active_roots = store.list_active_roots().await.unwrap();

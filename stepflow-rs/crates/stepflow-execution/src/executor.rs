@@ -34,8 +34,7 @@ use stepflow_dtos::RunStatus;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _,
-    JournalEntry, JournalEvent, LeaseManagerExt as _, MetadataStoreExt as _,
-    OrchestratorIdExt as _,
+    JournalEvent, LeaseManagerExt as _, MetadataStoreExt as _, OrchestratorIdExt as _,
 };
 use uuid::Uuid;
 
@@ -109,18 +108,17 @@ pub async fn submit_run(
     // Journal: Record run creation durably before execution.
     // This ensures recovery can always find at least the RunCreated event.
     let journal = env.execution_journal();
-    let entry = JournalEntry::new(
-        run_id,
-        run_id, // For root runs, root_run_id == run_id
-        JournalEvent::RunCreated {
-            flow_id: flow_id.clone(),
-            inputs: inputs.clone(),
-            variables: params.variables.clone().unwrap_or_default(),
-            parent_run_id: None,
-        },
-    );
     journal
-        .write(entry)
+        .write(
+            run_id,
+            JournalEvent::RunCreated {
+                run_id,
+                flow_id: flow_id.clone(),
+                inputs: inputs.clone(),
+                variables: params.variables.clone().unwrap_or_default(),
+                parent_run_id: None,
+            },
+        )
         .await
         .change_context(ExecutionError::JournalError)?;
 

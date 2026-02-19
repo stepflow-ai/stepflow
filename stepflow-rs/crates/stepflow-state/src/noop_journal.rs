@@ -19,7 +19,7 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use crate::{ExecutionJournal, JournalEntry, RootJournalInfo, SequenceNumber, StateError};
+use crate::{ExecutionJournal, JournalEvent, RootJournalInfo, SequenceNumber, StateError};
 
 /// A no-op execution journal that discards all entries.
 ///
@@ -58,11 +58,11 @@ impl NoOpJournal {
 impl ExecutionJournal for NoOpJournal {
     fn write(
         &self,
-        entry: JournalEntry,
+        root_run_id: Uuid,
+        _event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
         // Track sequence numbers per root_run_id for trait contract consistency.
-        // Entry is not stored, but sequence numbers are monotonically increasing.
-        let root_run_id = entry.root_run_id;
+        // Event is not stored, but sequence numbers are monotonically increasing.
         let seq = self
             .sequences
             .entry(root_run_id)
@@ -76,8 +76,8 @@ impl ExecutionJournal for NoOpJournal {
         _root_run_id: Uuid,
         _from_sequence: SequenceNumber,
         _limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, StateError>> {
-        // No entries to read - entries are not stored
+    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
+        // No events to read - events are not stored
         async move { Ok(Vec::new()) }.boxed()
     }
 
@@ -100,7 +100,7 @@ impl ExecutionJournal for NoOpJournal {
     fn list_active_roots(
         &self,
     ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, StateError>> {
-        // Return tracked roots (though entries are not persisted)
+        // Return tracked roots (though events are not persisted)
         let roots: Vec<RootJournalInfo> = self
             .sequences
             .iter()
@@ -132,37 +132,43 @@ mod tests {
         let run_id = Uuid::now_v7();
 
         // First write should return sequence 0
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result1 = journal.write(entry1).await.unwrap();
+        let result1 = journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result1, SequenceNumber::new(0));
 
         // Second write should return sequence 1 (incrementing)
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result2 = journal.write(entry2).await.unwrap();
+        let result2 = journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result2, SequenceNumber::new(1));
 
         // Different root_run_id should start at 0
         let run_id2 = Uuid::now_v7();
-        let entry3 = JournalEntry::new(
-            run_id2,
-            run_id2,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result3 = journal.write(entry3).await.unwrap();
+        let result3 = journal
+            .write(
+                run_id2,
+                JournalEvent::RunCompleted {
+                    run_id: run_id2,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result3, SequenceNumber::new(0));
     }
 
@@ -171,11 +177,11 @@ mod tests {
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        let entries = journal
+        let events = journal
             .read_from(run_id, SequenceNumber::new(0), 100)
             .await
             .unwrap();
-        assert!(entries.is_empty());
+        assert!(events.is_empty());
     }
 
     #[tokio::test]
@@ -191,27 +197,31 @@ mod tests {
         assert!(latest.is_none());
 
         // After writing, should return the latest sequence
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.write(entry).await.unwrap();
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(0)));
 
         // After second write
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.write(entry2).await.unwrap();
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(1)));
