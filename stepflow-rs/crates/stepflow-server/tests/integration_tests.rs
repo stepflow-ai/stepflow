@@ -1198,3 +1198,106 @@ async fn test_status_transitions_with_error_handling() {
     // The key test for error handling is that the workflow overall failed (verified above)
     // and that step information is accessible via the improved dictionary API
 }
+
+#[tokio::test]
+async fn test_blob_json_round_trip() {
+    init_test_logging();
+
+    let (app, _executor) = create_basic_test_server().await;
+
+    let test_data = json!({"message": "Hello, blobs!", "number": 42, "nested": {"key": "value"}});
+
+    // Store a JSON blob
+    let store_request = Request::builder()
+        .uri("/api/v1/blobs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "data": test_data,
+                "blobType": "data"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let blob_id = store_response["blobId"].as_str().unwrap();
+    assert!(!blob_id.is_empty());
+
+    // Retrieve the blob as JSON
+    let get_request = Request::builder()
+        .uri(format!("/api/v1/blobs/{blob_id}"))
+        .header("accept", "application/json")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(get_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let get_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(get_response["data"], test_data);
+    assert_eq!(get_response["blobType"], "data");
+    assert_eq!(get_response["blobId"], blob_id);
+}
+
+#[tokio::test]
+async fn test_blob_binary_round_trip() {
+    init_test_logging();
+
+    let (app, _executor) = create_basic_test_server().await;
+
+    let binary_data: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD, 0x42, 0x43];
+
+    // Store a binary blob
+    let store_request = Request::builder()
+        .uri("/api/v1/blobs")
+        .method("POST")
+        .header("content-type", "application/octet-stream")
+        .header("x-blob-filename", "test-file.bin")
+        .body(Body::from(binary_data.clone()))
+        .unwrap();
+
+    let response = app.clone().oneshot(store_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let store_response: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let blob_id = store_response["blobId"].as_str().unwrap();
+    assert!(!blob_id.is_empty());
+    assert_eq!(store_response["filename"], "test-file.bin");
+
+    // Retrieve the blob as binary
+    let get_request = Request::builder()
+        .uri(format!("/api/v1/blobs/{blob_id}"))
+        .header("accept", "application/octet-stream")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.clone().oneshot(get_request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // Check headers
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/octet-stream"
+    );
+    assert_eq!(response.headers().get("x-blob-type").unwrap(), "binary");
+    let disposition = response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(disposition.contains("test-file.bin"));
+
+    // Check body matches original bytes
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(body.as_ref(), binary_data.as_slice());
+}

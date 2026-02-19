@@ -17,14 +17,10 @@ use std::collections::{HashMap, HashSet};
 use stepflow_core::status::ExecutionStatus;
 
 use crate::{
-    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo,
+    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RawBlob, RootJournalInfo,
     RunCompletionNotifier, SequenceNumber, state_store::CreateRunParams,
 };
-use stepflow_core::{
-    FlowResult,
-    blob::{BlobData, BlobId, BlobType},
-    workflow::{ValueRef, WorkflowOverrides},
-};
+use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
@@ -70,8 +66,8 @@ struct JournalState {
 /// single-process execution. Uses DashMap for concurrent access with
 /// fine-grained locking per key.
 pub struct InMemoryStateStore {
-    /// Map from blob ID (SHA-256 hash) to stored JSON data
-    blobs: DashMap<String, BlobData>,
+    /// Map from blob ID (SHA-256 hash) to raw blob content
+    blobs: DashMap<String, RawBlob>,
     /// Map from run_id to combined run state
     runs: DashMap<Uuid, RunState>,
     /// Notifier for run completion events
@@ -161,29 +157,34 @@ impl Default for InMemoryStateStore {
 impl BlobStore for InMemoryStateStore {
     fn put_blob(
         &self,
-        data: ValueRef,
+        content: &[u8],
         blob_type: BlobType,
-        metadata: stepflow_core::BlobMetadata,
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let content = content.to_vec();
         async move {
             let blob_id =
-                BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
-            let mut blob_data = BlobData::from_value_ref(data, blob_type, blob_id.clone())
-                .change_context(StateError::Serialization)?;
-            blob_data.metadata = metadata;
+                BlobId::from_binary(&content).change_context(StateError::Serialization)?;
 
-            // Store the data (overwrites are fine since content is identical)
-            self.blobs.insert(blob_id.as_str().to_string(), blob_data);
+            // Store raw bytes (overwrites are fine since content is identical)
+            self.blobs.insert(
+                blob_id.as_str().to_string(),
+                RawBlob {
+                    content,
+                    blob_type,
+                    metadata,
+                },
+            );
 
             Ok(blob_id)
         }
         .boxed()
     }
 
-    fn get_blob_opt(
+    fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id_str = blob_id.as_str().to_string();
 
         async move {
@@ -194,8 +195,6 @@ impl BlobStore for InMemoryStateStore {
         }
         .boxed()
     }
-
-    // Note: store_flow and get_flow use default implementations from the trait
 }
 
 impl MetadataStore for InMemoryStateStore {
@@ -673,6 +672,7 @@ impl ExecutionJournal for InMemoryStateStore {
 mod tests {
     use super::*;
     use serde_json::json;
+    use stepflow_core::workflow::ValueRef;
 
     #[tokio::test]
     async fn test_blob_storage() {
@@ -680,15 +680,11 @@ mod tests {
 
         // Test data
         let test_data = json!({"message": "Hello, world!", "count": 42});
-        let value_ref = ValueRef::new(test_data.clone());
+        let content = serde_json::to_vec(&test_data).unwrap();
 
         // Create blob
         let blob_id = store
-            .put_blob(
-                value_ref.clone(),
-                stepflow_core::BlobType::Data,
-                Default::default(),
-            )
+            .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -696,25 +692,25 @@ mod tests {
         assert_eq!(blob_id.as_str().len(), 64); // SHA-256 produces 64 hex characters
 
         // Retrieve blob
-        let retrieved = store.get_blob(&blob_id).await.unwrap();
-        assert_eq!(retrieved.data().as_ref(), &test_data);
+        let raw = store
+            .get_blob(&blob_id)
+            .await
+            .unwrap()
+            .expect("Blob should exist");
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, test_data);
 
         // Same content should produce same blob ID
-        let value_ref2 = ValueRef::new(test_data.clone());
         let blob_id2 = store
-            .put_blob(
-                value_ref2,
-                stepflow_core::BlobType::Data,
-                Default::default(),
-            )
+            .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
         assert_eq!(blob_id, blob_id2);
 
-        // Non-existent blob should return error
+        // Non-existent blob should return None
         let fake_blob_id = BlobId::new("a".repeat(64)).unwrap();
-        let result = store.get_blob(&fake_blob_id).await;
-        assert!(result.is_err());
+        let result = store.get_blob(&fake_blob_id).await.unwrap();
+        assert!(result.is_none());
     }
 
     #[tokio::test]

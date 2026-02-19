@@ -17,10 +17,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_analysis::{Diagnostics, validate};
-use stepflow_core::{
-    BlobId, BlobType,
-    workflow::{Flow, ValueRef},
-};
+use stepflow_core::{BlobId, BlobType, workflow::Flow};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
 use utoipa::ToSchema;
@@ -94,9 +91,13 @@ pub async fn store_flow(
     let stored = if !diagnostics.has_fatal() && !req.dry_run {
         // Store the flow as a blob
         let blob_store = executor.blob_store();
-        let flow_data = ValueRef::new(serde_json::to_value(flow.as_ref()).unwrap());
+        let content = serde_json::to_vec(flow.as_ref()).map_err(|_| ErrorResponse {
+            code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to serialize flow".to_string(),
+            stack: vec![],
+        })?;
         blob_store
-            .put_blob(flow_data, BlobType::Flow, Default::default())
+            .put_blob(&content, BlobType::Flow, Default::default())
             .await
             .map_err(|_| ErrorResponse {
                 code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -135,17 +136,22 @@ pub async fn get_flow(
     let blob_store = executor.blob_store();
 
     // Retrieve the flow from the blob store
-    let blob_data = blob_store
+    let raw = blob_store
         .get_blob(&flow_id)
         .await
         .map_err(|_| ErrorResponse {
+            code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to retrieve flow".to_string(),
+            stack: vec![],
+        })?
+        .ok_or_else(|| ErrorResponse {
             code: axum::http::StatusCode::NOT_FOUND,
             message: "Flow not found".to_string(),
             stack: vec![],
         })?;
 
     // Check if it's a flow blob and deserialize
-    if blob_data.blob_type() != BlobType::Flow {
+    if raw.blob_type != BlobType::Flow {
         return Err(ErrorResponse {
             code: axum::http::StatusCode::BAD_REQUEST,
             message: "Blob is not a flow".to_string(),
@@ -153,12 +159,11 @@ pub async fn get_flow(
         });
     }
 
-    let flow: Flow =
-        serde_json::from_value(blob_data.data().as_ref().clone()).map_err(|_| ErrorResponse {
-            code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            message: "Failed to deserialize flow".to_string(),
-            stack: vec![],
-        })?;
+    let flow: Flow = serde_json::from_slice(&raw.content).map_err(|_| ErrorResponse {
+        code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Failed to deserialize flow".to_string(),
+        stack: vec![],
+    })?;
 
     let flow = Arc::new(flow);
 

@@ -16,12 +16,12 @@ use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::{BlobData, BlobId, BlobType, FlowResult, workflow::ValueRef};
+use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::ValueRef};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
 use stepflow_state::{
-    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RootJournalInfo,
+    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RawBlob, RootJournalInfo,
     RunCompletionNotifier, SequenceNumber, StateError,
 };
 use uuid::Uuid;
@@ -173,31 +173,27 @@ impl SqliteStateStore {
 impl BlobStore for SqliteStateStore {
     fn put_blob(
         &self,
-        data: ValueRef,
+        content: &[u8],
         blob_type: BlobType,
-        metadata: stepflow_core::BlobMetadata,
+        metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let content = content.to_vec();
         async move {
-            // Generate content-based ID (binary blobs hash raw bytes, others hash JSON)
-            let blob_id =
-                BlobId::compute(&data, &blob_type).change_context(StateError::Internal)?;
+            let blob_id = BlobId::from_binary(&content).change_context(StateError::Internal)?;
 
-            // Serialize data to JSON string (binary data is stored as base64 string)
-            let json_str =
-                serde_json::to_string(data.as_ref()).change_context(StateError::Serialization)?;
             let type_str = match blob_type {
                 BlobType::Flow => "flow",
                 BlobType::Data => "data",
                 BlobType::Binary => "binary",
             };
 
-            // Store blob with type and metadata
+            // Store raw bytes directly in BLOB column
             let sql =
                 "INSERT OR IGNORE INTO blobs (id, data, blob_type, filename) VALUES (?, ?, ?, ?)";
 
             sqlx::query(sql)
                 .bind(blob_id.as_str())
-                .bind(&json_str)
+                .bind(&content)
                 .bind(type_str)
                 .bind(&metadata.filename)
                 .execute(&self.pool)
@@ -209,10 +205,10 @@ impl BlobStore for SqliteStateStore {
         .boxed()
     }
 
-    fn get_blob_opt(
+    fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
             let sql = "SELECT data, blob_type, filename FROM blobs WHERE id = ?";
@@ -227,9 +223,8 @@ impl BlobStore for SqliteStateStore {
                 return Ok(None);
             };
 
-            let json_str: String = row.get("data");
-            let value: serde_json::Value =
-                serde_json::from_str(&json_str).change_context(StateError::Serialization)?;
+            // Read raw bytes from BLOB column
+            let content: Vec<u8> = row.get("data");
 
             // Get blob type from database
             let type_str: String = row.get("blob_type");
@@ -238,7 +233,6 @@ impl BlobStore for SqliteStateStore {
                 "data" => BlobType::Data,
                 "binary" => BlobType::Binary,
                 _ => {
-                    // Default to data for unknown types
                     log::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
                     BlobType::Data
                 }
@@ -246,17 +240,14 @@ impl BlobStore for SqliteStateStore {
 
             let filename: Option<String> = row.get("filename");
 
-            let metadata = stepflow_core::BlobMetadata { filename };
-
-            let mut blob_data = BlobData::from_value_ref(ValueRef::new(value), blob_type, blob_id)
-                .change_context(StateError::Internal)?;
-            blob_data.metadata = metadata;
-            Ok(Some(blob_data))
+            Ok(Some(RawBlob {
+                content,
+                blob_type,
+                metadata: BlobMetadata { filename },
+            }))
         }
         .boxed()
     }
-
-    // Note: store_flow and get_flow use default implementations from the trait
 }
 
 impl MetadataStore for SqliteStateStore {

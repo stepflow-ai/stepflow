@@ -133,7 +133,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         r#"
             CREATE TABLE IF NOT EXISTS blobs (
                 id TEXT PRIMARY KEY,
-                data TEXT NOT NULL,
+                data BLOB NOT NULL,
                 blob_type TEXT NOT NULL DEFAULT 'data',
                 filename TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP

@@ -33,15 +33,14 @@
 //! - **Explicit directory**: Blobs are stored in a user-specified directory
 //! - **Temporary directory**: A temp directory is created and cleaned up on drop
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use stepflow_core::{BlobData, BlobId, BlobMetadata, BlobType, workflow::ValueRef};
+use stepflow_core::{BlobId, BlobMetadata, BlobType};
 
 use crate::StateError;
+use crate::blob_store::RawBlob;
 
 /// On-disk metadata stored after blob content.
 #[derive(Serialize, Deserialize)]
@@ -120,13 +119,14 @@ impl FilesystemBlobStore {
 impl crate::BlobStore for FilesystemBlobStore {
     fn put_blob(
         &self,
-        data: ValueRef,
+        content: &[u8],
         blob_type: BlobType,
         metadata: BlobMetadata,
     ) -> BoxFuture<'_, error_stack::Result<BlobId, StateError>> {
+        let content = content.to_vec();
         async move {
             let blob_id =
-                BlobId::compute(&data, &blob_type).change_context(StateError::Serialization)?;
+                BlobId::from_binary(&content).change_context(StateError::Serialization)?;
 
             let path = self.blob_path(&blob_id);
 
@@ -144,28 +144,6 @@ impl crate::BlobStore for FilesystemBlobStore {
                     })?;
             }
 
-            // Get raw content bytes based on blob type
-            let content_bytes = match blob_type {
-                BlobType::Binary => {
-                    // Decode base64 from the ValueRef to get raw bytes
-                    let base64_str = data
-                        .as_ref()
-                        .as_str()
-                        .ok_or_else(|| error_stack::report!(StateError::Serialization))
-                        .attach_printable("Binary blob data is not a string")?;
-                    BASE64_STANDARD
-                        .decode(base64_str)
-                        .change_context(StateError::Serialization)
-                        .attach_printable("Failed to decode base64 binary blob data")?
-                }
-                BlobType::Data | BlobType::Flow => {
-                    // Serialize JSON compactly
-                    serde_json::to_vec(data.as_ref())
-                        .change_context(StateError::Serialization)
-                        .attach_printable("Failed to serialize blob data as JSON")?
-                }
-            };
-
             let file_metadata = BlobFileMetadata {
                 blob_type,
                 filename: metadata.filename,
@@ -174,11 +152,11 @@ impl crate::BlobStore for FilesystemBlobStore {
                 .change_context(StateError::Serialization)
                 .attach_printable("Failed to serialize blob file metadata")?;
 
-            let content_length = content_bytes.len() as u64;
+            let content_length = content.len() as u64;
 
             // Build complete buffer: [content][metadata_json][content_length LE u64]
-            let mut buf = Vec::with_capacity(content_bytes.len() + metadata_bytes.len() + 8);
-            buf.extend_from_slice(&content_bytes);
+            let mut buf = Vec::with_capacity(content.len() + metadata_bytes.len() + 8);
+            buf.extend_from_slice(&content);
             buf.extend_from_slice(&metadata_bytes);
             buf.extend_from_slice(&content_length.to_le_bytes());
 
@@ -210,10 +188,10 @@ impl crate::BlobStore for FilesystemBlobStore {
         .boxed()
     }
 
-    fn get_blob_opt(
+    fn get_blob(
         &self,
         blob_id: &BlobId,
-    ) -> BoxFuture<'_, error_stack::Result<Option<BlobData>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
             let path = self.blob_path(&blob_id);
@@ -255,7 +233,7 @@ impl crate::BlobStore for FilesystemBlobStore {
                 );
             }
 
-            let content = &bytes[..content_length];
+            let content = bytes[..content_length].to_vec();
             let metadata_json = &bytes[content_length..file_size - 8];
 
             let file_metadata: BlobFileMetadata = serde_json::from_slice(metadata_json)
@@ -267,30 +245,13 @@ impl crate::BlobStore for FilesystemBlobStore {
                     )
                 })?;
 
-            let blob_value = match file_metadata.blob_type {
-                BlobType::Binary => stepflow_core::blob::BlobValue::Binary(content.to_vec()),
-                BlobType::Data | BlobType::Flow => {
-                    let json_value: serde_json::Value = serde_json::from_slice(content)
-                        .change_context(StateError::Serialization)
-                        .attach_printable_lazy(|| {
-                            format!(
-                                "Failed to deserialize blob content as JSON: {}",
-                                path.display()
-                            )
-                        })?;
-                    stepflow_core::blob::BlobValue::from_value_ref(
-                        ValueRef::new(json_value),
-                        file_metadata.blob_type,
-                    )
-                    .change_context(StateError::Serialization)?
-                }
-            };
-
-            let metadata = BlobMetadata {
-                filename: file_metadata.filename,
-            };
-
-            Ok(Some(BlobData::with_metadata(blob_value, blob_id, metadata)))
+            Ok(Some(RawBlob {
+                content,
+                blob_type: file_metadata.blob_type,
+                metadata: BlobMetadata {
+                    filename: file_metadata.filename,
+                },
+            }))
         }
         .boxed()
     }
@@ -336,9 +297,9 @@ mod tests {
             dir_path = store.dir.path().to_path_buf();
 
             // Store a blob
-            let data = ValueRef::new(serde_json::json!({"cleanup": "test"}));
+            let content = serde_json::to_vec(&serde_json::json!({"cleanup": "test"})).unwrap();
             store
-                .put_blob(data, BlobType::Data, Default::default())
+                .put_blob(&content, BlobType::Data, Default::default())
                 .await
                 .unwrap();
 
@@ -365,8 +326,8 @@ mod tests {
 
     /// Helper: create a fake blob ID and ensure its parent directory exists in the store.
     fn setup_corrupt_file(store: &FilesystemBlobStore, content: &[u8]) -> BlobId {
-        let blob_id =
-            BlobId::from_content(&ValueRef::new(serde_json::json!({"corrupt": "test"}))).unwrap();
+        let fake_content = serde_json::to_vec(&serde_json::json!({"corrupt": "test"})).unwrap();
+        let blob_id = BlobId::from_binary(&fake_content).unwrap();
         let path = blob_path_for(store, &blob_id);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, content).unwrap();
@@ -379,7 +340,7 @@ mod tests {
         // Write only 7 bytes — less than the 8-byte footer
         let blob_id = setup_corrupt_file(&store, &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
 
-        let result = store.get_blob_opt(&blob_id).await;
+        let result = store.get_blob(&blob_id).await;
         assert!(result.is_err(), "Should error on file shorter than 8 bytes");
         let err_msg = format!("{:?}", result.unwrap_err());
         assert!(
@@ -394,7 +355,7 @@ mod tests {
         // Write 100 bytes of 0xAB — last 8 bytes interpreted as content_length will be garbage
         let blob_id = setup_corrupt_file(&store, &[0xAB; 100]);
 
-        let result = store.get_blob_opt(&blob_id).await;
+        let result = store.get_blob(&blob_id).await;
         assert!(
             result.is_err(),
             "Should error when last 4 bytes produce nonsensical content_length"
@@ -411,7 +372,7 @@ mod tests {
 
         let blob_id = setup_corrupt_file(&store, &data);
 
-        let result = store.get_blob_opt(&blob_id).await;
+        let result = store.get_blob(&blob_id).await;
         assert!(
             result.is_err(),
             "Should error when content_length is too large"
@@ -434,7 +395,7 @@ mod tests {
 
         let blob_id = setup_corrupt_file(&store, &data);
 
-        let result = store.get_blob_opt(&blob_id).await;
+        let result = store.get_blob(&blob_id).await;
         assert!(
             result.is_err(),
             "Should error when metadata is not valid JSON"
@@ -465,14 +426,17 @@ mod tests {
 
         let blob_id = setup_corrupt_file(&store, &data);
 
-        // content_length=0 means content slice is empty. Parsing empty slice as JSON will fail
-        // because an empty byte slice is not valid JSON. This is the expected behavior — a blob
-        // with zero content length for a Data type is effectively corrupted.
-        let result = store.get_blob_opt(&blob_id).await;
+        // content_length=0 means content slice is empty — returned as-is from get_blob.
+        // The blob itself is valid (empty content), but callers may fail to parse empty JSON.
+        let result = store.get_blob(&blob_id).await;
+        // With the simplified trait, get_blob just returns RawBlob without parsing.
+        // An empty content blob is now technically valid at the store level.
         assert!(
-            result.is_err(),
-            "Zero content_length for Data blob should error (empty JSON is invalid)"
+            result.is_ok(),
+            "Zero content_length should succeed at the store level"
         );
+        let raw = result.unwrap().unwrap();
+        assert!(raw.content.is_empty());
     }
 
     #[tokio::test]
@@ -480,7 +444,7 @@ mod tests {
         let store = FilesystemBlobStore::temp().unwrap();
         let blob_id = setup_corrupt_file(&store, &[]);
 
-        let result = store.get_blob_opt(&blob_id).await;
+        let result = store.get_blob(&blob_id).await;
         assert!(result.is_err(), "Should error on empty file");
         let err_msg = format!("{:?}", result.unwrap_err());
         assert!(
@@ -495,7 +459,7 @@ mod tests {
         let raw_bytes = b"Hello, binary world! \x00\x01\x02\xff";
 
         let blob_id = store
-            .put_blob_binary(raw_bytes, Default::default())
+            .put_blob(raw_bytes, BlobType::Binary, Default::default())
             .await
             .unwrap();
 
@@ -520,10 +484,10 @@ mod tests {
     async fn test_json_blob_direct_content() {
         let store = FilesystemBlobStore::temp().unwrap();
         let original = serde_json::json!({"key": "value", "number": 42});
-        let data = ValueRef::new(original.clone());
+        let content = serde_json::to_vec(&original).unwrap();
 
         let blob_id = store
-            .put_blob(data, BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -548,10 +512,10 @@ mod tests {
     #[tokio::test]
     async fn test_no_tmp_files_after_successful_write() {
         let store = FilesystemBlobStore::temp().unwrap();
-        let data = ValueRef::new(serde_json::json!({"tmp_test": true}));
+        let content = serde_json::to_vec(&serde_json::json!({"tmp_test": true})).unwrap();
 
         let blob_id = store
-            .put_blob(data, BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -576,11 +540,11 @@ mod tests {
     #[tokio::test]
     async fn test_tmp_file_ignored_on_read() {
         let store = FilesystemBlobStore::temp().unwrap();
-        let data = ValueRef::new(serde_json::json!({"tmp_ignore": true}));
+        let content = serde_json::to_vec(&serde_json::json!({"tmp_ignore": true})).unwrap();
 
         // Write a real blob
         let blob_id = store
-            .put_blob(data.clone(), BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
 
@@ -589,17 +553,15 @@ mod tests {
         let tmp_path = path.with_extension("tmp");
         std::fs::write(&tmp_path, b"garbage tmp data").unwrap();
 
-        // get_blob_opt should still read the correct blob
-        let blob_data = store.get_blob_opt(&blob_id).await.unwrap().unwrap();
-        assert_eq!(blob_data.blob_type(), BlobType::Data);
-        assert_eq!(
-            blob_data.data().as_ref(),
-            &serde_json::json!({"tmp_ignore": true})
-        );
+        // get_blob should still read the correct blob
+        let raw = store.get_blob(&blob_id).await.unwrap().unwrap();
+        assert_eq!(raw.blob_type, BlobType::Data);
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, serde_json::json!({"tmp_ignore": true}));
 
         // put_blob with the same content should still return the existing blob ID (dedup)
         let blob_id2 = store
-            .put_blob(data, BlobType::Data, Default::default())
+            .put_blob(&content, BlobType::Data, Default::default())
             .await
             .unwrap();
         assert_eq!(blob_id, blob_id2, "Dedup should find the existing blob");
@@ -611,11 +573,11 @@ mod tests {
         // both write .tmp files, and one renames first. The second rename fails
         // but should succeed because the final .blob file already exists.
         let store = FilesystemBlobStore::temp().unwrap();
-        let data = ValueRef::new(serde_json::json!({"race": "condition"}));
-        let blob_type = BlobType::Data;
+        let original = serde_json::json!({"race": "condition"});
+        let content_bytes = serde_json::to_vec(&original).unwrap();
 
         // Compute the blob ID and path
-        let blob_id = BlobId::compute(&data, &blob_type).unwrap();
+        let blob_id = BlobId::from_binary(&content_bytes).unwrap();
         let path = blob_path_for(&store, &blob_id);
 
         // Manually create the prefix dir and write the final .blob file
@@ -626,7 +588,6 @@ mod tests {
             blob_type: BlobType::Data,
             filename: None,
         };
-        let content_bytes = serde_json::to_vec(data.as_ref()).unwrap();
         let metadata_bytes = serde_json::to_vec(&file_metadata).unwrap();
         let content_length = content_bytes.len() as u64;
 
@@ -643,7 +604,9 @@ mod tests {
 
         // Now call put_blob — the dedup check (path.exists()) should catch it
         // and return Ok immediately
-        let result = store.put_blob(data, blob_type, Default::default()).await;
+        let result = store
+            .put_blob(&content_bytes, BlobType::Data, Default::default())
+            .await;
         assert!(
             result.is_ok(),
             "put_blob should succeed when blob already exists"
@@ -651,11 +614,9 @@ mod tests {
         assert_eq!(result.unwrap(), blob_id);
 
         // Verify the blob is readable
-        let blob_data = store.get_blob_opt(&blob_id).await.unwrap().unwrap();
-        assert_eq!(blob_data.blob_type(), BlobType::Data);
-        assert_eq!(
-            blob_data.data().as_ref(),
-            &serde_json::json!({"race": "condition"})
-        );
+        let raw = store.get_blob(&blob_id).await.unwrap().unwrap();
+        assert_eq!(raw.blob_type, BlobType::Data);
+        let retrieved: serde_json::Value = serde_json::from_slice(&raw.content).unwrap();
+        assert_eq!(retrieved, serde_json::json!({"race": "condition"}));
     }
 }

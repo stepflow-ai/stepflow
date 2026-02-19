@@ -63,8 +63,9 @@ impl MetadataStoreExt for StepflowEnvironment {
 /// ```ignore
 /// use stepflow_state::BlobStoreExt;
 ///
-/// async fn store_blob(env: &StepflowEnvironment, data: ValueRef) {
-///     let blob_id = env.blob_store().put_blob(data, BlobType::Data, Default::default()).await.unwrap();
+/// async fn store_blob(env: &StepflowEnvironment, data: &serde_json::Value) {
+///     let content = serde_json::to_vec(data).unwrap();
+///     let blob_id = env.blob_store().put_blob(&content, BlobType::Data, Default::default()).await.unwrap();
 /// }
 /// ```
 pub trait BlobStoreExt {

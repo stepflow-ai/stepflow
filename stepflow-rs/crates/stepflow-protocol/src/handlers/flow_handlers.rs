@@ -42,14 +42,19 @@ impl MethodHandler for SubmitRunHandler {
             async move |request: crate::protocol::SubmitRunProtocolParams| {
                 // Fetch the flow from the blob store
                 let flow_id = &request.flow_id;
-                let blob_data = env.blob_store().get_blob(flow_id).await.map_err(|e| {
-                    log::error!("Failed to get flow blob: {e}");
-                    Error::not_found("flow", flow_id.as_str())
-                })?;
-                let flow = blob_data
-                    .as_flow()
-                    .ok_or_else(|| Error::internal("Invalid flow blob"))?
-                    .clone();
+                let raw = env
+                    .blob_store()
+                    .get_blob(flow_id)
+                    .await
+                    .map_err(|e| {
+                        log::error!("Failed to get flow blob: {e}");
+                        Error::not_found("flow", flow_id.as_str())
+                    })?
+                    .ok_or_else(|| Error::not_found("flow", flow_id.as_str()))?;
+                let flow: std::sync::Arc<stepflow_core::workflow::Flow> = std::sync::Arc::new(
+                    serde_json::from_slice(&raw.content)
+                        .map_err(|_| Error::internal("Invalid flow blob"))?,
+                );
 
                 // Build submit params
                 let params = stepflow_core::SubmitRunParams {

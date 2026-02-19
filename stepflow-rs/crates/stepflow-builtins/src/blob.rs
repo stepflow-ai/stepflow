@@ -77,15 +77,11 @@ impl BuiltinComponent for PutBlobComponent {
         let input: PutBlobInput = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        let data_ref = ValueRef::new(input.data);
-
-        // DEBUG: Log what's being stored
-        log::debug!("put_blob storing data: {:?}", data_ref.as_ref());
-
-        // Create the blob through the run context
+        // Serialize to bytes and create the blob through the run context
+        let content = serde_json::to_vec(&input.data).change_context(BuiltinError::Internal)?;
         let blob_id = run_context
             .blob_store()
-            .put_blob(data_ref, input.blob_type, Default::default())
+            .put_blob(&content, input.blob_type, Default::default())
             .await
             .change_context(BuiltinError::Internal)?;
 
@@ -159,17 +155,20 @@ impl BuiltinComponent for GetBlobComponent {
         })?;
 
         // Retrieve the blob through the run context
-        let data_ref = run_context
+        let raw = run_context
             .blob_store()
             .get_blob(&blob_id)
             .await
-            .change_context(BuiltinError::Internal)?;
+            .change_context(BuiltinError::Internal)?
+            .ok_or_else(|| {
+                error_stack::report!(BuiltinError::Internal)
+                    .attach_printable(format!("Blob not found: {}", blob_id.as_str()))
+            })?;
 
-        log::debug!("get_blob retrieved data: {:?}", data_ref.data().as_ref());
+        let data: serde_json::Value =
+            serde_json::from_slice(&raw.content).change_context(BuiltinError::Internal)?;
 
-        let output = GetBlobOutput {
-            data: data_ref.data().as_ref().clone(),
-        };
+        let output = GetBlobOutput { data };
 
         log::debug!("get_blob output structure: {:?}", output);
 
@@ -225,14 +224,11 @@ mod tests {
         let mock = MockContext::new().await;
 
         // First, store the blob
+        let content = serde_json::to_vec(&test_data).unwrap();
         let blob_id = mock
             .run_context()
             .blob_store()
-            .put_blob(
-                ValueRef::new(test_data.clone()),
-                stepflow_core::BlobType::Data,
-                Default::default(),
-            )
+            .put_blob(&content, stepflow_core::BlobType::Data, Default::default())
             .await
             .unwrap();
 

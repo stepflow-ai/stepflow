@@ -193,17 +193,19 @@ impl RunContext {
         use error_stack::ResultExt as _;
 
         // Retrieve the flow from the blob store
-        let blob_data = self
+        let raw = self
             .blob_store()
             .get_blob(flow_id)
             .await
-            .change_context(crate::PluginError::Execution)?;
+            .change_context(crate::PluginError::Execution)?
+            .ok_or_else(|| {
+                error_stack::report!(crate::PluginError::FlowNotFound(flow_id.clone()))
+            })?;
 
-        // Deserialize the flow from blob data
-        let flow = blob_data
-            .as_flow()
-            .ok_or_else(|| error_stack::report!(crate::PluginError::Execution))?
-            .clone();
+        // Deserialize the flow from raw bytes
+        let flow: Arc<Flow> = Arc::new(
+            serde_json::from_slice(&raw.content).change_context(crate::PluginError::Execution)?,
+        );
 
         // Execute the flow
         self.execute_flow(flow, flow_id.clone(), input, overrides)

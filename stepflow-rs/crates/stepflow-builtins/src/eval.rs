@@ -125,11 +125,15 @@ mod tests {
         };
 
         // Store the flow as a blob first
-        let flow_data = ValueRef::new(serde_json::to_value(&test_flow).unwrap());
+        let flow_content = serde_json::to_vec(&test_flow).unwrap();
         let flow_id = mock
             .run_context()
             .blob_store()
-            .put_blob(flow_data, stepflow_core::BlobType::Flow, Default::default())
+            .put_blob(
+                &flow_content,
+                stepflow_core::BlobType::Flow,
+                Default::default(),
+            )
             .await
             .unwrap();
 

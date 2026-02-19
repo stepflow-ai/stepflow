@@ -1388,7 +1388,6 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/Value",
             "description": "The blob data"
           },
           "blobType": {
@@ -2032,7 +2031,6 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/Value",
             "description": "The JSON data to store"
           },
           "blobType": {
