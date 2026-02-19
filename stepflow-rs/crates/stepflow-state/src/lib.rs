@@ -40,6 +40,7 @@ pub use environment_ext::{
 pub use error::{Result, StateError};
 pub use execution_journal::{
     ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, RootJournalInfo, SequenceNumber,
+    TaskAttempt,
 };
 pub use filesystem_blob_store::{FilesystemBlobStore, FilesystemBlobStoreConfig};
 pub use in_memory::InMemoryStateStore;

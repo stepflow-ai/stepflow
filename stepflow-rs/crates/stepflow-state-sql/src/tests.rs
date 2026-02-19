@@ -72,7 +72,7 @@ async fn test_blob_deduplication() {
 // =========================================================================
 
 #[tokio::test]
-async fn test_journal_append_and_read() {
+async fn test_journal_write_and_read() {
     let store = SqliteStateStore::in_memory().await.unwrap();
     let run_id = Uuid::now_v7();
     let root_run_id = run_id;
@@ -91,7 +91,7 @@ async fn test_journal_append_and_read() {
         },
     );
 
-    let seq1 = store.append(entry1).await.unwrap();
+    let seq1 = store.write(entry1).await.unwrap();
     assert_eq!(seq1.value(), 0);
 
     let entry2 = JournalEntry::new(
@@ -104,7 +104,7 @@ async fn test_journal_append_and_read() {
         },
     );
 
-    let seq2 = store.append(entry2).await.unwrap();
+    let seq2 = store.write(entry2).await.unwrap();
     assert_eq!(seq2.value(), 1);
 
     // Read entries from the beginning
@@ -144,7 +144,7 @@ async fn test_journal_latest_sequence() {
             result: FlowResult::Success(ValueRef::new(json!({}))),
         },
     );
-    store.append(entry).await.unwrap();
+    store.write(entry).await.unwrap();
 
     // Now latest should be 0
     let latest = store.latest_sequence(run_id).await.unwrap();
@@ -160,7 +160,7 @@ async fn test_journal_latest_sequence() {
             result: FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
         },
     );
-    store.append(entry2).await.unwrap();
+    store.write(entry2).await.unwrap();
 
     // Latest should now be 1
     let latest = store.latest_sequence(run_id).await.unwrap();
@@ -185,7 +185,7 @@ async fn test_journal_list_active_roots() {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        store.append(entry).await.unwrap();
+        store.write(entry).await.unwrap();
     }
 
     for i in 0..2 {
@@ -198,7 +198,7 @@ async fn test_journal_list_active_roots() {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        store.append(entry).await.unwrap();
+        store.write(entry).await.unwrap();
     }
 
     // List active root runs
@@ -238,7 +238,7 @@ async fn test_journal_read_with_limit() {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        store.append(entry).await.unwrap();
+        store.write(entry).await.unwrap();
     }
 
     // Read with limit of 3
@@ -283,7 +283,7 @@ async fn test_journal_subflow_shared_journal() {
             result: FlowResult::Success(ValueRef::new(json!({"parent": 0}))),
         },
     );
-    let seq1 = store.append(entry1).await.unwrap();
+    let seq1 = store.write(entry1).await.unwrap();
     assert_eq!(seq1.value(), 0);
 
     // Subflow: TaskCompleted for step 0 (subflow begins)
@@ -296,7 +296,7 @@ async fn test_journal_subflow_shared_journal() {
             result: FlowResult::Success(ValueRef::new(json!({"subflow": 0}))),
         },
     );
-    let seq2 = store.append(entry2).await.unwrap();
+    let seq2 = store.write(entry2).await.unwrap();
     assert_eq!(seq2.value(), 1);
 
     // Subflow: TaskCompleted for step 1
@@ -309,7 +309,7 @@ async fn test_journal_subflow_shared_journal() {
             result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
         },
     );
-    let seq3 = store.append(entry3).await.unwrap();
+    let seq3 = store.write(entry3).await.unwrap();
     assert_eq!(seq3.value(), 2);
 
     // Parent: TaskCompleted for step 1 (after subflow completes)
@@ -322,7 +322,7 @@ async fn test_journal_subflow_shared_journal() {
             result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
         },
     );
-    let seq4 = store.append(entry4).await.unwrap();
+    let seq4 = store.write(entry4).await.unwrap();
     assert_eq!(seq4.value(), 3);
 
     // Read all entries - should get all 4 in sequence order

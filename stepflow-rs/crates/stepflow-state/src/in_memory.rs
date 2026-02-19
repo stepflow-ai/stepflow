@@ -565,7 +565,7 @@ impl MetadataStore for InMemoryStateStore {
 }
 
 impl ExecutionJournal for InMemoryStateStore {
-    fn append(
+    fn write(
         &self,
         entry: JournalEntry,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, crate::StateError>> {
@@ -578,14 +578,6 @@ impl ExecutionJournal for InMemoryStateStore {
             Ok(sequence)
         }
         .boxed()
-    }
-
-    fn flush(
-        &self,
-        _root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        // In-memory journal has no buffering - all writes are immediate
-        async move { Ok(()) }.boxed()
     }
 
     fn read_from(

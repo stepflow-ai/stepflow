@@ -129,7 +129,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal.write(entry).await.expect("write should succeed");
 
             if let Some(prev) = last_seq {
                 assert!(
@@ -181,7 +181,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal.write(entry).await.expect("write should succeed");
             appended_seqs.push(seq);
         }
 
@@ -228,7 +228,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal.write(entry).await.expect("write should succeed");
             appended_seqs.push(seq);
         }
 
@@ -268,7 +268,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal.write(entry).await.expect("write should succeed");
             appended_seqs.push(seq);
         }
 
@@ -326,7 +326,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        let seq1 = journal.append(entry).await.expect("append should succeed");
+        let seq1 = journal.write(entry).await.expect("write should succeed");
 
         let latest = journal
             .latest_sequence(root_run_id)
@@ -350,7 +350,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            last_seq = journal.append(entry).await.expect("append should succeed");
+            last_seq = journal.write(entry).await.expect("write should succeed");
         }
 
         let latest = journal
@@ -402,7 +402,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            root1_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
+            root1_last_seq = Some(journal.write(entry).await.expect("write should succeed"));
         }
 
         let mut root2_last_seq = None;
@@ -416,7 +416,7 @@ impl JournalComplianceTests {
                     result: FlowResult::Success(ValueRef::new(json!({}))),
                 },
             );
-            root2_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
+            root2_last_seq = Some(journal.write(entry).await.expect("write should succeed"));
         }
 
         let entry = JournalEntry::new(
@@ -428,7 +428,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({}))),
             },
         );
-        let root3_last_seq = journal.append(entry).await.expect("append should succeed");
+        let root3_last_seq = journal.write(entry).await.expect("write should succeed");
 
         // List active roots
         let roots = journal
@@ -492,7 +492,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
             },
         );
-        let seq1 = journal.append(entry1).await.expect("append should succeed");
+        let seq1 = journal.write(entry1).await.expect("write should succeed");
 
         let entry2 = JournalEntry::new(
             subflow_run_id,
@@ -503,7 +503,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
             },
         );
-        let seq2 = journal.append(entry2).await.expect("append should succeed");
+        let seq2 = journal.write(entry2).await.expect("write should succeed");
 
         let entry3 = JournalEntry::new(
             subflow_run_id,
@@ -514,7 +514,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
             },
         );
-        let seq3 = journal.append(entry3).await.expect("append should succeed");
+        let seq3 = journal.write(entry3).await.expect("write should succeed");
 
         let entry4 = JournalEntry::new(
             parent_run_id,
@@ -525,7 +525,7 @@ impl JournalComplianceTests {
                 result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
             },
         );
-        let seq4 = journal.append(entry4).await.expect("append should succeed");
+        let seq4 = journal.write(entry4).await.expect("write should succeed");
 
         // Verify sequence numbers are monotonic across all events
         assert!(seq1 < seq2);
@@ -646,7 +646,7 @@ impl JournalComplianceTests {
         // Append all events
         for event in &events {
             let entry = JournalEntry::new(run_id, root_run_id, event.clone());
-            journal.append(entry).await.expect("append should succeed");
+            journal.write(entry).await.expect("write should succeed");
         }
 
         // Read all entries back

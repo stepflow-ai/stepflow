@@ -27,7 +27,7 @@ use stepflow_core::workflow::StepId;
 use stepflow_observability::RunInfoGuard;
 use stepflow_state::{
     CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEntry, JournalEvent,
-    LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _,
+    LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _, TaskAttempt,
 };
 use uuid::Uuid;
 
@@ -181,15 +181,12 @@ impl FlowExecutor {
         self.runs.get(&self.root_run_id).expect("root run exists")
     }
 
-    /// Write a journal entry.
-    ///
-    /// This doesn't necessarily flush the journal -- to ensure it is persisted, we should
-    /// call `journal.flush()` when needed.
+    /// Write a journal entry durably.
     async fn write_journal(&self, run_id: Uuid, event: JournalEvent) -> Result<()> {
         let root_run_id = self.root_run_id;
         let entry = JournalEntry::new(run_id, root_run_id, event);
         self.journal
-            .append(entry)
+            .write(entry)
             .await
             .change_context(ExecutionError::JournalError)?;
         Ok(())
@@ -272,15 +269,34 @@ impl FlowExecutor {
             if max_to_start > 0
                 && let Some(tasks) = self.scheduler.select_next(max_to_start).into_tasks()
             {
-                // Flush the journal before executing steps to ensure all prior task
-                // results are durably committed. This is important because steps may
-                // have side effects (API calls, database writes) and we need to ensure
-                // that on recovery, we get the same inputs even if earlier steps are
-                // non-deterministic.
-                self.journal
-                    .flush(self.root_run_id)
-                    .await
-                    .change_context(ExecutionError::JournalError)?;
+                // Build TaskAttempt records and increment attempt counters before
+                // spawning. This journal write serves as both the durability barrier
+                // (ensuring prior task results survive crashes) and the attempt record.
+                let task_attempts: Vec<TaskAttempt> = tasks
+                    .iter()
+                    .map(|task| {
+                        let run_state = self
+                            .run_state_mut(task.run_id)
+                            .expect("run should exist for scheduled task");
+                        let item = run_state.items_state_mut().item_mut(task.item_index);
+                        item.record_attempt(task.step_index);
+                        TaskAttempt {
+                            item_index: task.item_index,
+                            step_index: task.step_index,
+                            attempt: item.attempt_count(task.step_index),
+                        }
+                    })
+                    .collect();
+
+                // Write TasksStarted event — this must be durable before we spawn
+                // the task futures, so that recovery knows these tasks were attempted.
+                self.write_journal(
+                    self.root_run_id,
+                    JournalEvent::TasksStarted {
+                        tasks: task_attempts,
+                    },
+                )
+                .await?;
 
                 for task in tasks.into_iter() {
                     let future = self.prepare_task_future(task)?;
@@ -350,9 +366,10 @@ impl FlowExecutor {
         // Store the run state
         self.runs.insert(run_id, run_state);
 
-        // Journal: Record subflow creation and flush to ensure durability.
-        // The parent_run_id field identifies this as a subflow. All events for the
-        // execution tree share the same journal (keyed by root_run_id).
+        // Journal: Record subflow creation. The write is durable, ensuring recovery
+        // can always find the RunCreated event. The parent_run_id field identifies
+        // this as a subflow. All events for the execution tree share the same journal
+        // (keyed by root_run_id).
         self.write_journal(
             run_id,
             JournalEvent::RunCreated {
@@ -363,10 +380,6 @@ impl FlowExecutor {
             },
         )
         .await?;
-        self.journal
-            .flush(self.root_run_id)
-            .await
-            .change_context(ExecutionError::JournalError)?;
 
         // Create the run record in the state store so results can be retrieved later.
         let mut run_params = CreateRunParams::new_subflow(

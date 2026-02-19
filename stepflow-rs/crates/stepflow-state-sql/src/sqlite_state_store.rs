@@ -897,7 +897,7 @@ impl MetadataStore for SqliteStateStore {
 }
 
 impl ExecutionJournal for SqliteStateStore {
-    fn append(
+    fn write(
         &self,
         entry: JournalEntry,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
@@ -922,6 +922,7 @@ impl ExecutionJournal for SqliteStateStore {
                 stepflow_state::JournalEvent::RunCreated { .. } => "run_created",
                 stepflow_state::JournalEvent::RunInitialized { .. } => "run_initialized",
                 stepflow_state::JournalEvent::RunCompleted { .. } => "run_completed",
+                stepflow_state::JournalEvent::TasksStarted { .. } => "tasks_started",
                 stepflow_state::JournalEvent::TaskCompleted { .. } => "task_completed",
                 stepflow_state::JournalEvent::StepsUnblocked { .. } => "steps_unblocked",
                 stepflow_state::JournalEvent::ItemCompleted { .. } => "item_completed",
@@ -1071,11 +1072,5 @@ impl ExecutionJournal for SqliteStateStore {
             Ok(infos)
         }
         .boxed()
-    }
-
-    fn flush(&self, _root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        // SQLite with WAL mode commits each INSERT immediately.
-        // Future implementations may batch writes and require actual flushing.
-        async move { Ok(()) }.boxed()
     }
 }

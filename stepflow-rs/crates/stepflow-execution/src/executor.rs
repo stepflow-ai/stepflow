@@ -106,7 +106,7 @@ pub async fn submit_run(
         log::warn!("Failed to acquire lease for run {run_id}: {e:?}");
     }
 
-    // Journal: Record run creation and flush to ensure durability before execution.
+    // Journal: Record run creation durably before execution.
     // This ensures recovery can always find at least the RunCreated event.
     let journal = env.execution_journal();
     let entry = JournalEntry::new(
@@ -120,11 +120,7 @@ pub async fn submit_run(
         },
     );
     journal
-        .append(entry)
-        .await
-        .change_context(ExecutionError::JournalError)?;
-    journal
-        .flush(run_id)
+        .write(entry)
         .await
         .change_context(ExecutionError::JournalError)?;
 

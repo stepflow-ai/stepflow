@@ -135,6 +135,21 @@ pub struct ItemSteps {
     pub step_indices: Vec<usize>,
 }
 
+/// Information about a task being started.
+///
+/// Records the item, step, and execution-level attempt number (1-based).
+/// This is the attempt count across orchestrator crashes/recoveries, distinct
+/// from the transport-level retry counter in the plugin layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskAttempt {
+    /// The item index within the run.
+    pub item_index: u32,
+    /// The step index within the workflow.
+    pub step_index: usize,
+    /// The execution attempt number (1-based).
+    pub attempt: u32,
+}
+
 /// Execution events recorded in the journal.
 ///
 /// These events capture the state transitions during workflow execution
@@ -172,6 +187,17 @@ pub enum JournalEvent {
     // =========================================================================
     // Task Lifecycle
     // =========================================================================
+    /// Tasks started in a scheduling round.
+    ///
+    /// Written before spawning task futures. Records the execution attempt
+    /// number for each task, enabling attempt tracking across crashes. A
+    /// `TasksStarted` without a matching `TaskCompleted` indicates the task
+    /// was in-flight when the crash occurred.
+    TasksStarted {
+        /// Tasks being started in this scheduling round.
+        tasks: Vec<TaskAttempt>,
+    },
+
     /// Task completed with result.
     TaskCompleted {
         /// The item index within the run.
@@ -218,54 +244,29 @@ pub enum JournalEvent {
 /// Journals are keyed by `root_run_id`, so all events for an execution tree
 /// (parent + subflows) share a single journal with a unified sequence space.
 ///
-/// # Buffering and Durability
+/// # Durability
 ///
-/// The journal supports a two-phase commit model:
-///
-/// 1. **Append**: Records events to an internal buffer. This is fast but may not
-///    be durable - if the process crashes before flush, buffered events may be lost.
-///
-/// 2. **Flush**: Ensures all buffered events are durably committed. This acts as
-///    a barrier - after flush returns, all previously appended events are guaranteed
-///    to survive crashes.
-///
-/// This model allows high-throughput event recording while providing explicit
-/// durability points before operations with side effects.
+/// Each [`write`](Self::write) call durably persists the entry before returning.
+/// After `write` returns, the entry is guaranteed to survive process crashes
+/// or restarts.
 pub trait ExecutionJournal: Send + Sync {
-    /// Append a journal entry to the buffer.
+    /// Write a journal entry durably.
     ///
-    /// The entry is added to the journal buffer for `entry.root_run_id`.
+    /// The entry is persisted to the journal for `entry.root_run_id`.
     /// Sequence numbers are monotonically increasing within each root journal.
     ///
-    /// **Note**: This method may buffer the entry without immediately persisting it.
-    /// Call [`flush`](Self::flush) to ensure all buffered entries are durably committed.
+    /// This method guarantees durability — after it returns, the entry will
+    /// survive process crashes or restarts.
     ///
     /// # Arguments
-    /// * `entry` - The journal entry to append
+    /// * `entry` - The journal entry to write
     ///
     /// # Returns
     /// The sequence number assigned to this entry
-    fn append(
+    fn write(
         &self,
         entry: JournalEntry,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>>;
-
-    /// Flush all buffered entries to durable storage.
-    ///
-    /// This method acts as a durability barrier - after it returns successfully,
-    /// all previously appended entries are guaranteed to be persisted and will
-    /// survive process crashes or restarts.
-    ///
-    /// Call this before executing steps with side effects to ensure that prior
-    /// step results are durably recorded. This is important because:
-    ///
-    /// - Steps may have non-deterministic outputs
-    /// - Steps may have external side effects (API calls, database writes)
-    /// - On recovery, we need the exact results from the original execution
-    ///
-    /// # Arguments
-    /// * `root_run_id` - The root run whose journal should be flushed
-    fn flush(&self, root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Read journal entries for a root run starting from a sequence number.
     ///

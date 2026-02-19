@@ -99,6 +99,9 @@ pub struct ItemState {
     variables: Arc<HashMap<String, ValueRef>>,
     /// Variable schema for defaults and secret redaction.
     variable_schema: Option<VariableSchema>,
+    /// Per-step execution attempt count (0 = not yet started, 1+ = started).
+    /// Tracks attempts across orchestrator crashes/recoveries.
+    attempts: Vec<u32>,
 }
 
 impl ItemState {
@@ -123,6 +126,7 @@ impl ItemState {
             input,
             variables,
             variable_schema,
+            attempts: vec![0; num_steps],
         }
     }
 
@@ -139,6 +143,16 @@ impl ItemState {
     /// Get the number of steps in this item's flow.
     pub fn num_steps(&self) -> usize {
         self.step_index.num_steps()
+    }
+
+    /// Get the execution attempt count for a step (0 = not yet started).
+    pub fn attempt_count(&self, step_index: usize) -> u32 {
+        self.attempts[step_index]
+    }
+
+    /// Record that a step is being attempted (increments the attempt counter).
+    pub fn record_attempt(&mut self, step_index: usize) {
+        self.attempts[step_index] += 1;
     }
 
     /// Add a step to the needed set.

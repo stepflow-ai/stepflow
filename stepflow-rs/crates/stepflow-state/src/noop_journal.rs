@@ -24,7 +24,7 @@ use crate::{ExecutionJournal, JournalEntry, RootJournalInfo, SequenceNumber, Sta
 /// A no-op execution journal that discards all entries.
 ///
 /// This implementation is suitable for deployments where durability is not
-/// required (e.g., development, testing, or ephemeral workloads). All append
+/// required (e.g., development, testing, or ephemeral workloads). All write
 /// operations succeed immediately but entries are not persisted, so recovery
 /// is not possible.
 ///
@@ -56,7 +56,7 @@ impl NoOpJournal {
 }
 
 impl ExecutionJournal for NoOpJournal {
-    fn append(
+    fn write(
         &self,
         entry: JournalEntry,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
@@ -69,11 +69,6 @@ impl ExecutionJournal for NoOpJournal {
             .or_insert_with(|| AtomicU64::new(0))
             .fetch_add(1, Ordering::Relaxed);
         async move { Ok(SequenceNumber::new(seq)) }.boxed()
-    }
-
-    fn flush(&self, _root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        // Nothing to flush - no-op journal doesn't persist anything
-        async move { Ok(()) }.boxed()
     }
 
     fn read_from(
@@ -90,7 +85,7 @@ impl ExecutionJournal for NoOpJournal {
         &self,
         root_run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>> {
-        // Return the latest sequence number if any appends have been made
+        // Return the latest sequence number if any writes have been made
         let seq = self.sequences.get(&root_run_id).map(|entry| {
             let current = entry.load(Ordering::Relaxed);
             if current == 0 {
@@ -129,14 +124,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_noop_append() {
+    async fn test_noop_write() {
         use crate::JournalEvent;
         use stepflow_core::status::ExecutionStatus;
 
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        // First append should return sequence 0
+        // First write should return sequence 0
         let entry1 = JournalEntry::new(
             run_id,
             run_id,
@@ -144,10 +139,10 @@ mod tests {
                 status: ExecutionStatus::Completed,
             },
         );
-        let result1 = journal.append(entry1).await.unwrap();
+        let result1 = journal.write(entry1).await.unwrap();
         assert_eq!(result1, SequenceNumber::new(0));
 
-        // Second append should return sequence 1 (incrementing)
+        // Second write should return sequence 1 (incrementing)
         let entry2 = JournalEntry::new(
             run_id,
             run_id,
@@ -155,7 +150,7 @@ mod tests {
                 status: ExecutionStatus::Completed,
             },
         );
-        let result2 = journal.append(entry2).await.unwrap();
+        let result2 = journal.write(entry2).await.unwrap();
         assert_eq!(result2, SequenceNumber::new(1));
 
         // Different root_run_id should start at 0
@@ -167,7 +162,7 @@ mod tests {
                 status: ExecutionStatus::Completed,
             },
         );
-        let result3 = journal.append(entry3).await.unwrap();
+        let result3 = journal.write(entry3).await.unwrap();
         assert_eq!(result3, SequenceNumber::new(0));
     }
 
@@ -191,11 +186,11 @@ mod tests {
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        // No appends yet - should be None
+        // No writes yet - should be None
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert!(latest.is_none());
 
-        // After appending, should return the latest sequence
+        // After writing, should return the latest sequence
         let entry = JournalEntry::new(
             run_id,
             run_id,
@@ -203,12 +198,12 @@ mod tests {
                 status: ExecutionStatus::Completed,
             },
         );
-        journal.append(entry).await.unwrap();
+        journal.write(entry).await.unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(0)));
 
-        // After second append
+        // After second write
         let entry2 = JournalEntry::new(
             run_id,
             run_id,
@@ -216,7 +211,7 @@ mod tests {
                 status: ExecutionStatus::Completed,
             },
         );
-        journal.append(entry2).await.unwrap();
+        journal.write(entry2).await.unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(1)));
