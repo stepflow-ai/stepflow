@@ -172,6 +172,10 @@ impl RunState {
     ///
     /// Returns the tasks that became ready as a result of this event.
     ///
+    /// Events whose `run_id` doesn't match this RunState's `run_id` are silently
+    /// ignored. This allows the full journal (which contains events for all runs
+    /// in an execution tree) to be applied to each RunState without pre-filtering.
+    ///
     /// # Event Handling
     ///
     /// - `RunInitialized`: Sets up needed steps for each item with their dependencies.
@@ -182,11 +186,6 @@ impl RunState {
     ///   Returns empty (tasks are discovered via other events).
     /// - Other events (`RunCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
     ///   Informational or handled elsewhere. Returns empty.
-    ///
-    /// Note: Subflow events are identified by their own `RunCreated` event with
-    /// `parent_run_id` set. Since all events for an execution tree share the same
-    /// journal (keyed by `root_run_id`), subflow events are filtered by `run_id`
-    /// during replay.
     pub fn apply_event(&mut self, event: &JournalEvent) -> Vec<Task> {
         match event {
             JournalEvent::RunCreated { .. } => {
@@ -194,9 +193,12 @@ impl RunState {
                 Vec::new()
             }
             JournalEvent::RunInitialized {
-                run_id: _,
+                run_id,
                 needed_steps,
             } => {
+                if *run_id != self.run_id {
+                    return Vec::new();
+                }
                 let mut tasks = Vec::new();
                 for item_steps in needed_steps {
                     tasks.extend(self.items_state.initialize_item_with_steps(
@@ -227,11 +229,14 @@ impl RunState {
                 Vec::new()
             }
             JournalEvent::TaskCompleted {
-                run_id: _,
+                run_id,
                 item_index,
                 step_index,
                 result,
             } => {
+                if *run_id != self.run_id {
+                    return Vec::new();
+                }
                 let task = Task::new(self.run_id, *item_index, *step_index);
                 self.items_state
                     .complete_task_and_get_ready(task, result.clone())
@@ -1197,5 +1202,65 @@ mod tests {
 
         // step2 never started
         assert_eq!(item.attempt_count(2), 0);
+    }
+
+    // =========================================================================
+    // Cross-run Event Filtering Tests
+    // =========================================================================
+
+    #[test]
+    fn test_apply_event_ignores_other_run_events() {
+        // Events from a different run should be silently ignored.
+        // This is critical for recovery where all events for an execution tree
+        // (root + subflows) are applied to each RunState.
+        let run_id = Uuid::now_v7();
+        let other_run_id = Uuid::now_v7();
+        let flow = create_chain_flow();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+
+        // Initialize this run
+        state.apply_event(&JournalEvent::RunInitialized {
+            run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0, 1, 2],
+            }],
+        });
+
+        // RunInitialized from another run - should be ignored
+        let tasks = state.apply_event(&JournalEvent::RunInitialized {
+            run_id: other_run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0],
+            }],
+        });
+        assert!(tasks.is_empty());
+
+        // TaskCompleted from another run - should be ignored
+        let tasks = state.apply_event(&JournalEvent::TaskCompleted {
+            run_id: other_run_id,
+            item_index: 0,
+            step_index: 0,
+            result: FlowResult::Success(ValueRef::new(json!({}))),
+        });
+        assert!(tasks.is_empty());
+
+        // TasksStarted from another run - should be ignored
+        state.apply_event(&JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id: other_run_id,
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+            }],
+        });
+
+        // Verify our state is unchanged - step 0 should NOT be completed
+        // and attempt count should be 0
+        let item = state.items_state().item(0);
+        assert!(!item.is_completed(0));
+        assert_eq!(item.attempt_count(0), 0);
     }
 }
