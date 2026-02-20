@@ -183,9 +183,8 @@ async def test_worker_and_orchestrator_crash(compose_env):
         )
 
     # step3 dispatched fresh by the recovered orchestrator.
-    # attempt=1 because attempt counts are not journaled, so they reset on
-    # recovery. This is a known bug — see #637.
+    # It was never started before the crash, so attempt=1 is correct.
     step3_records = get_step_tracker_records(records, "step3", run_id)
     assert step3_records[-1]["attempt"] == 1, (
-        "step3 should be attempt 1 — attempt count resets on recovery (#637)"
+        "step3 should be attempt 1 (fresh dispatch after recovery)"
     )

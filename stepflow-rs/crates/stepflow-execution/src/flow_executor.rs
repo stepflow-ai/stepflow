@@ -26,8 +26,8 @@ use stepflow_core::FlowResult;
 use stepflow_core::workflow::StepId;
 use stepflow_observability::RunInfoGuard;
 use stepflow_state::{
-    CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEntry, JournalEvent,
-    LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _,
+    CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEvent,
+    LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _, RunTaskAttempts, TaskAttempt,
 };
 use uuid::Uuid;
 
@@ -181,15 +181,10 @@ impl FlowExecutor {
         self.runs.get(&self.root_run_id).expect("root run exists")
     }
 
-    /// Write a journal entry.
-    ///
-    /// This doesn't necessarily flush the journal -- to ensure it is persisted, we should
-    /// call `journal.flush()` when needed.
-    async fn write_journal(&self, run_id: Uuid, event: JournalEvent) -> Result<()> {
-        let root_run_id = self.root_run_id;
-        let entry = JournalEntry::new(run_id, root_run_id, event);
+    /// Write a journal entry durably.
+    async fn write_journal(&self, event: JournalEvent) -> Result<()> {
         self.journal
-            .append(entry)
+            .write(self.root_run_id, event)
             .await
             .change_context(ExecutionError::JournalError)?;
         Ok(())
@@ -272,15 +267,33 @@ impl FlowExecutor {
             if max_to_start > 0
                 && let Some(tasks) = self.scheduler.select_next(max_to_start).into_tasks()
             {
-                // Flush the journal before executing steps to ensure all prior task
-                // results are durably committed. This is important because steps may
-                // have side effects (API calls, database writes) and we need to ensure
-                // that on recovery, we get the same inputs even if earlier steps are
-                // non-deterministic.
-                self.journal
-                    .flush(self.root_run_id)
-                    .await
-                    .change_context(ExecutionError::JournalError)?;
+                // Build TaskAttempt records and increment attempt counters before
+                // spawning. Tasks may belong to different runs (parent and subflows),
+                // so we group attempts by run_id into a single TasksStarted event
+                // with RunTaskAttempts entries per run.
+                let mut attempts_by_run: HashMap<uuid::Uuid, Vec<TaskAttempt>> = HashMap::new();
+
+                for task in tasks.iter() {
+                    let run_state = self
+                        .run_state_mut(task.run_id)
+                        .expect("run should exist for scheduled task");
+                    let item = run_state.items_state_mut().item_mut(task.item_index);
+                    let attempt = item.record_attempt(task.step_index);
+
+                    attempts_by_run
+                        .entry(task.run_id)
+                        .or_default()
+                        .push(TaskAttempt::new(task.item_index, task.step_index, attempt));
+                }
+
+                // Write a single TasksStarted event — this must be durable before we spawn
+                // the task futures, so that recovery knows these tasks were attempted.
+                let runs: Vec<RunTaskAttempts> = attempts_by_run
+                    .into_iter()
+                    .map(|(run_id, tasks)| RunTaskAttempts { run_id, tasks })
+                    .collect();
+                self.write_journal(JournalEvent::TasksStarted { runs })
+                    .await?;
 
                 for task in tasks.into_iter() {
                     let future = self.prepare_task_future(task)?;
@@ -350,23 +363,18 @@ impl FlowExecutor {
         // Store the run state
         self.runs.insert(run_id, run_state);
 
-        // Journal: Record subflow creation and flush to ensure durability.
-        // The parent_run_id field identifies this as a subflow. All events for the
-        // execution tree share the same journal (keyed by root_run_id).
-        self.write_journal(
+        // Journal: Record subflow creation. The write is durable, ensuring recovery
+        // can always find the RunCreated event. The parent_run_id field identifies
+        // this as a subflow. All events for the execution tree share the same journal
+        // (keyed by root_run_id).
+        self.write_journal(JournalEvent::RunCreated {
             run_id,
-            JournalEvent::RunCreated {
-                flow_id: request.flow_id.clone(),
-                inputs: request.inputs.clone(),
-                variables,
-                parent_run_id: Some(parent_run_id),
-            },
-        )
+            flow_id: request.flow_id.clone(),
+            inputs: request.inputs.clone(),
+            variables,
+            parent_run_id: Some(parent_run_id),
+        })
         .await?;
-        self.journal
-            .flush(self.root_run_id)
-            .await
-            .change_context(ExecutionError::JournalError)?;
 
         // Create the run record in the state store so results can be retrieved later.
         let mut run_params = CreateRunParams::new_subflow(
@@ -401,8 +409,11 @@ impl FlowExecutor {
         };
 
         // Journal: Record subflow initialization (on the subflow run)
-        self.write_journal(run_id, JournalEvent::RunInitialized { needed_steps })
-            .await?;
+        self.write_journal(JournalEvent::RunInitialized {
+            run_id,
+            needed_steps,
+        })
+        .await?;
 
         log::debug!(
             "Subflow initialized: run_id={}, initial_tasks={}",
@@ -512,8 +523,11 @@ impl FlowExecutor {
 
                 // Journal: Record the needed steps for this run
                 let needed_steps = run_state.items_state().needed_steps_for_journal();
-                self.write_journal(rid, JournalEvent::RunInitialized { needed_steps })
-                    .await?;
+                self.write_journal(JournalEvent::RunInitialized {
+                    run_id: rid,
+                    needed_steps,
+                })
+                .await?;
             }
         }
 
@@ -562,12 +576,10 @@ impl FlowExecutor {
         };
 
         // Journal: Record run completion
-        self.write_journal(
+        self.write_journal(JournalEvent::RunCompleted {
             run_id,
-            JournalEvent::RunCompleted {
-                status: final_status,
-            },
-        )
+            status: final_status,
+        })
         .await?;
 
         if let Err(e) = self
@@ -612,6 +624,7 @@ impl FlowExecutor {
         let flow = item.flow().clone();
         let step = flow.step(task.step_index);
         let step_input = step.input.resolve(item);
+        let attempt = item.attempt_count(task.step_index);
 
         // Create StepId for error handling (before moving flow into runner)
         let step_id = StepId::for_step(flow.clone(), task.step_index);
@@ -628,7 +641,7 @@ impl FlowExecutor {
         );
 
         // Create step runner with all execution context
-        let runner = StepRunner::new(task.step_index, step_input, run_context);
+        let runner = StepRunner::new(task.step_index, step_input, run_context, attempt);
 
         // Create an owned future that runs the step and handles errors
         let future = async move {
@@ -667,14 +680,12 @@ impl FlowExecutor {
         };
 
         // Journal: Record task completion
-        self.write_journal(
+        self.write_journal(JournalEvent::TaskCompleted {
             run_id,
-            JournalEvent::TaskCompleted {
-                item_index: task.item_index,
-                step_index: task.step_index,
-                result: result.clone(),
-            },
-        )
+            item_index: task.item_index,
+            step_index: task.step_index,
+            result: result.clone(),
+        })
         .await?;
 
         // Journal: Record newly unblocked steps (grouped by item)
@@ -687,13 +698,11 @@ impl FlowExecutor {
                 .push(new_task.step_index);
         }
         for (item_index, step_indices) in unblocked_by_item {
-            self.write_journal(
+            self.write_journal(JournalEvent::StepsUnblocked {
                 run_id,
-                JournalEvent::StepsUnblocked {
-                    item_index,
-                    step_indices,
-                },
-            )
+                item_index,
+                step_indices,
+            })
             .await?;
         }
 

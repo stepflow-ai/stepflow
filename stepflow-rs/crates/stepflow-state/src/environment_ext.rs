@@ -95,8 +95,8 @@ impl BlobStoreExt for StepflowEnvironment {
 /// ```ignore
 /// use stepflow_state::ExecutionJournalExt;
 ///
-/// async fn append_event(env: &StepflowEnvironment, entry: JournalEntry) {
-///     env.execution_journal().append(entry).await.unwrap();
+/// async fn write_event(env: &StepflowEnvironment, entry: JournalEntry) {
+///     env.execution_journal().write(entry).await.unwrap();
 /// }
 /// ```
 pub trait ExecutionJournalExt {

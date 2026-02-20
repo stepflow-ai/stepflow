@@ -172,26 +172,33 @@ impl RunState {
     ///
     /// Returns the tasks that became ready as a result of this event.
     ///
+    /// Events whose `run_id` doesn't match this RunState's `run_id` are silently
+    /// ignored. This allows the full journal (which contains events for all runs
+    /// in an execution tree) to be applied to each RunState without pre-filtering.
+    ///
     /// # Event Handling
     ///
     /// - `RunInitialized`: Sets up needed steps for each item with their dependencies.
     ///   Returns all initially ready tasks.
     /// - `TaskCompleted`: Marks a task as complete, updates dependencies, discovers
     ///   newly ready tasks. Returns the newly ready tasks.
+    /// - `TasksStarted`: Records attempt counts for tasks about to execute.
+    ///   Returns empty (tasks are discovered via other events).
     /// - Other events (`RunCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
     ///   Informational or handled elsewhere. Returns empty.
-    ///
-    /// Note: Subflow events are identified by their own `RunCreated` event with
-    /// `parent_run_id` set. Since all events for an execution tree share the same
-    /// journal (keyed by `root_run_id`), subflow events are filtered by `run_id`
-    /// during replay.
     pub fn apply_event(&mut self, event: &JournalEvent) -> Vec<Task> {
         match event {
             JournalEvent::RunCreated { .. } => {
                 // RunCreated is handled at construction time, not via apply_event
                 Vec::new()
             }
-            JournalEvent::RunInitialized { needed_steps } => {
+            JournalEvent::RunInitialized {
+                run_id,
+                needed_steps,
+            } => {
+                if *run_id != self.run_id {
+                    return Vec::new();
+                }
                 let mut tasks = Vec::new();
                 for item_steps in needed_steps {
                     tasks.extend(self.items_state.initialize_item_with_steps(
@@ -201,11 +208,35 @@ impl RunState {
                 }
                 tasks
             }
+            JournalEvent::TasksStarted { runs } => {
+                // Restore attempt counts from the journal. We use set_attempt_at_least
+                // so that replaying multiple events (or a compacted journal with a single
+                // high-value entry) always converges to the correct count.
+                // Filter to only RunTaskAttempts for this run, since a single TasksStarted
+                // event may contain tasks from multiple runs (parent + subflows).
+                for run_attempts in runs {
+                    if run_attempts.run_id == self.run_id {
+                        for task_attempt in &run_attempts.tasks {
+                            self.items_state
+                                .item_mut(task_attempt.item_index)
+                                .set_attempt_at_least(
+                                    task_attempt.step_index,
+                                    task_attempt.attempt,
+                                );
+                        }
+                    }
+                }
+                Vec::new()
+            }
             JournalEvent::TaskCompleted {
+                run_id,
                 item_index,
                 step_index,
                 result,
             } => {
+                if *run_id != self.run_id {
+                    return Vec::new();
+                }
                 let task = Task::new(self.run_id, *item_index, *step_index);
                 self.items_state
                     .complete_task_and_get_ready(task, result.clone())
@@ -291,6 +322,7 @@ mod tests {
     use serde_json::json;
     use stepflow_core::ValueExpr;
     use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+    use stepflow_state::RunTaskAttempts;
 
     fn create_test_flow() -> Arc<Flow> {
         Arc::new(
@@ -673,6 +705,7 @@ mod tests {
             HashMap::new(),
         );
         let recovery_ready = recovery_state.apply_event(&JournalEvent::RunInitialized {
+            run_id,
             needed_steps: needed_steps.clone(),
         });
 
@@ -727,6 +760,7 @@ mod tests {
 
         // Recovery path via apply_event
         let recovery_ready = recovery_state.apply_event(&JournalEvent::TaskCompleted {
+            run_id,
             item_index: 0,
             step_index: 0,
             result: result.clone(),
@@ -784,6 +818,7 @@ mod tests {
 
         // Record events as we execute
         let mut events: Vec<JournalEvent> = vec![JournalEvent::RunInitialized {
+            run_id,
             needed_steps: needed_steps.clone(),
         }];
 
@@ -794,6 +829,7 @@ mod tests {
             .items_state_mut()
             .complete_task_and_get_ready(task0, result0.clone());
         events.push(JournalEvent::TaskCompleted {
+            run_id,
             item_index: 0,
             step_index: 0,
             result: result0.clone(),
@@ -807,6 +843,7 @@ mod tests {
             .items_state_mut()
             .complete_task_and_get_ready(task1, result1.clone());
         events.push(JournalEvent::TaskCompleted {
+            run_id,
             item_index: 0,
             step_index: 1,
             result: result1.clone(),
@@ -820,6 +857,7 @@ mod tests {
             .items_state_mut()
             .complete_task_and_get_ready(task2, result2.clone());
         events.push(JournalEvent::TaskCompleted {
+            run_id,
             item_index: 0,
             step_index: 2,
             result: result2.clone(),
@@ -883,14 +921,16 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         // Simulate journal entries from a crashed execution that completed step1
-        let events = vec![
+        let events = [
             JournalEvent::RunInitialized {
+                run_id,
                 needed_steps: vec![stepflow_state::ItemSteps {
                     item_index: 0,
                     step_indices: vec![0, 1, 2],
                 }],
             },
             JournalEvent::TaskCompleted {
+                run_id,
                 item_index: 0,
                 step_index: 0,
                 result: FlowResult::Success(ValueRef::new(json!({"step1": "done"}))),
@@ -928,5 +968,299 @@ mod tests {
 
         // Run should not be complete
         assert!(!recovery_state.is_complete());
+    }
+
+    // =========================================================================
+    // TasksStarted / Attempt Tracking Tests
+    // =========================================================================
+
+    #[test]
+    fn test_apply_event_tasks_started_increments_attempt() {
+        // Verify that TasksStarted events correctly increment attempt counters
+        let run_id = Uuid::now_v7();
+        let flow = create_chain_flow(); // step1 -> step2 -> step3
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+
+        // Initialize
+        state.apply_event(&JournalEvent::RunInitialized {
+            run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0, 1, 2],
+            }],
+        });
+
+        // Before any TasksStarted, all attempts should be 0
+        assert_eq!(state.items_state().item(0).attempt_count(0), 0);
+        assert_eq!(state.items_state().item(0).attempt_count(1), 0);
+
+        // Start step0 (attempt 1)
+        state.apply_event(&JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id,
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+            }],
+        });
+        assert_eq!(state.items_state().item(0).attempt_count(0), 1);
+
+        // Simulate crash + recovery: step0 started again (attempt 2)
+        state.apply_event(&JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id,
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 2)],
+            }],
+        });
+        assert_eq!(state.items_state().item(0).attempt_count(0), 2);
+
+        // step1 still at 0
+        assert_eq!(state.items_state().item(0).attempt_count(1), 0);
+    }
+
+    #[test]
+    fn test_apply_event_tasks_started_batch() {
+        // Verify that a single TasksStarted with multiple tasks increments all counters
+        let run_id = Uuid::now_v7();
+        // Create a flow with two independent steps (both depend on input only)
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step_a")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step_b")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step_a".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+
+        state.apply_event(&JournalEvent::RunInitialized {
+            run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0, 1],
+            }],
+        });
+
+        // Start both steps in one batch
+        state.apply_event(&JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id,
+                tasks: vec![
+                    stepflow_state::TaskAttempt::new(0, 0, 1),
+                    stepflow_state::TaskAttempt::new(0, 1, 1),
+                ],
+            }],
+        });
+
+        assert_eq!(state.items_state().item(0).attempt_count(0), 1);
+        assert_eq!(state.items_state().item(0).attempt_count(1), 1);
+    }
+
+    #[test]
+    fn test_recovery_with_attempt_tracking_mixed() {
+        // Test scenario 7 from the plan: mixed recovery where some tasks completed,
+        // some were in-flight when crash happened.
+        //
+        // Chain: step0 -> step1 -> step2
+        // Journal: TasksStarted([step0 attempt=1]), TaskCompleted(step0),
+        //          TasksStarted([step1 attempt=1]), NO TaskCompleted(step1)
+        // Expected: step0 attempt=1 (completed), step1 attempt=1 (in-flight at crash),
+        //           step2 attempt=0 (not yet started)
+        let run_id = Uuid::now_v7();
+        let flow = create_chain_flow();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let events = vec![
+            JournalEvent::RunInitialized {
+                run_id,
+                needed_steps: vec![stepflow_state::ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0, 1, 2],
+                }],
+            },
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                }],
+            },
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"step0": "done"}))),
+            },
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
+                }],
+            },
+            // Crash here - step1 was in-flight, never completed
+        ];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+
+        for event in &events {
+            state.apply_event(event);
+        }
+
+        let item = state.items_state().item(0);
+
+        // step0: completed, attempt=1
+        assert!(item.is_completed(0));
+        assert_eq!(item.attempt_count(0), 1);
+
+        // step1: NOT completed (was in-flight at crash), attempt=1
+        assert!(!item.is_completed(1));
+        assert_eq!(item.attempt_count(1), 1);
+
+        // step2: not started yet
+        assert!(!item.is_completed(2));
+        assert_eq!(item.attempt_count(2), 0);
+
+        // step1 should be schedulable (step0 completed, step1 unblocked but not completed)
+        let schedulable: Vec<_> = item.schedulable_steps().iter().collect();
+        assert_eq!(schedulable, vec![1]);
+
+        // After recovery, when the executor starts step1 again, it will be attempt 2
+        // (attempt_count=1 from journal + 1 for the new attempt)
+    }
+
+    #[test]
+    fn test_recovery_from_compacted_journal_high_attempt() {
+        // After journal compaction, we may have a single TasksStarted entry with
+        // attempt > 1. Replaying it should restore the correct count directly
+        // (not increment from 0).
+        let run_id = Uuid::now_v7();
+        let flow = create_chain_flow();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let events = vec![
+            JournalEvent::RunInitialized {
+                run_id,
+                needed_steps: vec![stepflow_state::ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0, 1, 2],
+                }],
+            },
+            // Compacted: only the latest TasksStarted for step0 remains (attempt=3)
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 3)],
+                }],
+            },
+            // step0 completed on attempt 3
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: FlowResult::Success(ValueRef::new(json!({"step0": "done"}))),
+            },
+            // step1 started (attempt=1) but crashed before completing
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
+                }],
+            },
+        ];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+        for event in &events {
+            state.apply_event(event);
+        }
+
+        let item = state.items_state().item(0);
+
+        // step0 should reflect the compacted attempt=3
+        assert_eq!(item.attempt_count(0), 3);
+        assert!(item.is_completed(0));
+
+        // step1 at attempt=1, not completed (in-flight at crash)
+        assert_eq!(item.attempt_count(1), 1);
+        assert!(!item.is_completed(1));
+
+        // step2 never started
+        assert_eq!(item.attempt_count(2), 0);
+    }
+
+    // =========================================================================
+    // Cross-run Event Filtering Tests
+    // =========================================================================
+
+    #[test]
+    fn test_apply_event_ignores_other_run_events() {
+        // Events from a different run should be silently ignored.
+        // This is critical for recovery where all events for an execution tree
+        // (root + subflows) are applied to each RunState.
+        let run_id = Uuid::now_v7();
+        let other_run_id = Uuid::now_v7();
+        let flow = create_chain_flow();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+        let inputs = vec![ValueRef::new(json!({"x": 1}))];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+
+        // Initialize this run
+        state.apply_event(&JournalEvent::RunInitialized {
+            run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0, 1, 2],
+            }],
+        });
+
+        // RunInitialized from another run - should be ignored
+        let tasks = state.apply_event(&JournalEvent::RunInitialized {
+            run_id: other_run_id,
+            needed_steps: vec![stepflow_state::ItemSteps {
+                item_index: 0,
+                step_indices: vec![0],
+            }],
+        });
+        assert!(tasks.is_empty());
+
+        // TaskCompleted from another run - should be ignored
+        let tasks = state.apply_event(&JournalEvent::TaskCompleted {
+            run_id: other_run_id,
+            item_index: 0,
+            step_index: 0,
+            result: FlowResult::Success(ValueRef::new(json!({}))),
+        });
+        assert!(tasks.is_empty());
+
+        // TasksStarted from another run - should be ignored
+        state.apply_event(&JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id: other_run_id,
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+            }],
+        });
+
+        // Verify our state is unchanged - step 0 should NOT be completed
+        // and attempt count should be 0
+        let item = state.items_state().item(0);
+        assert!(!item.is_completed(0));
+        assert_eq!(item.attempt_count(0), 0);
     }
 }

@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 use stepflow_core::status::ExecutionStatus;
 
 use crate::{
-    BlobStore, ExecutionJournal, JournalEntry, MetadataStore, RawBlob, RootJournalInfo,
+    BlobStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob, RootJournalInfo,
     RunCompletionNotifier, SequenceNumber, state_store::CreateRunParams,
 };
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
@@ -53,11 +53,11 @@ impl RunState {
     }
 }
 
-/// Journal state for a single run.
+/// Journal state for a single root run.
 #[derive(Debug, Default)]
 struct JournalState {
-    /// Journal entries stored in order.
-    entries: Vec<JournalEntry>,
+    /// Journal events stored in order.
+    events: Vec<JournalEvent>,
 }
 
 /// In-memory implementation of MetadataStore, BlobStore, and ExecutionJournal.
@@ -565,27 +565,20 @@ impl MetadataStore for InMemoryStateStore {
 }
 
 impl ExecutionJournal for InMemoryStateStore {
-    fn append(
+    fn write(
         &self,
-        entry: JournalEntry,
+        root_run_id: Uuid,
+        event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, crate::StateError>> {
         async move {
             // Key by root_run_id so all events for an execution tree share one journal
-            let mut journal = self.journals.entry(entry.root_run_id).or_default();
+            let mut journal = self.journals.entry(root_run_id).or_default();
             // Sequence number is current length (0-indexed)
-            let sequence = SequenceNumber::new(journal.entries.len() as u64);
-            journal.entries.push(entry);
+            let sequence = SequenceNumber::new(journal.events.len() as u64);
+            journal.events.push(event);
             Ok(sequence)
         }
         .boxed()
-    }
-
-    fn flush(
-        &self,
-        _root_run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
-        // In-memory journal has no buffering - all writes are immediate
-        async move { Ok(()) }.boxed()
     }
 
     fn read_from(
@@ -593,8 +586,7 @@ impl ExecutionJournal for InMemoryStateStore {
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
         limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, crate::StateError>>
-    {
+    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, crate::StateError>> {
         async move {
             let journal = match self.journals.get(&root_run_id) {
                 Some(j) => j,
@@ -603,19 +595,15 @@ impl ExecutionJournal for InMemoryStateStore {
 
             let start_idx = from_sequence.value() as usize;
 
-            let entries: Vec<_> = journal
-                .entries
+            let events: Vec<_> = journal
+                .events
                 .iter()
-                .enumerate()
                 .skip(start_idx)
                 .take(limit)
-                .map(|(idx, entry)| {
-                    let seq = SequenceNumber::new(idx as u64);
-                    (seq, entry.clone())
-                })
+                .cloned()
                 .collect();
 
-            Ok(entries)
+            Ok(events)
         }
         .boxed()
     }
@@ -626,11 +614,11 @@ impl ExecutionJournal for InMemoryStateStore {
     ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
         async move {
             let result = self.journals.get(&root_run_id).and_then(|journal| {
-                if journal.entries.is_empty() {
+                if journal.events.is_empty() {
                     None
                 } else {
                     // Latest sequence is length - 1
-                    Some(SequenceNumber::new((journal.entries.len() - 1) as u64))
+                    Some(SequenceNumber::new((journal.events.len() - 1) as u64))
                 }
             });
             Ok(result)
@@ -648,17 +636,17 @@ impl ExecutionJournal for InMemoryStateStore {
                 let root_run_id = *entry.key();
                 let journal = entry.value();
 
-                if journal.entries.is_empty() {
+                if journal.events.is_empty() {
                     continue;
                 }
 
                 // Latest sequence is length - 1
-                let latest_sequence = SequenceNumber::new((journal.entries.len() - 1) as u64);
+                let latest_sequence = SequenceNumber::new((journal.events.len() - 1) as u64);
 
                 infos.push(RootJournalInfo {
                     root_run_id,
                     latest_sequence,
-                    entry_count: journal.entries.len() as u64,
+                    entry_count: journal.events.len() as u64,
                 });
             }
 

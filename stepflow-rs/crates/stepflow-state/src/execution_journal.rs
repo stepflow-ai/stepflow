@@ -135,10 +135,54 @@ pub struct ItemSteps {
     pub step_indices: Vec<usize>,
 }
 
+/// Information about a task being started.
+///
+/// Records the item, step, and execution-level attempt number (1-based).
+/// This is the attempt count across orchestrator crashes/recoveries, distinct
+/// from the transport-level retry counter in the plugin layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskAttempt {
+    /// The item index within the run.
+    pub item_index: u32,
+    /// The step index within the workflow.
+    pub step_index: usize,
+    /// The execution attempt number (1-based).
+    pub attempt: u32,
+}
+
+impl TaskAttempt {
+    /// Create a new task attempt record.
+    pub fn new(item_index: u32, step_index: usize, attempt: u32) -> Self {
+        Self {
+            item_index,
+            step_index,
+            attempt,
+        }
+    }
+}
+
+/// Group of task attempts belonging to a single run within a `TasksStarted` event.
+///
+/// When a scheduling round contains tasks from multiple runs (parent and subflows),
+/// they are grouped by run_id within a single `TasksStarted` event rather than
+/// requiring separate events per run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunTaskAttempts {
+    /// The run these tasks belong to.
+    pub run_id: Uuid,
+    /// Tasks being started for this run.
+    pub tasks: Vec<TaskAttempt>,
+}
+
 /// Execution events recorded in the journal.
 ///
 /// These events capture the state transitions during workflow execution
 /// and can be replayed to reconstruct RunState during recovery.
+///
+/// Each event carries its own `run_id` identifying which specific run
+/// (parent or subflow) it belongs to. This allows a single journal
+/// (keyed by `root_run_id`) to contain events from the entire execution
+/// tree without needing an external envelope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum JournalEvent {
@@ -147,6 +191,8 @@ pub enum JournalEvent {
     // =========================================================================
     /// Run created with initial configuration.
     RunCreated {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// The flow being executed.
         flow_id: BlobId,
         /// Input data for each item.
@@ -159,12 +205,16 @@ pub enum JournalEvent {
 
     /// Run initialized after step discovery.
     RunInitialized {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// Per-item needed step indices.
         needed_steps: Vec<ItemSteps>,
     },
 
     /// Run completed (terminal state).
     RunCompleted {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// Final execution status.
         status: ExecutionStatus,
     },
@@ -172,8 +222,24 @@ pub enum JournalEvent {
     // =========================================================================
     // Task Lifecycle
     // =========================================================================
+    /// Tasks started in a scheduling round.
+    ///
+    /// Written before spawning task futures. Records the execution attempt
+    /// number for each task, enabling attempt tracking across crashes. A
+    /// `TasksStarted` without a matching `TaskCompleted` indicates the task
+    /// was in-flight when the crash occurred.
+    ///
+    /// Tasks are grouped by run_id via [`RunTaskAttempts`], allowing a single
+    /// event to span multiple runs in the execution tree.
+    TasksStarted {
+        /// Task attempts grouped by run.
+        runs: Vec<RunTaskAttempts>,
+    },
+
     /// Task completed with result.
     TaskCompleted {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// The item index within the run.
         item_index: u32,
         /// The step index within the workflow.
@@ -187,6 +253,8 @@ pub enum JournalEvent {
     // =========================================================================
     /// Steps became unblocked (dependencies satisfied).
     StepsUnblocked {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// The item index within the run.
         item_index: u32,
         /// Step indices that are now ready to execute.
@@ -198,6 +266,8 @@ pub enum JournalEvent {
     // =========================================================================
     /// Individual item completed.
     ItemCompleted {
+        /// The run this event belongs to.
+        run_id: Uuid,
         /// The item index within the run.
         item_index: u32,
         /// The item result.
@@ -209,6 +279,24 @@ pub enum JournalEvent {
     // the parent-child relationship is implicit in the journal structure.
 }
 
+impl JournalEvent {
+    /// Check whether this event involves a specific run.
+    ///
+    /// For most events this is a simple run_id comparison. For `TasksStarted`,
+    /// which groups tasks by run, it checks all contained run groups.
+    pub fn involves_run(&self, target: Uuid) -> bool {
+        match self {
+            JournalEvent::RunCreated { run_id, .. }
+            | JournalEvent::RunInitialized { run_id, .. }
+            | JournalEvent::RunCompleted { run_id, .. }
+            | JournalEvent::TaskCompleted { run_id, .. }
+            | JournalEvent::StepsUnblocked { run_id, .. }
+            | JournalEvent::ItemCompleted { run_id, .. } => *run_id == target,
+            JournalEvent::TasksStarted { runs } => runs.iter().any(|r| r.run_id == target),
+        }
+    }
+}
+
 /// Trait for write-ahead journalling of execution events.
 ///
 /// This trait provides the foundation for recording execution events that
@@ -217,74 +305,54 @@ pub enum JournalEvent {
 ///
 /// Journals are keyed by `root_run_id`, so all events for an execution tree
 /// (parent + subflows) share a single journal with a unified sequence space.
+/// Each event carries its own `run_id` identifying which specific run it
+/// belongs to.
 ///
-/// # Buffering and Durability
+/// # Durability
 ///
-/// The journal supports a two-phase commit model:
-///
-/// 1. **Append**: Records events to an internal buffer. This is fast but may not
-///    be durable - if the process crashes before flush, buffered events may be lost.
-///
-/// 2. **Flush**: Ensures all buffered events are durably committed. This acts as
-///    a barrier - after flush returns, all previously appended events are guaranteed
-///    to survive crashes.
-///
-/// This model allows high-throughput event recording while providing explicit
-/// durability points before operations with side effects.
+/// Each [`write`](Self::write) call durably persists the event before returning.
+/// After `write` returns, the event is guaranteed to survive process crashes
+/// or restarts.
 pub trait ExecutionJournal: Send + Sync {
-    /// Append a journal entry to the buffer.
+    /// Write a journal event durably.
     ///
-    /// The entry is added to the journal buffer for `entry.root_run_id`.
+    /// The event is persisted to the journal for the given `root_run_id`.
     /// Sequence numbers are monotonically increasing within each root journal.
+    /// The implementation assigns a timestamp internally.
     ///
-    /// **Note**: This method may buffer the entry without immediately persisting it.
-    /// Call [`flush`](Self::flush) to ensure all buffered entries are durably committed.
-    ///
-    /// # Arguments
-    /// * `entry` - The journal entry to append
-    ///
-    /// # Returns
-    /// The sequence number assigned to this entry
-    fn append(
-        &self,
-        entry: JournalEntry,
-    ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>>;
-
-    /// Flush all buffered entries to durable storage.
-    ///
-    /// This method acts as a durability barrier - after it returns successfully,
-    /// all previously appended entries are guaranteed to be persisted and will
+    /// This method guarantees durability — after it returns, the event will
     /// survive process crashes or restarts.
     ///
-    /// Call this before executing steps with side effects to ensure that prior
-    /// step results are durably recorded. This is important because:
-    ///
-    /// - Steps may have non-deterministic outputs
-    /// - Steps may have external side effects (API calls, database writes)
-    /// - On recovery, we need the exact results from the original execution
-    ///
     /// # Arguments
-    /// * `root_run_id` - The root run whose journal should be flushed
-    fn flush(&self, root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
-
-    /// Read journal entries for a root run starting from a sequence number.
+    /// * `root_run_id` - The root run's journal to write to
+    /// * `event` - The journal event to write
     ///
-    /// Returns all entries in the journal (across all runs in the tree).
-    /// Use the `run_id` field in each entry to filter for a specific run.
+    /// # Returns
+    /// The sequence number assigned to this event
+    fn write(
+        &self,
+        root_run_id: Uuid,
+        event: JournalEvent,
+    ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>>;
+
+    /// Read journal events for a root run starting from a sequence number.
+    ///
+    /// Returns all events in the journal (across all runs in the tree).
+    /// Use [`JournalEvent::involves_run`] to filter for a specific run.
     ///
     /// # Arguments
     /// * `root_run_id` - The root run's journal to read from
     /// * `from_sequence` - Start reading from this sequence (inclusive)
-    /// * `limit` - Maximum number of entries to return
+    /// * `limit` - Maximum number of events to return
     ///
     /// # Returns
-    /// A vector of (sequence_number, entry) pairs in sequence order
+    /// Events in sequence order
     fn read_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
         limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>>;
 
     /// Get the latest sequence number for a root run's journal.
     ///

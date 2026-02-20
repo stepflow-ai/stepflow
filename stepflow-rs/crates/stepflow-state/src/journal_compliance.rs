@@ -47,7 +47,9 @@ use stepflow_core::workflow::ValueRef;
 use stepflow_core::{BlobId, FlowError, FlowResult};
 use uuid::Uuid;
 
-use crate::{ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, SequenceNumber};
+use crate::{
+    ExecutionJournal, ItemSteps, JournalEvent, RunTaskAttempts, SequenceNumber, TaskAttempt,
+};
 
 /// Compliance test suite for ExecutionJournal implementations.
 ///
@@ -120,16 +122,18 @@ impl JournalComplianceTests {
 
         let mut last_seq = None;
         for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
 
             if let Some(prev) = last_seq {
                 assert!(
@@ -152,142 +156,140 @@ impl JournalComplianceTests {
     /// Contract: Reading from a root_run_id with no entries returns an empty vec.
     pub async fn test_read_from_empty_journal<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
-        let entries = journal
+        let events = journal
             .read_from(root_run_id, SequenceNumber::new(0), 100)
             .await
             .expect("read_from should succeed");
         assert!(
-            entries.is_empty(),
+            events.is_empty(),
             "read_from non-existent journal should return empty vec"
         );
     }
 
-    /// Test that read_from() returns entries in sequence order.
+    /// Test that read_from() returns events in sequence order.
     ///
-    /// Contract: Entries are returned in ascending sequence number order.
+    /// Contract: Events are returned in ascending sequence number order.
     pub async fn test_read_from_returns_entries_in_order<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append entries and track returned sequence numbers
+        // Append events and track returned sequence numbers
         let mut appended_seqs = Vec::new();
         for i in 0..5 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
             appended_seqs.push(seq);
         }
 
-        // Read all entries starting from the first appended sequence
-        let entries = journal
+        // Read all events starting from the first appended sequence
+        let events = journal
             .read_from(root_run_id, appended_seqs[0], 100)
             .await
             .expect("read_from should succeed");
 
-        assert_eq!(entries.len(), 5, "Should have 5 entries");
+        assert_eq!(events.len(), 5, "Should have 5 events");
 
-        // Verify entries are strictly increasing and match appended sequences
-        for (i, (seq, _)) in entries.iter().enumerate() {
-            assert_eq!(
-                *seq, appended_seqs[i],
-                "Entry {i} should have sequence {:?}, got {:?}",
-                appended_seqs[i], seq
-            );
-            if i > 0 {
-                assert!(
-                    *seq > entries[i - 1].0,
-                    "Sequences must be strictly increasing"
-                );
+        // Verify events are in correct order by checking step_index
+        for (i, event) in events.iter().enumerate() {
+            match event {
+                JournalEvent::TaskCompleted { step_index, .. } => {
+                    assert_eq!(*step_index, i, "Event {i} should have step_index {i}");
+                }
+                _ => panic!("Expected TaskCompleted event"),
             }
         }
     }
 
     /// Test that read_from() respects the from_sequence parameter.
     ///
-    /// Contract: Only entries with sequence >= from_sequence are returned.
+    /// Contract: Only events with sequence >= from_sequence are returned.
     pub async fn test_read_from_respects_from_sequence<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append 10 entries and track sequence numbers
+        // Append 10 events and track sequence numbers
         let mut appended_seqs = Vec::new();
         for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
             appended_seqs.push(seq);
         }
 
         // Read from the 6th sequence (index 5)
-        let entries = journal
+        let events = journal
             .read_from(root_run_id, appended_seqs[5], 100)
             .await
             .expect("read_from should succeed");
 
-        assert_eq!(entries.len(), 5, "Should have 5 entries (indices 5-9)");
-        assert_eq!(
-            entries[0].0, appended_seqs[5],
-            "First entry should match 6th appended sequence"
-        );
-        assert_eq!(
-            entries[4].0, appended_seqs[9],
-            "Last entry should match 10th appended sequence"
-        );
+        assert_eq!(events.len(), 5, "Should have 5 events (indices 5-9)");
+        // Verify the first event has step_index 5
+        match &events[0] {
+            JournalEvent::TaskCompleted { step_index, .. } => {
+                assert_eq!(*step_index, 5, "First event should have step_index 5");
+            }
+            _ => panic!("Expected TaskCompleted event"),
+        }
     }
 
     /// Test that read_from() respects the limit parameter.
     ///
-    /// Contract: At most `limit` entries are returned.
+    /// Contract: At most `limit` events are returned.
     pub async fn test_read_from_respects_limit<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append 10 entries and track sequence numbers
+        // Append 10 events
         let mut appended_seqs = Vec::new();
         for i in 0..10 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            let seq = journal.append(entry).await.expect("append should succeed");
+            let seq = journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
             appended_seqs.push(seq);
         }
 
         // Read with limit of 3
-        let entries = journal
+        let events = journal
             .read_from(root_run_id, appended_seqs[0], 3)
             .await
             .expect("read_from should succeed");
 
-        assert_eq!(entries.len(), 3, "Should have exactly 3 entries");
-        assert_eq!(entries[0].0, appended_seqs[0], "First entry should match");
-        assert_eq!(entries[2].0, appended_seqs[2], "Third entry should match");
+        assert_eq!(events.len(), 3, "Should have exactly 3 events");
 
         // Read with limit of 0
-        let entries = journal
+        let events = journal
             .read_from(root_run_id, appended_seqs[0], 0)
             .await
             .expect("read_from should succeed");
-        assert!(entries.is_empty(), "Limit 0 should return empty vec");
+        assert!(events.is_empty(), "Limit 0 should return empty vec");
     }
 
     // =========================================================================
@@ -316,17 +318,19 @@ impl JournalComplianceTests {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
-        // Append first entry
-        let entry = JournalEntry::new(
-            run_id,
-            root_run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        let seq1 = journal.append(entry).await.expect("append should succeed");
+        // Append first event
+        let seq1 = journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
         let latest = journal
             .latest_sequence(root_run_id)
@@ -338,19 +342,21 @@ impl JournalComplianceTests {
             "latest_sequence should match first append"
         );
 
-        // Append more entries, tracking the last one
+        // Append more events, tracking the last one
         let mut last_seq = seq1;
         for i in 1..5 {
-            let entry = JournalEntry::new(
-                run_id,
-                root_run_id,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
-            );
-            last_seq = journal.append(entry).await.expect("append should succeed");
+            last_seq = journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
         }
 
         let latest = journal
@@ -393,42 +399,52 @@ impl JournalComplianceTests {
         // Add entries to each, tracking the last sequence for each root
         let mut root1_last_seq = None;
         for i in 0..3 {
-            let entry = JournalEntry::new(
-                root1,
-                root1,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
+            root1_last_seq = Some(
+                journal
+                    .write(
+                        root1,
+                        JournalEvent::TaskCompleted {
+                            run_id: root1,
+                            item_index: 0,
+                            step_index: i,
+                            result: FlowResult::Success(ValueRef::new(json!({}))),
+                        },
+                    )
+                    .await
+                    .expect("write should succeed"),
             );
-            root1_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
         }
 
         let mut root2_last_seq = None;
         for i in 0..5 {
-            let entry = JournalEntry::new(
-                root2,
-                root2,
-                JournalEvent::TaskCompleted {
-                    item_index: 0,
-                    step_index: i,
-                    result: FlowResult::Success(ValueRef::new(json!({}))),
-                },
+            root2_last_seq = Some(
+                journal
+                    .write(
+                        root2,
+                        JournalEvent::TaskCompleted {
+                            run_id: root2,
+                            item_index: 0,
+                            step_index: i,
+                            result: FlowResult::Success(ValueRef::new(json!({}))),
+                        },
+                    )
+                    .await
+                    .expect("write should succeed"),
             );
-            root2_last_seq = Some(journal.append(entry).await.expect("append should succeed"));
         }
 
-        let entry = JournalEntry::new(
-            root3,
-            root3,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        let root3_last_seq = journal.append(entry).await.expect("append should succeed");
+        let root3_last_seq = journal
+            .write(
+                root3,
+                JournalEvent::TaskCompleted {
+                    run_id: root3,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
         // List active roots
         let roots = journal
@@ -483,79 +499,82 @@ impl JournalComplianceTests {
         let subflow_run_id = Uuid::now_v7();
 
         // Interleave parent and subflow events
-        let entry1 = JournalEntry::new(
-            parent_run_id,
-            root_run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
-            },
-        );
-        let seq1 = journal.append(entry1).await.expect("append should succeed");
+        let _seq1 = journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: parent_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({"parent": 1}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
-        let entry2 = JournalEntry::new(
-            subflow_run_id,
-            root_run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
-            },
-        );
-        let seq2 = journal.append(entry2).await.expect("append should succeed");
+        let _seq2 = journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: subflow_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({"subflow": 1}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
-        let entry3 = JournalEntry::new(
-            subflow_run_id,
-            root_run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
-            },
-        );
-        let seq3 = journal.append(entry3).await.expect("append should succeed");
+        let _seq3 = journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: subflow_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
-        let entry4 = JournalEntry::new(
-            parent_run_id,
-            root_run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
-            },
-        );
-        let seq4 = journal.append(entry4).await.expect("append should succeed");
+        let _seq4 = journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: parent_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: FlowResult::Success(ValueRef::new(json!({"done": true}))),
+                },
+            )
+            .await
+            .expect("write should succeed");
 
-        // Verify sequence numbers are monotonic across all events
-        assert!(seq1 < seq2);
-        assert!(seq2 < seq3);
-        assert!(seq3 < seq4);
-
-        // Read all entries from the shared journal
-        let all_entries = journal
+        // Read all events from the shared journal
+        let all_events = journal
             .read_from(root_run_id, SequenceNumber::new(0), 100)
             .await
             .expect("read_from should succeed");
         assert_eq!(
-            all_entries.len(),
+            all_events.len(),
             4,
-            "Should have 4 entries in shared journal"
+            "Should have 4 events in shared journal"
         );
 
         // Filter for parent events
-        let parent_entries: Vec<_> = all_entries
+        let parent_events: Vec<_> = all_events
             .iter()
-            .filter(|(_, e)| e.run_id == parent_run_id)
+            .filter(|e| e.involves_run(parent_run_id))
             .collect();
-        assert_eq!(parent_entries.len(), 2, "Should have 2 parent events");
+        assert_eq!(parent_events.len(), 2, "Should have 2 parent events");
 
         // Filter for subflow events
-        let subflow_entries: Vec<_> = all_entries
+        let subflow_events: Vec<_> = all_events
             .iter()
-            .filter(|(_, e)| e.run_id == subflow_run_id)
+            .filter(|e| e.involves_run(subflow_run_id))
             .collect();
-        assert_eq!(subflow_entries.len(), 2, "Should have 2 subflow events");
+        assert_eq!(subflow_events.len(), 2, "Should have 2 subflow events");
 
         // Verify list_active_roots only shows one root
         let roots = journal
@@ -586,6 +605,7 @@ impl JournalComplianceTests {
 
         let events = vec![
             JournalEvent::RunCreated {
+                run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![
                     ValueRef::new(json!({"input": 1})),
@@ -599,12 +619,14 @@ impl JournalComplianceTests {
                 parent_run_id: None,
             },
             JournalEvent::RunCreated {
+                run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({"sub": true}))],
                 variables: HashMap::new(),
                 parent_run_id: Some(run_id),
             },
             JournalEvent::RunInitialized {
+                run_id,
                 needed_steps: vec![
                     ItemSteps {
                         item_index: 0,
@@ -616,12 +638,20 @@ impl JournalComplianceTests {
                     },
                 ],
             },
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![TaskAttempt::new(0, 0, 1), TaskAttempt::new(0, 1, 1)],
+                }],
+            },
             JournalEvent::TaskCompleted {
+                run_id,
                 item_index: 0,
                 step_index: 0,
                 result: FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
             },
             JournalEvent::TaskCompleted {
+                run_id,
                 item_index: 0,
                 step_index: 1,
                 result: FlowResult::Failed(FlowError {
@@ -631,36 +661,40 @@ impl JournalComplianceTests {
                 }),
             },
             JournalEvent::StepsUnblocked {
+                run_id,
                 item_index: 0,
                 step_indices: vec![2, 3, 4],
             },
             JournalEvent::ItemCompleted {
+                run_id,
                 item_index: 0,
                 result: FlowResult::Success(ValueRef::new(json!({"item": "done"}))),
             },
             JournalEvent::RunCompleted {
+                run_id,
                 status: stepflow_core::status::ExecutionStatus::Completed,
             },
         ];
 
         // Append all events
         for event in &events {
-            let entry = JournalEntry::new(run_id, root_run_id, event.clone());
-            journal.append(entry).await.expect("append should succeed");
+            journal
+                .write(root_run_id, event.clone())
+                .await
+                .expect("write should succeed");
         }
 
-        // Read all entries back
-        let entries = journal
+        // Read all events back
+        let read_events = journal
             .read_from(root_run_id, SequenceNumber::new(0), 100)
             .await
             .expect("read_from should succeed");
 
-        assert_eq!(entries.len(), events.len(), "Should have all entries");
+        assert_eq!(read_events.len(), events.len(), "Should have all events");
 
-        // Verify each event type was preserved (we check structure, not exact equality
-        // since timestamps will differ)
-        for (i, (_, entry)) in entries.iter().enumerate() {
-            match (&entry.event, &events[i]) {
+        // Verify each event type was preserved
+        for (i, event) in read_events.iter().enumerate() {
+            match (event, &events[i]) {
                 (
                     JournalEvent::RunCreated { flow_id: f1, .. },
                     JournalEvent::RunCreated { flow_id: f2, .. },
@@ -668,14 +702,24 @@ impl JournalComplianceTests {
                     assert_eq!(f1, f2, "RunCreated flow_id should match");
                 }
                 (
-                    JournalEvent::RunInitialized { needed_steps: n1 },
-                    JournalEvent::RunInitialized { needed_steps: n2 },
+                    JournalEvent::RunInitialized {
+                        needed_steps: n1, ..
+                    },
+                    JournalEvent::RunInitialized {
+                        needed_steps: n2, ..
+                    },
                 ) => {
                     assert_eq!(
                         n1.len(),
                         n2.len(),
                         "RunInitialized needed_steps length should match"
                     );
+                }
+                (
+                    JournalEvent::TasksStarted { runs: r1 },
+                    JournalEvent::TasksStarted { runs: r2 },
+                ) => {
+                    assert_eq!(r1.len(), r2.len(), "TasksStarted runs length should match");
                 }
                 (
                     JournalEvent::TaskCompleted {
@@ -696,10 +740,12 @@ impl JournalComplianceTests {
                     JournalEvent::StepsUnblocked {
                         item_index: i1,
                         step_indices: s1,
+                        ..
                     },
                     JournalEvent::StepsUnblocked {
                         item_index: i2,
                         step_indices: s2,
+                        ..
                     },
                 ) => {
                     assert_eq!(i1, i2, "StepsUnblocked item_index should match");
@@ -712,14 +758,14 @@ impl JournalComplianceTests {
                     assert_eq!(i1, i2, "ItemCompleted item_index should match");
                 }
                 (
-                    JournalEvent::RunCompleted { status: s1 },
-                    JournalEvent::RunCompleted { status: s2 },
+                    JournalEvent::RunCompleted { status: s1, .. },
+                    JournalEvent::RunCompleted { status: s2, .. },
                 ) => {
                     assert_eq!(s1, s2, "RunCompleted status should match");
                 }
                 _ => panic!(
                     "Event type mismatch at index {}: got {:?}, expected {:?}",
-                    i, entry.event, events[i]
+                    i, event, events[i]
                 ),
             }
         }

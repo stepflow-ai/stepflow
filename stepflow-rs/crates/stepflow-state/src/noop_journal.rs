@@ -19,12 +19,12 @@ use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use uuid::Uuid;
 
-use crate::{ExecutionJournal, JournalEntry, RootJournalInfo, SequenceNumber, StateError};
+use crate::{ExecutionJournal, JournalEvent, RootJournalInfo, SequenceNumber, StateError};
 
 /// A no-op execution journal that discards all entries.
 ///
 /// This implementation is suitable for deployments where durability is not
-/// required (e.g., development, testing, or ephemeral workloads). All append
+/// required (e.g., development, testing, or ephemeral workloads). All write
 /// operations succeed immediately but entries are not persisted, so recovery
 /// is not possible.
 ///
@@ -56,13 +56,13 @@ impl NoOpJournal {
 }
 
 impl ExecutionJournal for NoOpJournal {
-    fn append(
+    fn write(
         &self,
-        entry: JournalEntry,
+        root_run_id: Uuid,
+        _event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>> {
         // Track sequence numbers per root_run_id for trait contract consistency.
-        // Entry is not stored, but sequence numbers are monotonically increasing.
-        let root_run_id = entry.root_run_id;
+        // Event is not stored, but sequence numbers are monotonically increasing.
         let seq = self
             .sequences
             .entry(root_run_id)
@@ -71,18 +71,13 @@ impl ExecutionJournal for NoOpJournal {
         async move { Ok(SequenceNumber::new(seq)) }.boxed()
     }
 
-    fn flush(&self, _root_run_id: Uuid) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
-        // Nothing to flush - no-op journal doesn't persist anything
-        async move { Ok(()) }.boxed()
-    }
-
     fn read_from(
         &self,
         _root_run_id: Uuid,
         _from_sequence: SequenceNumber,
         _limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<(SequenceNumber, JournalEntry)>, StateError>> {
-        // No entries to read - entries are not stored
+    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
+        // No events to read - events are not stored
         async move { Ok(Vec::new()) }.boxed()
     }
 
@@ -90,7 +85,7 @@ impl ExecutionJournal for NoOpJournal {
         &self,
         root_run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, StateError>> {
-        // Return the latest sequence number if any appends have been made
+        // Return the latest sequence number if any writes have been made
         let seq = self.sequences.get(&root_run_id).map(|entry| {
             let current = entry.load(Ordering::Relaxed);
             if current == 0 {
@@ -105,7 +100,7 @@ impl ExecutionJournal for NoOpJournal {
     fn list_active_roots(
         &self,
     ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, StateError>> {
-        // Return tracked roots (though entries are not persisted)
+        // Return tracked roots (though events are not persisted)
         let roots: Vec<RootJournalInfo> = self
             .sequences
             .iter()
@@ -129,45 +124,51 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_noop_append() {
+    async fn test_noop_write() {
         use crate::JournalEvent;
         use stepflow_core::status::ExecutionStatus;
 
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        // First append should return sequence 0
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result1 = journal.append(entry1).await.unwrap();
+        // First write should return sequence 0
+        let result1 = journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result1, SequenceNumber::new(0));
 
-        // Second append should return sequence 1 (incrementing)
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result2 = journal.append(entry2).await.unwrap();
+        // Second write should return sequence 1 (incrementing)
+        let result2 = journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result2, SequenceNumber::new(1));
 
         // Different root_run_id should start at 0
         let run_id2 = Uuid::now_v7();
-        let entry3 = JournalEntry::new(
-            run_id2,
-            run_id2,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        let result3 = journal.append(entry3).await.unwrap();
+        let result3 = journal
+            .write(
+                run_id2,
+                JournalEvent::RunCompleted {
+                    run_id: run_id2,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
         assert_eq!(result3, SequenceNumber::new(0));
     }
 
@@ -176,11 +177,11 @@ mod tests {
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        let entries = journal
+        let events = journal
             .read_from(run_id, SequenceNumber::new(0), 100)
             .await
             .unwrap();
-        assert!(entries.is_empty());
+        assert!(events.is_empty());
     }
 
     #[tokio::test]
@@ -191,32 +192,36 @@ mod tests {
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        // No appends yet - should be None
+        // No writes yet - should be None
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert!(latest.is_none());
 
-        // After appending, should return the latest sequence
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.append(entry).await.unwrap();
+        // After writing, should return the latest sequence
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(0)));
 
-        // After second append
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.append(entry2).await.unwrap();
+        // After second write
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .unwrap();
 
         let latest = journal.latest_sequence(run_id).await.unwrap();
         assert_eq!(latest, Some(SequenceNumber::new(1)));

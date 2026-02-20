@@ -99,6 +99,9 @@ pub struct ItemState {
     variables: Arc<HashMap<String, ValueRef>>,
     /// Variable schema for defaults and secret redaction.
     variable_schema: Option<VariableSchema>,
+    /// Per-step execution attempt count (0 = not yet started, 1+ = started).
+    /// Tracks attempts across orchestrator crashes/recoveries.
+    attempts: Vec<u32>,
 }
 
 impl ItemState {
@@ -123,6 +126,7 @@ impl ItemState {
             input,
             variables,
             variable_schema,
+            attempts: vec![0; num_steps],
         }
     }
 
@@ -139,6 +143,28 @@ impl ItemState {
     /// Get the number of steps in this item's flow.
     pub fn num_steps(&self) -> usize {
         self.step_index.num_steps()
+    }
+
+    /// Get the execution attempt count for a step (0 = not yet started).
+    pub fn attempt_count(&self, step_index: usize) -> u32 {
+        self.attempts[step_index]
+    }
+
+    /// Record that a step is being attempted (increments the attempt counter).
+    /// Returns the new attempt count.
+    pub fn record_attempt(&mut self, step_index: usize) -> u32 {
+        self.attempts[step_index] += 1;
+        self.attempts[step_index]
+    }
+
+    /// Set the attempt count to at least the given value.
+    ///
+    /// Used during journal replay to restore attempt counts from recorded
+    /// `TasksStarted` events. Takes the max of the current and given value
+    /// so that replaying events in order or from a compacted journal both
+    /// produce the correct count.
+    pub fn set_attempt_at_least(&mut self, step_index: usize, attempt: u32) {
+        self.attempts[step_index] = self.attempts[step_index].max(attempt);
     }
 
     /// Add a step to the needed set.

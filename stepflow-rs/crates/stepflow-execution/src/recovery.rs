@@ -30,7 +30,19 @@
 //!
 //! Journals are keyed by `root_run_id`, meaning all events for an execution tree
 //! (parent flow + all subflows) are stored in a single journal. During recovery,
-//! we load the entire journal and filter events by `run_id` for each specific run.
+//! we load the entire journal and apply all events to the root run's `RunState`.
+//! Each `RunState` internally filters events by `run_id`, so subflow events are
+//! silently ignored when applied to the root.
+//!
+//! ## Execution Tree Recovery
+//!
+//! A single `FlowExecutor` manages an entire execution tree (root run + subflows).
+//! Recovery groups discovered runs by `root_run_id` and only recovers the root
+//! run from each tree. Subflow runs don't need independent recovery because:
+//! - Subflows whose parent step completed before the crash: the parent's
+//!   `TaskCompleted` is in the journal, so the root already has their results.
+//! - Subflows that were in-flight: the parent step was also in-flight and will
+//!   be re-executed, re-submitting new subflows as needed.
 //!
 //! # Example
 //!
@@ -147,33 +159,80 @@ pub async fn recover_orphaned_runs(
         return Ok(RecoveryResult::new());
     }
 
-    log::info!("Found {} runs to recover", runs_to_recover.len());
+    // Group runs by root_run_id. Each group represents a full execution tree
+    // (root run + any subflows) that shares a single FlowExecutor. We recover
+    // only the root run from each tree — subflows will be re-created when the
+    // root's parent steps re-execute.
+    let mut trees: HashMap<uuid::Uuid, Vec<RunRecoveryInfo>> = HashMap::new();
+    for info in runs_to_recover {
+        trees.entry(info.root_run_id).or_default().push(info);
+    }
+
+    log::info!("Found {} execution trees to recover", trees.len());
 
     let mut result = RecoveryResult::new();
 
-    for recovery_info in runs_to_recover {
-        let run_id = recovery_info.run_id;
-        log::info!("Recovering run {}", run_id);
+    for (root_run_id, group) in &trees {
+        // Find the root run in the group (where run_id == root_run_id)
+        let root_info = match group.iter().find(|r| r.run_id == *root_run_id) {
+            Some(info) => info,
+            None => {
+                // No root run found — these are orphaned subflows whose root is no longer
+                // in Running status. They cannot be recovered without their root executor.
+                log::warn!(
+                    "No root run found for tree {}, marking {} orphaned subflows as failed",
+                    root_run_id,
+                    group.len()
+                );
+                for info in group {
+                    result
+                        .record_failure(info.run_id, "Root run not found for recovery".to_string());
+                    if let Err(e) = metadata_store
+                        .update_run_status(info.run_id, ExecutionStatus::Failed)
+                        .await
+                    {
+                        log::error!(
+                            "Failed to mark orphaned subflow {} as failed: {:?}",
+                            info.run_id,
+                            e
+                        );
+                    }
+                }
+                continue;
+            }
+        };
 
-        match recover_single_run(env, journal, &recovery_info).await {
+        log::info!(
+            "Recovering execution tree rooted at {} ({} runs in tree)",
+            root_run_id,
+            group.len()
+        );
+
+        match recover_execution_tree(env, journal, root_info).await {
             Ok(()) => {
-                log::info!("Successfully recovered and resumed run {}", run_id);
-                result.record_success(run_id);
+                log::info!(
+                    "Successfully recovered execution tree rooted at {}",
+                    root_run_id
+                );
+                result.record_success(root_info.run_id);
             }
             Err(e) => {
-                log::error!("Failed to recover run {}: {:?}", run_id, e);
-                result.record_failure(run_id, format!("{:?}", e));
+                log::error!(
+                    "Failed to recover execution tree rooted at {}: {:?}",
+                    root_run_id,
+                    e
+                );
+                result.record_failure(root_info.run_id, format!("{:?}", e));
 
-                // Mark the run as Failed so it won't be retried on subsequent recovery attempts.
-                // This makes recovery idempotent - unrecoverable runs (missing journal, corrupt
-                // events, missing flow) are marked as failed rather than retried indefinitely.
+                // Mark the root run as Failed so it won't be retried on subsequent
+                // recovery attempts.
                 if let Err(update_err) = metadata_store
-                    .update_run_status(run_id, ExecutionStatus::Failed)
+                    .update_run_status(root_info.run_id, ExecutionStatus::Failed)
                     .await
                 {
                     log::error!(
                         "Failed to mark run {} as failed after recovery error: {:?}",
-                        run_id,
+                        root_info.run_id,
                         update_err
                     );
                 }
@@ -342,25 +401,38 @@ async fn claim_for_recovery(
     Ok(recovery_infos)
 }
 
-/// Recover a single run by replaying its journal and resuming execution.
-async fn recover_single_run(
+/// Recover an execution tree by replaying its journal and resuming the root run.
+///
+/// This loads the full journal for the execution tree (keyed by `root_run_id`),
+/// reconstructs the root run's state, and spawns a new `FlowExecutor` to resume
+/// execution. Subflow events in the journal are silently ignored by the root's
+/// `RunState::apply_event` (which checks `run_id` internally).
+///
+/// Subflow runs don't need separate recovery: completed subflows have their results
+/// reflected in the parent step's `TaskCompleted` event, and in-flight subflows
+/// will be re-submitted when the parent step re-executes.
+async fn recover_execution_tree(
     env: &Arc<StepflowEnvironment>,
     journal: &Arc<dyn ExecutionJournal>,
-    recovery_info: &stepflow_state::RunRecoveryInfo,
+    root_info: &stepflow_state::RunRecoveryInfo,
 ) -> Result<()> {
-    let run_id = recovery_info.run_id;
-    let root_run_id = recovery_info.root_run_id;
+    let run_id = root_info.run_id;
+    let root_run_id = root_info.root_run_id;
+    debug_assert_eq!(
+        run_id, root_run_id,
+        "recover_execution_tree expects root run"
+    );
     let state_store = env.metadata_store();
     let blob_store = env.blob_store();
 
     // Load the flow definition
     let flow = blob_store
-        .get_flow(&recovery_info.flow_id)
+        .get_flow(&root_info.flow_id)
         .await
         .change_context(ExecutionError::RecoveryFailed)?
         .ok_or_else(|| {
             error_stack::report!(ExecutionError::RecoveryFailed)
-                .attach_printable(format!("Flow not found: {}", recovery_info.flow_id))
+                .attach_printable(format!("Flow not found: {}", root_info.flow_id))
         })?;
 
     // Load and apply overrides (if any) to match original execution
@@ -376,90 +448,74 @@ async fn recover_single_run(
         apply_overrides(flow, &overrides).change_context(ExecutionError::RecoveryFailed)?
     };
 
-    // Read journal entries for the root run's journal.
-    // The journal is keyed by root_run_id and contains events for all runs in the tree.
-    let all_entries = journal
+    // Read ALL journal events for the execution tree.
+    // The journal is keyed by root_run_id and contains events for all runs in the
+    // tree (root + subflows). We apply them all to the root RunState, which filters
+    // by run_id internally.
+    let all_events = journal
         .read_from(root_run_id, SequenceNumber::new(0), usize::MAX)
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
-    // Filter entries to only those belonging to this specific run
-    let run_entries: Vec<_> = all_entries
-        .into_iter()
-        .filter(|(_, entry)| entry.run_id == run_id)
-        .collect();
-
-    if run_entries.is_empty() {
+    if all_events.is_empty() {
         log::warn!(
-            "No journal entries for run {} in root journal {}, cannot recover",
-            run_id,
+            "No journal entries for execution tree {}, cannot recover",
             root_run_id
         );
         return Err(error_stack::report!(ExecutionError::RecoveryFailed)
             .attach_printable("No journal entries found for this run"));
     }
 
-    // Extract inputs and variables from the RunCreated event in the journal.
+    // Extract inputs and variables from the root run's RunCreated event.
     // This is the authoritative source - RunRecoveryInfo may have incomplete data.
-    let (inputs, variables, parent_run_id) = run_entries
+    // We match on run_id to ensure we get the root's event, not a subflow's.
+    let (inputs, variables) = all_events
         .iter()
-        .find_map(|(_, entry)| match &entry.event {
+        .find_map(|event| match event {
             stepflow_state::JournalEvent::RunCreated {
+                run_id: event_run_id,
                 inputs,
                 variables,
-                parent_run_id,
+                parent_run_id: None,
                 ..
-            } => Some((inputs.clone(), variables.clone(), *parent_run_id)),
+            } if *event_run_id == run_id => Some((inputs.clone(), variables.clone())),
             _ => None,
         })
         .ok_or_else(|| {
             error_stack::report!(ExecutionError::RecoveryFailed)
-                .attach_printable("No RunCreated event found in journal")
+                .attach_printable("No RunCreated event found in journal for root run")
         })?;
 
-    // Create RunState and apply events to reconstruct state
-    // This validates that the journal can be replayed and counts ready tasks
-    let mut run_state = if let Some(parent_run_id) = parent_run_id {
-        // Subflow
-        RunState::new_subflow(
-            run_id,
-            recovery_info.flow_id.clone(),
-            recovery_info.root_run_id,
-            parent_run_id,
-            flow.clone(),
-            inputs,
-            variables,
-        )
-    } else {
-        // Top-level run
-        RunState::new(
-            run_id,
-            recovery_info.flow_id.clone(),
-            flow.clone(),
-            inputs,
-            variables,
-        )
-    };
+    // Create RunState for the root run
+    let mut run_state = RunState::new(
+        run_id,
+        root_info.flow_id.clone(),
+        flow.clone(),
+        inputs,
+        variables,
+    );
 
-    // Apply events to reconstruct state
-    run_entries.iter().for_each(|(_, entry)| {
-        run_state.apply_event(&entry.event);
+    // Apply ALL events to reconstruct state. RunState.apply_event checks run_id
+    // internally, so subflow events are silently ignored.
+    all_events.iter().for_each(|event| {
+        run_state.apply_event(event);
     });
 
     log::info!(
-        "Replayed {} journal events for run {}, complete={}",
-        run_entries.len(),
-        run_id,
+        "Replayed {} journal events for execution tree {}, root complete={}",
+        all_events.len(),
+        root_run_id,
         run_state.is_complete()
     );
 
     // If the run is already complete from the journal, no need to resume
     if run_state.is_complete() {
-        log::info!("Run {} already complete after journal replay", run_id);
+        log::info!("Root run {} already complete after journal replay", run_id);
         return Ok(());
     }
 
-    // Build the FlowExecutor with the recovered state
+    // Build the FlowExecutor with the recovered root state.
+    // Subflows will be re-created dynamically when parent steps re-execute.
     let flow_executor = crate::FlowExecutorBuilder::new(env.clone(), run_state)
         .skip_validation() // Already validated before crash
         .scheduler(Box::new(crate::DepthFirstScheduler::new()))
@@ -467,7 +523,7 @@ async fn recover_single_run(
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
-    // Spawn and track the recovered run
+    // Spawn and track the recovered execution tree
     flow_executor.spawn(env.active_executions());
 
     Ok(())
@@ -482,7 +538,7 @@ mod tests {
 
     use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
     use stepflow_core::{BlobId, ValueExpr};
-    use stepflow_state::{CreateRunParams, ItemSteps, JournalEntry, JournalEvent};
+    use stepflow_state::{CreateRunParams, ItemSteps, JournalEvent, RunTaskAttempts};
 
     use crate::testing::MockExecutorBuilder;
 
@@ -542,17 +598,19 @@ mod tests {
             .expect("should create run");
 
         // Add a RunCreated journal entry (required for recovery)
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: fake_flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.append(entry).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: fake_flow_id,
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should fail because flow doesn't exist
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -638,16 +696,18 @@ mod tests {
             .expect("should create run");
 
         // Add a TaskCompleted event but NO RunCreated event
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({}))),
-            },
-        );
-        journal.append(entry).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(json!({}))),
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should fail because no RunCreated event
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -692,59 +752,73 @@ mod tests {
             .expect("should create run");
 
         // Add journal entries that represent a completed run
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.append(entry1).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunInitialized {
-                needed_steps: vec![ItemSteps {
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
                     item_index: 0,
-                    step_indices: vec![0],
-                }],
-            },
-        );
-        journal.append(entry2).await.expect("should append");
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"result": "ok"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry3 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
-            },
-        );
-        journal.append(entry3).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::ItemCompleted {
+                    run_id,
+                    item_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"result": "ok"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry4 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::ItemCompleted {
-                item_index: 0,
-                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
-            },
-        );
-        journal.append(entry4).await.expect("should append");
-
-        let entry5 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCompleted {
-                status: ExecutionStatus::Completed,
-            },
-        );
-        journal.append(entry5).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCompleted {
+                    run_id,
+                    status: ExecutionStatus::Completed,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Attempt recovery - should succeed because run is already complete
         let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -804,17 +878,19 @@ mod tests {
             .expect("should create run");
 
         // Add journal entries so recovery would succeed
-        let entry = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.append(entry).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id,
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
         // Register this run as already active (simulates an in-flight execution)
         let active = env.active_executions();
@@ -899,42 +975,48 @@ mod tests {
         // - TaskCompleted for step0 only
         // - NO ItemCompleted, NO RunCompleted (simulates crash after step0)
 
-        let entry1 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunCreated {
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: None,
-            },
-        );
-        journal.append(entry1).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
 
-        let entry2 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::RunInitialized {
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1], // Both steps needed
-                }],
-            },
-        );
-        journal.append(entry2).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0, 1], // Both steps needed
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
 
         // Step0 completed successfully
         let step0_result = ValueRef::new(json!({"result": "ok"}));
-        let entry3 = JournalEntry::new(
-            run_id,
-            run_id,
-            JournalEvent::TaskCompleted {
-                item_index: 0,
-                step_index: 0,
-                result: stepflow_core::FlowResult::Success(step0_result),
-            },
-        );
-        journal.append(entry3).await.expect("should append");
+        journal
+            .write(
+                run_id,
+                JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(step0_result),
+                },
+            )
+            .await
+            .expect("should write");
 
         // NO further entries - simulates crash after step0
 
@@ -979,6 +1061,721 @@ mod tests {
             run.summary.status,
             ExecutionStatus::Completed,
             "Run should have completed status after recovery"
+        );
+    }
+
+    /// Test that recovery preserves attempt counts from the journal.
+    ///
+    /// Scenario: step0 was started (attempt=1) but crashed before completing.
+    /// After recovery, the journal should contain the original TasksStarted,
+    /// and when the executor re-runs, step0 should start with attempt=2.
+    #[tokio::test]
+    async fn test_recovery_preserves_attempt_counts() {
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Single-step flow
+        let flow = Arc::new(create_test_flow());
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        let run_id = uuid::Uuid::now_v7();
+        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(params)
+            .await
+            .expect("should create run");
+
+        // Journal: RunCreated, RunInitialized, TasksStarted(step0 attempt=1), NO TaskCompleted
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::TasksStarted {
+                    runs: vec![RunTaskAttempts {
+                        run_id,
+                        tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Recover - step0 should be re-executed
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        assert_eq!(result.recovered, 1);
+
+        // Wait for execution to complete
+        let active_executions = env.active_executions();
+        for _ in 0..100 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            active_executions.is_empty(),
+            "Execution should complete within timeout"
+        );
+
+        // Verify the run completed
+        let run = metadata_store
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(run.summary.status, ExecutionStatus::Completed);
+
+        // Verify the journal now has a second TasksStarted with attempt=2
+        let all_entries = journal
+            .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+            .await
+            .expect("should read journal");
+
+        let tasks_started_events: Vec<_> = all_entries
+            .iter()
+            .filter_map(|event| match event {
+                JournalEvent::TasksStarted { runs } => Some(runs),
+                _ => None,
+            })
+            .collect();
+
+        // Should have 2 TasksStarted events: attempt=1 (pre-crash) and attempt=2 (recovery)
+        assert_eq!(
+            tasks_started_events.len(),
+            2,
+            "Should have 2 TasksStarted events"
+        );
+        // Find the tasks for this run in each event
+        let pre_crash_tasks: Vec<_> = tasks_started_events[0]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        let recovery_tasks: Vec<_> = tasks_started_events[1]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        assert_eq!(pre_crash_tasks[0].attempt, 1);
+        assert_eq!(recovery_tasks[0].attempt, 2);
+    }
+
+    /// Test that after recovery with multiple parallel tasks, a single batched
+    /// TasksStarted is issued for all re-executed tasks.
+    #[tokio::test]
+    async fn test_recovery_batches_parallel_tasks() {
+        use stepflow_core::workflow::FlowBuilder;
+
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Flow with 2 independent steps (both depend only on input)
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::new("step_a")
+                        .component("/mock/test")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::new("step_b")
+                        .component("/mock/test")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build(),
+        );
+
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        let run_id = uuid::Uuid::now_v7();
+        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(params)
+            .await
+            .expect("should create run");
+
+        // Journal: both steps started (attempt 1) but neither completed (crash)
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0, 1],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::TasksStarted {
+                    runs: vec![RunTaskAttempts {
+                        run_id,
+                        tasks: vec![
+                            stepflow_state::TaskAttempt::new(0, 0, 1),
+                            stepflow_state::TaskAttempt::new(0, 1, 1),
+                        ],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // No TaskCompleted for either - simulates crash
+
+        // Recover
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+        assert_eq!(result.recovered, 1);
+
+        // Wait for execution
+        let active_executions = env.active_executions();
+        for _ in 0..100 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(active_executions.is_empty());
+
+        // Verify completed
+        let run = metadata_store
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(run.summary.status, ExecutionStatus::Completed);
+
+        // Check journal for the recovery TasksStarted
+        let all_entries = journal
+            .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+            .await
+            .expect("should read journal");
+
+        let tasks_started_events: Vec<_> = all_entries
+            .iter()
+            .filter_map(|event| match event {
+                JournalEvent::TasksStarted { runs } => Some(runs),
+                _ => None,
+            })
+            .collect();
+
+        // Should have 2 TasksStarted events: pre-crash batch and recovery batch
+        assert_eq!(
+            tasks_started_events.len(),
+            2,
+            "Should have 2 TasksStarted events (pre-crash + recovery)"
+        );
+
+        // First: both steps at attempt 1 (gather all tasks across RunTaskAttempts)
+        let pre_crash_tasks: Vec<_> = tasks_started_events[0]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        assert_eq!(pre_crash_tasks.len(), 2);
+        assert!(pre_crash_tasks.iter().all(|t| t.attempt == 1));
+
+        // Second (recovery): both steps at attempt 2, in a single batch
+        let recovery_tasks: Vec<_> = tasks_started_events[1]
+            .iter()
+            .filter(|r| r.run_id == run_id)
+            .flat_map(|r| &r.tasks)
+            .collect();
+        assert_eq!(
+            recovery_tasks.len(),
+            2,
+            "Recovery should batch both tasks into a single TasksStarted event"
+        );
+        assert!(
+            recovery_tasks.iter().all(|t| t.attempt == 2),
+            "Recovery attempts should be 2"
+        );
+    }
+
+    /// Recovery groups runs by root_run_id and only recovers the root run.
+    ///
+    /// Before this fix, recovery processed each run independently. This was
+    /// broken for subflows because:
+    /// - A subflow FlowExecutor would have the wrong root_run_id
+    /// - A root FlowExecutor without its subflows couldn't properly resume
+    /// - Journal writes from a subflow executor would go to the wrong journal
+    ///
+    /// This test creates both a root run and a subflow run, then verifies that
+    /// recovery only recovers the root run (1 recovered), not both independently.
+    #[tokio::test]
+    async fn test_recovery_groups_by_root_run_id() {
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Store a valid flow for both root and subflow
+        let flow = Arc::new(create_test_flow());
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        // Create root run
+        let root_run_id = uuid::Uuid::now_v7();
+        let root_params =
+            CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(root_params)
+            .await
+            .expect("should create root run");
+
+        // Create subflow run with root_run_id pointing to the root
+        let subflow_run_id = uuid::Uuid::now_v7();
+        let subflow_params = CreateRunParams::new_subflow(
+            subflow_run_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            root_run_id,
+            root_run_id, // parent is the root
+        );
+        metadata_store
+            .create_run(subflow_params)
+            .await
+            .expect("should create subflow run");
+
+        // Write journal events for the root run (partial execution)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunCreated {
+                    run_id: root_run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunInitialized {
+                    run_id: root_run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Write journal events for the subflow (in same journal, keyed by root_run_id)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunCreated {
+                    run_id: subflow_run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: Some(root_run_id),
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunInitialized {
+                    run_id: subflow_run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Both runs are in Running status. Recovery should group them and only
+        // recover the root run, not create separate executors for each.
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        // Only the root run should be "recovered" (1 executor spawned)
+        assert_eq!(
+            result.recovered, 1,
+            "Should recover exactly 1 execution tree (the root run)"
+        );
+        assert_eq!(result.failed, 0);
+        assert!(
+            result.recovered_run_ids.contains(&root_run_id),
+            "The recovered run should be the root"
+        );
+        assert!(
+            !result.recovered_run_ids.contains(&subflow_run_id),
+            "The subflow should not be independently recovered"
+        );
+
+        // Wait for the root execution to complete
+        let active_executions = env.active_executions();
+        for _ in 0..100 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            active_executions.is_empty(),
+            "Execution should complete within timeout"
+        );
+
+        // Verify the root run completed successfully
+        let run = metadata_store
+            .get_run(root_run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(
+            run.summary.status,
+            ExecutionStatus::Completed,
+            "Root run should have completed status after recovery"
+        );
+    }
+
+    /// Orphaned subflows without a running root should be marked as failed.
+    ///
+    /// This can happen if the root run completed/failed but a subflow was left
+    /// in Running status due to a race condition or bug.
+    #[tokio::test]
+    async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Store a valid flow
+        let flow = Arc::new(create_test_flow());
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        // Create only a subflow run — the root is NOT in Running status
+        // (simulates root completed but subflow stuck as Running)
+        let root_run_id = uuid::Uuid::now_v7();
+        let subflow_run_id = uuid::Uuid::now_v7();
+        let subflow_params = CreateRunParams::new_subflow(
+            subflow_run_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            root_run_id,
+            root_run_id,
+        );
+        metadata_store
+            .create_run(subflow_params)
+            .await
+            .expect("should create subflow run");
+
+        // Write journal entries for the subflow
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunCreated {
+                    run_id: subflow_run_id,
+                    flow_id,
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: Some(root_run_id),
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Recovery should find the subflow but no root, and mark it as failed
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed overall");
+
+        assert_eq!(result.recovered, 0, "No runs should be recovered");
+        assert_eq!(
+            result.failed, 1,
+            "Orphaned subflow should be marked as failed"
+        );
+        assert!(
+            result.failed_runs[0]
+                .1
+                .contains("Root run not found for recovery"),
+            "Error message should explain why: got {:?}",
+            result.failed_runs[0].1
+        );
+
+        // Verify the subflow was marked as Failed
+        let run = metadata_store
+            .get_run(subflow_run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(
+            run.summary.status,
+            ExecutionStatus::Failed,
+            "Orphaned subflow should be marked as failed"
+        );
+    }
+
+    /// Recovery should correctly apply all journal events (including subflow events)
+    /// to the root RunState without corruption.
+    ///
+    /// This verifies that subflow events in the journal are silently ignored by
+    /// the root's apply_event (which checks run_id internally).
+    #[tokio::test]
+    async fn test_recovery_root_ignores_subflow_events_in_journal() {
+        use stepflow_core::workflow::FlowBuilder;
+
+        let env = create_test_env().await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        // Create a 2-step chain flow: step0 -> step1
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::new("step0")
+                        .component("/mock/test")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::new("step1")
+                        .component("/mock/test")
+                        .input(ValueExpr::Step {
+                            step: "step0".to_string(),
+                            path: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::Step {
+                    step: "step1".to_string(),
+                    path: Default::default(),
+                })
+                .build(),
+        );
+
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        let root_run_id = uuid::Uuid::now_v7();
+        let subflow_run_id = uuid::Uuid::now_v7();
+
+        // Create root run record
+        let params =
+            CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(params)
+            .await
+            .expect("should create run");
+
+        // Write interleaved root + subflow events (simulates real execution)
+        // Root: RunCreated
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunCreated {
+                    run_id: root_run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Root: RunInitialized
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunInitialized {
+                    run_id: root_run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0, 1],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Root: step0 completed (use mock's default result so step1's input is recognized)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: root_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"result": "ok"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Subflow: RunCreated (interleaved in the same journal)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunCreated {
+                    run_id: subflow_run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: Some(root_run_id),
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Subflow: RunInitialized (different run_id, should be ignored by root)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::RunInitialized {
+                    run_id: subflow_run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Subflow: TaskCompleted (should be ignored by root)
+        journal
+            .write(
+                root_run_id,
+                JournalEvent::TaskCompleted {
+                    run_id: subflow_run_id,
+                    item_index: 0,
+                    step_index: 0,
+                    result: stepflow_core::FlowResult::Success(ValueRef::new(
+                        json!({"subflow": "done"}),
+                    )),
+                },
+            )
+            .await
+            .expect("should write");
+
+        // Crash here - root step1 never started, subflow events are in journal
+        // Recovery should ignore subflow events and resume root from step1
+
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        assert_eq!(result.recovered, 1);
+
+        // Wait for execution to complete
+        let active_executions = env.active_executions();
+        for _ in 0..100 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            active_executions.is_empty(),
+            "Execution should complete within timeout"
+        );
+
+        // Root should have completed - step0 was from journal, step1 was re-executed
+        let run = metadata_store
+            .get_run(root_run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(
+            run.summary.status,
+            ExecutionStatus::Completed,
+            "Root run should complete despite subflow events in journal"
         );
     }
 }

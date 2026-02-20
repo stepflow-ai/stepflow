@@ -81,7 +81,7 @@ async fn test_mcp_tool_execution() {
     }));
 
     let result = plugin
-        .execute(&echo_component, &run_context, None, echo_input)
+        .execute(&echo_component, &run_context, None, echo_input, 1)
         .await
         .unwrap();
 
@@ -105,7 +105,7 @@ async fn test_mcp_tool_execution() {
     }));
 
     let result = plugin
-        .execute(&add_component, &run_context, None, add_input)
+        .execute(&add_component, &run_context, None, add_input, 1)
         .await
         .unwrap();
 
@@ -141,7 +141,7 @@ async fn test_mcp_error_handling() {
     let input = ValueRef::new(json!({}));
 
     let result = plugin
-        .execute(&bad_component, &run_context, None, input)
+        .execute(&bad_component, &run_context, None, input, 1)
         .await;
     assert!(
         result.is_ok(),
