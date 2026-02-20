@@ -213,6 +213,295 @@ def serve(
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.argument("input_json", type=str, default="{}")
+@click.option("--local", is_flag=True, help="Start a local Stepflow orchestrator")
+@click.option("--url", type=str, help="URL of a running Stepflow server")
+@click.option(
+    "--tweaks",
+    type=str,
+    help="JSON string of tweaks to apply (node_id -> {field: value})",
+)
+@click.option("--timeout", type=int, default=120, help="Execution timeout in seconds")
+@click.option("--dry-run", is_flag=True, help="Only convert, don't execute")
+@click.option(
+    "--batch",
+    type=click.Path(exists=True, path_type=Path),
+    help="JSONL file with one input per line (replaces INPUT_JSON)",
+)
+def run(
+    input_file: Path,
+    input_json: str,
+    local: bool,
+    url: str | None,
+    tweaks: str | None,
+    timeout: int,
+    dry_run: bool,
+    batch: Path | None,
+):
+    """Convert and run a Langflow workflow on Stepflow.
+
+    Requires either --local to start a local orchestrator, or --url to connect
+    to a running Stepflow server.
+
+    INPUT_FILE: Path to Langflow JSON workflow file
+    INPUT_JSON: JSON input data for the workflow (default: {})
+
+    Examples:
+
+    \b
+        # Run locally (starts orchestrator automatically)
+        stepflow-langflow run flow.json '{"message": "Hello"}' --local
+
+    \b
+        # Run against a deployed server
+        stepflow-langflow run flow.json '{"message": "Hello"}' --url http://localhost:7840
+
+    \b
+        # Batch execution from a JSONL file
+        stepflow-langflow run flow.json --batch inputs.jsonl --local
+
+    \b
+        # With tweaks to override component settings
+        stepflow-langflow run flow.json '{}' --local \\
+            --tweaks '{"LanguageModelComponent-kBOja": {"model_name": "gpt-4o"}}'
+    """
+    import asyncio
+
+    import yaml
+
+    # Validate options
+    if not local and not url:
+        click.echo(
+            "❌ Specify --local to start a local orchestrator, "
+            "or --url to connect to a running server.",
+            err=True,
+        )
+        sys.exit(1)
+    if local and url:
+        click.echo("❌ Specify --local or --url, not both.", err=True)
+        sys.exit(1)
+    if batch and input_json != "{}":
+        click.echo("❌ Specify --batch or INPUT_JSON, not both.", err=True)
+        sys.exit(1)
+
+    try:
+        # Parse inputs
+        if batch:
+            inputs = []
+            with open(batch, encoding="utf-8") as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        inputs.append(json.loads(line))
+                    except json.JSONDecodeError as e:
+                        click.echo(
+                            f"❌ Invalid JSON on line {line_num} of {batch}: {e}",
+                            err=True,
+                        )
+                        sys.exit(1)
+            if not inputs:
+                click.echo(f"❌ No inputs found in {batch}", err=True)
+                sys.exit(1)
+            click.echo(f"📥 Loaded {len(inputs)} inputs from {batch}")
+        else:
+            try:
+                inputs = [json.loads(input_json)]
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid input JSON: {e}", err=True)
+                sys.exit(1)
+
+        # Convert Langflow to Stepflow
+        click.echo(f"🔄 Converting {input_file}...")
+        converter = LangflowConverter()
+        stepflow_yaml = converter.convert_file(input_file)
+        click.echo("✅ Conversion completed")
+
+        # Apply tweaks if provided
+        if tweaks:
+            try:
+                parsed_tweaks = json.loads(tweaks)
+                click.echo(
+                    f"🔧 Applying tweaks to {len(parsed_tweaks)} components..."
+                )
+                workflow_dict = yaml.safe_load(stepflow_yaml)
+                tweaked_dict = apply_stepflow_tweaks_to_dict(
+                    workflow_dict, parsed_tweaks
+                )
+                stepflow_yaml = yaml.dump(
+                    tweaked_dict,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                    width=120,
+                )
+                click.echo("✅ Tweaks applied")
+            except json.JSONDecodeError as e:
+                click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
+                sys.exit(1)
+
+        if dry_run:
+            click.echo("\n📄 Converted workflow:")
+            click.echo(stepflow_yaml)
+            return
+
+        # Parse flow for HTTP API submission
+        flow_dict = yaml.safe_load(stepflow_yaml)
+
+        if local:
+            click.echo("🚀 Starting local orchestrator...")
+            result = asyncio.run(
+                _run_local(flow_dict, inputs, timeout)
+            )
+        else:
+            assert url is not None
+            click.echo(f"🚀 Submitting to {url}...")
+            result = _submit_flow_http(url, flow_dict, inputs, timeout)
+
+        # Display results
+        _display_run_result(result)
+
+    except (ConversionError, ValidationError) as e:
+        click.echo(f"❌ Conversion failed: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        sys.exit(1)
+
+
+async def _run_local(
+    flow_dict: dict,
+    inputs: list,
+    timeout: int,
+) -> dict:
+    """Run a flow using a local StepflowOrchestrator."""
+    from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
+
+    # Get the langflow integration root directory (where pyproject.toml is)
+    current_file = Path(__file__).resolve()
+    integration_dir = current_file.parent.parent.parent.parent
+
+    config = OrchestratorConfig(
+        config={
+            "plugins": {
+                "builtin": {"type": "builtin"},
+                "langflow": {
+                    "type": "stepflow",
+                    "command": "uv",
+                    "args": [
+                        "--project",
+                        str(integration_dir),
+                        "run",
+                        "stepflow-langflow-server",
+                    ],
+                },
+            },
+            "routes": {
+                "/langflow/{*component}": [{"plugin": "langflow"}],
+                "/builtin/{*component}": [{"plugin": "builtin"}],
+            },
+            "storageConfig": {"type": "inMemory"},
+        },
+    )
+
+    async with StepflowOrchestrator.start(config) as orchestrator:
+        click.echo(f"✅ Orchestrator running at {orchestrator.url}")
+        return _submit_flow_http(orchestrator.url, flow_dict, inputs, timeout)
+
+
+def _submit_flow_http(
+    base_url: str,
+    flow_dict: dict,
+    inputs: list,
+    timeout: int,
+) -> dict:
+    """Submit a flow to a Stepflow server via HTTP API and wait for results."""
+    import urllib.error
+    import urllib.request
+
+    # Normalize API URL
+    api_url = base_url.rstrip("/")
+    if not api_url.endswith("/api/v1"):
+        api_url = f"{api_url}/api/v1"
+
+    # Step 1: Store the flow
+    click.echo("📤 Storing flow...")
+    store_body = json.dumps({"flow": flow_dict}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{api_url}/flows",
+        data=store_body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            store_result = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Failed to store flow: {e.code} {body}") from e
+
+    flow_id = store_result["flowId"]
+    click.echo(f"✅ Flow stored (id: {flow_id[:12]}...)")
+
+    # Step 2: Submit for execution
+    item_label = f"{len(inputs)} inputs" if len(inputs) > 1 else "1 input"
+    click.echo(f"🎯 Executing {item_label}...")
+    run_body = json.dumps(
+        {
+            "flowId": flow_id,
+            "input": inputs,
+            "wait": True,
+            "timeoutSecs": timeout,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{api_url}/runs",
+        data=run_body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout + 30) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Execution failed: {e.code} {body}") from e
+
+
+def _display_run_result(result: dict) -> None:
+    """Display run results to the user."""
+    status = result.get("status", "unknown")
+    run_id = result.get("runId", "unknown")
+
+    click.echo(f"\n📋 Run {run_id[:8]}... — status: {status}")
+
+    results = result.get("results", [])
+    if results:
+        for item in results:
+            item_result = item.get("result", {})
+            outcome = item_result.get("outcome", "unknown")
+            if outcome == "success":
+                output = item_result.get("output", {})
+                click.echo("\n🎯 Output:")
+                click.echo(json.dumps(output, indent=2))
+            else:
+                click.echo(f"\n❌ Item {item.get('itemIndex', '?')} failed: {outcome}")
+                error = item_result.get("error")
+                if error:
+                    click.echo(f"   {error}")
+    else:
+        click.echo(json.dumps(result, indent=2))
+
+    if status == "Completed":
+        click.echo("\n🎉 Done!")
+    else:
+        click.echo(f"\n❌ Run ended with status: {status}", err=True)
+        sys.exit(2)
+
+
+@main.command()
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.argument("input_json", type=str, default="{}")
 @click.option(
     "--config",
     type=click.Path(exists=True, path_type=Path),
