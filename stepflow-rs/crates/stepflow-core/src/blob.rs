@@ -183,7 +183,9 @@ impl BlobData {
 }
 
 /// Type of blob stored in the blob store.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum BlobType {
     /// A workflow/flow definition
@@ -214,7 +216,7 @@ pub enum BlobIdError {
 }
 
 /// A SHA-256 hash of the blob content, represented as a hexadecimal string.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[repr(transparent)]
 pub struct BlobId(String);
 

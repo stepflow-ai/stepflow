@@ -20,9 +20,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from stepflow_py.api.models.blob_type import BlobType
 from stepflow_py.worker import blob_store
 from stepflow_py.worker.blob_ref import (
+    BLOB_TYPE_BINARY,
+    BLOB_TYPE_DATA,
     BlobRef,
     blobify_inputs,
     is_blob_ref,
@@ -36,14 +37,14 @@ from stepflow_py.worker.blob_ref import (
 
 class TestBlobRef:
     def test_to_dict_data_type(self):
-        ref = BlobRef(blob_id="a" * 64, blob_type=BlobType.DATA, size=100)
+        ref = BlobRef(blob_id="a" * 64, blob_type=BLOB_TYPE_DATA, size=100)
         d = ref.to_dict()
         assert d["$blob"] == "a" * 64
         assert "blobType" not in d  # DATA is the default, omitted
         assert d["size"] == 100
 
     def test_to_dict_binary_type(self):
-        ref = BlobRef(blob_id="b" * 64, blob_type=BlobType.BINARY, size=200)
+        ref = BlobRef(blob_id="b" * 64, blob_type=BLOB_TYPE_BINARY, size=200)
         d = ref.to_dict()
         assert d["$blob"] == "b" * 64
         assert d["blobType"] == "binary"
@@ -54,7 +55,7 @@ class TestBlobRef:
         ref = BlobRef.from_dict(d)
         assert ref is not None
         assert ref.blob_id == "c" * 64
-        assert ref.blob_type == BlobType.DATA
+        assert ref.blob_type == BLOB_TYPE_DATA
         assert ref.size == 50
 
     def test_from_dict_missing_blob_key(self):
@@ -176,7 +177,7 @@ class TestBlobifyInputs:
         # Verify the blob ref has correct metadata
         ref = BlobRef.from_dict(result["large"])
         assert ref is not None
-        assert ref.blob_type == BlobType.DATA
+        assert ref.blob_type == BLOB_TYPE_DATA
         assert ref.size > 100
 
     @pytest.mark.asyncio

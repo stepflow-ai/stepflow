@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// This controls whether the orchestrator serves blob API endpoints and what URL
 /// workers should use to access the blob API.
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BlobApiConfig {
     /// Whether the orchestrator serves blob API endpoints.

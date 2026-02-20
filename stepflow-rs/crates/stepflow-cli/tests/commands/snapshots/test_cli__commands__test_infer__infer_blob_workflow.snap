@@ -46,24 +46,24 @@ schemas:
         put_blob:
           $schema: https://json-schema.org/draft/2020-12/schema
           title: PutBlobOutput
-          type: object
           description: Output from the put_blob component
-          required:
-          - blob_id
+          type: object
           properties:
             blob_id:
-              type: string
               description: The blob ID for the stored data
+              type: string
+          required:
+          - blob_id
         get_blob:
           $schema: https://json-schema.org/draft/2020-12/schema
           title: GetBlobOutput
-          type: object
           description: Output from the get_blob component
-          required:
-          - data
+          type: object
           properties:
             data:
               description: The JSON data stored in the blob
+          required:
+          - data
 steps:
 - id: put_blob
   component: /builtin/put_blob

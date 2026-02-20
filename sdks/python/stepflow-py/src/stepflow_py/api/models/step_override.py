@@ -78,6 +78,9 @@ class StepOverride(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of type
+        if self.type:
+            _dict["$type"] = self.type.to_dict()
         # set to None if value (nullable) is None
         # and model_fields_set contains the field
         if self.value is None and "value" in self.model_fields_set:
@@ -95,6 +98,11 @@ class StepOverride(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"$type": obj.get("$type"), "value": obj.get("value")}
+            {
+                "$type": OverrideType.from_dict(obj["$type"])
+                if obj.get("$type") is not None
+                else None,
+                "value": obj.get("value"),
+            }
         )
         return _obj

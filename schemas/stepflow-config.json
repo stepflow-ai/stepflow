@@ -1,396 +1,176 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "StepflowConfig",
-  "allOf": [
-    {
-      "$ref": "#/$defs/RoutingConfig",
-      "description": "Routing configuration for mapping components to plugins."
+  "description": "Path-keyed routing configuration",
+  "type": "object",
+  "properties": {
+    "workingDirectory": {
+      "description": "Working directory for the configuration.\n\nIf not set, this will be the directory containing the config.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
-    {
+    "plugins": {
       "type": "object",
-      "required": [
-        "plugins"
-      ],
-      "properties": {
-        "workingDirectory": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Working directory for the configuration.\n\nIf not set, this will be the directory containing the config."
-        },
-        "plugins": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/SupportedPluginConfig"
-          },
-          "propertyNames": {
-            "type": "string"
-          }
-        },
-        "storageConfig": {
-          "$ref": "#/$defs/StorageConfig",
-          "description": "Storage configuration. If not specified, uses in-memory storage."
-        },
-        "leaseManager": {
-          "$ref": "#/$defs/LeaseManagerConfig",
-          "description": "Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode)."
-        },
-        "recovery": {
-          "$ref": "#/$defs/RecoveryConfig",
-          "description": "Recovery configuration for handling interrupted runs."
-        },
-        "blobApi": {
-          "$ref": "#/$defs/BlobApiConfig",
-          "description": "Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use."
+      "additionalProperties": {
+        "$ref": "#/$defs/SupportedPluginConfig"
+      }
+    },
+    "routes": {
+      "description": "Path-to-routing rules mapping\n\nKeys describe paths. For example \"/python/{component}\" or \"/openai/{component}\".\nPlaceholders may match a single segment (e.g., \"{component}\") or multiple segments (e.g., \"{*component}\").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/RouteRule"
         }
       }
+    },
+    "storageConfig": {
+      "description": "Storage configuration. If not specified, uses in-memory storage.",
+      "$ref": "#/$defs/StorageConfig",
+      "default": {
+        "type": "inMemory"
+      }
+    },
+    "leaseManager": {
+      "description": "Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).",
+      "$ref": "#/$defs/LeaseManagerConfig",
+      "default": {
+        "type": "noOp"
+      }
+    },
+    "recovery": {
+      "description": "Recovery configuration for handling interrupted runs.",
+      "$ref": "#/$defs/RecoveryConfig",
+      "default": {
+        "enabled": true,
+        "checkIntervalSecs": 30,
+        "maxStartupRecovery": 100,
+        "maxClaimsPerCheck": 10,
+        "leaseTtlSecs": 30
+      }
+    },
+    "blobApi": {
+      "description": "Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use.",
+      "$ref": "#/$defs/BlobApiConfig",
+      "default": {
+        "enabled": true
+      }
     }
+  },
+  "required": [
+    "plugins",
+    "routes"
   ],
   "$defs": {
     "SupportedPluginConfig": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/SupportedPlugin"
-        }
-      ]
-    },
-    "RoutingConfig": {
       "type": "object",
-      "description": "Path-keyed routing configuration",
-      "required": [
-        "routes"
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StepflowPlugin"
+        },
+        {
+          "$ref": "#/$defs/BuiltinPlugin"
+        },
+        {
+          "$ref": "#/$defs/MockPlugin"
+        },
+        {
+          "$ref": "#/$defs/McpPlugin"
+        }
       ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "HealthCheckConfig": {
+      "description": "Configuration for health check polling when launching subprocess servers.",
+      "type": "object",
       "properties": {
-        "routes": {
-          "type": "object",
-          "description": "Path-to-routing rules mapping\n\nKeys describe paths. For example \"/python/{component}\" or \"/openai/{component}\".\nPlaceholders may match a single segment (e.g., \"{component}\") or multiple segments (e.g., \"{*component}\").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.",
-          "additionalProperties": {
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/RouteRule"
-            }
-          },
-          "propertyNames": {
-            "type": "string"
-          }
+        "path": {
+          "description": "Health check endpoint path. Default: \"/health\"",
+          "type": "string",
+          "default": "/health"
+        },
+        "timeoutMs": {
+          "description": "Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 60000
+        },
+        "retryDelayMs": {
+          "description": "Delay between health check attempts in milliseconds. Default: 100",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 100
         }
       }
     },
-    "StorageConfig": {
-      "oneOf": [
-        {
-          "type": "object",
-          "description": "Expanded form: individual config per store",
-          "required": [
-            "metadata"
-          ],
-          "properties": {
-            "metadata": {
-              "$ref": "#/$defs/StoreConfig",
-              "description": "Configuration for the metadata store"
-            },
-            "blobs": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/$defs/StoreConfig",
-                  "description": "Configuration for the blob store (defaults to metadata config if not specified)"
-                }
-              ]
-            },
-            "journal": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/$defs/StoreConfig",
-                  "description": "Configuration for the execution journal (defaults to metadata config if not specified)"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "$ref": "#/$defs/StoreConfig",
-          "description": "Simple form: all stores share one backend"
-        }
-      ],
-      "description": "Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: \"sqlite:workflow_state.db\"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  blobs:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication)."
-    },
-    "LeaseManagerConfig": {
-      "oneOf": [
-        {
-          "type": "object",
-          "description": "No-op lease management (single orchestrator mode).\n\nThis is the default for single-node deployments where there's no need\nfor distributed coordination. All lease requests succeed immediately.",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "noOp"
-            }
-          }
-        },
-        {
-          "allOf": [
-            {
-              "$ref": "#/$defs/EtcdLeaseManagerConfig",
-              "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation."
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "etcd"
-                }
-              }
-            }
-          ],
-          "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation."
-        }
-      ],
-      "description": "Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time."
-    },
-    "RecoveryConfig": {
+    "RetryConfig": {
+      "description": "Configuration for retry behavior when component execution fails.",
       "type": "object",
-      "description": "Configuration for run recovery and orphan claiming.\n\nControls how the orchestrator handles interrupted runs on startup\nand during execution.",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true",
-          "default": true
-        },
-        "checkIntervalSecs": {
-          "type": "integer",
-          "format": "int64",
-          "description": "Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.",
-          "default": 30,
-          "minimum": 0
-        },
-        "maxStartupRecovery": {
-          "type": "integer",
-          "description": "Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.",
-          "default": 100,
-          "minimum": 0
-        },
-        "maxClaimsPerCheck": {
-          "type": "integer",
-          "description": "Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.",
-          "default": 10,
-          "minimum": 0
-        },
-        "leaseTtlSecs": {
-          "type": "integer",
-          "format": "int64",
-          "description": "TTL in seconds for the orchestrator lease and heartbeats.\n\nThe heartbeat interval is automatically set to `lease_ttl_secs / 3`.\nIf an orchestrator stops sending heartbeats, its lease expires after this\nduration and its runs become eligible for recovery. Default: 30 seconds.",
-          "default": 30,
-          "minimum": 0
-        }
-      }
-    },
-    "BlobApiConfig": {
-      "type": "object",
-      "description": "Configuration for the Blob HTTP API.\n\nThis controls whether the orchestrator serves blob API endpoints and what URL\nworkers should use to access the blob API.",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Whether the orchestrator serves blob API endpoints.\n\nSet to `false` when running a separate blob service.\nDefault: `true`",
-          "default": true
-        },
-        "url": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "URL workers use to access the blob API.\n\nIf not set, defaults to `http://localhost:{port}/api/v1/blobs` where `{port}`\nis the server's bound port.\n\nThis value should be the base blobs endpoint URL. Workers will:\n- `POST {url}` to create blobs\n- `GET {url}/{blob_id}` to fetch blobs\n\nExamples:\n- Local dev: omit (auto-detected)\n- K8s with orchestrator blobs: `http://orchestrator-service/api/v1/blobs`\n- K8s with separate blob service: `http://blob-service/api/v1/blobs`",
-          "default": null
-        },
-        "blobThreshold": {
+        "maxAttempts": {
+          "description": "Maximum number of execution attempts (default: 3).",
           "type": [
             "integer",
             "null"
           ],
-          "description": "Byte size threshold for automatic blobification of component inputs/outputs.\n\nWhen a top-level field in a component's input or output exceeds this size\n(in bytes of JSON serialization), it is automatically stored as a blob and\nreplaced with a `$blob` reference.\n\nSet to `0` to disable automatic blobification.\nDefault: 1 MB (1048576 bytes)",
-          "default": null,
+          "format": "uint32",
           "minimum": 0
+        },
+        "backoff": {
+          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).",
+          "$ref": "#/$defs/BackoffConfig",
+          "default": {
+            "type": "fibonacci",
+            "minDelayMs": 1000,
+            "maxDelayMs": 10000
+          }
         }
       }
     },
-    "SupportedPlugin": {
+    "BackoffConfig": {
+      "description": "Backoff strategy for retry delays.",
       "oneOf": [
         {
-          "allOf": [
-            {
-              "$ref": "#/$defs/StepflowPluginConfig"
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "stepflow"
-                }
-              }
-            }
-          ]
+          "$ref": "#/$defs/Constant"
         },
         {
-          "allOf": [
-            {
-              "$ref": "#/$defs/BuiltinPluginConfig"
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "builtin"
-                }
-              }
-            }
-          ]
+          "$ref": "#/$defs/Exponential"
         },
         {
-          "allOf": [
-            {
-              "$ref": "#/$defs/MockPlugin"
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "mock"
-                }
-              }
-            }
-          ]
-        },
-        {
-          "allOf": [
-            {
-              "$ref": "#/$defs/McpPluginConfig"
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "mcp"
-                }
-              }
-            }
-          ]
+          "$ref": "#/$defs/Fibonacci"
         }
-      ]
+      ],
+      "discriminator": {
+        "propertyName": "type"
+      }
     },
     "StepflowPluginConfig": {
-      "allOf": [
-        {
-          "$ref": "#/$defs/StepflowTransport"
-        },
-        {
-          "type": "object",
-          "properties": {
-            "retry": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/$defs/RetryConfig",
-                  "description": "Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff)."
-                }
-              ]
+      "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server",
+      "type": "object",
+      "properties": {
+        "retry": {
+          "description": "Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RetryConfig"
+            },
+            {
+              "type": "null"
             }
-          }
+          ]
         }
-      ]
-    },
-    "BuiltinPluginConfig": {
-      "default": null
-    },
-    "MockPlugin": {
-      "type": "object",
-      "description": "A mock plugin that can be used to test various things in the plugin protocol.",
-      "required": [
-        "components"
-      ],
-      "properties": {
-        "components": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/MockComponent"
-          },
-          "propertyNames": {
-            "type": "string",
-            "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-            "examples": [
-              "/builtin/eval",
-              "/mcpfs/list_files",
-              "/python/udf"
-            ]
-          }
-        }
-      }
-    },
-    "McpPluginConfig": {
-      "type": "object",
-      "required": [
-        "command",
-        "args"
-      ],
-      "properties": {
-        "command": {
-          "type": "string"
-        },
-        "args": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "env": {
-          "type": "object",
-          "description": "Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "propertyNames": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "StepflowTransport": {
-      "oneOf": [
+      },
+      "anyOf": [
         {
-          "type": "object",
           "description": "Subprocess mode: launch a process that runs an HTTP server.\nThe process must print {\"port\": N} to stdout when ready.",
-          "required": [
-            "command"
-          ],
+          "type": "object",
           "properties": {
             "command": {
               "type": "string"
@@ -402,181 +182,44 @@
               }
             },
             "env": {
-              "type": "object",
               "description": "Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
+              "type": "object",
               "additionalProperties": {
-                "type": "string"
-              },
-              "propertyNames": {
                 "type": "string"
               }
             },
             "healthCheck": {
-              "oneOf": [
+              "description": "Health check configuration for the subprocess server.",
+              "anyOf": [
                 {
-                  "type": "null"
+                  "$ref": "#/$defs/HealthCheckConfig"
                 },
                 {
-                  "$ref": "#/$defs/HealthCheckConfig",
-                  "description": "Health check configuration for the subprocess server."
+                  "type": "null"
                 }
               ]
             }
-          }
+          },
+          "required": [
+            "command"
+          ]
         },
         {
-          "type": "object",
           "description": "Remote mode: connect directly to an existing HTTP endpoint.",
-          "required": [
-            "url"
-          ],
+          "type": "object",
           "properties": {
             "url": {
               "type": "string"
             }
-          }
+          },
+          "required": [
+            "url"
+          ]
         }
-      ],
-      "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server"
-    },
-    "RetryConfig": {
-      "type": "object",
-      "description": "Configuration for retry behavior when component execution fails.",
-      "properties": {
-        "maxAttempts": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "int32",
-          "description": "Maximum number of execution attempts (default: 3).",
-          "minimum": 0
-        },
-        "backoff": {
-          "$ref": "#/$defs/BackoffConfig",
-          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max)."
-        }
-      }
-    },
-    "HealthCheckConfig": {
-      "type": "object",
-      "description": "Configuration for health check polling when launching subprocess servers.",
-      "properties": {
-        "path": {
-          "type": "string",
-          "description": "Health check endpoint path. Default: \"/health\""
-        },
-        "timeoutMs": {
-          "type": "integer",
-          "format": "int64",
-          "description": "Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)",
-          "minimum": 0
-        },
-        "retryDelayMs": {
-          "type": "integer",
-          "format": "int64",
-          "description": "Delay between health check attempts in milliseconds. Default: 100",
-          "minimum": 0
-        }
-      }
-    },
-    "BackoffConfig": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/BackoffConfigConstant"
-        },
-        {
-          "$ref": "#/$defs/BackoffConfigExponential"
-        },
-        {
-          "$ref": "#/$defs/BackoffConfigFibonacci"
-        }
-      ],
-      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
-      "discriminator": {
-        "propertyName": "type",
-        "mapping": {
-          "constant": "#/$defs/BackoffConfigConstant",
-          "exponential": "#/$defs/BackoffConfigExponential",
-          "fibonacci": "#/$defs/BackoffConfigFibonacci"
-        }
-      }
-    },
-    "BackoffConfigConstant": {
-      "type": "object",
-      "title": "BackoffConfigConstant",
-      "description": "Fixed delay between retries.",
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "delayMs": {
-          "type": "integer",
-          "format": "int64",
-          "minimum": 0
-        }
-      }
-    },
-    "BackoffConfigExponential": {
-      "type": "object",
-      "title": "BackoffConfigExponential",
-      "description": "Exponential backoff (delay doubles each attempt by default).",
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "minDelayMs": {
-          "type": "integer",
-          "format": "int64",
-          "minimum": 0
-        },
-        "maxDelayMs": {
-          "type": "integer",
-          "format": "int64",
-          "minimum": 0
-        },
-        "factor": {
-          "type": "number",
-          "format": "float"
-        }
-      }
-    },
-    "BackoffConfigFibonacci": {
-      "type": "object",
-      "title": "BackoffConfigFibonacci",
-      "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "minDelayMs": {
-          "type": "integer",
-          "format": "int64",
-          "minimum": 0
-        },
-        "maxDelayMs": {
-          "type": "integer",
-          "format": "int64",
-          "minimum": 0
-        }
-      }
+      ]
     },
     "MockComponent": {
       "type": "object",
-      "required": [
-        "input_schema",
-        "output_schema",
-        "behaviors"
-      ],
       "properties": {
         "input_schema": {
           "$ref": "#/$defs/Schema"
@@ -588,73 +231,96 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/MockComponentBehavior"
-          },
-          "propertyNames": {
-            "allOf": [],
-            "description": "Any JSON value (object, array, string, number, boolean, or null)"
           }
         }
-      }
+      },
+      "required": [
+        "input_schema",
+        "output_schema",
+        "behaviors"
+      ]
     },
     "Schema": {
-      "type": "object",
       "description": "A valid JSON Schema object."
     },
     "MockComponentBehavior": {
-      "oneOf": [
+      "description": "Enumeration of behaviors for the mock components.",
+      "anyOf": [
         {
-          "type": "object",
           "description": "Produce the given internal (non-flow) error.",
-          "required": [
-            "error"
-          ],
+          "type": "object",
           "properties": {
             "error": {
               "type": "string"
             }
-          }
+          },
+          "required": [
+            "error"
+          ]
         },
         {
-          "allOf": [
+          "description": "Return the given result (success or flow-error).",
+          "type": "object",
+          "oneOf": [
             {
-              "$ref": "#/$defs/FlowResult"
+              "$ref": "#/$defs/FlowResultSuccess"
+            },
+            {
+              "$ref": "#/$defs/FlowResultFailed"
             }
           ],
-          "description": "Return the given result (success or flow-error)."
+          "discriminator": {
+            "propertyName": "outcome",
+            "mapping": {
+              "success": "#/$defs/FlowResultSuccess",
+              "failed": "#/$defs/FlowResultFailed"
+            }
+          }
         }
-      ],
-      "description": "Enumeration of behaviors for the mock components."
+      ]
     },
-    "FlowResult": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/FlowResultSuccess"
+    "FlowResultSuccess": {
+      "description": "The step execution was successful.",
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "success",
+          "default": "success"
         },
-        {
-          "$ref": "#/$defs/FlowResultFailed"
+        "result": {
+          "$ref": "#/$defs/Value"
         }
-      ],
-      "title": "FlowResult",
-      "description": "The results of a step execution.",
-      "discriminator": {
-        "propertyName": "outcome",
-        "mapping": {
-          "failed": "#/$defs/FlowResultFailed",
-          "success": "#/$defs/FlowResultSuccess"
-        }
-      }
+      },
+      "required": [
+        "outcome",
+        "result"
+      ]
     },
     "Value": {
-      "allOf": [],
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
-    "FlowError": {
+    "FlowResultFailed": {
+      "description": "The step failed with the given error.",
       "type": "object",
-      "description": "An error reported from within a flow or step.",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "failed",
+          "default": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/FlowError"
+        }
+      },
       "required": [
-        "code",
-        "message"
-      ],
+        "outcome",
+        "error"
+      ]
+    },
+    "FlowError": {
+      "description": "An error reported from within a flow or step.",
+      "type": "object",
       "properties": {
         "code": {
           "type": "integer",
@@ -664,245 +330,434 @@
           "type": "string"
         },
         "data": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
+          "anyOf": [
             {
               "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
             }
           ]
         }
-      }
-    },
-    "FlowResultSuccess": {
-      "type": "object",
-      "title": "FlowResultSuccess",
-      "description": "The step execution was successful.",
+      },
       "required": [
-        "outcome",
-        "result"
-      ],
-      "properties": {
-        "outcome": {
-          "type": "string",
-          "title": "FlowOutcome",
-          "default": "success",
-          "const": "success"
-        },
-        "result": {
-          "$ref": "#/$defs/Value"
-        }
-      }
+        "code",
+        "message"
+      ]
     },
-    "FlowResultFailed": {
+    "MockPlugin": {
+      "description": "A mock plugin that can be used to test various things in the plugin protocol.",
       "type": "object",
-      "title": "FlowResultFailed",
-      "description": "The step failed with the given error.",
-      "required": [
-        "outcome",
-        "error"
-      ],
       "properties": {
-        "outcome": {
-          "type": "string",
-          "title": "FlowOutcome",
-          "default": "failed",
-          "const": "failed"
-        },
-        "error": {
-          "$ref": "#/$defs/FlowError"
+        "components": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MockComponent"
+          }
         }
-      }
+      },
+      "required": [
+        "components"
+      ]
+    },
+    "McpPluginConfig": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "command",
+        "args"
+      ]
     },
     "RouteRule": {
-      "type": "object",
       "description": "A single routing rule for a specific path",
-      "required": [
-        "plugin"
-      ],
+      "type": "object",
       "properties": {
         "conditions": {
+          "description": "Optional input conditions that must match for this rule to apply",
           "type": "array",
           "items": {
             "$ref": "#/$defs/InputCondition"
-          },
-          "description": "Optional input conditions that must match for this rule to apply"
+          }
         },
         "componentAllow": {
+          "description": "Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match.",
           "type": [
             "array",
             "null"
           ],
           "items": {
             "type": "string"
-          },
-          "description": "Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match."
+          }
         },
         "componentDeny": {
+          "description": "Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked.",
           "type": [
             "array",
             "null"
           ],
           "items": {
             "type": "string"
-          },
-          "description": "Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked."
+          }
         },
         "plugin": {
-          "type": "string",
-          "description": "Plugin name to route to"
+          "description": "Plugin name to route to",
+          "type": "string"
         },
         "component": {
+          "description": "Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., \"{component}\" or \"{*component}\".",
           "type": [
             "string",
             "null"
-          ],
-          "description": "Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., \"{component}\" or \"{*component}\"."
+          ]
         }
-      }
+      },
+      "required": [
+        "plugin"
+      ]
     },
     "InputCondition": {
-      "type": "object",
       "description": "JSON path condition for matching specific parts of input data",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "JSON path expression (e.g., \"$.model\", \"$.config.temperature\")",
+          "$ref": "#/$defs/JsonPath"
+        },
+        "value": {
+          "description": "Value to match against (equality comparison)",
+          "$ref": "#/$defs/Value"
+        }
+      },
       "required": [
         "path",
         "value"
-      ],
-      "properties": {
-        "path": {
-          "$ref": "#/$defs/JsonPath",
-          "description": "JSON path expression (e.g., \"$.model\", \"$.config.temperature\")"
-        },
-        "value": {
-          "$ref": "#/$defs/Value",
-          "description": "Value to match against (equality comparison)"
-        }
-      }
+      ]
     },
     "JsonPath": {
-      "type": "string",
-      "description": "JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.",
-      "examples": [
-        "field",
-        "$.field",
-        "$[\"field\"]",
-        "$[0]",
-        "$.field[0].nested"
+      "description": "JSON path expression to apply to the referenced value.",
+      "type": "string"
+    },
+    "StorageConfig": {
+      "description": "Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: \"sqlite:workflow_state.db\"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  blobs:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).",
+      "anyOf": [
+        {
+          "description": "Expanded form: individual config per store",
+          "type": "object",
+          "properties": {
+            "metadata": {
+              "description": "Configuration for the metadata store",
+              "$ref": "#/$defs/StoreConfig"
+            },
+            "blobs": {
+              "description": "Configuration for the blob store (defaults to metadata config if not specified)",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StoreConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "journal": {
+              "description": "Configuration for the execution journal (defaults to metadata config if not specified)",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/StoreConfig"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "metadata"
+          ]
+        },
+        {
+          "description": "Simple form: all stores share one backend",
+          "$ref": "#/$defs/StoreConfig"
+        }
       ]
     },
     "StoreConfig": {
+      "description": "Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery",
       "oneOf": [
         {
-          "type": "object",
-          "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "inMemory"
-            }
-          }
+          "$ref": "#/$defs/InMemoryStore"
         },
         {
-          "allOf": [
-            {
-              "$ref": "#/$defs/SqliteStateStoreConfig",
-              "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development."
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "sqlite"
-                }
-              }
-            }
-          ],
-          "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development."
+          "$ref": "#/$defs/SqliteStore"
         },
         {
-          "allOf": [
-            {
-              "$ref": "#/$defs/FilesystemBlobStoreConfig",
-              "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments."
-            },
-            {
-              "type": "object",
-              "required": [
-                "type"
-              ],
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "const": "filesystem"
-                }
-              }
-            }
-          ],
-          "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments."
+          "$ref": "#/$defs/FilesystemStore"
         }
       ],
-      "description": "Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery"
+      "discriminator": {
+        "propertyName": "type"
+      }
     },
     "SqliteStateStoreConfig": {
-      "type": "object",
       "description": "Configuration for SqliteStateStore",
-      "required": [
-        "databaseUrl"
-      ],
+      "type": "object",
       "properties": {
         "databaseUrl": {
           "type": "string"
         },
         "maxConnections": {
           "type": "integer",
-          "format": "int32",
-          "minimum": 0
+          "format": "uint32",
+          "minimum": 0,
+          "default": 10
         },
         "autoMigrate": {
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         }
-      }
+      },
+      "required": [
+        "databaseUrl"
+      ]
     },
     "FilesystemBlobStoreConfig": {
-      "type": "object",
       "description": "Configuration for the filesystem blob store.",
+      "type": "object",
       "properties": {
         "directory": {
+          "description": "Directory path for storing blobs. If not specified, a temporary directory is used.",
           "type": [
             "string",
             "null"
           ],
-          "description": "Directory path for storing blobs. If not specified, a temporary directory is used."
+          "default": null
         }
       }
     },
-    "EtcdLeaseManagerConfig": {
-      "type": "object",
-      "description": "Configuration for the etcd lease manager.",
-      "required": [
-        "endpoints"
+    "LeaseManagerConfig": {
+      "description": "Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/NoOpLeaseManager"
+        },
+        {
+          "$ref": "#/$defs/EtcdLeaseManager"
+        }
       ],
+      "discriminator": {
+        "propertyName": "type"
+      }
+    },
+    "EtcdLeaseManagerConfig": {
+      "description": "Configuration for the etcd lease manager.",
+      "type": "object",
       "properties": {
         "endpoints": {
+          "description": "etcd endpoints (e.g., `[\"http://localhost:2379\"]`).",
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "description": "etcd endpoints (e.g., `[\"http://localhost:2379\"]`)."
+          }
         },
         "key_prefix": {
+          "description": "Key prefix for all stepflow lease keys.",
           "type": "string",
-          "description": "Key prefix for all stepflow lease keys."
+          "default": "/stepflow/leases"
+        }
+      },
+      "required": [
+        "endpoints"
+      ]
+    },
+    "RecoveryConfig": {
+      "description": "Configuration for run recovery and orphan claiming.\n\nControls how the orchestrator handles interrupted runs on startup\nand during execution.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true",
+          "type": "boolean",
+          "default": true
+        },
+        "checkIntervalSecs": {
+          "description": "Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 30
+        },
+        "maxStartupRecovery": {
+          "description": "Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 100
+        },
+        "maxClaimsPerCheck": {
+          "description": "Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 10
+        },
+        "leaseTtlSecs": {
+          "description": "TTL in seconds for the orchestrator lease and heartbeats.\n\nThe heartbeat interval is automatically set to `lease_ttl_secs / 3`.\nIf an orchestrator stops sending heartbeats, its lease expires after this\nduration and its runs become eligible for recovery. Default: 30 seconds.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 30
         }
       }
+    },
+    "BlobApiConfig": {
+      "description": "Configuration for the Blob HTTP API.\n\nThis controls whether the orchestrator serves blob API endpoints and what URL\nworkers should use to access the blob API.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Whether the orchestrator serves blob API endpoints.\n\nSet to `false` when running a separate blob service.\nDefault: `true`",
+          "type": "boolean",
+          "default": true
+        },
+        "url": {
+          "description": "URL workers use to access the blob API.\n\nIf not set, defaults to `http://localhost:{port}/api/v1/blobs` where `{port}`\nis the server's bound port.\n\nThis value should be the base blobs endpoint URL. Workers will:\n- `POST {url}` to create blobs\n- `GET {url}/{blob_id}` to fetch blobs\n\nExamples:\n- Local dev: omit (auto-detected)\n- K8s with orchestrator blobs: `http://orchestrator-service/api/v1/blobs`\n- K8s with separate blob service: `http://blob-service/api/v1/blobs`",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blobThreshold": {
+          "description": "Byte size threshold for automatic blobification of component inputs/outputs.\n\nWhen a top-level field in a component's input or output exceeds this size\n(in bytes of JSON serialization), it is automatically stored as a blob and\nreplaced with a `$blob` reference.\n\nSet to `0` to disable automatic blobification.\nDefault: 1 MB (1048576 bytes)",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      }
+    },
+    "StepflowPlugin": {
+      "title": "StepflowPlugin",
+      "type": "object",
+      "properties": {},
+      "$ref": "#/$defs/StepflowPluginConfig",
+      "required": []
+    },
+    "BuiltinPlugin": {
+      "title": "BuiltinPlugin",
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "McpPlugin": {
+      "title": "McpPlugin",
+      "type": "object",
+      "properties": {},
+      "$ref": "#/$defs/McpPluginConfig",
+      "required": []
+    },
+    "Constant": {
+      "title": "Constant",
+      "description": "Fixed delay between retries.",
+      "type": "object",
+      "properties": {
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": []
+    },
+    "Exponential": {
+      "title": "Exponential",
+      "description": "Exponential backoff (delay doubles each attempt by default).",
+      "type": "object",
+      "properties": {
+        "factor": {
+          "type": "number"
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxDelayMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": []
+    },
+    "Fibonacci": {
+      "title": "Fibonacci",
+      "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
+      "type": "object",
+      "properties": {
+        "maxDelayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minDelayMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": []
+    },
+    "InMemoryStore": {
+      "title": "InMemoryStore",
+      "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "SqliteStore": {
+      "title": "SqliteStore",
+      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
+      "type": "object",
+      "properties": {},
+      "$ref": "#/$defs/SqliteStateStoreConfig",
+      "required": []
+    },
+    "FilesystemStore": {
+      "title": "FilesystemStore",
+      "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments.",
+      "type": "object",
+      "properties": {},
+      "$ref": "#/$defs/FilesystemBlobStoreConfig",
+      "required": []
+    },
+    "NoOpLeaseManager": {
+      "title": "NoOpLeaseManager",
+      "description": "No-op lease management (single orchestrator mode).\n\nThis is the default for single-node deployments where there's no need\nfor distributed coordination. All lease requests succeed immediately.",
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "EtcdLeaseManager": {
+      "title": "EtcdLeaseManager",
+      "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation.",
+      "type": "object",
+      "properties": {},
+      "$ref": "#/$defs/EtcdLeaseManagerConfig",
+      "required": []
     }
   }
 }

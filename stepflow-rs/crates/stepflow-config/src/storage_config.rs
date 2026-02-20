@@ -109,7 +109,9 @@ pub struct Stores {
 /// - **metadata**: Flow and run metadata storage
 /// - **blobs**: Content-addressable blob storage
 /// - **journal**: Execution journal for recovery
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash, utoipa::ToSchema)]
+#[derive(
+    Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash, schemars::JsonSchema,
+)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StoreConfig {
     /// In-memory storage (default, for testing and demos).
@@ -119,6 +121,7 @@ pub enum StoreConfig {
     /// Data is not persisted across restarts. Useful for development,
     /// testing, and demos where persistence is not required.
     #[default]
+    #[schemars(title = "InMemoryStore")]
     InMemory,
     /// SQLite-based persistent storage.
     ///
@@ -126,6 +129,7 @@ pub enum StoreConfig {
     ///
     /// Provides durable storage with automatic schema migrations.
     /// Suitable for single-instance deployments and development.
+    #[schemars(title = "SqliteStore")]
     Sqlite(SqliteStateStoreConfig),
     /// Filesystem-based blob storage.
     ///
@@ -134,6 +138,7 @@ pub enum StoreConfig {
     /// Stores blobs as JSON files in a directory. If no directory is specified,
     /// a temporary directory is created and cleaned up when the store is dropped.
     /// Suitable for local development and single-instance deployments.
+    #[schemars(title = "FilesystemStore")]
     Filesystem(FilesystemBlobStoreConfig),
 }
 
@@ -161,7 +166,7 @@ pub enum StoreConfig {
 ///
 /// When multiple stores have identical configurations, they will share
 /// a single backend instance (smart deduplication).
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum StorageConfig {
     /// Expanded form: individual config per store

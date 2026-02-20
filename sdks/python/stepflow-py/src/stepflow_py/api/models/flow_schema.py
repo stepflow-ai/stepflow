@@ -31,19 +31,20 @@ class FlowSchema(BaseModel):
     Consolidated schema information for a flow.  This struct contains all schema/type information for the flow in a single location, allowing shared `$defs` across all schemas and avoiding duplication.  Serializes as a valid JSON Schema with `type: \"object\"` and flow-specific properties (`input`, `output`, `variables`, `steps`) under the `properties` key.
     """  # noqa: E501
 
-    defs: dict[str, dict[str, Any]] = Field(
+    defs: dict[str, Any] = Field(
         description="Shared type definitions that can be referenced by other schemas. References use the format `#/schemas/$defs/TypeName`."
     )
-    input: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    input: Any | None = Field(
+        default=None, description="The input schema for the flow."
     )
-    output: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    output: Any | None = Field(
+        default=None, description="The output schema for the flow."
     )
-    variables: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    variables: Any | None = Field(
+        default=None,
+        description="Schema for workflow variables. This is a JSON Schema object where properties define the available variables and their types.",
     )
-    steps: dict[str, dict[str, Any]] = Field(
+    steps: dict[str, Any] = Field(
         description="Output schemas for each step, keyed by step ID. Note: Step input schemas are not included here as they are component metadata, not flow-specific schemas. Uses IndexMap to preserve insertion order for deterministic serialization."
     )
     __properties: ClassVar[list[str]] = [
@@ -91,6 +92,30 @@ class FlowSchema(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of input
+        if self.input:
+            _dict["input"] = self.input.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of output
+        if self.output:
+            _dict["output"] = self.output.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of variables
+        if self.variables:
+            _dict["variables"] = self.variables.to_dict()
+        # set to None if input (nullable) is None
+        # and model_fields_set contains the field
+        if self.input is None and "input" in self.model_fields_set:
+            _dict["input"] = None
+
+        # set to None if output (nullable) is None
+        # and model_fields_set contains the field
+        if self.output is None and "output" in self.model_fields_set:
+            _dict["output"] = None
+
+        # set to None if variables (nullable) is None
+        # and model_fields_set contains the field
+        if self.variables is None and "variables" in self.model_fields_set:
+            _dict["variables"] = None
+
         return _dict
 
     @classmethod
@@ -105,9 +130,15 @@ class FlowSchema(BaseModel):
         _obj = cls.model_validate(
             {
                 "defs": obj.get("defs"),
-                "input": obj.get("input"),
-                "output": obj.get("output"),
-                "variables": obj.get("variables"),
+                "input": AnyOf.from_dict(obj["input"])
+                if obj.get("input") is not None
+                else None,
+                "output": AnyOf.from_dict(obj["output"])
+                if obj.get("output") is not None
+                else None,
+                "variables": AnyOf.from_dict(obj["variables"])
+                if obj.get("variables") is not None
+                else None,
                 "steps": obj.get("steps"),
             }
         )

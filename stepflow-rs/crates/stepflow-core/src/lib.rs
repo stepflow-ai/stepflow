@@ -13,6 +13,7 @@
 pub mod blob;
 pub mod blob_ref;
 pub mod component;
+pub mod discriminator_schema;
 pub mod environment;
 pub mod error_stack;
 pub mod json_schema;

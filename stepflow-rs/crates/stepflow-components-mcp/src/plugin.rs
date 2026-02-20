@@ -35,14 +35,14 @@ use crate::error::{McpError, Result as McpResult};
 use crate::protocol::{Implementation, ServerCapabilities, Tool};
 use crate::schema::{component_path_to_tool_name, mcp_tool_to_component_info};
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct McpPluginConfig {
     pub command: String,
     pub args: Vec<String>,
     /// Environment variables to pass to the MCP server process.
     /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    #[schema(value_type = std::collections::HashMap<String, String>)]
+    #[schemars(with = "std::collections::HashMap<String, String>")]
     pub env: IndexMap<String, String>,
 }
 

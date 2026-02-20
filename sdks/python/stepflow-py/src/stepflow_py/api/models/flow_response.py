@@ -35,12 +35,8 @@ class FlowResponse(BaseModel):
     """  # noqa: E501
 
     flow: Flow = Field(description="The flow definition")
-    flow_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="flowId",
-    )
-    all_examples: list[ExampleInput] | None = Field(
-        default=None,
+    flow_id: StrictStr = Field(description="The flow ID", alias="flowId")
+    all_examples: list[ExampleInput] = Field(
         description="All available examples (includes both examples and test cases)",
         alias="allExamples",
     )

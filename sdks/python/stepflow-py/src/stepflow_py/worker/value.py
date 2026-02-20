@@ -22,7 +22,6 @@ from typing import Any, cast
 from stepflow_py.api.models import (
     InputRef,
     LiteralExpr,
-    PrimitiveValue,
     StepRef,
     ValueExpr,  # Used in variable() method
     VariableRef,
@@ -262,13 +261,13 @@ class Value:
         Returns primitives, StepRef, InputRef, VariableRef, LiteralExpr,
         or nested dict/list structures containing these types.
         """
-        # None needs LiteralExpr since PrimitiveValue doesn't support it
+        # None needs LiteralExpr
         if data is None:
             return ValueExpr(LiteralExpr(literal=None))
 
-        # For primitive types (str, int, float, bool), wrap in PrimitiveValue
+        # For primitive types (str, int, float, bool), wrap in LiteralExpr
         if isinstance(data, bool | float | str | int):
-            return ValueExpr(PrimitiveValue(data))
+            return ValueExpr(LiteralExpr(literal=data))
 
         if isinstance(data, Value):
             return Value._convert_to_value_expr(data._value)

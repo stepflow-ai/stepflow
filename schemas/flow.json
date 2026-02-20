@@ -1,264 +1,267 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Flow",
-  "type": "object",
   "description": "A workflow consisting of a sequence of steps and their outputs.\n\nA flow represents a complete workflow that can be executed. It contains:\n- A sequence of steps to execute\n- Named outputs that can reference step outputs\n\nFlows should not be cloned. They should generally be stored and passed as a\nreference or inside an `Arc`.",
+  "type": "object",
   "properties": {
     "name": {
+      "description": "The name of the flow.",
       "type": [
         "string",
         "null"
-      ],
-      "description": "The name of the flow."
+      ]
     },
     "description": {
+      "description": "The description of the flow.",
       "type": [
         "string",
         "null"
-      ],
-      "description": "The description of the flow."
+      ]
     },
     "version": {
+      "description": "The version of the flow.",
       "type": [
         "string",
         "null"
-      ],
-      "description": "The version of the flow."
+      ]
     },
     "schemas": {
-      "$ref": "#/$defs/FlowSchema",
-      "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`."
+      "description": "Consolidated schema information for the flow.\nContains input/output schemas, step output schemas, and shared `$defs`.",
+      "$ref": "#/$defs/FlowSchema"
     },
     "steps": {
+      "description": "The steps to execute for the flow.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/Step"
-      },
-      "description": "The steps to execute for the flow."
+      }
     },
     "output": {
-      "$ref": "#/$defs/ValueExpr",
-      "description": "The outputs of the flow, mapping output names to their values."
+      "description": "The outputs of the flow, mapping output names to their values.",
+      "$ref": "#/$defs/ValueExpr"
     },
     "test": {
-      "oneOf": [
+      "description": "Test configuration for the flow.",
+      "anyOf": [
         {
-          "type": "null"
+          "$ref": "#/$defs/TestConfig"
         },
         {
-          "$ref": "#/$defs/TestConfig",
-          "description": "Test configuration for the flow."
+          "type": "null"
         }
       ]
     },
     "examples": {
+      "description": "Example inputs for the workflow that can be used for testing and UI dropdowns.",
       "type": [
         "array",
         "null"
       ],
       "items": {
         "$ref": "#/$defs/ExampleInput"
-      },
-      "description": "Example inputs for the workflow that can be used for testing and UI dropdowns."
+      }
     },
     "metadata": {
-      "type": "object",
       "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
-      "additionalProperties": {},
-      "propertyNames": {
-        "type": "string"
-      }
+      "type": "object",
+      "additionalProperties": true
     }
   },
   "$defs": {
     "FlowSchema": {
-      "type": "object",
       "description": "Consolidated schema information for a flow.\n\nThis struct contains all schema/type information for the flow in a single location,\nallowing shared `$defs` across all schemas and avoiding duplication.\n\nSerializes as a valid JSON Schema with `type: \"object\"` and flow-specific\nproperties (`input`, `output`, `variables`, `steps`) under the `properties` key.",
-      "required": [
-        "defs",
-        "steps"
-      ],
+      "type": "object",
       "properties": {
         "defs": {
-          "type": "object",
           "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
+          "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/Schema"
-          },
-          "propertyNames": {
-            "type": "string"
           }
         },
         "input": {
-          "oneOf": [
+          "description": "The input schema for the flow.",
+          "anyOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/Schema"
             },
             {
-              "$ref": "#/$defs/Schema",
-              "description": "The input schema for the flow."
+              "type": "null"
             }
-          ],
-          "default": null
+          ]
         },
         "output": {
-          "oneOf": [
+          "description": "The output schema for the flow.",
+          "anyOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/Schema"
             },
             {
-              "$ref": "#/$defs/Schema",
-              "description": "The output schema for the flow."
+              "type": "null"
             }
-          ],
-          "default": null
+          ]
         },
         "variables": {
-          "oneOf": [
+          "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types.",
+          "anyOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/Schema"
             },
             {
-              "$ref": "#/$defs/Schema",
-              "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types."
+              "type": "null"
             }
-          ],
-          "default": null
+          ]
         },
         "steps": {
-          "type": "object",
           "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
+          "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/Schema"
-          },
-          "propertyNames": {
-            "type": "string"
           }
         }
-      }
+      },
+      "required": [
+        "defs",
+        "steps"
+      ]
+    },
+    "Schema": {
+      "description": "A valid JSON Schema object."
     },
     "Step": {
-      "type": "object",
       "description": "A step in a workflow that executes a component with specific arguments.\n\nNote: Step output schemas are stored in the flow's `types.steps` field,\nnot on individual steps. This allows for shared `$defs` and avoids duplication.",
-      "required": [
-        "id",
-        "component"
-      ],
+      "type": "object",
       "properties": {
         "id": {
-          "type": "string",
-          "description": "Identifier for the step"
+          "description": "Identifier for the step",
+          "type": "string"
         },
         "component": {
-          "$ref": "#/$defs/Component",
-          "description": "The component to execute in this step"
+          "description": "The component to execute in this step",
+          "$ref": "#/$defs/Component"
         },
         "onError": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
+          "anyOf": [
             {
               "$ref": "#/$defs/ErrorAction"
+            },
+            {
+              "type": "null"
             }
           ]
         },
         "input": {
-          "$ref": "#/$defs/ValueExpr",
-          "description": "Arguments to pass to the component for this step"
+          "description": "Arguments to pass to the component for this step",
+          "$ref": "#/$defs/ValueExpr"
         },
         "mustExecute": {
+          "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications).",
           "type": [
             "boolean",
             "null"
-          ],
-          "description": "If true, this step must execute even if its output is not used by the workflow output.\nUseful for steps with side effects (e.g., writing to databases, sending notifications)."
+          ]
         },
         "metadata": {
-          "type": "object",
           "description": "Extensible metadata for the step that can be used by tools and frameworks.",
-          "additionalProperties": {},
-          "propertyNames": {
-            "type": "string"
-          }
+          "type": "object",
+          "additionalProperties": true
         }
+      },
+      "required": [
+        "id",
+        "component"
+      ]
+    },
+    "Component": {
+      "description": "Identifies a specific plugin and atomic functionality to execute.",
+      "type": "string"
+    },
+    "ErrorAction": {
+      "description": "Error action determines what happens when a step fails.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Fail"
+        },
+        {
+          "$ref": "#/$defs/UseDefault"
+        },
+        {
+          "$ref": "#/$defs/Retry"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "action"
       }
     },
     "ValueExpr": {
       "oneOf": [
         {
-          "type": "object",
           "title": "StepRef",
           "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
-          "required": [
-            "$step"
-          ],
+          "type": "object",
           "properties": {
             "$step": {
               "type": "string"
             },
             "path": {
-              "type": "string",
-              "description": "JSONPath expression"
+              "description": "JSONPath expression",
+              "type": "string"
             }
           },
+          "required": [
+            "$step"
+          ],
           "additionalProperties": false
         },
         {
-          "type": "object",
           "title": "InputRef",
           "description": "Workflow input reference: { $input: \"path\" }",
+          "type": "object",
+          "properties": {
+            "$input": {
+              "description": "JSONPath expression",
+              "type": "string"
+            }
+          },
           "required": [
             "$input"
           ],
-          "properties": {
-            "$input": {
-              "type": "string",
-              "description": "JSONPath expression"
-            }
-          },
           "additionalProperties": false
         },
         {
-          "type": "object",
           "title": "VariableRef",
           "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
-          "required": [
-            "$variable"
-          ],
+          "type": "object",
           "properties": {
             "$variable": {
-              "type": "string",
-              "description": "JSONPath expression including variable name"
+              "description": "JSONPath expression including variable name",
+              "type": "string"
             },
             "default": {
               "$ref": "#/$defs/ValueExpr"
             }
           },
+          "required": [
+            "$variable"
+          ],
           "additionalProperties": false
         },
         {
-          "type": "object",
           "title": "LiteralExpr",
           "description": "Escaped literal: { $literal: any }",
+          "type": "object",
+          "properties": {
+            "$literal": {}
+          },
           "required": [
             "$literal"
           ],
-          "properties": {
-            "$literal": {
-              "allOf": []
-            }
-          },
           "additionalProperties": false
         },
         {
-          "type": "object",
           "title": "If",
           "description": "Conditional: { $if: condition, then: expr, else?: expr }",
-          "required": [
-            "$if",
-            "then"
-          ],
+          "type": "object",
           "properties": {
             "$if": {
               "$ref": "#/$defs/ValueExpr"
@@ -270,15 +273,16 @@
               "$ref": "#/$defs/ValueExpr"
             }
           },
+          "required": [
+            "$if",
+            "then"
+          ],
           "additionalProperties": false
         },
         {
-          "type": "object",
           "title": "Coalesce",
-          "description": "Coalesce: { $coalesce: [expr1, expr2, ...] }",
-          "required": [
-            "$coalesce"
-          ],
+          "description": "Coalesce: { $coalesce: [expr, ...] }",
+          "type": "object",
           "properties": {
             "$coalesce": {
               "type": "array",
@@ -287,208 +291,93 @@
               }
             }
           },
+          "required": [
+            "$coalesce"
+          ],
           "additionalProperties": false
         },
         {
-          "type": "array",
           "title": "ArrayExpr",
+          "description": "Array with expressions as elements",
+          "type": "array",
           "items": {
             "$ref": "#/$defs/ValueExpr"
-          },
-          "description": "Array of expressions"
+          }
         },
         {
-          "type": "object",
           "title": "ObjectExpr",
-          "description": "Object with expression values",
+          "description": "Object with expressions as values",
+          "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/ValueExpr"
           }
         },
         {
-          "oneOf": [
-            {
-              "type": "null"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            }
-          ],
-          "title": "PrimitiveValue",
-          "description": "Literal primitive value"
+          "title": "Literal",
+          "description": "A literal JSON value (string, number, boolean, or null)"
         }
-      ],
-      "description": "A value expression that can contain literal data or references to other values"
+      ]
     },
     "TestConfig": {
-      "type": "object",
       "description": "Configuration for testing a workflow.",
+      "type": "object",
       "properties": {
         "configFile": {
+          "description": "Path to an external stepflow config file for tests.\nRelative paths are resolved from the workflow file's directory.\nMutually exclusive with `config` - validated at runtime.",
           "type": [
             "string",
             "null"
-          ],
-          "description": "Path to an external stepflow config file for tests.\nRelative paths are resolved from the workflow file's directory.\nMutually exclusive with `config` - validated at runtime."
+          ]
         },
         "config": {
           "description": "Inline stepflow configuration for tests.\nMutually exclusive with `config_file` - validated at runtime."
         },
         "cases": {
+          "description": "Test cases for the workflow.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/TestCase"
-          },
-          "description": "Test cases for the workflow."
-        }
-      }
-    },
-    "ExampleInput": {
-      "type": "object",
-      "description": "An example input for a workflow that can be used in UI dropdowns.",
-      "required": [
-        "name",
-        "input"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "Name of the example input for display purposes."
-        },
-        "description": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Optional description of what this example demonstrates."
-        },
-        "input": {
-          "$ref": "#/$defs/Value",
-          "description": "The input data for this example."
-        }
-      }
-    },
-    "Schema": {
-      "type": "object",
-      "description": "A valid JSON Schema object."
-    },
-    "Component": {
-      "type": "string",
-      "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-      "examples": [
-        "/builtin/eval",
-        "/mcpfs/list_files",
-        "/python/udf"
-      ]
-    },
-    "ErrorAction": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/OnErrorFail"
-        },
-        {
-          "$ref": "#/$defs/OnErrorDefault"
-        },
-        {
-          "$ref": "#/$defs/OnErrorRetry"
-        }
-      ],
-      "description": "Error action determines what happens when a step fails.",
-      "discriminator": {
-        "propertyName": "action",
-        "mapping": {
-          "fail": "#/$defs/OnErrorFail",
-          "retry": "#/$defs/OnErrorRetry",
-          "useDefault": "#/$defs/OnErrorDefault"
-        }
-      }
-    },
-    "OnErrorFail": {
-      "type": "object",
-      "title": "OnErrorFail",
-      "description": "If the step fails, the flow will fail.",
-      "required": [
-        "action"
-      ],
-      "properties": {
-        "action": {
-          "type": "string"
-        }
-      }
-    },
-    "OnErrorDefault": {
-      "type": "object",
-      "title": "OnErrorDefault",
-      "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
-      "required": [
-        "action"
-      ],
-      "properties": {
-        "action": {
-          "type": "string"
-        },
-        "defaultValue": {
-          "allOf": []
-        }
-      }
-    },
-    "OnErrorRetry": {
-      "type": "object",
-      "title": "OnErrorRetry",
-      "description": "If the step fails, retry it.",
-      "required": [
-        "action"
-      ],
-      "properties": {
-        "action": {
-          "type": "string"
+          }
         }
       }
     },
     "TestCase": {
-      "type": "object",
       "description": "A single test case for a workflow.",
-      "required": [
-        "name",
-        "input"
-      ],
+      "type": "object",
       "properties": {
         "name": {
-          "type": "string",
-          "description": "Unique identifier for the test case."
+          "description": "Unique identifier for the test case.",
+          "type": "string"
         },
         "description": {
+          "description": "Optional description of what this test case verifies.",
           "type": [
             "string",
             "null"
-          ],
-          "description": "Optional description of what this test case verifies."
+          ]
         },
         "input": {
-          "$ref": "#/$defs/Value",
-          "description": "Input data for the workflow in this test case."
+          "description": "Input data for the workflow in this test case.",
+          "$ref": "#/$defs/Value"
         },
         "output": {
-          "oneOf": [
+          "description": "Expected output from the workflow for this test case.",
+          "anyOf": [
             {
-              "type": "null"
+              "$ref": "#/$defs/FlowResult"
             },
             {
-              "$ref": "#/$defs/FlowResult",
-              "description": "Expected output from the workflow for this test case."
+              "type": "null"
             }
           ]
         }
-      }
+      },
+      "required": [
+        "name",
+        "input"
+      ]
     },
     "Value": {
-      "allOf": [],
       "description": "Any JSON value (object, array, string, number, boolean, or null)"
     },
     "FlowResult": {
@@ -500,23 +389,53 @@
           "$ref": "#/$defs/FlowResultFailed"
         }
       ],
-      "title": "FlowResult",
-      "description": "The results of a step execution.",
       "discriminator": {
         "propertyName": "outcome",
         "mapping": {
-          "failed": "#/$defs/FlowResultFailed",
-          "success": "#/$defs/FlowResultSuccess"
+          "success": "#/$defs/FlowResultSuccess",
+          "failed": "#/$defs/FlowResultFailed"
         }
       }
     },
-    "FlowError": {
+    "FlowResultSuccess": {
+      "description": "The step execution was successful.",
       "type": "object",
-      "description": "An error reported from within a flow or step.",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "success",
+          "default": "success"
+        },
+        "result": {
+          "$ref": "#/$defs/Value"
+        }
+      },
       "required": [
-        "code",
-        "message"
-      ],
+        "outcome",
+        "result"
+      ]
+    },
+    "FlowResultFailed": {
+      "description": "The step failed with the given error.",
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "failed",
+          "default": "failed"
+        },
+        "error": {
+          "$ref": "#/$defs/FlowError"
+        }
+      },
+      "required": [
+        "outcome",
+        "error"
+      ]
+    },
+    "FlowError": {
+      "description": "An error reported from within a flow or step.",
+      "type": "object",
       "properties": {
         "code": {
           "type": "integer",
@@ -526,56 +445,68 @@
           "type": "string"
         },
         "data": {
-          "oneOf": [
-            {
-              "type": "null"
-            },
+          "anyOf": [
             {
               "$ref": "#/$defs/Value"
+            },
+            {
+              "type": "null"
             }
           ]
         }
-      }
-    },
-    "FlowResultSuccess": {
-      "type": "object",
-      "title": "FlowResultSuccess",
-      "description": "The step execution was successful.",
+      },
       "required": [
-        "outcome",
-        "result"
-      ],
+        "code",
+        "message"
+      ]
+    },
+    "ExampleInput": {
+      "description": "An example input for a workflow that can be used in UI dropdowns.",
+      "type": "object",
       "properties": {
-        "outcome": {
-          "type": "string",
-          "title": "FlowOutcome",
-          "default": "success",
-          "const": "success"
+        "name": {
+          "description": "Name of the example input for display purposes.",
+          "type": "string"
         },
-        "result": {
+        "description": {
+          "description": "Optional description of what this example demonstrates.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "input": {
+          "description": "The input data for this example.",
           "$ref": "#/$defs/Value"
         }
-      }
-    },
-    "FlowResultFailed": {
-      "type": "object",
-      "title": "FlowResultFailed",
-      "description": "The step failed with the given error.",
+      },
       "required": [
-        "outcome",
-        "error"
-      ],
+        "name",
+        "input"
+      ]
+    },
+    "Fail": {
+      "title": "Fail",
+      "description": "If the step fails, the flow will fail.",
+      "type": "object",
+      "properties": {},
+      "required": []
+    },
+    "UseDefault": {
+      "title": "UseDefault",
+      "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+      "type": "object",
       "properties": {
-        "outcome": {
-          "type": "string",
-          "title": "FlowOutcome",
-          "default": "failed",
-          "const": "failed"
-        },
-        "error": {
-          "$ref": "#/$defs/FlowError"
-        }
-      }
+        "defaultValue": true
+      },
+      "required": []
+    },
+    "Retry": {
+      "title": "Retry",
+      "description": "If the step fails, retry it.",
+      "type": "object",
+      "properties": {},
+      "required": []
     }
   }
 }

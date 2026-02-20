@@ -219,27 +219,18 @@ impl<'de> Deserialize<'de> for JsonPath {
     }
 }
 
-impl utoipa::PartialSchema for JsonPath {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
-            utoipa::openapi::ObjectBuilder::new()
-                .schema_type(utoipa::openapi::schema::SchemaType::Type(
-                    utoipa::openapi::schema::Type::String,
-                ))
-                .description(Some("JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object."))
-                .examples([
-                    "field",
-                    "$.field",
-                    "$[\"field\"]",
-                    "$[0]",
-                    "$.field[0].nested",
-                ])
-                .build(),
-        ))
+impl schemars::JsonSchema for JsonPath {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "JsonPath".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "JSON path expression to apply to the referenced value."
+        })
     }
 }
-
-impl utoipa::ToSchema for JsonPath {}
 
 impl From<String> for JsonPath {
     fn from(s: String) -> Self {

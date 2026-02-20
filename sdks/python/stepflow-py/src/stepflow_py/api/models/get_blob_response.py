@@ -36,8 +36,7 @@ class GetBlobResponse(BaseModel):
     data: Any | None
     blob_type: BlobType = Field(description="The blob type", alias="blobType")
     blob_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="blobId",
+        description="The blob ID (for confirmation)", alias="blobId"
     )
     filename: StrictStr | None = Field(
         default=None, description="The filename if one was set"
@@ -81,6 +80,9 @@ class GetBlobResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of blob_type
+        if self.blob_type:
+            _dict["blobType"] = self.blob_type.to_dict()
         # set to None if data (nullable) is None
         # and model_fields_set contains the field
         if self.data is None and "data" in self.model_fields_set:
@@ -105,7 +107,9 @@ class GetBlobResponse(BaseModel):
         _obj = cls.model_validate(
             {
                 "data": obj.get("data"),
-                "blobType": obj.get("blobType"),
+                "blobType": BlobType.from_dict(obj["blobType"])
+                if obj.get("blobType") is not None
+                else None,
                 "blobId": obj.get("blobId"),
                 "filename": obj.get("filename"),
             }

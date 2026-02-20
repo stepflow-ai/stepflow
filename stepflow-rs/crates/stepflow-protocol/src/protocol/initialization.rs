@@ -11,14 +11,13 @@
 // the License.
 
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod, ProtocolNotification};
 
 /// Sent from Stepflow to the component server to begin the initialization process.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
     /// Maximum version of the protocol being used by the Stepflow runtime.
@@ -34,7 +33,7 @@ pub struct InitializeParams {
 /// Runtime capabilities advertised by the Stepflow runtime during initialization.
 ///
 /// Component servers can use these capabilities to access runtime services.
-#[derive(Debug, Default, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeCapabilities {
     /// Base URL for the Blob HTTP API.
@@ -54,13 +53,13 @@ pub struct RuntimeCapabilities {
     ///
     /// A value of 0 or `None` means automatic blobification is disabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<i64>)]
+    #[schemars(with = "Option<i64>")]
     pub blob_threshold: Option<usize>,
 }
 
 /// Sent from the component server back to Stepflow with the result of initialization.
 /// The component server will not be initialized until it receives the `initialized` notification.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResult {
     /// Version of the protocol being used by the component server.
@@ -88,7 +87,7 @@ impl ProtocolMethod for InitializeParams {
 }
 
 /// Sent from Stepflow to the component server after initialization is complete.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Initialized {}
 
 impl ProtocolNotification for Initialized {

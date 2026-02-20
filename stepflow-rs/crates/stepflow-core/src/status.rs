@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Status of a workflow execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ExecutionStatus {
     /// Execution is currently running
@@ -50,7 +50,7 @@ impl std::fmt::Display for ExecutionStatus {
 }
 
 /// Status of an individual step within a workflow
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum StepStatus {
     /// Step is waiting for dependencies to complete

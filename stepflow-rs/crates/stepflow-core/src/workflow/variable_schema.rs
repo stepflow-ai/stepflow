@@ -49,24 +49,13 @@ pub struct VariableSchema {
     required: HashSet<String>,
 }
 
-impl utoipa::PartialSchema for VariableSchema {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        SchemaRef::schema()
-    }
-}
-
-impl utoipa::ToSchema for VariableSchema {
-    fn name() -> std::borrow::Cow<'static, str> {
-        SchemaRef::name()
+impl schemars::JsonSchema for VariableSchema {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        <crate::schema::SchemaRef as schemars::JsonSchema>::schema_name()
     }
 
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        SchemaRef::schemas(schemas);
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <crate::schema::SchemaRef as schemars::JsonSchema>::json_schema(generator)
     }
 }
 

@@ -88,6 +88,11 @@ class VariableRef(BaseModel):
             for _key, _value in self.additional_properties.items():
                 _dict[_key] = _value
 
+        # set to None if default (nullable) is None
+        # and model_fields_set contains the field
+        if self.default is None and "default" in self.model_fields_set:
+            _dict["default"] = None
+
         return _dict
 
     @classmethod

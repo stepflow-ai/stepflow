@@ -23,16 +23,15 @@ import msgspec
 
 from stepflow_py.api.models import (
     ErrorAction,
+    Fail,
     Flow,
     FlowSchema,
     InputRef,
     LiteralExpr,
-    OnErrorDefault,
-    OnErrorFail,
-    OnErrorRetry,
-    PrimitiveValue,
+    Retry,
     Step,
     StepRef,
+    UseDefault,
     ValueExpr,
     VariableRef,
 )
@@ -46,20 +45,20 @@ from .value import (
 )
 
 # Type alias for on_error parameter
-OnErrorType = OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None
+OnErrorType = Fail | UseDefault | Retry | ErrorAction | None
 
 
 def _wrap_error_action(on_error: OnErrorType) -> ErrorAction | None:
     """Wrap an on_error value in an ErrorAction wrapper if needed.
 
     The generated Pydantic models use a oneOf pattern where the Step.on_error
-    field expects an ErrorAction wrapper around OnErrorFail, OnErrorDefault, etc.
+    field expects an ErrorAction wrapper around Fail, UseDefault, etc.
     """
     if on_error is None:
         return None
     if isinstance(on_error, ErrorAction):
         return on_error
-    if isinstance(on_error, OnErrorFail | OnErrorDefault | OnErrorRetry):
+    if isinstance(on_error, Fail | UseDefault | Retry):
         return ErrorAction(actual_instance=on_error)
     raise ValueError(f"Unsupported on_error type: {type(on_error)}")
 
@@ -71,7 +70,6 @@ ValueExprInput = (
     | InputRef
     | VariableRef
     | LiteralExpr
-    | PrimitiveValue
     | dict[str, "ValueExprInput"]
     | list["ValueExprInput"]
     | str
@@ -103,10 +101,9 @@ def _wrap_value_expr(value: ValueExprInput) -> ValueExpr | None:
     if isinstance(value, list):
         wrapped_list = [_wrap_value_expr(item) for item in value]
         return ValueExpr(actual_instance=wrapped_list)
-    # For primitives, wrap in PrimitiveValue first, then ValueExpr
+    # For primitives, wrap in LiteralExpr then ValueExpr
     if isinstance(value, str | int | float | bool):
-        primitive = PrimitiveValue(actual_instance=value)
-        return ValueExpr(actual_instance=primitive)
+        return ValueExpr(actual_instance=LiteralExpr(literal=value))
     raise ValueError(f"Unsupported value type for wrapping: {type(value)}")
 
 
@@ -303,11 +300,7 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        on_error: OnErrorFail
-        | OnErrorDefault
-        | OnErrorRetry
-        | ErrorAction
-        | None = None,
+        on_error: Fail | UseDefault | Retry | ErrorAction | None = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:

@@ -23,7 +23,6 @@ from pydantic import Field, StrictFloat, StrictInt, StrictStr, validate_call
 from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
 from stepflow_py.api.models.get_blob_response import GetBlobResponse
-from stepflow_py.api.models.store_blob_request import StoreBlobRequest
 from stepflow_py.api.models.store_blob_response import StoreBlobResponse
 from stepflow_py.api.rest import RESTResponseType
 
@@ -43,7 +42,7 @@ class BlobApi:
     @validate_call
     async def get_blob(
         self,
-        blob_id: Annotated[StrictStr, Field(description="Blob ID to retrieve")],
+        blob_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -54,11 +53,11 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> GetBlobResponse:
-        """Get a blob by its ID.
+        """Get a blob by ID
 
-        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
+        Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: Blob ID to retrieve (required)
+        :param blob_id: (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -92,8 +91,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
-            "404": None,
-            "500": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -107,7 +105,7 @@ class BlobApi:
     @validate_call
     async def get_blob_with_http_info(
         self,
-        blob_id: Annotated[StrictStr, Field(description="Blob ID to retrieve")],
+        blob_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -118,11 +116,11 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[GetBlobResponse]:
-        """Get a blob by its ID.
+        """Get a blob by ID
 
-        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
+        Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: Blob ID to retrieve (required)
+        :param blob_id: (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -156,8 +154,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
-            "404": None,
-            "500": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -171,7 +168,7 @@ class BlobApi:
     @validate_call
     async def get_blob_without_preload_content(
         self,
-        blob_id: Annotated[StrictStr, Field(description="Blob ID to retrieve")],
+        blob_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -182,11 +179,11 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get a blob by its ID.
+        """Get a blob by ID
 
-        Content negotiation via `Accept` header: - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`. - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
+        Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: Blob ID to retrieve (required)
+        :param blob_id: (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -220,8 +217,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "GetBlobResponse",
-            "404": None,
-            "500": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -260,7 +256,7 @@ class BlobApi:
         # set the HTTP header `Accept`
         if "Accept" not in _header_params:
             _header_params["Accept"] = self.api_client.select_header_accept(
-                ["application/json", "application/octet-stream"]
+                ["application/json"]
             )
 
         # authentication setting
@@ -284,13 +280,6 @@ class BlobApi:
     @validate_call
     async def store_blob(
         self,
-        store_blob_request: StoreBlobRequest,
-        x_blob_filename: Annotated[
-            StrictStr | None,
-            Field(
-                description="Filename to associate with a binary blob (octet-stream uploads only)"
-            ),
-        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -301,14 +290,10 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> StoreBlobResponse:
-        """Store a blob and return its content-based ID.
+        """Store a blob
 
-        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
+        Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
-        :param store_blob_request: (required)
-        :type store_blob_request: StoreBlobRequest
-        :param x_blob_filename: Filename to associate with a binary blob (octet-stream uploads only)
-        :type x_blob_filename: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -332,8 +317,6 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
-            store_blob_request=store_blob_request,
-            x_blob_filename=x_blob_filename,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -342,8 +325,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
-            "400": None,
-            "500": "ErrorResponse",
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -357,13 +339,6 @@ class BlobApi:
     @validate_call
     async def store_blob_with_http_info(
         self,
-        store_blob_request: StoreBlobRequest,
-        x_blob_filename: Annotated[
-            StrictStr | None,
-            Field(
-                description="Filename to associate with a binary blob (octet-stream uploads only)"
-            ),
-        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -374,14 +349,10 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[StoreBlobResponse]:
-        """Store a blob and return its content-based ID.
+        """Store a blob
 
-        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
+        Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
-        :param store_blob_request: (required)
-        :type store_blob_request: StoreBlobRequest
-        :param x_blob_filename: Filename to associate with a binary blob (octet-stream uploads only)
-        :type x_blob_filename: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -405,8 +376,6 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
-            store_blob_request=store_blob_request,
-            x_blob_filename=x_blob_filename,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -415,8 +384,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
-            "400": None,
-            "500": "ErrorResponse",
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -430,13 +398,6 @@ class BlobApi:
     @validate_call
     async def store_blob_without_preload_content(
         self,
-        store_blob_request: StoreBlobRequest,
-        x_blob_filename: Annotated[
-            StrictStr | None,
-            Field(
-                description="Filename to associate with a binary blob (octet-stream uploads only)"
-            ),
-        ] = None,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -447,14 +408,10 @@ class BlobApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Store a blob and return its content-based ID.
+        """Store a blob
 
-        Supports two content types: - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields. - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
+        Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
-        :param store_blob_request: (required)
-        :type store_blob_request: StoreBlobRequest
-        :param x_blob_filename: Filename to associate with a binary blob (octet-stream uploads only)
-        :type x_blob_filename: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -478,8 +435,6 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
-            store_blob_request=store_blob_request,
-            x_blob_filename=x_blob_filename,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -488,8 +443,7 @@ class BlobApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreBlobResponse",
-            "400": None,
-            "500": "ErrorResponse",
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -498,8 +452,6 @@ class BlobApi:
 
     def _store_blob_serialize(
         self,
-        store_blob_request,
-        x_blob_filename,
         _request_auth,
         _content_type,
         _headers,
@@ -521,12 +473,8 @@ class BlobApi:
         # process the path parameters
         # process the query parameters
         # process the header parameters
-        if x_blob_filename is not None:
-            _header_params["X-Blob-Filename"] = x_blob_filename
         # process the form parameters
         # process the body parameter
-        if store_blob_request is not None:
-            _body_params = store_blob_request
 
         # set the HTTP header `Accept`
         if "Accept" not in _header_params:
@@ -539,7 +487,7 @@ class BlobApi:
             _header_params["Content-Type"] = _content_type
         else:
             _default_content_type = self.api_client.select_header_content_type(
-                ["application/json", "application/octet-stream"]
+                ["application/octet-stream"]
             )
             if _default_content_type is not None:
                 _header_params["Content-Type"] = _default_content_type

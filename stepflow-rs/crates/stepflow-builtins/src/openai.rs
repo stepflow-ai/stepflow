@@ -35,7 +35,7 @@ impl OpenAIComponent {
 }
 
 /// Input for the OpenAI component
-#[derive(Serialize, Deserialize, utoipa::ToSchema, Default)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema, Default)]
 struct OpenAIInput {
     /// The messages to send to the API
     messages: Vec<ChatMessage>,
@@ -54,7 +54,7 @@ struct OpenAIInput {
 }
 
 /// Chat message format
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ChatMessage {
     /// The role of the message sender (system, user, assistant)
     pub role: ChatMessageRole,
@@ -63,7 +63,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum ChatMessageRole {
     System,
@@ -82,7 +82,7 @@ impl From<ChatMessageRole> for chat_completion::MessageRole {
 }
 
 /// Output from the OpenAI component
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct OpenAIOutput {
     /// The generated response text
     response: String,

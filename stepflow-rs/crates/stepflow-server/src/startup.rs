@@ -18,9 +18,8 @@ use stepflow_plugin::StepflowEnvironment;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
-use utoipa_swagger_ui::SwaggerUi;
 
-use crate::api::create_api_router;
+use crate::api::{create_api_router, finalize_openapi};
 
 pub struct AppConfig {
     pub include_swagger: bool,
@@ -39,25 +38,38 @@ impl Default for AppConfig {
 impl AppConfig {
     /// Create the application router with the current configuration
     pub fn create_app_router(&self, executor: Arc<StepflowEnvironment>, port: u16) -> Router {
-        // Create the main API router with state using utoipa-axum for consistency
-        let (api_router, mut api_doc) = create_api_router().split_for_parts();
+        // Create the main API router with state using aide for OpenAPI generation
+        let (api_router, mut api) = create_api_router();
 
-        api_doc.servers = Some(vec![
-            utoipa::openapi::ServerBuilder::new()
-                .url(format!("http://localhost:{port}/api/v1"))
-                .description(Some("Localhost development server"))
-                .build(),
-        ]);
+        // Override the default server with the actual port
+        api.servers = vec![aide::openapi::Server {
+            url: format!("http://localhost:{port}/api/v1"),
+            description: Some("Localhost development server".into()),
+            ..Default::default()
+        }];
+
+        let api_json = Arc::new(finalize_openapi(&api));
 
         // Add state to the router
         let api_router = api_router.with_state(executor);
 
         // Create the full app router
-        let mut app = Router::new().nest("/api/v1/", api_router);
+        let mut app = Router::new().nest("/api/v1/", api_router).route(
+            "/api/v1/openapi.json",
+            axum::routing::get({
+                let api_json = api_json.clone();
+                move || {
+                    let api_json = api_json.clone();
+                    async move { axum::Json(api_json.as_ref().clone()) }
+                }
+            }),
+        );
 
         // Add swagger if requested
         if self.include_swagger {
-            app = app.merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", api_doc));
+            let swagger_handler =
+                aide::swagger::Swagger::new("/api/v1/openapi.json").axum_handler();
+            app = app.route("/swagger-ui", axum::routing::get(swagger_handler));
         }
 
         // Setup CORS if requested.
@@ -116,7 +128,7 @@ pub async fn create_environment(
     config.create_environment(orchestrator_id).await
 }
 
-/// Start the HTTP server using axum + utoipa
+/// Start the HTTP server using axum + aide
 pub async fn start_server(
     listener: tokio::net::TcpListener,
     env: Arc<StepflowEnvironment>,

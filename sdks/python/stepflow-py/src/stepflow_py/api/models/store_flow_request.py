@@ -35,7 +35,7 @@ class StoreFlowRequest(BaseModel):
 
     flow: Flow = Field(description="The flow to store")
     dry_run: StrictBool | None = Field(
-        default=None,
+        default=False,
         description="If true, only validate the flow without storing it",
         alias="dryRun",
     )
@@ -97,7 +97,7 @@ class StoreFlowRequest(BaseModel):
                 "flow": Flow.from_dict(obj["flow"])
                 if obj.get("flow") is not None
                 else None,
-                "dryRun": obj.get("dryRun"),
+                "dryRun": obj.get("dryRun") if obj.get("dryRun") is not None else False,
             }
         )
         return _obj

@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{Query, State},
     response::Json,
@@ -18,12 +19,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::{Plugin as _, PluginRouterExt as _, StepflowEnvironment};
-use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ErrorResponse;
 
 /// Response for listing components
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListComponentsResponse {
     /// List of available components
@@ -31,7 +31,7 @@ pub struct ListComponentsResponse {
 }
 
 /// Query parameters for listing components
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListComponentsQuery {
     /// Whether to include schemas in the response (default: true)
@@ -43,17 +43,17 @@ fn default_include_schemas() -> bool {
     true
 }
 
+pub fn list_components_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("listComponents")
+        .summary("List all available components")
+        .description("List all available components from registered plugins.")
+        .tag("Component")
+        .response_with::<400, crate::error::ErrorResponse, _>(|res| {
+            res.description("Invalid query parameters")
+        })
+}
+
 /// List all available components from plugins
-#[utoipa::path(
-    get,
-    path = "/components",
-    params(ListComponentsQuery),
-    responses(
-        (status = 200, description = "Components listed successfully", body = ListComponentsResponse),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::COMPONENT_TAG,
-)]
 pub async fn list_components(
     State(executor): State<Arc<StepflowEnvironment>>,
     Query(query): Query<ListComponentsQuery>,

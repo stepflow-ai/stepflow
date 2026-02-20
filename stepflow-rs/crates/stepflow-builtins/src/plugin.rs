@@ -29,7 +29,7 @@ use stepflow_plugin::{
 #[derive(Default)]
 pub struct Builtins;
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct BuiltinPluginConfig;
 
 impl PluginConfig for BuiltinPluginConfig {

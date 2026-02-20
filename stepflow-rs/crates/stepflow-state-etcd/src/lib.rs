@@ -41,7 +41,7 @@ use stepflow_state::{
 use uuid::Uuid;
 
 /// Configuration for the etcd lease manager.
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct EtcdLeaseManagerConfig {
     /// etcd endpoints (e.g., `["http://localhost:2379"]`).
     pub endpoints: Vec<String>,

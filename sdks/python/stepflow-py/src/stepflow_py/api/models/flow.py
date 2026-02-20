@@ -55,9 +55,7 @@ class Flow(BaseModel):
         default=None,
         description="The outputs of the flow, mapping output names to their values.",
     )
-    test: TestConfig | None = Field(
-        default=None, description="Test configuration for the flow."
-    )
+    test: TestConfig | None = None
     examples: list[ExampleInput] | None = Field(
         default=None,
         description="Example inputs for the workflow that can be used for testing and UI dropdowns.",
@@ -152,6 +150,11 @@ class Flow(BaseModel):
         # and model_fields_set contains the field
         if self.version is None and "version" in self.model_fields_set:
             _dict["version"] = None
+
+        # set to None if output (nullable) is None
+        # and model_fields_set contains the field
+        if self.output is None and "output" in self.model_fields_set:
+            _dict["output"] = None
 
         # set to None if test (nullable) is None
         # and model_fields_set contains the field

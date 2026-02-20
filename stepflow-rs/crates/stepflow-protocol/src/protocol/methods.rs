@@ -12,10 +12,18 @@
 
 use serde::{Deserialize, Serialize};
 use strum::IntoStaticStr;
-use utoipa::ToSchema;
 
 #[derive(
-    Serialize, Deserialize, Debug, ToSchema, Hash, PartialEq, Eq, Clone, Copy, IntoStaticStr,
+    Serialize,
+    Deserialize,
+    Debug,
+    schemars::JsonSchema,
+    Hash,
+    PartialEq,
+    Eq,
+    Clone,
+    Copy,
+    IntoStaticStr,
 )]
 pub enum Method {
     #[serde(rename = "initialize")]

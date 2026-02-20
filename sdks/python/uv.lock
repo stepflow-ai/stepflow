@@ -14,7 +14,7 @@ members = [
 
 [manifest.dependency-groups]
 dev = [
-    { name = "datamodel-code-generator", extras = ["http", "ruff"], specifier = ">=0.31.2" },
+    { name = "datamodel-code-generator", extras = ["http", "ruff"], specifier = ">=0.42.2" },
     { name = "deptry", specifier = ">=0.22.0" },
     { name = "fastapi", specifier = ">=0.104.1" },
     { name = "httpx", specifier = ">=0.25.0" },
@@ -416,7 +416,7 @@ toml = [
 
 [[package]]
 name = "datamodel-code-generator"
-version = "0.31.2"
+version = "0.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "argcomplete" },
@@ -430,9 +430,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tomli", marker = "python_full_version < '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/40/26399980314bedb3a8ec6a31da646d190cd945192410ad3ab6eabe0a1c73/datamodel_code_generator-0.31.2.tar.gz", hash = "sha256:47887b8aa6fd69865e07e2893c1e76e34dae753b9a97f1020357af8337bc4cdb", size = 453381, upload-time = "2025-06-22T17:40:56.491Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/43/2640cd5293fb5430528166908d6439cf3321bc1c54de5fe58ef100b143a1/datamodel_code_generator-0.54.0.tar.gz", hash = "sha256:2b183598d049e265146a8224c35d1bb96a80a641ea8ecd2a82e6a0e97b56da6b", size = 824327, upload-time = "2026-02-14T16:19:05.347Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/82/9bda726b117967b8056315e51125633ec7a0d2f862c202aed01c3fde2e9f/datamodel_code_generator-0.31.2-py3-none-any.whl", hash = "sha256:78f200a9e673ee4d041e96e82a835273baf4ce15e446d46501c0433d82af3ef5", size = 119369, upload-time = "2025-06-22T17:40:54.615Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/d9/fd646ea4ae48e374817b2750f5e678a5bf6e10d8924f09cf4cce86a81607/datamodel_code_generator-0.54.0-py3-none-any.whl", hash = "sha256:3156df7a7e8fa5a7c9a6d50836e5ba5abe0532f6b71eee6d73a0c8e1fb5b7e47", size = 261838, upload-time = "2026-02-14T16:19:03.298Z" },
 ]
 
 [package.optional-dependencies]

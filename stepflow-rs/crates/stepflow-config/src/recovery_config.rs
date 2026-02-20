@@ -34,7 +34,7 @@ pub const RECOVERY_DEFAULT_LEASE_TTL_SECS: u64 = 30;
 ///
 /// Controls how the orchestrator handles interrupted runs on startup
 /// and during execution.
-#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RecoveryConfig {
     /// Whether to enable periodic orphan claiming during execution.

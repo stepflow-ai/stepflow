@@ -11,6 +11,13 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.dependencies]
+aide = { version = "0.16.0-alpha.2", features = [
+    "axum",
+    "axum-json",
+    "axum-query",
+    "macros",
+    "swagger",
+] }
 anyhow = "1.0"
 arc-swap = "1.7"
 async-stream = "0.3"
@@ -76,6 +83,13 @@ pingora-load-balancing = "0.7"
 pingora-proxy = "0.7"
 prometheus = "0.13"
 regex = "1.11.1"
+schemars = { version = "1", features = [
+    "chrono04",
+    "indexmap2",
+    "preserve_order",
+    "url2",
+    "uuid1",
+] }
 reqwest = { version = "0.12", features = [
     "json",
     "rustls-tls",
@@ -131,17 +145,6 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"] }
-utoipa = { version = "5.3", features = [
-    "axum_extras",
-    "chrono",
-    "indexmap",
-    "preserve_order",
-    "rc_schema",
-    "url",
-    "uuid",
-] }
-utoipa-axum = "0.2"
-utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 uuid = { version = "1.16.0", features = ["v7", "serde"] }
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }

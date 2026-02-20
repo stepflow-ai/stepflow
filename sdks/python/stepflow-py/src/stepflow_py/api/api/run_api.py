@@ -24,7 +24,6 @@ from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
 from stepflow_py.api.models.create_run_request import CreateRunRequest
 from stepflow_py.api.models.create_run_response import CreateRunResponse
-from stepflow_py.api.models.execution_status import ExecutionStatus
 from stepflow_py.api.models.list_items_response import ListItemsResponse
 from stepflow_py.api.models.list_runs_response import ListRunsResponse
 from stepflow_py.api.models.list_step_runs_response import ListStepRunsResponse
@@ -49,7 +48,7 @@ class RunApi:
     @validate_call
     async def cancel_run(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -62,8 +61,9 @@ class RunApi:
     ) -> RunSummary:
         """Cancel a running execution
 
+        Cancel a running execution by ID.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -97,10 +97,8 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunSummary",
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -114,7 +112,7 @@ class RunApi:
     @validate_call
     async def cancel_run_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -127,8 +125,9 @@ class RunApi:
     ) -> ApiResponse[RunSummary]:
         """Cancel a running execution
 
+        Cancel a running execution by ID.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -162,10 +161,8 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunSummary",
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -179,7 +176,7 @@ class RunApi:
     @validate_call
     async def cancel_run_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -192,8 +189,9 @@ class RunApi:
     ) -> RESTResponseType:
         """Cancel a running execution
 
+        Cancel a running execution by ID.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -227,10 +225,8 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunSummary",
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -293,7 +289,12 @@ class RunApi:
     @validate_call
     async def create_run(
         self,
-        create_run_request: CreateRunRequest,
+        create_run_request: Annotated[
+            CreateRunRequest,
+            Field(
+                description="Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`."
+            ),
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -304,11 +305,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> CreateRunResponse:
-        """Create and execute a flow by hash
+        """Create and execute a flow run
 
-        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
+        Create and execute a flow by hash. Supports both single and batch execution. By default, returns immediately with 202 Accepted. Set `wait: true` to block until the run completes and return 200 OK with the result.
 
-        :param create_run_request: (required)
+        :param create_run_request: Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`. (required)
         :type create_run_request: CreateRunRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -341,11 +342,10 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "200": "CreateRunResponse",
             "202": "CreateRunResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "200": "CreateRunResponse",
+            "400": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -359,7 +359,12 @@ class RunApi:
     @validate_call
     async def create_run_with_http_info(
         self,
-        create_run_request: CreateRunRequest,
+        create_run_request: Annotated[
+            CreateRunRequest,
+            Field(
+                description="Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`."
+            ),
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -370,11 +375,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[CreateRunResponse]:
-        """Create and execute a flow by hash
+        """Create and execute a flow run
 
-        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
+        Create and execute a flow by hash. Supports both single and batch execution. By default, returns immediately with 202 Accepted. Set `wait: true` to block until the run completes and return 200 OK with the result.
 
-        :param create_run_request: (required)
+        :param create_run_request: Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`. (required)
         :type create_run_request: CreateRunRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -407,11 +412,10 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "200": "CreateRunResponse",
             "202": "CreateRunResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "200": "CreateRunResponse",
+            "400": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -425,7 +429,12 @@ class RunApi:
     @validate_call
     async def create_run_without_preload_content(
         self,
-        create_run_request: CreateRunRequest,
+        create_run_request: Annotated[
+            CreateRunRequest,
+            Field(
+                description="Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`."
+            ),
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -436,11 +445,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Create and execute a flow by hash
+        """Create and execute a flow run
 
-        Supports both single and batch execution: - Single input: Executes one run - Multiple inputs: Executes multiple runs (batch mode)  By default, returns immediately with 202 Accepted and status Running. Set `wait: true` in the request body to block until the run completes and return 200 OK with the result.
+        Create and execute a flow by hash. Supports both single and batch execution. By default, returns immediately with 202 Accepted. Set `wait: true` to block until the run completes and return 200 OK with the result.
 
-        :param create_run_request: (required)
+        :param create_run_request: Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`. (required)
         :type create_run_request: CreateRunRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -473,11 +482,10 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "200": "CreateRunResponse",
             "202": "CreateRunResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "200": "CreateRunResponse",
+            "400": "ErrorResponse",
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -550,7 +558,7 @@ class RunApi:
     @validate_call
     async def delete_run(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -563,8 +571,9 @@ class RunApi:
     ) -> None:
         """Delete a completed execution
 
+        Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -597,11 +606,9 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "200": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -615,7 +622,7 @@ class RunApi:
     @validate_call
     async def delete_run_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -628,8 +635,9 @@ class RunApi:
     ) -> ApiResponse[None]:
         """Delete a completed execution
 
+        Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -662,11 +670,9 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "200": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -680,7 +686,7 @@ class RunApi:
     @validate_call
     async def delete_run_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -693,8 +699,9 @@ class RunApi:
     ) -> RESTResponseType:
         """Delete a completed execution
 
+        Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -727,11 +734,9 @@ class RunApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "400": None,
-            "404": None,
-            "409": None,
-            "500": None,
+            "200": None,
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -767,6 +772,12 @@ class RunApi:
         # process the form parameters
         # process the body parameter
 
+        # set the HTTP header `Accept`
+        if "Accept" not in _header_params:
+            _header_params["Accept"] = self.api_client.select_header_accept(
+                ["application/json"]
+            )
+
         # authentication setting
         _auth_settings: list[str] = []
 
@@ -788,7 +799,7 @@ class RunApi:
     @validate_call
     async def get_run(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -811,11 +822,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RunDetails:
-        """Get execution details by ID
+        """Get run details by ID
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -855,9 +866,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunDetails",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -871,7 +880,7 @@ class RunApi:
     @validate_call
     async def get_run_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -894,11 +903,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[RunDetails]:
-        """Get execution details by ID
+        """Get run details by ID
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -938,9 +947,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunDetails",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -954,7 +961,7 @@ class RunApi:
     @validate_call
     async def get_run_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -977,11 +984,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get execution details by ID
+        """Get run details by ID
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -1021,9 +1028,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunDetails",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1094,7 +1099,7 @@ class RunApi:
     @validate_call
     async def get_run_flow(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1105,10 +1110,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RunFlowResponse:
-        """Get the workflow definition for an execution
+        """Get the workflow definition for a run
 
+        Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1142,9 +1148,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunFlowResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1158,7 +1162,7 @@ class RunApi:
     @validate_call
     async def get_run_flow_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1169,10 +1173,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[RunFlowResponse]:
-        """Get the workflow definition for an execution
+        """Get the workflow definition for a run
 
+        Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1206,9 +1211,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunFlowResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1222,7 +1225,7 @@ class RunApi:
     @validate_call
     async def get_run_flow_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1233,10 +1236,11 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get the workflow definition for an execution
+        """Get the workflow definition for a run
 
+        Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1270,9 +1274,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "RunFlowResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1335,7 +1337,7 @@ class RunApi:
     @validate_call
     async def get_run_items(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1350,7 +1352,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1384,9 +1386,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListItemsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1400,7 +1400,7 @@ class RunApi:
     @validate_call
     async def get_run_items_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1415,7 +1415,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1449,9 +1449,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListItemsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1465,7 +1463,7 @@ class RunApi:
     @validate_call
     async def get_run_items_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1480,7 +1478,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1514,9 +1512,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListItemsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1579,11 +1575,11 @@ class RunApi:
     @validate_call
     async def get_run_steps(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
-                description="Item index for multi-item runs. If not specified, aggregates across all items."
+                description='Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using "worst status" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).'
             ),
         ] = None,
         _request_timeout: None
@@ -1596,12 +1592,13 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ListStepRunsResponse:
-        """Get step-level execution details for a specific execution
+        """Get step-level execution details
 
+        Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
-        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1636,9 +1633,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListStepRunsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1652,11 +1647,11 @@ class RunApi:
     @validate_call
     async def get_run_steps_with_http_info(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
-                description="Item index for multi-item runs. If not specified, aggregates across all items."
+                description='Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using "worst status" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).'
             ),
         ] = None,
         _request_timeout: None
@@ -1669,12 +1664,13 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[ListStepRunsResponse]:
-        """Get step-level execution details for a specific execution
+        """Get step-level execution details
 
+        Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
-        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1709,9 +1705,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListStepRunsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1725,11 +1719,11 @@ class RunApi:
     @validate_call
     async def get_run_steps_without_preload_content(
         self,
-        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        run_id: StrictStr,
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
-                description="Item index for multi-item runs. If not specified, aggregates across all items."
+                description='Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using "worst status" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).'
             ),
         ] = None,
         _request_timeout: None
@@ -1742,12 +1736,13 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get step-level execution details for a specific execution
+        """Get step-level execution details
 
+        Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: Run ID (UUID) (required)
+        :param run_id: (required)
         :type run_id: str
-        :param item_index: Item index for multi-item runs. If not specified, aggregates across all items.
+        :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1782,9 +1777,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListStepRunsResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1818,7 +1811,7 @@ class RunApi:
             _path_params["run_id"] = run_id
         # process the query parameters
         if item_index is not None:
-            _query_params.append(("item_index", item_index))
+            _query_params.append(("itemIndex", item_index))
 
         # process the header parameters
         # process the form parameters
@@ -1852,7 +1845,7 @@ class RunApi:
     async def list_runs(
         self,
         status: Annotated[
-            ExecutionStatus | None, Field(description="Filter by execution status")
+            Any | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -1895,8 +1888,9 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ListRunsResponse:
-        """List executions with optional filtering
+        """List runs with optional filtering
 
+        List executions with optional status, flow name, and hierarchy filtering.
 
         :param status: Filter by execution status
         :type status: ExecutionStatus
@@ -1953,7 +1947,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListRunsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -1968,7 +1962,7 @@ class RunApi:
     async def list_runs_with_http_info(
         self,
         status: Annotated[
-            ExecutionStatus | None, Field(description="Filter by execution status")
+            Any | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -2011,8 +2005,9 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[ListRunsResponse]:
-        """List executions with optional filtering
+        """List runs with optional filtering
 
+        List executions with optional status, flow name, and hierarchy filtering.
 
         :param status: Filter by execution status
         :type status: ExecutionStatus
@@ -2069,7 +2064,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListRunsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -2084,7 +2079,7 @@ class RunApi:
     async def list_runs_without_preload_content(
         self,
         status: Annotated[
-            ExecutionStatus | None, Field(description="Filter by execution status")
+            Any | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -2127,8 +2122,9 @@ class RunApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """List executions with optional filtering
+        """List runs with optional filtering
 
+        List executions with optional status, flow name, and hierarchy filtering.
 
         :param status: Filter by execution status
         :type status: ExecutionStatus
@@ -2185,7 +2181,7 @@ class RunApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListRunsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -2223,7 +2219,7 @@ class RunApi:
         # process the path parameters
         # process the query parameters
         if status is not None:
-            _query_params.append(("status", status.value))
+            _query_params.append(("status", status))
 
         if flow_name is not None:
             _query_params.append(("flowName", flow_name))

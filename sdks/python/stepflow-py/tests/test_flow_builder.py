@@ -15,10 +15,10 @@
 import pytest
 
 from stepflow_py.worker import (
-    OnErrorDefault,
-    OnErrorFail,
-    OnErrorRetry,
+    Fail,
+    Retry,
     StepReference,
+    UseDefault,
     Value,
     WorkflowInput,
 )
@@ -168,13 +168,13 @@ def test_error_handling():
         id="fail_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=OnErrorFail(action="fail"),
+        on_error=Fail(action="fail"),
     )
     builder.add_step(
         id="retry_step",
         component="/test/component",
         input_data={"value": 3},
-        on_error=OnErrorRetry(action="retry"),
+        on_error=Retry(action="retry"),
     )
 
     # Set output to make the test complete
@@ -186,23 +186,23 @@ def test_error_handling():
     # Check that error actions were set correctly by type
     # on_error is wrapped in ErrorAction, check actual_instance
     fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
-    assert isinstance(fail_step.on_error.actual_instance, OnErrorFail)
+    assert isinstance(fail_step.on_error.actual_instance, Fail)
 
     retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
-    assert isinstance(retry_step.on_error.actual_instance, OnErrorRetry)
+    assert isinstance(retry_step.on_error.actual_instance, Retry)
 
 
 def test_error_default_handling():
-    """Test OnErrorDefault with default values."""
+    """Test UseDefault with default values."""
     builder = FlowBuilder()
 
-    # Add step with OnErrorDefault
+    # Add step with UseDefault
     # Note: action field must be explicitly provided
     builder.add_step(
         id="default_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=OnErrorDefault(action="useDefault", defaultValue="fallback_value"),
+        on_error=UseDefault(action="useDefault", default_value="fallback_value"),
     )
 
     # Set output to make the test complete
@@ -211,10 +211,10 @@ def test_error_default_handling():
     flow = builder.build()
     assert len(flow.steps or []) == 1
 
-    # Check that OnErrorDefault was set correctly
+    # Check that UseDefault was set correctly
     # on_error is wrapped in ErrorAction, check actual_instance
     default_step = (flow.steps or [])[0]
-    assert isinstance(default_step.on_error.actual_instance, OnErrorDefault)
+    assert isinstance(default_step.on_error.actual_instance, UseDefault)
     assert default_step.on_error.actual_instance.default_value == "fallback_value"
 
 
@@ -238,7 +238,7 @@ def test_build_requires_output():
     assert flow.output is not None
     # Use model_dump() to get the serialized form
     output_dict = flow.output.model_dump(by_alias=True, exclude_unset=True)
-    assert output_dict == {"result": "success"}
+    assert output_dict == {"result": {"$literal": "success"}}
 
 
 def test_step_ids():
@@ -549,13 +549,17 @@ def test_flow_json_serialization():
     assert step1_dict["component"] == "/test/component"
 
     step1_input = step1_dict["input"]
-    assert step1_input["string_literal"] == "hello"
-    assert step1_input["number_literal"] == 42
-    assert step1_input["bool_literal"] is True
+    assert step1_input["string_literal"] == {"$literal": "hello"}
+    assert step1_input["number_literal"] == {"$literal": 42}
+    assert step1_input["bool_literal"] == {"$literal": True}
     assert step1_input["input_ref"] == {"$input": "$.config"}
-    assert step1_input["nested_dict"]["key"] == "value"
+    assert step1_input["nested_dict"]["key"] == {"$literal": "value"}
     assert step1_input["nested_dict"]["nested_ref"] == {"$input": "$.data"}
-    assert step1_input["array"] == [1, 2, {"$input": "$.item"}]
+    assert step1_input["array"] == [
+        {"$literal": 1},
+        {"$literal": 2},
+        {"$input": "$.item"},
+    ]
 
     # Check step2 input serialization
     step2_dict = flow_dict["steps"][1]
@@ -592,7 +596,7 @@ def test_flow_json_round_trip():
     assert parsed["name"] == "round_trip_test"
     assert parsed["steps"][0]["id"] == "step1"
     assert parsed["steps"][0]["input"]["value"] == {"$input": "$.data"}
-    assert parsed["steps"][0]["input"]["config"] == {"nested": "value"}
+    assert parsed["steps"][0]["input"]["config"] == {"nested": {"$literal": "value"}}
     assert parsed["output"] == {"result": {"$step": "step1", "path": "$.output"}}
 
 
@@ -603,10 +607,10 @@ def test_valueexpr_model_dump_handles_nested_dicts():
     the @model_serializer returns actual_instance, and Pydantic recursively
     serializes nested models.
     """
-    from stepflow_py.api.models import InputRef, PrimitiveValue, ValueExpr
+    from stepflow_py.api.models import InputRef, LiteralExpr, ValueExpr
 
     nested_dict = {
-        "literal": ValueExpr(PrimitiveValue("hello")),
+        "literal": ValueExpr(LiteralExpr(literal="hello")),
         "input_ref": ValueExpr(InputRef(input="$.data")),
     }
     value_expr = ValueExpr(nested_dict)
@@ -614,7 +618,10 @@ def test_valueexpr_model_dump_handles_nested_dicts():
     # model_dump() correctly serializes nested ValueExprs
     result = value_expr.model_dump(by_alias=True, exclude_unset=True)
 
-    assert result == {"literal": "hello", "input_ref": {"$input": "$.data"}}
+    assert result == {
+        "literal": {"$literal": "hello"},
+        "input_ref": {"$input": "$.data"},
+    }
 
 
 def test_valueexpr_model_dump_handles_nested_lists():
@@ -623,18 +630,18 @@ def test_valueexpr_model_dump_handles_nested_lists():
     Similar to test_valueexpr_model_dump_handles_nested_dicts, this shows
     that model_dump() correctly handles nested lists.
     """
-    from stepflow_py.api.models import PrimitiveValue, ValueExpr
+    from stepflow_py.api.models import LiteralExpr, ValueExpr
 
     nested_list = [
-        ValueExpr(PrimitiveValue(1)),
-        ValueExpr(PrimitiveValue(2)),
-        ValueExpr(PrimitiveValue("three")),
+        ValueExpr(LiteralExpr(literal=1)),
+        ValueExpr(LiteralExpr(literal=2)),
+        ValueExpr(LiteralExpr(literal="three")),
     ]
     value_expr = ValueExpr(nested_list)
 
     result = value_expr.model_dump(by_alias=True, exclude_unset=True)
 
-    assert result == [1, 2, "three"]
+    assert result == [{"$literal": 1}, {"$literal": 2}, {"$literal": "three"}]
 
 
 def test_flow_serialization_uses_model_dump():
@@ -681,12 +688,16 @@ def test_flow_serialization_uses_model_dump():
 
     # Verify the structure is correct
     step1_input = parsed["steps"][0]["input"]
-    assert step1_input["primitive_str"] == "hello"
-    assert step1_input["primitive_int"] == 42
-    assert step1_input["primitive_bool"] is True
+    assert step1_input["primitive_str"] == {"$literal": "hello"}
+    assert step1_input["primitive_int"] == {"$literal": 42}
+    assert step1_input["primitive_bool"] == {"$literal": True}
     assert step1_input["input_ref"] == {"$input": "$.data"}
     assert step1_input["nested"]["key"] == {"$input": "$.nested.value"}
-    assert step1_input["array"] == [1, {"$input": "$.items"}, "literal"]
+    assert step1_input["array"] == [
+        {"$literal": 1},
+        {"$input": "$.items"},
+        {"$literal": "literal"},
+    ]
 
     # Step references should serialize correctly
     assert parsed["steps"][1]["input"]["prev"] == {"$step": "step1", "path": "$.result"}

@@ -37,9 +37,8 @@ tower-http.workspace = true
 tower.workspace = true
 log.workspace = true
 stepflow-observability.workspace = true
-utoipa-axum.workspace = true
-utoipa-swagger-ui.workspace = true
-utoipa.workspace = true
+aide.workspace = true
+schemars.workspace = true
 uuid.workspace = true
 
 [features]

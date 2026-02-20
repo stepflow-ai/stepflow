@@ -42,9 +42,7 @@ class StepRunResponse(BaseModel):
         default=None, description="Component name/URL that this step executes"
     )
     status: StepStatus = Field(description="Current status of the step")
-    result: FlowResult | None = Field(
-        default=None, description="The result of the step execution (if completed)"
-    )
+    result: FlowResult | None = None
     __properties: ClassVar[list[str]] = ["stepId", "component", "status", "result"]
 
     model_config = ConfigDict(
@@ -84,6 +82,9 @@ class StepRunResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of status
+        if self.status:
+            _dict["status"] = self.status.to_dict()
         # override the default output from pydantic by calling `to_dict()` of result
         if self.result:
             _dict["result"] = self.result.to_dict()
@@ -112,7 +113,9 @@ class StepRunResponse(BaseModel):
             {
                 "stepId": obj.get("stepId"),
                 "component": obj.get("component"),
-                "status": obj.get("status"),
+                "status": StepStatus.from_dict(obj["status"])
+                if obj.get("status") is not None
+                else None,
                 "result": FlowResult.from_dict(obj["result"])
                 if obj.get("result") is not None
                 else None,

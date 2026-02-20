@@ -34,15 +34,14 @@ class Diagnostic(BaseModel):
     """  # noqa: E501
 
     kind: StrictStr = Field(description="The diagnostic kind name (camelCase)")
-    code: Annotated[int, Field(strict=True, ge=0)] = Field(
+    code: Annotated[int, Field(le=65535, strict=True, ge=0)] = Field(
         description="Numeric error code"
     )
     level: DiagnosticLevel = Field(description="The severity level")
     formatted: StrictStr = Field(description="Human-readable formatted message")
     data: Any | None = None
     path: StrictStr | None = Field(
-        default=None,
-        description="Path to a location in the workflow definition, serialized as a string",
+        default=None, description="JSON path to the field with the issue"
     )
     experimental: StrictBool | None = Field(
         default=None,
@@ -95,6 +94,9 @@ class Diagnostic(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of level
+        if self.level:
+            _dict["level"] = self.level.to_dict()
         # set to None if data (nullable) is None
         # and model_fields_set contains the field
         if self.data is None and "data" in self.model_fields_set:
@@ -115,7 +117,9 @@ class Diagnostic(BaseModel):
             {
                 "kind": obj.get("kind"),
                 "code": obj.get("code"),
-                "level": obj.get("level"),
+                "level": DiagnosticLevel.from_dict(obj["level"])
+                if obj.get("level") is not None
+                else None,
                 "formatted": obj.get("formatted"),
                 "data": obj.get("data"),
                 "path": obj.get("path"),

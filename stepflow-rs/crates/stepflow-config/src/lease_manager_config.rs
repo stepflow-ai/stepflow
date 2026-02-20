@@ -23,7 +23,7 @@ use crate::ConfigError;
 ///
 /// The lease manager handles run ownership in multi-orchestrator scenarios,
 /// ensuring only one orchestrator executes a given run at a time.
-#[derive(Serialize, Deserialize, Debug, Default, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Default, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LeaseManagerConfig {
     /// No-op lease management (single orchestrator mode).
@@ -32,6 +32,7 @@ pub enum LeaseManagerConfig {
     /// for distributed coordination. All lease requests succeed immediately.
     #[default]
     #[serde(alias = "none")]
+    #[schemars(title = "NoOpLeaseManager")]
     NoOp,
 
     /// etcd-backed lease management for distributed deployments.
@@ -41,11 +42,13 @@ pub enum LeaseManagerConfig {
     /// detection, and efficient `release_all` via lease revocation.
     #[cfg(feature = "etcd")]
     #[serde(alias = "etcd")]
+    #[schemars(title = "EtcdLeaseManager")]
     Etcd(stepflow_state_etcd::EtcdLeaseManagerConfig),
 
     /// etcd-backed lease management (requires the `etcd` feature flag).
     #[cfg(not(feature = "etcd"))]
     #[serde(alias = "etcd")]
+    #[schemars(title = "EtcdLeaseManager")]
     Etcd(serde_json::Value),
 }
 

@@ -35,9 +35,7 @@ class Step(BaseModel):
     """  # noqa: E501
 
     id: StrictStr = Field(description="Identifier for the step")
-    component: StrictStr = Field(
-        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."
-    )
+    component: StrictStr = Field(description="The component to execute in this step")
     on_error: ErrorAction | None = Field(default=None, alias="onError")
     input: ValueExpr | None = Field(
         default=None, description="Arguments to pass to the component for this step"
@@ -107,6 +105,11 @@ class Step(BaseModel):
         # and model_fields_set contains the field
         if self.on_error is None and "on_error" in self.model_fields_set:
             _dict["onError"] = None
+
+        # set to None if input (nullable) is None
+        # and model_fields_set contains the field
+        if self.input is None and "input" in self.model_fields_set:
+            _dict["input"] = None
 
         # set to None if must_execute (nullable) is None
         # and model_fields_set contains the field

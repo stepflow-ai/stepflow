@@ -33,7 +33,7 @@ class ErrorResponse(BaseModel):
     Error response structure.  Server handlers should return this, but usually it is better to create it by returning an `error_stack::Report<ServerError>` and using the automatic conversion to `ErrorResponse`.  Other `error_stack::Report` types will automatically convert to internal errors.
     """  # noqa: E501
 
-    code: Annotated[int, Field(strict=True, ge=0)] = Field(
+    code: Annotated[int, Field(le=65535, strict=True, ge=0)] = Field(
         description="HTTP status code (e.g., 400, 404, 500)"
     )
     message: StrictStr = Field(description="Human-readable error message")

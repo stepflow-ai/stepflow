@@ -31,17 +31,17 @@ class ComponentInfo(BaseModel):
     ComponentInfo
     """  # noqa: E501
 
-    component: StrictStr = Field(
-        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."
-    )
+    component: StrictStr = Field(description="The component ID.")
     description: StrictStr | None = Field(
         default=None, description="Optional description of the component."
     )
-    input_schema: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    input_schema: Any | None = Field(
+        default=None,
+        description="The input schema for the component.  Can be any valid JSON schema (object, primitive, array, etc.).",
     )
-    output_schema: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    output_schema: Any | None = Field(
+        default=None,
+        description="The output schema for the component.  Can be any valid JSON schema (object, primitive, array, etc.).",
     )
     __properties: ClassVar[list[str]] = [
         "component",
@@ -87,10 +87,26 @@ class ComponentInfo(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of input_schema
+        if self.input_schema:
+            _dict["input_schema"] = self.input_schema.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of output_schema
+        if self.output_schema:
+            _dict["output_schema"] = self.output_schema.to_dict()
         # set to None if description (nullable) is None
         # and model_fields_set contains the field
         if self.description is None and "description" in self.model_fields_set:
             _dict["description"] = None
+
+        # set to None if input_schema (nullable) is None
+        # and model_fields_set contains the field
+        if self.input_schema is None and "input_schema" in self.model_fields_set:
+            _dict["input_schema"] = None
+
+        # set to None if output_schema (nullable) is None
+        # and model_fields_set contains the field
+        if self.output_schema is None and "output_schema" in self.model_fields_set:
+            _dict["output_schema"] = None
 
         return _dict
 
@@ -107,8 +123,12 @@ class ComponentInfo(BaseModel):
             {
                 "component": obj.get("component"),
                 "description": obj.get("description"),
-                "input_schema": obj.get("input_schema"),
-                "output_schema": obj.get("output_schema"),
+                "input_schema": AnyOf.from_dict(obj["input_schema"])
+                if obj.get("input_schema") is not None
+                else None,
+                "output_schema": AnyOf.from_dict(obj["output_schema"])
+                if obj.get("output_schema") is not None
+                else None,
             }
         )
         return _obj

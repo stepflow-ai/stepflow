@@ -23,26 +23,23 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
-
-from stepflow_py.api.models.blob_type import BlobType
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 
 
-class StoreBlobRequest(BaseModel):
+class Fail(BaseModel):
     """
-    Request to store a blob (JSON mode)
+    If the step fails, the flow will fail.
     """  # noqa: E501
 
-    data: Any | None
-    blob_type: BlobType | None = Field(
-        default=None,
-        description='The type of blob (data or flow). Defaults to "data".',
-        alias="blobType",
-    )
-    filename: StrictStr | None = Field(
-        default=None, description="Optional filename to associate with the blob."
-    )
-    __properties: ClassVar[list[str]] = ["data", "blobType", "filename"]
+    action: StrictStr
+    __properties: ClassVar[list[str]] = ["action"]
+
+    @field_validator("action")
+    def action_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(["fail"]):
+            raise ValueError("must be one of enum values ('fail')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -61,7 +58,7 @@ class StoreBlobRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StoreBlobRequest from a JSON string"""
+        """Create an instance of Fail from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,32 +78,16 @@ class StoreBlobRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if data (nullable) is None
-        # and model_fields_set contains the field
-        if self.data is None and "data" in self.model_fields_set:
-            _dict["data"] = None
-
-        # set to None if filename (nullable) is None
-        # and model_fields_set contains the field
-        if self.filename is None and "filename" in self.model_fields_set:
-            _dict["filename"] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StoreBlobRequest from a dict"""
+        """Create an instance of Fail from a dict"""
         if obj is None:
             return None
 
         if not isinstance(obj, dict):
             return cls.model_validate(obj)
 
-        _obj = cls.model_validate(
-            {
-                "data": obj.get("data"),
-                "blobType": obj.get("blobType"),
-                "filename": obj.get("filename"),
-            }
-        )
+        _obj = cls.model_validate({"action": obj.get("action")})
         return _obj

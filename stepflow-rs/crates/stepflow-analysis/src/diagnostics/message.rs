@@ -181,7 +181,7 @@ impl DiagnosticKind {
 ///   "experimental": false
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
     /// The diagnostic kind name (camelCase)

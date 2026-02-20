@@ -190,9 +190,11 @@ class _HttpServerContext:
                     assert isinstance(request.params, ComponentExecuteParams)
                     attempt = request.params.attempt
                     observability = request.params.observability
-                    step_id = observability.step_id
-                    run_id = observability.run_id
-                    flow_id = observability.flow_id
+                    from .server import _unset_as_none
+
+                    step_id = _unset_as_none(observability.step_id)
+                    run_id = _unset_as_none(observability.run_id)
+                    flow_id = _unset_as_none(observability.flow_id)
 
                 context = StepflowContext(
                     outgoing_queue=outgoing_queue,

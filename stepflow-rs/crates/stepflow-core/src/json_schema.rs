@@ -10,15 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Utility for generating standalone JSON Schema documents from utoipa::ToSchema types.
+//! Utility for generating standalone JSON Schema documents from schemars::JsonSchema types.
 //!
-//! This module provides functionality to convert utoipa's OpenAPI-style schemas into
-//! standalone JSON Schema draft 2020-12 documents suitable for code generation tools
-//! like datamodel-code-generator.
+//! This module provides functionality to generate standalone JSON Schema draft 2020-12
+//! documents suitable for code generation tools like datamodel-code-generator.
 
-use serde_json::{Map, Value};
-use utoipa::PartialSchema;
-use utoipa::ToSchema;
+use serde_json::Value;
+
+use crate::discriminator_schema::AddDiscriminator;
 
 /// Controls how external type references are handled in the generated schema.
 #[derive(Debug, Clone)]
@@ -34,37 +33,27 @@ pub enum Refs {
     External(String),
 }
 
-/// Generate a standalone JSON Schema document from a type implementing ToSchema.
+/// Generate a standalone JSON Schema document from a type implementing JsonSchema.
 ///
 /// This function generates a compact schema without `$defs` - any referenced types
 /// will appear as `$ref` without definitions. This is suitable for component schemas
 /// used for documentation purposes.
 ///
 /// For a complete schema with all `$defs` included, use [`generate_json_schema_with_defs`].
-///
-/// # Example
-/// ```ignore
-/// use stepflow_core::json_schema::generate_json_schema;
-/// use stepflow_core::workflow::Flow;
-///
-/// let schema = generate_json_schema::<Flow>();
-/// let json_str = serde_json::to_string_pretty(&schema).unwrap();
-/// ```
-pub fn generate_json_schema<T: ToSchema + PartialSchema>() -> Value {
+pub fn generate_json_schema<T: schemars::JsonSchema>() -> Value {
     generate_json_schema_with_refs::<T>(Refs::Omit)
 }
 
 /// Generate a standalone JSON Schema document with all `$defs` included.
 ///
 /// This function:
-/// 1. Collects all schemas from the type and its dependencies
-/// 2. Builds a JSON Schema document with the root type's schema
-/// 3. Places all referenced schemas in `$defs`
-/// 4. Transforms `#/components/schemas/X` references to `#/$defs/X`
+/// 1. Uses schemars to generate a complete JSON Schema for the type
+/// 2. Includes all referenced schemas in `$defs`
+/// 3. Applies AddDiscriminator transforms for tagged enums
 ///
 /// Use this when you need a fully self-contained schema that can be validated
 /// without external references.
-pub fn generate_json_schema_with_defs<T: ToSchema + PartialSchema>() -> Value {
+pub fn generate_json_schema_with_defs<T: schemars::JsonSchema>() -> Value {
     generate_json_schema_with_refs::<T>(Refs::Local)
 }
 
@@ -75,226 +64,331 @@ pub fn generate_json_schema_with_defs<T: ToSchema + PartialSchema>() -> Value {
 ///   - `Refs::Omit` - Omit `$defs`, just reference by name
 ///   - `Refs::Local` - Include schemas in `$defs` with local references
 ///   - `Refs::External(url)` - Reference schemas from an external URL
-pub fn generate_json_schema_with_refs<T: ToSchema + PartialSchema>(refs: Refs) -> Value {
-    generate_json_schema_impl::<T>(refs)
+pub fn generate_json_schema_with_refs<T: schemars::JsonSchema>(refs: Refs) -> Value {
+    generate_json_schema_custom::<T>(refs, |_| {})
 }
 
-fn generate_json_schema_impl<T: ToSchema + PartialSchema>(refs: Refs) -> Value {
-    // Collect all schemas from the type
-    let mut schemas: Vec<(
-        String,
-        utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-    )> = Vec::new();
-    T::schemas(&mut schemas);
+/// Generate a JSON Schema document with configurable reference handling and
+/// additional types seeded into `$defs`.
+///
+/// The `seed` callback receives a `&mut SchemaGenerator` before the root schema
+/// is finalised.  Calling `generator.subschema_for::<ExtraType>()` inside the
+/// callback ensures the type (and all its transitive deps) appear in `$defs`
+/// even when they are not reachable from the root type `T`.
+pub fn generate_json_schema_custom<T: schemars::JsonSchema>(
+    refs: Refs,
+    seed: impl FnOnce(&mut schemars::SchemaGenerator),
+) -> Value {
+    let settings = schemars::generate::SchemaSettings::draft2020_12();
+    let mut generator = settings.into_generator();
+    seed(&mut generator);
+    let schema = generator.into_root_schema_for::<T>();
+    let mut json = serde_json::to_value(schema).expect("Failed to serialize schema");
 
-    // Get the root schema
-    let root_schema = T::schema();
-    let root_name = T::name();
-
-    // Convert schemas to JSON and collect into $defs
-    let mut defs: Map<String, Value> = Map::new();
-    for (name, schema) in schemas {
-        let json = serde_json::to_value(&schema).expect("Failed to serialize schema");
-        let transformed = transform_refs(json, &refs);
-        defs.insert(name, transformed);
-    }
-
-    // Build the root schema
-    let root_json = serde_json::to_value(&root_schema).expect("Failed to serialize root schema");
-    let mut root_transformed = transform_refs(root_json, &refs);
-
-    // If root is a $ref, we need to inline the referenced schema at the top level
-    // and keep it in $defs for other references
-    if let Some(obj) = root_transformed.as_object_mut() {
-        // Add $schema declaration
-        let mut result: Map<String, Value> = Map::new();
-        result.insert(
-            "$schema".to_string(),
-            Value::String("https://json-schema.org/draft/2020-12/schema".to_string()),
-        );
-
-        // Add title from the type name
-        result.insert("title".to_string(), Value::String(root_name.to_string()));
-
-        // If root is just a $ref, resolve it (only for Local refs where we have defs)
-        if obj.len() == 1 && obj.contains_key("$ref") && matches!(refs, Refs::Local) {
-            // Get the referenced schema name from #/$defs/Name
-            if let Some(Value::String(ref_path)) = obj.get("$ref")
-                && let Some(ref_name) = ref_path.strip_prefix("#/$defs/")
-                && let Some(referenced_schema) = defs.get(ref_name)
-            {
-                // Copy properties from the referenced schema
-                if let Some(ref_obj) = referenced_schema.as_object() {
-                    for (key, value) in ref_obj {
-                        if key != "title" {
-                            // Keep our title
-                            result.insert(key.clone(), value.clone());
-                        }
-                    }
-                }
-            }
-        } else {
-            // Copy all properties from root
-            for (key, value) in obj.iter() {
-                result.insert(key.clone(), value.clone());
+    match refs {
+        Refs::Omit => {
+            // Remove $defs entirely
+            if let Some(obj) = json.as_object_mut() {
+                obj.remove("$defs");
             }
         }
-
-        // Add $defs if Local refs and we have any
-        if matches!(refs, Refs::Local) && !defs.is_empty() {
-            result.insert("$defs".to_string(), Value::Object(defs.clone()));
+        Refs::Local => {
+            // $defs are already using local references - nothing to change
         }
-
-        let mut final_result = Value::Object(result);
-
-        // Inline allOf patterns at root oneOf level for Python codegen compatibility
-        if matches!(refs, Refs::Local) {
-            inline_root_one_of(&mut final_result, &defs);
+        Refs::External(ref base_url) => {
+            // Transform #/$defs/X references to {base_url}#/$defs/X
+            transform_refs_external(&mut json, base_url);
         }
-
-        final_result
-    } else {
-        // Unexpected: root is not an object
-        root_transformed
     }
+
+    // Apply AddDiscriminator transform to any oneOf schemas that have
+    // inline const tag properties (indicating serde tagged enums)
+    apply_discriminators(&mut json);
+
+    // Extract inline discriminated variants into $defs.  Code generators like
+    // datamodel-code-generator produce invalid code when a variant is inlined
+    // (the tag field declared via `tag_field=` clashes with the `const` property).
+    // Moving them to $defs and referencing via $ref avoids this.
+    if !matches!(refs, Refs::Omit) {
+        extract_discriminated_variants(&mut json);
+    }
+
+    // Convert oneOf-of-string-consts to enum form.  schemars generates
+    // `oneOf: [{const: "a"}, {const: "b"}]` for simple string enums, but
+    // code generators like datamodel-code-generator expect `enum: ["a", "b"]`.
+    simplify_string_enums(&mut json);
+
+    json
 }
 
-/// Transform the schema to use JSON Schema conventions:
-/// - Transform `#/components/schemas/X` references based on the Refs mode
-/// - Convert single-item `enum` arrays to `const` values
-/// - Handle discriminator `mapping` values
-fn transform_refs(value: Value, refs: &Refs) -> Value {
+/// Recursively transform `#/$defs/X` references to `{base_url}#/$defs/X`.
+fn transform_refs_external(value: &mut Value, base_url: &str) {
     match value {
-        Value::Object(mut map) => {
-            // Check if this is a $ref
-            if let Some(Value::String(ref_str)) = map.get("$ref")
-                && let Some(name) = ref_str.strip_prefix("#/components/schemas/")
+        Value::Object(map) => {
+            if let Some(Value::String(ref_str)) = map.get_mut("$ref")
+                && let Some(name) = ref_str.strip_prefix("#/$defs/")
             {
-                let new_ref = match refs {
-                    Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
-                    Refs::External(base_url) => format!("{}#/$defs/{}", base_url, name),
-                };
-                map.insert("$ref".to_string(), Value::String(new_ref));
+                *ref_str = format!("{base_url}#/$defs/{name}");
             }
-
-            // Convert single-item enum to const
-            // e.g., {"type": "string", "enum": ["value"]} -> {"type": "string", "const": "value"}
-            if let Some(Value::Array(enum_values)) = map.get("enum")
-                && enum_values.len() == 1
-            {
-                let const_value = enum_values[0].clone();
-                map.remove("enum");
-                map.insert("const".to_string(), const_value);
+            for v in map.values_mut() {
+                transform_refs_external(v, base_url);
             }
-
-            // Handle discriminator mapping values
-            if let Some(discriminator) = map.get_mut("discriminator")
-                && let Some(mapping) = discriminator.get_mut("mapping")
-                && let Some(mapping_obj) = mapping.as_object_mut()
-            {
-                for (_, v) in mapping_obj.iter_mut() {
-                    if let Some(ref_str) = v.as_str()
-                        && let Some(name) = ref_str.strip_prefix("#/components/schemas/")
-                    {
-                        let new_ref = match refs {
-                            Refs::Omit | Refs::Local => format!("#/$defs/{}", name),
-                            Refs::External(base_url) => {
-                                format!("{}#/$defs/{}", base_url, name)
-                            }
-                        };
-                        *v = Value::String(new_ref);
-                    }
-                }
-            }
-
-            // Recursively transform all values
-            let transformed: Map<String, Value> = map
-                .into_iter()
-                .map(|(k, v)| (k, transform_refs(v, refs)))
-                .collect();
-            Value::Object(transformed)
         }
         Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(|v| transform_refs(v, refs)).collect())
+            for v in arr.iter_mut() {
+                transform_refs_external(v, base_url);
+            }
         }
-        other => other,
+        _ => {}
     }
 }
 
-/// Inline allOf patterns at the root oneOf level to produce codegen-compatible output.
+/// Apply AddDiscriminator transforms to oneOf schemas that have
+/// inline const tag properties (from serde tagged enums).
 ///
-/// Transforms `oneOf: [{ allOf: [{ $ref: "#/$defs/X" }, { ...discriminator... }] }]`
-/// into `oneOf: [{ title: "X", ...X's properties..., ...discriminator... }]`
-fn inline_root_one_of(schema: &mut Value, defs: &Map<String, Value>) {
-    if let Some(one_of) = schema.get_mut("oneOf").and_then(|v| v.as_array_mut()) {
-        for item in one_of.iter_mut() {
-            if let Some(all_of) = item.get("allOf").and_then(|v| v.as_array()) {
-                // Check if this is a pattern with $ref + discriminator object
-                if all_of.len() == 2 {
-                    let (ref_item, extra) = if all_of[0].get("$ref").is_some() {
-                        (&all_of[0], &all_of[1])
-                    } else if all_of[1].get("$ref").is_some() {
-                        (&all_of[1], &all_of[0])
-                    } else {
-                        continue;
-                    };
+/// We detect these by looking for oneOf arrays where variants have
+/// a "properties" object containing a field with a "const" value.
+fn apply_discriminators(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            // Check if this object has a oneOf with const discriminators
+            if let Some(Value::Array(one_of)) = map.get("oneOf")
+                && let Some(tag_name) = detect_tag_property(one_of)
+            {
+                // Apply the discriminator transform
+                let mut schema = schemars::Schema::try_from(Value::Object(map.clone())).unwrap();
+                let mut transform = AddDiscriminator::new(tag_name);
+                schemars::transform::Transform::transform(&mut transform, &mut schema);
+                let transformed = serde_json::to_value(schema).expect("Failed to serialize schema");
+                if let Value::Object(new_map) = transformed {
+                    *map = new_map;
+                }
+            }
 
-                    // Get the referenced schema
-                    if let Some(Value::String(ref_path)) = ref_item.get("$ref")
-                        && let Some(ref_name) = ref_path.strip_prefix("#/$defs/")
-                        && let Some(referenced_schema) = defs.get(ref_name)
-                    {
-                        // Create a new inlined schema
-                        let mut inlined = referenced_schema.clone();
-                        if let Some(inlined_obj) = inlined.as_object_mut() {
-                            // Add title if not present
-                            if !inlined_obj.contains_key("title") {
-                                inlined_obj.insert(
-                                    "title".to_string(),
-                                    Value::String(ref_name.to_string()),
-                                );
-                            }
+            // Recurse into all values (including $defs)
+            for v in map.values_mut() {
+                apply_discriminators(v);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                apply_discriminators(v);
+            }
+        }
+        _ => {}
+    }
+}
 
-                            // Merge extra properties (discriminator) into the inlined schema
-                            if let Some(extra_obj) = extra.as_object() {
-                                // Merge properties
-                                if let Some(extra_props) =
-                                    extra_obj.get("properties").and_then(|v| v.as_object())
-                                {
-                                    let props = inlined_obj
-                                        .entry("properties")
-                                        .or_insert_with(|| Value::Object(Map::new()));
-                                    if let Some(props_obj) = props.as_object_mut() {
-                                        for (k, v) in extra_props {
-                                            props_obj.insert(k.clone(), v.clone());
-                                        }
-                                    }
-                                }
+/// Extract inline oneOf variants that have a discriminator into top-level `$defs`.
+///
+/// Code generators like datamodel-code-generator produce a `tag_field='type'`
+/// parameter when they see a discriminator, but if the variant is inlined and
+/// already contains a `type` property with a `const` value, the tag field
+/// conflicts with the existing field.  By extracting titled variants into
+/// `$defs` and referencing them via `$ref`, code generators handle them
+/// correctly as named types.
+fn extract_discriminated_variants(root: &mut Value) {
+    // Collect all inline variants that need extraction
+    let mut extracted: serde_json::Map<String, Value> = serde_json::Map::new();
+    collect_inline_variants(root, &mut extracted);
 
-                                // Merge required
-                                if let Some(extra_required) =
-                                    extra_obj.get("required").and_then(|v| v.as_array())
-                                {
-                                    let required = inlined_obj
-                                        .entry("required")
-                                        .or_insert_with(|| Value::Array(vec![]));
-                                    if let Some(required_arr) = required.as_array_mut() {
-                                        for req in extra_required {
-                                            if !required_arr.contains(req) {
-                                                required_arr.push(req.clone());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+    if extracted.is_empty() {
+        return;
+    }
+
+    // Merge extracted variants into the root $defs
+    if let Some(defs) = root
+        .as_object_mut()
+        .and_then(|obj| obj.get_mut("$defs"))
+        .and_then(|d| d.as_object_mut())
+    {
+        for (name, schema) in extracted {
+            defs.entry(name).or_insert(schema);
+        }
+    }
+}
+
+/// Walk the schema tree, collecting inline variants from discriminated oneOf
+/// schemas.  Each collected variant is replaced in-place with a `$ref`.
+///
+/// The const tag property (e.g. `"type": {"const": "builtin"}`) is stripped
+/// from extracted variants because code generators handle the tag via the
+/// discriminator, and having it as a field causes conflicts.
+fn collect_inline_variants(value: &mut Value, extracted: &mut serde_json::Map<String, Value>) {
+    match value {
+        Value::Object(map) => {
+            // Check if this object has a oneOf with a discriminator
+            let tag_property = map
+                .get("discriminator")
+                .and_then(|d| d.get("propertyName"))
+                .and_then(|p| p.as_str())
+                .map(|s| s.to_string());
+
+            if let Some(ref tag_prop) = tag_property {
+                let mut did_extract = false;
+                if let Some(Value::Array(one_of)) = map.get_mut("oneOf") {
+                    for variant in one_of.iter_mut() {
+                        // Skip pure $ref variants (only have "$ref" key)
+                        let is_pure_ref = variant
+                            .as_object()
+                            .is_some_and(|o| o.len() == 1 && o.contains_key("$ref"));
+                        if is_pure_ref {
+                            continue;
                         }
+                        if let Some(title) = variant
+                            .as_object()
+                            .and_then(|v| v.get("title"))
+                            .and_then(|t| t.as_str())
+                        {
+                            let name = title.to_string();
+                            let mut schema = variant.clone();
 
-                        // Replace the allOf with the inlined schema
-                        *item = inlined;
+                            // Strip the const tag property from the variant so
+                            // code generators don't conflict with the discriminator
+                            strip_tag_property(&mut schema, tag_prop);
+
+                            extracted.insert(name.clone(), schema);
+                            *variant = serde_json::json!({ "$ref": format!("#/$defs/{name}") });
+                            did_extract = true;
+                        }
                     }
+                }
+                // Remove the discriminator mapping since extracted $refs have
+                // changed paths.  The mapping is optional per OpenAPI spec and
+                // code generators can infer it from $ref paths.
+                if did_extract && let Some(Value::Object(disc)) = map.get_mut("discriminator") {
+                    disc.remove("mapping");
+                }
+            }
+
+            // Recurse into all values
+            for v in map.values_mut() {
+                collect_inline_variants(v, extracted);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                collect_inline_variants(v, extracted);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Remove the discriminator tag property from a variant schema.
+///
+/// Removes the tag from `properties` and from `required`.
+fn strip_tag_property(schema: &mut Value, tag_prop: &str) {
+    if let Some(obj) = schema.as_object_mut() {
+        if let Some(Value::Object(props)) = obj.get_mut("properties") {
+            props.remove(tag_prop);
+        }
+        if let Some(Value::Array(required)) = obj.get_mut("required") {
+            required.retain(|v| v.as_str() != Some(tag_prop));
+        }
+    }
+}
+
+/// Detect if a oneOf array represents a tagged enum by checking if all
+/// variants have a common property with a "const" value.
+fn detect_tag_property(one_of: &[Value]) -> Option<String> {
+    // Skip if empty or only one variant
+    if one_of.len() < 2 {
+        return None;
+    }
+
+    // For each variant, find properties that have a "const" value
+    let mut candidate_tags: Option<Vec<String>> = None;
+
+    for variant in one_of {
+        let props = variant
+            .as_object()
+            .and_then(|obj| obj.get("properties"))
+            .and_then(|p| p.as_object());
+
+        let Some(props) = props else {
+            return None; // Not all variants have properties - not a tagged enum
+        };
+
+        let const_props: Vec<String> = props
+            .iter()
+            .filter(|(_, v)| v.get("const").is_some())
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        if const_props.is_empty() {
+            return None; // No const properties in this variant
+        }
+
+        match &mut candidate_tags {
+            None => candidate_tags = Some(const_props),
+            Some(candidates) => {
+                // Intersect with const props from this variant
+                candidates.retain(|c| const_props.contains(c));
+                if candidates.is_empty() {
+                    return None; // No common tag property
                 }
             }
         }
+    }
+
+    candidate_tags.and_then(|tags| tags.into_iter().next())
+}
+
+/// Convert `oneOf` arrays of string `const` values to `enum` form.
+///
+/// schemars generates `oneOf: [{type:"string", const:"a"}, {type:"string", const:"b"}]`
+/// for simple string enums, but code generators expect `{type:"string", enum:["a","b"]}`.
+fn simplify_string_enums(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::Array(one_of)) = map.get("oneOf") {
+                // Check if all variants are simple string const values
+                let consts: Vec<&str> = one_of
+                    .iter()
+                    .filter_map(|v| {
+                        let obj = v.as_object()?;
+                        // Must be a simple const string (type: string, const: "...")
+                        // with optionally a description
+                        let is_string = obj
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .is_some_and(|t| t == "string");
+                        let const_val = obj.get("const").and_then(|c| c.as_str());
+                        let only_simple_keys = obj
+                            .keys()
+                            .all(|k| matches!(k.as_str(), "type" | "const" | "description"));
+                        if is_string && only_simple_keys {
+                            const_val
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if consts.len() == one_of.len() && !consts.is_empty() {
+                    // Replace oneOf with enum
+                    let enum_values: Vec<Value> = consts
+                        .iter()
+                        .map(|c| Value::String(c.to_string()))
+                        .collect();
+                    map.remove("oneOf");
+                    map.insert("type".to_string(), Value::String("string".to_string()));
+                    map.insert("enum".to_string(), Value::Array(enum_values));
+                }
+            }
+
+            // Recurse into all values
+            for v in map.values_mut() {
+                simplify_string_enums(v);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                simplify_string_enums(v);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -303,62 +397,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_transform_refs_local() {
-        let input = serde_json::json!({
-            "$ref": "#/components/schemas/MyType",
-            "nested": {
-                "$ref": "#/components/schemas/OtherType"
-            },
-            "array": [
-                { "$ref": "#/components/schemas/ArrayItem" }
-            ]
-        });
-
-        let output = transform_refs(input, &Refs::Local);
-
-        assert_eq!(
-            output,
-            serde_json::json!({
-                "$ref": "#/$defs/MyType",
-                "nested": {
-                    "$ref": "#/$defs/OtherType"
-                },
-                "array": [
-                    { "$ref": "#/$defs/ArrayItem" }
-                ]
-            })
-        );
-    }
-
-    #[test]
-    fn test_transform_refs_external() {
-        let input = serde_json::json!({
-            "$ref": "#/components/schemas/MyType",
-            "nested": {
-                "$ref": "#/components/schemas/OtherType"
-            }
-        });
-
-        let output = transform_refs(
-            input,
-            &Refs::External("https://stepflow.org/schemas/v1/flow.json".to_string()),
-        );
-
-        assert_eq!(
-            output,
-            serde_json::json!({
-                "$ref": "https://stepflow.org/schemas/v1/flow.json#/$defs/MyType",
-                "nested": {
-                    "$ref": "https://stepflow.org/schemas/v1/flow.json#/$defs/OtherType"
-                }
-            })
-        );
-    }
-
-    #[test]
     fn test_generate_json_schema_has_required_fields() {
-        // Test with a simple type that implements ToSchema
-        // We'll use BlobId since it's in this crate and has ToSchema
         use crate::blob::BlobId;
 
         let schema = generate_json_schema::<BlobId>();
@@ -373,5 +412,91 @@ mod tests {
 
         // Should have title
         assert!(schema.get("title").is_some());
+    }
+
+    #[test]
+    fn test_generate_json_schema_with_defs() {
+        use crate::workflow::Flow;
+
+        let schema = generate_json_schema_with_defs::<Flow>();
+
+        // Should have $schema
+        assert!(schema.get("$schema").is_some());
+        // Should have title
+        assert!(schema.get("title").is_some());
+        // Should have $defs
+        assert!(schema.get("$defs").is_some());
+    }
+
+    #[test]
+    fn test_transform_refs_external() {
+        let mut input = serde_json::json!({
+            "$ref": "#/$defs/MyType",
+            "nested": {
+                "$ref": "#/$defs/OtherType"
+            },
+            "array": [
+                { "$ref": "#/$defs/ArrayItem" }
+            ]
+        });
+
+        transform_refs_external(&mut input, "https://stepflow.org/schemas/v1/flow.json");
+
+        assert_eq!(
+            input,
+            serde_json::json!({
+                "$ref": "https://stepflow.org/schemas/v1/flow.json#/$defs/MyType",
+                "nested": {
+                    "$ref": "https://stepflow.org/schemas/v1/flow.json#/$defs/OtherType"
+                },
+                "array": [
+                    { "$ref": "https://stepflow.org/schemas/v1/flow.json#/$defs/ArrayItem" }
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn test_detect_tag_property() {
+        // Tagged enum variants with "type" discriminator
+        let one_of = vec![
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "type": { "type": "string", "const": "variant_a" },
+                    "value": { "type": "string" }
+                }
+            }),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "type": { "type": "string", "const": "variant_b" },
+                    "count": { "type": "integer" }
+                }
+            }),
+        ];
+
+        assert_eq!(detect_tag_property(&one_of), Some("type".to_string()));
+    }
+
+    #[test]
+    fn test_detect_tag_property_no_const() {
+        // No const values - not a tagged enum
+        let one_of = vec![
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "value": { "type": "string" }
+                }
+            }),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "count": { "type": "integer" }
+                }
+            }),
+        ];
+
+        assert_eq!(detect_tag_property(&one_of), None);
     }
 }

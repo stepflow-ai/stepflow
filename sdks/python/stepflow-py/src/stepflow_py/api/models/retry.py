@@ -23,16 +23,23 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 
 
-class OnErrorFail(BaseModel):
+class Retry(BaseModel):
     """
-    If the step fails, the flow will fail.
+    If the step fails, retry it.
     """  # noqa: E501
 
     action: StrictStr
     __properties: ClassVar[list[str]] = ["action"]
+
+    @field_validator("action")
+    def action_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(["retry"]):
+            raise ValueError("must be one of enum values ('retry')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -51,7 +58,7 @@ class OnErrorFail(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of OnErrorFail from a JSON string"""
+        """Create an instance of Retry from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -75,7 +82,7 @@ class OnErrorFail(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of OnErrorFail from a dict"""
+        """Create an instance of Retry from a dict"""
         if obj is None:
             return None
 

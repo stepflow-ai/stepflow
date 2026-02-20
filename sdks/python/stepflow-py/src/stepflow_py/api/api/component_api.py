@@ -57,8 +57,9 @@ class ComponentApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ListComponentsResponse:
-        """List all available components from plugins
+        """List all available components
 
+        List all available components from registered plugins.
 
         :param include_schemas: Whether to include schemas in the response (default: true)
         :type include_schemas: bool
@@ -94,7 +95,7 @@ class ComponentApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListComponentsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -124,8 +125,9 @@ class ComponentApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[ListComponentsResponse]:
-        """List all available components from plugins
+        """List all available components
 
+        List all available components from registered plugins.
 
         :param include_schemas: Whether to include schemas in the response (default: true)
         :type include_schemas: bool
@@ -161,7 +163,7 @@ class ComponentApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListComponentsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -191,8 +193,9 @@ class ComponentApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """List all available components from plugins
+        """List all available components
 
+        List all available components from registered plugins.
 
         :param include_schemas: Whether to include schemas in the response (default: true)
         :type include_schemas: bool
@@ -228,7 +231,7 @@ class ComponentApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "ListComponentsResponse",
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout

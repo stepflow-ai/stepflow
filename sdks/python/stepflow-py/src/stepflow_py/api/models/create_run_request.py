@@ -25,7 +25,7 @@ from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
-from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
+from stepflow_py.api.models.step_override import StepOverride
 
 
 class CreateRunRequest(BaseModel):
@@ -33,14 +33,11 @@ class CreateRunRequest(BaseModel):
     Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
     """  # noqa: E501
 
-    flow_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="flowId",
-    )
+    flow_id: StrictStr = Field(description="The flow hash to execute", alias="flowId")
     input: list[Any] = Field(
         description="Input data for the flow - always an array (one element per run)"
     )
-    overrides: WorkflowOverrides | None = Field(
+    overrides: dict[str, StepOverride] | None = Field(
         default=None,
         description="Optional workflow overrides to apply before execution",
     )
@@ -54,7 +51,7 @@ class CreateRunRequest(BaseModel):
         alias="maxConcurrency",
     )
     wait: StrictBool | None = Field(
-        default=None,
+        default=False,
         description="If true, block until the run completes and return the result (200 OK). If false (default), return immediately with status Running (202 Accepted).",
     )
     timeout_secs: Annotated[int, Field(strict=True, ge=0)] | None = Field(
@@ -109,9 +106,15 @@ class CreateRunRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of overrides
+        # override the default output from pydantic by calling `to_dict()` of each value in overrides (dict)
+        _field_dict = {}
         if self.overrides:
-            _dict["overrides"] = self.overrides.to_dict()
+            for _key_overrides in self.overrides:
+                if self.overrides[_key_overrides]:
+                    _field_dict[_key_overrides] = self.overrides[
+                        _key_overrides
+                    ].to_dict()
+            _dict["overrides"] = _field_dict
         # set to None if max_concurrency (nullable) is None
         # and model_fields_set contains the field
         if self.max_concurrency is None and "max_concurrency" in self.model_fields_set:
@@ -137,12 +140,15 @@ class CreateRunRequest(BaseModel):
             {
                 "flowId": obj.get("flowId"),
                 "input": obj.get("input"),
-                "overrides": WorkflowOverrides.from_dict(obj["overrides"])
+                "overrides": dict(
+                    (_k, StepOverride.from_dict(_v))
+                    for _k, _v in obj["overrides"].items()
+                )
                 if obj.get("overrides") is not None
                 else None,
                 "variables": obj.get("variables"),
                 "maxConcurrency": obj.get("maxConcurrency"),
-                "wait": obj.get("wait"),
+                "wait": obj.get("wait") if obj.get("wait") is not None else False,
                 "timeoutSecs": obj.get("timeoutSecs"),
             }
         )

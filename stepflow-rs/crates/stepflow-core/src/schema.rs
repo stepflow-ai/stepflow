@@ -12,13 +12,10 @@
 
 //! Schema manipulation and validation types.
 
+use crate::json_schema::generate_json_schema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::borrow::Cow;
 use std::sync::Arc;
-use utoipa::{PartialSchema, ToSchema};
-
-use crate::json_schema::generate_json_schema;
 
 /// A shared reference to a JSON Schema.
 ///
@@ -41,27 +38,21 @@ impl AsRef<Value> for SchemaRef {
     }
 }
 
-impl utoipa::PartialSchema for SchemaRef {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        // OpenAPI doesn't allow external references, so there is no good way to
-        // enforce that this is consistent with the JSON schema.
-        let schema = utoipa::openapi::ObjectBuilder::new()
-            .description(Some("A valid JSON Schema object."))
-            .build();
-        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(schema))
+impl schemars::JsonSchema for SchemaRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Schema".into()
     }
-}
 
-impl utoipa::ToSchema for SchemaRef {
-    fn name() -> Cow<'static, str> {
-        // Use "Schema" as the semantic name (the "Ref" is an implementation detail)
-        Cow::Borrowed("Schema")
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A valid JSON Schema object."
+        })
     }
 }
 
 impl SchemaRef {
-    /// Create a schema reference from a type that implements ToSchema.
-    pub fn for_type<T: ToSchema + PartialSchema>() -> Self {
+    /// Create a schema reference from a type that implements JsonSchema.
+    pub fn for_type<T: schemars::JsonSchema>() -> Self {
         let json_schema = generate_json_schema::<T>();
         json_schema.into()
     }

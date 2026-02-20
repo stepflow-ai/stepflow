@@ -40,15 +40,15 @@ pub enum ConfigError {
 
 type Result<T> = std::result::Result<T, Report<ConfigError>>;
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepflowConfig {
     /// Working directory for the configuration.
     ///
     /// If not set, this will be the directory containing the config.
-    #[schema(value_type = Option<String>)]
+    #[schemars(with = "Option<String>")]
     pub working_directory: Option<PathBuf>,
-    #[schema(value_type = std::collections::HashMap<String, SupportedPluginConfig>)]
+    #[schemars(with = "std::collections::HashMap<String, SupportedPluginConfig>")]
     pub plugins: IndexMap<String, SupportedPluginConfig>,
     /// Routing configuration for mapping components to plugins.
     #[serde(flatten)]
@@ -189,12 +189,16 @@ mod tests {
     use std::env;
 
     /// This test generates the StepflowConfig JSON schema to schemas/stepflow-config.json.
-    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation
+    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config --features etcd test_schema_generation
+    ///
+    /// The `etcd` feature gate ensures the reference schema always includes all
+    /// optional types regardless of which features a dependent crate enables.
     #[test]
+    #[cfg(feature = "etcd")]
     fn test_schema_generation() {
         use stepflow_core::json_schema::generate_json_schema_with_defs;
 
-        // Generate schema using the utoipa-based utility
+        // Generate schema using schemars
         let generated_json = generate_json_schema_with_defs::<StepflowConfig>();
         let generated_schema_str =
             serde_json::to_string_pretty(&generated_json).expect("Failed to serialize schema");

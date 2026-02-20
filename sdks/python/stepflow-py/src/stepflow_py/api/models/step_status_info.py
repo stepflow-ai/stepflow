@@ -74,6 +74,9 @@ class StepStatusInfo(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of status
+        if self.status:
+            _dict["status"] = self.status.to_dict()
         return _dict
 
     @classmethod
@@ -86,6 +89,11 @@ class StepStatusInfo(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"stepId": obj.get("stepId"), "status": obj.get("status")}
+            {
+                "stepId": obj.get("stepId"),
+                "status": StepStatus.from_dict(obj["status"])
+                if obj.get("status") is not None
+                else None,
+            }
         )
         return _obj

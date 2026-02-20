@@ -39,13 +39,13 @@ schemas:
           $schema: https://json-schema.org/draft/2020-12/schema
           title: CreateMessagesOutput
           type: object
-          required:
-          - messages
           properties:
             messages:
               type: array
               items:
                 $ref: '#/$defs/ChatMessage'
+          required:
+          - messages
       required:
       - result
     steps:
@@ -55,13 +55,13 @@ schemas:
           $schema: https://json-schema.org/draft/2020-12/schema
           title: CreateMessagesOutput
           type: object
-          required:
-          - messages
           properties:
             messages:
               type: array
               items:
                 $ref: '#/$defs/ChatMessage'
+          required:
+          - messages
 steps:
 - id: message_step
   component: /builtin/create_messages

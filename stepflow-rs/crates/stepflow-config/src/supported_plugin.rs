@@ -22,16 +22,20 @@ use stepflow_protocol::StepflowPluginConfig;
 
 use crate::{ConfigError, Result};
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum SupportedPlugin {
+    #[schemars(title = "StepflowPlugin")]
     Stepflow(StepflowPluginConfig),
+    #[schemars(title = "BuiltinPlugin")]
     Builtin(BuiltinPluginConfig),
+    #[schemars(title = "MockPlugin")]
     Mock(MockPlugin),
+    #[schemars(title = "McpPlugin")]
     Mcp(McpPluginConfig),
 }
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct SupportedPluginConfig {
     #[serde(flatten)]
     pub plugin: SupportedPlugin,

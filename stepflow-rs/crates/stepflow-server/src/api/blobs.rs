@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use aide::transform::TransformOperation;
 use axum::{
     body::Bytes,
     extract::{Path, State},
@@ -21,12 +22,11 @@ use std::sync::Arc;
 use stepflow_core::{BlobId, BlobMetadata, BlobType};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
-use utoipa::ToSchema;
 
 use crate::error::ErrorResponse;
 
 /// Request to store a blob (JSON mode)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreBlobRequest {
     /// The JSON data to store
@@ -40,7 +40,7 @@ pub struct StoreBlobRequest {
 }
 
 /// Response when a blob is stored
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreBlobResponse {
     /// The content-based blob ID (SHA-256 hash)
@@ -51,7 +51,7 @@ pub struct StoreBlobResponse {
 }
 
 /// Response when retrieving a blob (JSON mode)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlobResponse {
     /// The blob data
@@ -65,28 +65,24 @@ pub struct GetBlobResponse {
     pub filename: Option<String>,
 }
 
+pub fn store_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("storeBlob")
+        .summary("Store a blob")
+        .description(
+            "Store a blob and return its content-based ID. Supports two content types: \
+             `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) \
+             and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).",
+        )
+        .tag("Blob")
+        .response_with::<200, Json<StoreBlobResponse>, _>(|res| res.description("Blob stored successfully"))
+        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid request body"))
+}
+
 /// Store a blob and return its content-based ID.
 ///
 /// Supports two content types:
 /// - `application/json`: JSON body with `data`, `blobType`, and optional `filename` fields.
 /// - `application/octet-stream`: Raw binary body. Use `X-Blob-Filename` header for filename.
-#[utoipa::path(
-    post,
-    path = "/blobs",
-    request_body(content(
-        (StoreBlobRequest = "application/json"),
-        (Vec<u8> = "application/octet-stream"),
-    )),
-    params(
-        ("X-Blob-Filename" = Option<String>, Header, description = "Filename to associate with a binary blob (octet-stream uploads only)")
-    ),
-    responses(
-        (status = 200, description = "Blob stored successfully", body = StoreBlobResponse),
-        (status = 400, description = "Invalid request"),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = crate::api::BLOB_TAG,
-)]
 pub async fn store_blob(
     State(env): State<Arc<StepflowEnvironment>>,
     headers: HeaderMap,
@@ -153,28 +149,25 @@ pub async fn store_blob(
     }
 }
 
+pub fn get_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getBlob")
+        .summary("Get a blob by ID")
+        .description(
+            "Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: \
+             `application/json` (default) returns JSON with data, blobType, blobId, and filename; \
+             `application/octet-stream` returns raw bytes.",
+        )
+        .tag("Blob")
+        .response_with::<200, Json<GetBlobResponse>, _>(|res| res.description("Blob data"))
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Blob not found"))
+}
+
 /// Get a blob by its ID.
 ///
 /// Content negotiation via `Accept` header:
 /// - `application/json` (default): Returns JSON with `data`, `blobType`, `blobId`, `filename`.
 /// - `application/octet-stream`: Returns raw bytes. For binary blobs, returns decoded bytes.
 ///   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
-#[utoipa::path(
-    get,
-    path = "/blobs/{blob_id}",
-    params(
-        ("blob_id" = String, Path, description = "Blob ID to retrieve")
-    ),
-    responses(
-        (status = 200, description = "Blob retrieved successfully", content(
-            (GetBlobResponse = "application/json"),
-            (Vec<u8> = "application/octet-stream"),
-        )),
-        (status = 404, description = "Blob not found"),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = crate::api::BLOB_TAG,
-)]
 pub async fn get_blob(
     State(env): State<Arc<StepflowEnvironment>>,
     Path(blob_id): Path<BlobId>,

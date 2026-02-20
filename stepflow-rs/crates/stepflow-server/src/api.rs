@@ -12,10 +12,11 @@
 
 use std::sync::Arc;
 
+use aide::axum::ApiRouter;
+use aide::axum::routing::{get_with, post_with};
+use aide::openapi::OpenApi;
+use serde_json::Value;
 use stepflow_plugin::StepflowEnvironment;
-use utoipa::OpenApi;
-use utoipa_axum::router::OpenApiRouter;
-use utoipa_axum::routes;
 
 mod blobs;
 mod components;
@@ -23,93 +24,244 @@ mod flows;
 mod health;
 mod runs;
 
-const BLOB_TAG: &str = "Blob";
-const COMPONENT_TAG: &str = "Component";
-const FLOW_TAG: &str = "Flow";
-const RUN_TAG: &str = "Run";
-
 pub use flows::{StoreFlowRequest, StoreFlowResponse};
 pub use runs::{CreateRunRequest, CreateRunResponse};
 
-#[derive(OpenApi)]
-#[openapi(
-    info(
-        title = "Stepflow API",
-        description = "API for Stepflow flows and runs",
-        version = env!("CARGO_PKG_VERSION")
-    ),
-    tags(
-        (name = BLOB_TAG, description = "Blob API endpoints"),
-        (name = COMPONENT_TAG, description = "Component API endpoints"),
-        (name = FLOW_TAG, description = "Flow API endpoints"),
-        (name = RUN_TAG, description = "Run API endpoints")
-    ),
-    paths(
-        health::health_check,
-        blobs::store_blob,
-        blobs::get_blob,
-        components::list_components,
-        runs::create_run,
-        runs::get_run,
-        runs::get_run_items,
-        runs::get_run_flow,
-        runs::list_runs,
-        runs::get_run_steps,
-        runs::cancel_run,
-        runs::delete_run,
-        flows::store_flow,
-        flows::get_flow,
-        flows::delete_flow,
-    ),
-    components(schemas(
-        blobs::StoreBlobRequest,
-        blobs::StoreBlobResponse,
-        blobs::GetBlobResponse,
-        components::ListComponentsResponse,
-        components::ListComponentsQuery,
-        health::HealthQuery,
-        health::HealthResponse,
-        runs::CreateRunRequest,
-        runs::CreateRunResponse,
-        runs::ListRunsResponse,
-        runs::ListRunsQuery,
-        stepflow_dtos::ItemResult,
-        runs::ListItemsResponse,
-        stepflow_dtos::RunSummary,
-        stepflow_dtos::RunDetails,
-        runs::StepRunResponse,
-        runs::ListStepRunsResponse,
-        runs::RunFlowResponse,
-        flows::StoreFlowRequest,
-        flows::StoreFlowResponse,
-        flows::FlowResponse,
-        stepflow_analysis::Diagnostic,
-        stepflow_analysis::DiagnosticLevel,
-        stepflow_analysis::Diagnostics,
-        stepflow_core::workflow::WorkflowOverrides,
-        stepflow_core::workflow::StepOverride,
-        stepflow_core::workflow::OverrideType,
-    )),
-)]
-struct StepflowApi;
+pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) {
+    let mut api = OpenApi {
+        info: aide::openapi::Info {
+            title: "Stepflow API".into(),
+            description: Some("API for Stepflow flows and runs".into()),
+            version: env!("CARGO_PKG_VERSION").into(),
+            license: Some(aide::openapi::License {
+                name: "Apache-2.0".into(),
+                url: Some("https://www.apache.org/licenses/LICENSE-2.0".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+        servers: vec![aide::openapi::Server {
+            url: "http://localhost:7840/api/v1".into(),
+            description: Some("Default development server (port 7840)".into()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
 
-pub fn create_api_router() -> OpenApiRouter<Arc<StepflowEnvironment>> {
-    OpenApiRouter::with_openapi(StepflowApi::openapi())
-        .routes(routes!(health::health_check))
-        .routes(routes!(blobs::store_blob))
-        .routes(routes!(blobs::get_blob))
-        .routes(routes!(components::list_components))
-        .routes(routes!(runs::create_run))
-        .routes(routes!(runs::get_run))
-        .routes(routes!(runs::get_run_items))
-        .routes(routes!(runs::get_run_flow))
-        .routes(routes!(runs::list_runs))
-        .routes(routes!(runs::get_run_steps))
-        .routes(routes!(runs::cancel_run))
-        .routes(routes!(runs::delete_run))
-        .routes(routes!(flows::store_flow))
-        .routes(routes!(flows::get_flow))
-        .routes(routes!(flows::delete_flow))
+    let router = ApiRouter::new()
+        .api_route(
+            "/health",
+            get_with(health::health_check, health::health_check_docs),
+        )
+        .api_route(
+            "/blobs",
+            post_with(blobs::store_blob, blobs::store_blob_docs),
+        )
+        .api_route(
+            "/blobs/{blob_id}",
+            get_with(blobs::get_blob, blobs::get_blob_docs),
+        )
+        .api_route(
+            "/components",
+            get_with(
+                components::list_components,
+                components::list_components_docs,
+            ),
+        )
+        .api_route(
+            "/runs",
+            get_with(runs::list_runs, runs::list_runs_docs)
+                .post_with(runs::create_run, runs::create_run_docs),
+        )
+        .api_route(
+            "/runs/{run_id}",
+            get_with(runs::get_run, runs::get_run_docs)
+                .delete_with(runs::delete_run, runs::delete_run_docs),
+        )
+        .api_route(
+            "/runs/{run_id}/items",
+            get_with(runs::get_run_items, runs::get_run_items_docs),
+        )
+        .api_route(
+            "/runs/{run_id}/flow",
+            get_with(runs::get_run_flow, runs::get_run_flow_docs),
+        )
+        .api_route(
+            "/runs/{run_id}/steps",
+            get_with(runs::get_run_steps, runs::get_run_steps_docs),
+        )
+        .api_route(
+            "/runs/{run_id}/cancel",
+            post_with(runs::cancel_run, runs::cancel_run_docs),
+        )
+        .api_route(
+            "/flows",
+            post_with(flows::store_flow, flows::store_flow_docs),
+        )
+        .api_route(
+            "/flows/{flow_id}",
+            get_with(flows::get_flow, flows::get_flow_docs)
+                .delete_with(flows::delete_flow, flows::delete_flow_docs),
+        )
+        .finish_api(&mut api);
+
+    (router, api)
+}
+
+/// Serialize an OpenAPI spec to JSON and apply post-processing fixes.
+///
+/// Fixes issues that aide doesn't handle:
+/// - Rewrites `#/$defs/X` references to `#/components/schemas/X` (schemars generates
+///   `$defs`-style refs which are valid JSON Schema but not valid in an OpenAPI document
+///   where schemas live under `components.schemas`)
+/// - Adds missing path parameter definitions (aide doesn't auto-generate path params
+///   from `Path<T>` extractors when T is a simple type rather than a named struct)
+/// - Removes unreferenced component schemas (aide registers query parameter structs
+///   in `components.schemas` but inlines the individual fields in `parameters`)
+pub fn finalize_openapi(api: &OpenApi) -> Value {
+    let mut json = serde_json::to_value(api).expect("Failed to serialize OpenAPI");
+    rewrite_defs_to_components(&mut json);
+    add_missing_path_parameters(&mut json);
+    remove_unreferenced_schemas(&mut json);
+    json
+}
+
+/// Recursively rewrite `#/$defs/X` references to `#/components/schemas/X`.
+fn rewrite_defs_to_components(value: &mut Value) {
+    match value {
+        Value::String(s) if s.starts_with("#/$defs/") => {
+            *s = s.replacen("#/$defs/", "#/components/schemas/", 1);
+        }
+        Value::Object(map) => {
+            for v in map.values_mut() {
+                rewrite_defs_to_components(v);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                rewrite_defs_to_components(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Add missing path parameter definitions by parsing `{param}` from path templates.
+fn add_missing_path_parameters(root: &mut Value) {
+    let paths = match root
+        .get("paths")
+        .and_then(|p| p.as_object())
+        .map(|p| p.keys().cloned().collect::<Vec<_>>())
+    {
+        Some(keys) => keys,
+        None => return,
+    };
+
+    for path_template in paths {
+        let params = extract_path_params(&path_template);
+        if params.is_empty() {
+            continue;
+        }
+
+        let path_item = match root
+            .get_mut("paths")
+            .and_then(|p| p.get_mut(&path_template))
+            .and_then(|p| p.as_object_mut())
+        {
+            Some(o) => o,
+            None => continue,
+        };
+
+        for method in ["get", "post", "put", "delete", "patch"] {
+            let op = match path_item.get_mut(method).and_then(|o| o.as_object_mut()) {
+                Some(o) => o,
+                None => continue,
+            };
+
+            let parameters = op
+                .entry("parameters")
+                .or_insert_with(|| Value::Array(vec![]))
+                .as_array_mut()
+                .unwrap();
+
+            for param_name in &params {
+                let already_defined = parameters.iter().any(|p| {
+                    p.get("name").and_then(|n| n.as_str()) == Some(param_name)
+                        && p.get("in").and_then(|i| i.as_str()) == Some("path")
+                });
+
+                if !already_defined {
+                    parameters.push(serde_json::json!({
+                        "name": param_name,
+                        "in": "path",
+                        "required": true,
+                        "schema": { "type": "string" }
+                    }));
+                }
+            }
+        }
+    }
+}
+
+/// Extract `{param}` names from a path template string.
+fn extract_path_params(template: &str) -> Vec<String> {
+    let mut params = vec![];
+    let mut remaining = template;
+    while let Some(start) = remaining.find('{') {
+        if let Some(end) = remaining[start..].find('}') {
+            let param = &remaining[start + 1..start + end];
+            params.push(param.to_string());
+            remaining = &remaining[start + end + 1..];
+        } else {
+            break;
+        }
+    }
+    params
+}
+
+/// Remove component schemas that are not referenced anywhere in the document.
+///
+/// Aide registers query parameter structs as `components.schemas` entries but
+/// inlines the individual fields as operation `parameters`, leaving the schema
+/// unreferenced.  Removing them avoids `no-unused-components` linter warnings.
+fn remove_unreferenced_schemas(root: &mut Value) {
+    // Collect all $ref targets
+    let mut refs = std::collections::HashSet::new();
+    collect_refs(root, &mut refs);
+
+    // Remove unreferenced schemas from components.schemas
+    if let Some(schemas) = root
+        .pointer_mut("/components/schemas")
+        .and_then(|s| s.as_object_mut())
+    {
+        let schema_names: Vec<String> = schemas.keys().cloned().collect();
+        for name in schema_names {
+            let ref_string = format!("#/components/schemas/{name}");
+            if !refs.contains(&ref_string) {
+                schemas.remove(&name);
+            }
+        }
+    }
+}
+
+/// Recursively collect all `$ref` string values in the JSON tree.
+fn collect_refs(value: &Value, refs: &mut std::collections::HashSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(Value::String(ref_str)) = map.get("$ref") {
+                refs.insert(ref_str.clone());
+            }
+            for v in map.values() {
+                collect_refs(v, refs);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr {
+                collect_refs(v, refs);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -120,12 +272,13 @@ mod tests {
     use std::path::PathBuf;
 
     /// This test generates the OpenAPI schema to schemas/openapi.json.
-    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation
+    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --lib test_openapi_schema_generation
     #[test]
     fn test_openapi_schema_generation() {
-        let openapi = StepflowApi::openapi();
+        let (_, openapi) = create_api_router();
+        let api_json = finalize_openapi(&openapi);
         let openapi_json =
-            serde_json::to_string_pretty(&openapi).expect("Failed to serialize OpenAPI schema");
+            serde_json::to_string_pretty(&api_json).expect("Failed to serialize OpenAPI schema");
 
         // Get path to schemas/openapi.json
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -152,17 +305,15 @@ mod tests {
             // Parse both as JSON to compare (ignoring formatting differences)
             let existing_json: serde_json::Value =
                 serde_json::from_str(&existing).expect("Failed to parse existing schema");
-            let new_json: serde_json::Value =
-                serde_json::from_str(&openapi_json).expect("Failed to parse new schema");
 
-            if existing_json != new_json {
+            if existing_json != api_json {
                 panic!(
-                    "OpenAPI schema mismatch. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to update."
+                    "OpenAPI schema mismatch. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --lib test_openapi_schema_generation' to update."
                 );
             }
         } else {
             panic!(
-                "OpenAPI schema file not found at {}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation' to create it.",
+                "OpenAPI schema file not found at {}. Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --lib test_openapi_schema_generation' to create it.",
                 openapi_schema_path.display()
             );
         }

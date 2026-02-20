@@ -22,21 +22,18 @@ use serde::{Deserialize, Serialize};
 #[repr(transparent)]
 pub struct Component(String);
 
-impl utoipa::PartialSchema for Component {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
-            utoipa::openapi::ObjectBuilder::new()
-                .schema_type(utoipa::openapi::schema::SchemaType::Type(
-                    utoipa::openapi::schema::Type::String,
-                ))
-                .description(Some("Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."))
-                .examples(["/builtin/eval", "/mcpfs/list_files", "/python/udf"])
-                .build(),
-        ))
+impl schemars::JsonSchema for Component {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Component".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "Identifies a specific plugin and atomic functionality to execute."
+        })
     }
 }
-
-impl utoipa::ToSchema for Component {}
 
 impl std::fmt::Display for Component {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

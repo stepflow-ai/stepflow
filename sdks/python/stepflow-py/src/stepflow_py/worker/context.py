@@ -19,7 +19,7 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from stepflow_py.api.models import Flow
-from stepflow_py.api.models.blob_type import BlobType
+from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA, BLOB_TYPE_FLOW
 from stepflow_py.worker.generated_protocol import (
     FlowResultFailed,
     FlowResultSuccess,
@@ -132,7 +132,7 @@ class StepflowContext:
                 f"Unexpected response type: {type(response_message)} {response_message}"
             )
 
-    async def put_blob(self, data: Any, blob_type: BlobType = BlobType.DATA) -> str:
+    async def put_blob(self, data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
         Delegates to the module-level blob_store API backed by contextvars.
@@ -213,7 +213,7 @@ class StepflowContext:
         flow_dict = flow.model_dump()
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
+        flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
 
         # Delegate to evaluate_flow_by_id for the actual evaluation
         return await self.evaluate_flow_by_id(flow_id, input, overrides=overrides)
@@ -268,7 +268,7 @@ class StepflowContext:
         flow_dict = flow.model_dump()
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
+        flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
 
         # Delegate to submit_run_by_id
         return await self.submit_run_by_id(
@@ -389,7 +389,7 @@ class StepflowContext:
         flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
 
         # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BlobType.FLOW)
+        flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
 
         # Delegate to evaluate_run_by_id
         return await self.evaluate_run_by_id(
@@ -432,11 +432,14 @@ class StepflowContext:
         )
 
         # Extract results
-        if run_status.results is None:
+        from msgspec import UnsetType
+
+        results_val = run_status.results
+        if results_val is None or isinstance(results_val, UnsetType):
             raise Exception("Expected results in response when wait=True")
 
         results = []
-        for item_result in run_status.results:
+        for item_result in results_val:
             if item_result.result is None:
                 raise Exception(
                     f"Item at index {item_result.itemIndex} has no "

@@ -31,8 +31,8 @@ class ModelIf(BaseModel):
     Conditional: { $if: condition, then: expr, else?: expr }
     """  # noqa: E501
 
-    var_if: ValueExpr = Field(alias="$if")
-    then: ValueExpr
+    var_if: ValueExpr | None = Field(alias="$if")
+    then: ValueExpr | None
     var_else: ValueExpr | None = Field(default=None, alias="else")
     additional_properties: dict[str, Any] = Field(default={}, exclude=True)
     __properties: ClassVar[list[str]] = ["$if", "then", "else"]
@@ -92,6 +92,21 @@ class ModelIf(BaseModel):
         if self.additional_properties is not None:
             for _key, _value in self.additional_properties.items():
                 _dict[_key] = _value
+
+        # set to None if var_if (nullable) is None
+        # and model_fields_set contains the field
+        if self.var_if is None and "var_if" in self.model_fields_set:
+            _dict["$if"] = None
+
+        # set to None if then (nullable) is None
+        # and model_fields_set contains the field
+        if self.then is None and "then" in self.model_fields_set:
+            _dict["then"] = None
+
+        # set to None if var_else (nullable) is None
+        # and model_fields_set contains the field
+        if self.var_else is None and "var_else" in self.model_fields_set:
+            _dict["else"] = None
 
         return _dict
 

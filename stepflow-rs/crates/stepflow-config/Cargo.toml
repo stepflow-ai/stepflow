@@ -33,7 +33,7 @@ stepflow-mock.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 log.workspace = true
-utoipa.workspace = true
+schemars.workspace = true
 
 [features]
 etcd = ["dep:stepflow-state-etcd"]

@@ -34,32 +34,25 @@ from stepflow_py.config._generated_config import (
     McpPluginConfig,
     MockComponent,
     MockComponentBehavior,
-    # Mock plugin types (for testing)
     MockPlugin,
     RouteRule,
-    # Routing configuration
-    RoutingConfig,
     SqliteStateStoreConfig,
     StepflowPluginConfig,
-    StepflowTransport,
-    # Storage configuration
     StorageConfig,
     StoreConfig,
-    # Plugin configuration (generated, but some are incomplete)
-    SupportedPlugin,
     SupportedPluginConfig,
 )
 from stepflow_py.config._generated_config import (
-    StepflowTransport1 as SubprocessTransport,
+    InMemoryStore as InMemoryStoreConfig,
 )
 from stepflow_py.config._generated_config import (
-    StepflowTransport2 as RemoteTransport,
+    SqliteStore as SqliteStoreConfig,
 )
 from stepflow_py.config._generated_config import (
-    StoreConfig1 as InMemoryStoreConfig,
+    StepflowPluginConfig1 as SubprocessTransport,
 )
 from stepflow_py.config._generated_config import (
-    StoreConfig2 as SqliteStoreConfig,
+    StepflowPluginConfig2 as RemoteTransport,
 )
 
 # ============================================================================
@@ -127,7 +120,7 @@ PluginConfig = (
 # ============================================================================
 
 
-class StepflowConfig(RoutingConfig, kw_only=True):
+class StepflowConfig(Struct, kw_only=True):
     """Complete Stepflow server configuration.
 
     Example:
@@ -143,11 +136,12 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 "/builtin/{*component}": [RouteRule(plugin="builtin")],
                 "/python/{*component}": [RouteRule(plugin="python")],
             },
-            storageConfig=InMemoryStoreConfig(type="inMemory"),
+            storageConfig=InMemoryStoreConfig(),
         )
     """
 
     plugins: dict[str, PluginConfig]
+    routes: dict[str, list[RouteRule]]
     workingDirectory: str | None = None
     storageConfig: StorageConfig | None = None
 
@@ -162,7 +156,6 @@ __all__ = [
     "SqliteStoreConfig",
     "SqliteStateStoreConfig",
     # Routing
-    "RoutingConfig",
     "RouteRule",
     "InputCondition",
     # Plugins (helper types with proper fields)
@@ -173,10 +166,8 @@ __all__ = [
     "McpPluginConfigTagged",
     "MockPluginConfig",
     # Lower-level types (from generated code)
-    "SupportedPlugin",
     "SupportedPluginConfig",
     "StepflowPluginConfig",
-    "StepflowTransport",
     "SubprocessTransport",
     "RemoteTransport",
     "HealthCheckConfig",

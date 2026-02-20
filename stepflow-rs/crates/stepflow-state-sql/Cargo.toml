@@ -28,7 +28,7 @@ stepflow-state.workspace = true
 tokio.workspace = true
 log.workspace = true
 uuid.workspace = true
-utoipa.workspace = true
+schemars.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

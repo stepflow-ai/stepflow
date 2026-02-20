@@ -39,7 +39,7 @@ use crate::protocol::{
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
 /// Configuration for retry behavior when component execution fails.
-#[derive(Default, Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RetryConfig {
     /// Maximum number of execution attempts (default: 3).
@@ -93,128 +93,64 @@ pub enum BackoffConfig {
     },
 }
 
-/// Helper to build a backoff variant schema with `type` discriminator property.
-fn backoff_variant_schema(
-    title: &str,
-    description: &str,
-    extra_properties: &[(&str, utoipa::openapi::schema::Schema)],
-) -> utoipa::openapi::schema::Schema {
-    use utoipa::openapi::schema::*;
-
-    let mut builder = ObjectBuilder::new()
-        .schema_type(SchemaType::Type(Type::Object))
-        .title(Some(title))
-        .description(Some(description))
-        .property(
-            "type",
-            ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)),
-        )
-        .required("type");
-
-    for (name, prop_schema) in extra_properties {
-        builder = builder.property(*name, prop_schema.clone());
+impl schemars::JsonSchema for BackoffConfig {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "BackoffConfig".into()
     }
 
-    Schema::Object(builder.build())
-}
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        use schemars::json_schema;
 
-impl utoipa::PartialSchema for BackoffConfig {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        use utoipa::openapi::*;
+        let uint_schema = json_schema!({ "type": "integer", "minimum": 0 });
 
-        let mut discriminator = Discriminator::new("type");
-        discriminator.mapping = [
-            (
-                "constant".to_string(),
-                "#/components/schemas/BackoffConfigConstant".to_string(),
-            ),
-            (
-                "exponential".to_string(),
-                "#/components/schemas/BackoffConfigExponential".to_string(),
-            ),
-            (
-                "fibonacci".to_string(),
-                "#/components/schemas/BackoffConfigFibonacci".to_string(),
-            ),
-        ]
-        .into_iter()
-        .collect();
+        let constant = json_schema!({
+            "type": "object",
+            "title": "Constant",
+            "description": "Fixed delay between retries.",
+            "properties": {
+                "type": { "type": "string", "const": "constant" },
+                "delayMs": uint_schema
+            },
+            "required": ["type"]
+        });
 
-        RefOr::T(schema::Schema::OneOf(
-            schema::OneOfBuilder::new()
-                .item(RefOr::Ref(Ref::new(
-                    "#/components/schemas/BackoffConfigConstant",
-                )))
-                .item(RefOr::Ref(Ref::new(
-                    "#/components/schemas/BackoffConfigExponential",
-                )))
-                .item(RefOr::Ref(Ref::new(
-                    "#/components/schemas/BackoffConfigFibonacci",
-                )))
-                .description(Some(
-                    "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
-                ))
-                .discriminator(Some(discriminator))
-                .build(),
-        ))
-    }
-}
+        let exponential = json_schema!({
+            "type": "object",
+            "title": "Exponential",
+            "description": "Exponential backoff (delay doubles each attempt by default).",
+            "properties": {
+                "type": { "type": "string", "const": "exponential" },
+                "minDelayMs": uint_schema,
+                "maxDelayMs": uint_schema,
+                "factor": { "type": "number" }
+            },
+            "required": ["type"]
+        });
 
-impl utoipa::ToSchema for BackoffConfig {
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        use utoipa::openapi::RefOr;
-        use utoipa::openapi::schema::*;
+        let fibonacci = json_schema!({
+            "type": "object",
+            "title": "Fibonacci",
+            "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
+            "properties": {
+                "type": { "type": "string", "const": "fibonacci" },
+                "minDelayMs": uint_schema,
+                "maxDelayMs": uint_schema
+            },
+            "required": ["type"]
+        });
 
-        let uint_schema = || {
-            Schema::Object(
-                ObjectBuilder::new()
-                    .schema_type(SchemaType::Type(Type::Integer))
-                    .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64)))
-                    .minimum(Some(0.0))
-                    .build(),
-            )
-        };
-
-        let constant = backoff_variant_schema(
-            "BackoffConfigConstant",
-            "Fixed delay between retries.",
-            &[("delayMs", uint_schema())],
-        );
-        schemas.push(("BackoffConfigConstant".to_string(), RefOr::T(constant)));
-
-        let exponential = backoff_variant_schema(
-            "BackoffConfigExponential",
-            "Exponential backoff (delay doubles each attempt by default).",
-            &[
-                ("minDelayMs", uint_schema()),
-                ("maxDelayMs", uint_schema()),
-                (
-                    "factor",
-                    Schema::Object(
-                        ObjectBuilder::new()
-                            .schema_type(SchemaType::Type(Type::Number))
-                            .format(Some(SchemaFormat::KnownFormat(KnownFormat::Float)))
-                            .build(),
-                    ),
-                ),
-            ],
-        );
-        schemas.push((
-            "BackoffConfigExponential".to_string(),
-            RefOr::T(exponential),
-        ));
-
-        let fibonacci = backoff_variant_schema(
-            "BackoffConfigFibonacci",
-            "Fibonacci backoff (delay follows the Fibonacci sequence).",
-            &[("minDelayMs", uint_schema()), ("maxDelayMs", uint_schema())],
-        );
-        schemas.push(("BackoffConfigFibonacci".to_string(), RefOr::T(fibonacci)));
+        json_schema!({
+            "description": "Backoff strategy for retry delays.",
+            "oneOf": [constant, exponential, fibonacci],
+            "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                    "constant": "#/$defs/BackoffConfigConstant",
+                    "exponential": "#/$defs/BackoffConfigExponential",
+                    "fibonacci": "#/$defs/BackoffConfigFibonacci"
+                }
+            }
+        })
     }
 }
 
@@ -276,7 +212,7 @@ impl BackoffConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
@@ -290,7 +226,7 @@ pub struct StepflowPluginConfig {
 /// Either `command` or `url` must be provided (but not both):
 /// - `command`: Launch a subprocess HTTP server
 /// - `url`: Connect to an existing HTTP server
-#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum StepflowTransport {
     /// Subprocess mode: launch a process that runs an HTTP server.
@@ -316,7 +252,7 @@ pub enum StepflowTransport {
 }
 
 /// Configuration for health check polling when launching subprocess servers.
-#[derive(Serialize, Deserialize, Debug, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckConfig {
     /// Health check endpoint path. Default: "/health"

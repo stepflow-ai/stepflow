@@ -32,8 +32,7 @@ class StoreBlobResponse(BaseModel):
     """  # noqa: E501
 
     blob_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="blobId",
+        description="The content-based blob ID (SHA-256 hash)", alias="blobId"
     )
     filename: StrictStr | None = Field(
         default=None, description="The filename if one was provided"

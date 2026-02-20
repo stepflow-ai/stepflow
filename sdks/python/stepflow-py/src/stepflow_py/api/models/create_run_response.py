@@ -117,6 +117,9 @@ class CreateRunResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of status
+        if self.status:
+            _dict["status"] = self.status.to_dict()
         # override the default output from pydantic by calling `to_dict()` of items
         if self.items:
             _dict["items"] = self.items.to_dict()
@@ -127,6 +130,26 @@ class CreateRunResponse(BaseModel):
                 if _item_results:
                     _items.append(_item_results.to_dict())
             _dict["results"] = _items
+        # set to None if flow_name (nullable) is None
+        # and model_fields_set contains the field
+        if self.flow_name is None and "flow_name" in self.model_fields_set:
+            _dict["flowName"] = None
+
+        # set to None if completed_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.completed_at is None and "completed_at" in self.model_fields_set:
+            _dict["completedAt"] = None
+
+        # set to None if parent_run_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.parent_run_id is None and "parent_run_id" in self.model_fields_set:
+            _dict["parentRunId"] = None
+
+        # set to None if orchestrator_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.orchestrator_id is None and "orchestrator_id" in self.model_fields_set:
+            _dict["orchestratorId"] = None
+
         # set to None if results (nullable) is None
         # and model_fields_set contains the field
         if self.results is None and "results" in self.model_fields_set:
@@ -148,7 +171,9 @@ class CreateRunResponse(BaseModel):
                 "runId": obj.get("runId"),
                 "flowId": obj.get("flowId"),
                 "flowName": obj.get("flowName"),
-                "status": obj.get("status"),
+                "status": ExecutionStatus.from_dict(obj["status"])
+                if obj.get("status") is not None
+                else None,
                 "items": ItemStatistics.from_dict(obj["items"])
                 if obj.get("items") is not None
                 else None,

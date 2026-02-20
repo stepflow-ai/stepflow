@@ -14,14 +14,13 @@ use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, ResultOrder};
 use stepflow_dtos::{ItemResult, ItemStatistics, RunStatus};
-use utoipa::ToSchema;
 
 use crate::protocol::Method;
 
 use super::{ObservabilityContext, ProtocolMethod};
 
 /// Parameters for submitting a run via the protocol.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitRunProtocolParams {
     /// The ID of the flow to execute (blob ID).
@@ -52,7 +51,7 @@ impl ProtocolMethod for SubmitRunProtocolParams {
 }
 
 /// Parameters for getting a run via the protocol.
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRunProtocolParams {
     /// The run ID to query.
@@ -81,7 +80,7 @@ impl ProtocolMethod for GetRunProtocolParams {
 }
 
 /// Run status returned by the protocol (serializable version of RunStatus).
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatusProtocol {
     pub run_id: String,

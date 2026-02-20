@@ -40,7 +40,7 @@ impl Default for MapComponent {
 }
 
 /// Input for the map component
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct MapInput {
     /// The workflow to apply to each item
     workflow: Flow,
@@ -54,7 +54,7 @@ struct MapInput {
 }
 
 /// Output from the map component
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct MapOutput {
     /// The results from processing each item
     results: Vec<FlowResult>,

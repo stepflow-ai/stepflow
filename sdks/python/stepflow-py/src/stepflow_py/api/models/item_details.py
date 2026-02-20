@@ -39,7 +39,7 @@ class ItemDetails(BaseModel):
         description="Index of this item in the input array (0-based).",
         alias="itemIndex",
     )
-    input: Any | None
+    input: Any | None = Field(description="Input value for this item.")
     status: ExecutionStatus = Field(description="Execution status of this item.")
     steps: list[StepStatusInfo] = Field(description="Step statuses for this item.")
     completed_at: datetime | None = Field(
@@ -92,6 +92,9 @@ class ItemDetails(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of status
+        if self.status:
+            _dict["status"] = self.status.to_dict()
         # override the default output from pydantic by calling `to_dict()` of each item in steps (list)
         _items = []
         if self.steps:
@@ -124,7 +127,9 @@ class ItemDetails(BaseModel):
             {
                 "itemIndex": obj.get("itemIndex"),
                 "input": obj.get("input"),
-                "status": obj.get("status"),
+                "status": ExecutionStatus.from_dict(obj["status"])
+                if obj.get("status") is not None
+                else None,
                 "steps": [StepStatusInfo.from_dict(_item) for _item in obj["steps"]]
                 if obj.get("steps") is not None
                 else None,
