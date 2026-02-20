@@ -137,17 +137,25 @@
           }
         },
         {
-          "type": "object",
-          "description": "etcd-backed lease management (requires the `etcd` feature flag).",
-          "required": [
-            "type"
-          ],
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "etcd"
+          "allOf": [
+            {
+              "$ref": "#/$defs/EtcdLeaseManagerConfig",
+              "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation."
+            },
+            {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "etcd"
+                }
+              }
             }
-          }
+          ],
+          "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation."
         }
       ],
       "description": "Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time."
@@ -873,6 +881,26 @@
             "null"
           ],
           "description": "Directory path for storing blobs. If not specified, a temporary directory is used."
+        }
+      }
+    },
+    "EtcdLeaseManagerConfig": {
+      "type": "object",
+      "description": "Configuration for the etcd lease manager.",
+      "required": [
+        "endpoints"
+      ],
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "etcd endpoints (e.g., `[\"http://localhost:2379\"]`)."
+        },
+        "key_prefix": {
+          "type": "string",
+          "description": "Key prefix for all stepflow lease keys."
         }
       }
     }
