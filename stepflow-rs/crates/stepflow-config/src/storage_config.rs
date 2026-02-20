@@ -17,7 +17,7 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_state::{
     BlobStore, ExecutionJournal, FilesystemBlobStore, FilesystemBlobStoreConfig,
-    InMemoryStateStore, MetadataStore,
+    InMemoryStateStore, InstrumentedBlobStore, MetadataStore,
 };
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
 
@@ -52,11 +52,12 @@ impl ConcreteStore {
     ///
     /// Returns an error if this store type doesn't support blob storage.
     fn as_blob(&self) -> Result<Arc<dyn BlobStore>> {
-        match self {
-            ConcreteStore::InMemory(s) => Ok(s.clone()),
-            ConcreteStore::Sqlite(s) => Ok(s.clone()),
-            ConcreteStore::Filesystem(s) => Ok(s.clone()),
-        }
+        let inner: Arc<dyn BlobStore> = match self {
+            ConcreteStore::InMemory(s) => s.clone(),
+            ConcreteStore::Sqlite(s) => s.clone(),
+            ConcreteStore::Filesystem(s) => s.clone(),
+        };
+        Ok(Arc::new(InstrumentedBlobStore::new(inner)))
     }
 
     /// Try to use this store as an ExecutionJournal.

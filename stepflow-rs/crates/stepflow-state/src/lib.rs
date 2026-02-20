@@ -20,6 +20,7 @@ mod error;
 mod execution_journal;
 mod filesystem_blob_store;
 mod in_memory;
+mod instrumented_blob_store;
 pub mod journal_compliance;
 pub mod lease_compliance;
 mod lease_manager;
@@ -43,6 +44,7 @@ pub use execution_journal::{
 };
 pub use filesystem_blob_store::{FilesystemBlobStore, FilesystemBlobStoreConfig};
 pub use in_memory::InMemoryStateStore;
+pub use instrumented_blob_store::InstrumentedBlobStore;
 pub use lease_manager::{LeaseError, LeaseManager, LeaseResult};
 pub use lease_types::{LeaseInfo, OrchestratorId, OrchestratorInfo, RunRecoveryInfo};
 pub use metadata_store::MetadataStore;

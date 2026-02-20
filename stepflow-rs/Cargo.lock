@@ -4970,6 +4970,7 @@ dependencies = [
  "serde_json",
  "stepflow-core",
  "stepflow-dtos",
+ "stepflow-observability",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
