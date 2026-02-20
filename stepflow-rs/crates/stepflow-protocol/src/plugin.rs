@@ -58,24 +58,30 @@ impl RetryConfig {
 }
 
 /// Backoff strategy for retry delays. Each variant carries only its relevant parameters.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum BackoffConfig {
     /// Fixed delay between retries.
     #[serde(rename_all = "camelCase")]
+    #[schemars(title = "BackoffConfigConstant")]
     Constant {
         /// Delay in milliseconds (default: 1000).
         #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        #[schemars(range(min = 0))]
         delay_ms: u64,
     },
     /// Exponential backoff (delay doubles each attempt by default).
     #[serde(rename_all = "camelCase")]
+    #[schemars(title = "BackoffConfigExponential")]
     Exponential {
         /// Starting delay in milliseconds (default: 1000).
         #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        #[schemars(range(min = 0))]
         min_delay_ms: u64,
         /// Maximum delay cap in milliseconds (default: 10000).
         #[serde(default = "BackoffConfig::default_max_delay_ms")]
+        #[schemars(range(min = 0))]
         max_delay_ms: u64,
         /// Multiplier per attempt (default: 2.0).
         #[serde(default = "BackoffConfig::default_factor")]
@@ -83,75 +89,17 @@ pub enum BackoffConfig {
     },
     /// Fibonacci backoff (delay follows the Fibonacci sequence).
     #[serde(rename_all = "camelCase")]
+    #[schemars(title = "BackoffConfigFibonacci")]
     Fibonacci {
         /// Starting delay in milliseconds (default: 1000).
         #[serde(default = "BackoffConfig::default_min_delay_ms")]
+        #[schemars(range(min = 0))]
         min_delay_ms: u64,
         /// Maximum delay cap in milliseconds (default: 10000).
         #[serde(default = "BackoffConfig::default_max_delay_ms")]
+        #[schemars(range(min = 0))]
         max_delay_ms: u64,
     },
-}
-
-impl schemars::JsonSchema for BackoffConfig {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "BackoffConfig".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        use schemars::json_schema;
-
-        let uint_schema = json_schema!({ "type": "integer", "minimum": 0 });
-
-        let constant = json_schema!({
-            "type": "object",
-            "title": "Constant",
-            "description": "Fixed delay between retries.",
-            "properties": {
-                "type": { "type": "string", "const": "constant" },
-                "delayMs": uint_schema
-            },
-            "required": ["type"]
-        });
-
-        let exponential = json_schema!({
-            "type": "object",
-            "title": "Exponential",
-            "description": "Exponential backoff (delay doubles each attempt by default).",
-            "properties": {
-                "type": { "type": "string", "const": "exponential" },
-                "minDelayMs": uint_schema,
-                "maxDelayMs": uint_schema,
-                "factor": { "type": "number" }
-            },
-            "required": ["type"]
-        });
-
-        let fibonacci = json_schema!({
-            "type": "object",
-            "title": "Fibonacci",
-            "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
-            "properties": {
-                "type": { "type": "string", "const": "fibonacci" },
-                "minDelayMs": uint_schema,
-                "maxDelayMs": uint_schema
-            },
-            "required": ["type"]
-        });
-
-        json_schema!({
-            "description": "Backoff strategy for retry delays.",
-            "oneOf": [constant, exponential, fibonacci],
-            "discriminator": {
-                "propertyName": "type",
-                "mapping": {
-                    "constant": "#/$defs/BackoffConfigConstant",
-                    "exponential": "#/$defs/BackoffConfigExponential",
-                    "fibonacci": "#/$defs/BackoffConfigFibonacci"
-                }
-            }
-        })
-    }
 }
 
 impl Default for BackoffConfig {

@@ -829,38 +829,19 @@
   },
   "components": {
     "schemas": {
-      "FlowResponse": {
-        "description": "Response containing a flow definition and its ID",
+      "OnErrorRetry": {
+        "title": "OnErrorRetry",
+        "description": "If the step fails, retry it.",
         "type": "object",
         "properties": {
-          "flow": {
-            "description": "The flow definition",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Flow"
-              }
-            ]
-          },
-          "flowId": {
-            "description": "The flow ID",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlobId"
-              }
-            ]
-          },
-          "allExamples": {
-            "description": "All available examples (includes both examples and test cases)",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleInput"
-            }
+          "action": {
+            "type": "string",
+            "const": "retry",
+            "default": "retry"
           }
         },
         "required": [
-          "flow",
-          "flowId",
-          "allExamples"
+          "action"
         ]
       },
       "HealthResponse": {
@@ -1026,9 +1007,21 @@
           }
         ]
       },
-      "Path": {
-        "description": "Path to a location in the workflow definition, serialized as a string",
-        "type": "string"
+      "OnErrorDefault": {
+        "title": "OnErrorDefault",
+        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+        "type": "object",
+        "properties": {
+          "defaultValue": true,
+          "action": {
+            "type": "string",
+            "const": "useDefault",
+            "default": "useDefault"
+          }
+        },
+        "required": [
+          "action"
+        ]
       },
       "ListComponentsResponse": {
         "description": "Response for listing components",
@@ -1098,24 +1091,19 @@
       "Schema": {
         "description": "A valid JSON Schema object."
       },
-      "DiagnosticLevel": {
-        "description": "Diagnostic level indicating severity and impact",
-        "oneOf": [
-          {
-            "description": "Fatal: Prevents analysis from proceeding",
+      "OnErrorFail": {
+        "title": "OnErrorFail",
+        "description": "If the step fails, the flow will fail.",
+        "type": "object",
+        "properties": {
+          "action": {
             "type": "string",
-            "const": "fatal"
-          },
-          {
-            "description": "Error: Will definitely fail during execution",
-            "type": "string",
-            "const": "error"
-          },
-          {
-            "description": "Warning: Likely to cause problems during execution",
-            "type": "string",
-            "const": "warning"
+            "const": "fail",
+            "default": "fail"
           }
+        },
+        "required": [
+          "action"
         ]
       },
       "ExecutionStatus": {
@@ -1604,54 +1592,38 @@
           "message"
         ]
       },
-      "Diagnostic": {
-        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
+      "FlowResponse": {
+        "description": "Response containing a flow definition and its ID",
         "type": "object",
         "properties": {
-          "kind": {
-            "description": "The diagnostic kind name (camelCase)",
-            "type": "string"
-          },
-          "code": {
-            "description": "Numeric error code",
-            "type": "integer",
-            "format": "uint16",
-            "minimum": 0,
-            "maximum": 65535
-          },
-          "level": {
-            "description": "The severity level",
+          "flow": {
+            "description": "The flow definition",
             "allOf": [
               {
-                "$ref": "#/components/schemas/DiagnosticLevel"
+                "$ref": "#/components/schemas/Flow"
               }
             ]
           },
-          "formatted": {
-            "description": "Human-readable formatted message",
-            "type": "string"
-          },
-          "data": {
-            "description": "Structured data with camelCase keys (null if no data)"
-          },
-          "path": {
-            "description": "JSON path to the field with the issue",
+          "flowId": {
+            "description": "The flow ID",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Path"
+                "$ref": "#/components/schemas/BlobId"
               }
             ]
           },
-          "experimental": {
-            "description": "Whether this diagnostic is experimental (may have false positives)",
-            "type": "boolean"
+          "allExamples": {
+            "description": "All available examples (includes both examples and test cases)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            }
           }
         },
         "required": [
-          "kind",
-          "code",
-          "level",
-          "formatted"
+          "flow",
+          "flowId",
+          "allExamples"
         ]
       },
       "RunDetails": {
@@ -2094,61 +2066,23 @@
         "description": "Error action determines what happens when a step fails.",
         "oneOf": [
           {
-            "$ref": "#/components/schemas/fail"
+            "$ref": "#/components/schemas/OnErrorFail"
           },
           {
-            "$ref": "#/components/schemas/useDefault"
+            "$ref": "#/components/schemas/OnErrorDefault"
           },
           {
-            "$ref": "#/components/schemas/retry"
+            "$ref": "#/components/schemas/OnErrorRetry"
           }
         ],
         "discriminator": {
-          "propertyName": "action"
+          "propertyName": "action",
+          "mapping": {
+            "fail": "#/components/schemas/OnErrorFail",
+            "useDefault": "#/components/schemas/OnErrorDefault",
+            "retry": "#/components/schemas/OnErrorRetry"
+          }
         }
-      },
-      "fail": {
-        "title": "Fail",
-        "description": "If the step fails, the flow will fail.",
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fail"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      },
-      "useDefault": {
-        "title": "UseDefault",
-        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
-        "type": "object",
-        "properties": {
-          "defaultValue": true,
-          "action": {
-            "type": "string",
-            "const": "useDefault"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      },
-      "retry": {
-        "title": "Retry",
-        "description": "If the step fails, retry it.",
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "retry"
-          }
-        },
-        "required": [
-          "action"
-        ]
       },
       "ValueExpr": {
         "oneOf": [
@@ -2367,39 +2301,9 @@
           "input"
         ]
       },
-      "Diagnostics": {
-        "description": "Collection of diagnostics with utility methods",
-        "type": "object",
-        "properties": {
-          "diagnostics": {
-            "description": "All diagnostics found",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Diagnostic"
-            }
-          },
-          "numFatal": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          },
-          "numError": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          },
-          "numWarning": {
-            "type": "integer",
-            "format": "uint32",
-            "minimum": 0
-          }
-        },
-        "required": [
-          "diagnostics",
-          "numFatal",
-          "numError",
-          "numWarning"
-        ]
+      "Path": {
+        "description": "Path to a location in the workflow definition, serialized as a string",
+        "type": "string"
       },
       "ListStepRunsResponse": {
         "description": "Response for listing step runs",
@@ -2508,6 +2412,110 @@
           "flowId",
           "stored",
           "diagnostics"
+        ]
+      },
+      "Diagnostics": {
+        "description": "Collection of diagnostics with utility methods",
+        "type": "object",
+        "properties": {
+          "diagnostics": {
+            "description": "All diagnostics found",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            }
+          },
+          "numFatal": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "numError": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "numWarning": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "diagnostics",
+          "numFatal",
+          "numError",
+          "numWarning"
+        ]
+      },
+      "Diagnostic": {
+        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "The diagnostic kind name (camelCase)",
+            "type": "string"
+          },
+          "code": {
+            "description": "Numeric error code",
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "level": {
+            "description": "The severity level",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticLevel"
+              }
+            ]
+          },
+          "formatted": {
+            "description": "Human-readable formatted message",
+            "type": "string"
+          },
+          "data": {
+            "description": "Structured data with camelCase keys (null if no data)"
+          },
+          "path": {
+            "description": "JSON path to the field with the issue",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Path"
+              }
+            ]
+          },
+          "experimental": {
+            "description": "Whether this diagnostic is experimental (may have false positives)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "code",
+          "level",
+          "formatted"
+        ]
+      },
+      "DiagnosticLevel": {
+        "description": "Diagnostic level indicating severity and impact",
+        "oneOf": [
+          {
+            "description": "Fatal: Prevents analysis from proceeding",
+            "type": "string",
+            "const": "fatal"
+          },
+          {
+            "description": "Error: Will definitely fail during execution",
+            "type": "string",
+            "const": "error"
+          },
+          {
+            "description": "Warning: Likely to cause problems during execution",
+            "type": "string",
+            "const": "warning"
+          }
         ]
       }
     }

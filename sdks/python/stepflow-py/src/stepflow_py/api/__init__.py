@@ -52,7 +52,6 @@ from stepflow_py.api.models.error_response import ErrorResponse
 from stepflow_py.api.models.error_stack_entry import ErrorStackEntry
 from stepflow_py.api.models.example_input import ExampleInput
 from stepflow_py.api.models.execution_status import ExecutionStatus
-from stepflow_py.api.models.fail import Fail
 from stepflow_py.api.models.flow import Flow
 from stepflow_py.api.models.flow_error import FlowError
 from stepflow_py.api.models.flow_response import FlowResponse
@@ -72,8 +71,10 @@ from stepflow_py.api.models.list_runs_response import ListRunsResponse
 from stepflow_py.api.models.list_step_runs_response import ListStepRunsResponse
 from stepflow_py.api.models.literal_expr import LiteralExpr
 from stepflow_py.api.models.model_if import ModelIf
+from stepflow_py.api.models.on_error_default import OnErrorDefault
+from stepflow_py.api.models.on_error_fail import OnErrorFail
+from stepflow_py.api.models.on_error_retry import OnErrorRetry
 from stepflow_py.api.models.override_type import OverrideType
-from stepflow_py.api.models.retry import Retry
 from stepflow_py.api.models.run_details import RunDetails
 from stepflow_py.api.models.run_flow_response import RunFlowResponse
 from stepflow_py.api.models.run_summary import RunSummary
@@ -88,6 +89,5 @@ from stepflow_py.api.models.store_flow_request import StoreFlowRequest
 from stepflow_py.api.models.store_flow_response import StoreFlowResponse
 from stepflow_py.api.models.test_case import TestCase
 from stepflow_py.api.models.test_config import TestConfig
-from stepflow_py.api.models.use_default import UseDefault
 from stepflow_py.api.models.value_expr import ValueExpr
 from stepflow_py.api.models.variable_ref import VariableRef

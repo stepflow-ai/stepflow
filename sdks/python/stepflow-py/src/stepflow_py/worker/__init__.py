@@ -14,12 +14,12 @@
 
 from stepflow_py.api.models import (
     ErrorAction,
-    Fail,
     Flow,
     FlowSchema,
-    Retry,
+    OnErrorDefault,
+    OnErrorFail,
+    OnErrorRetry,
     Step,
-    UseDefault,
 )
 
 from . import blob_ref, blob_store, execution_context
@@ -55,9 +55,9 @@ __all__ = [
     "ValueExpr",
     # Error Action types
     "ErrorAction",
-    "Fail",
-    "Retry",
-    "UseDefault",
+    "OnErrorFail",
+    "OnErrorDefault",
+    "OnErrorRetry",
 ]
 
 # Add LangChain exports if available

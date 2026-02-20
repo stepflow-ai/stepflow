@@ -45,53 +45,19 @@ impl AddDiscriminator {
     }
 
     /// Extract the discriminator tag's `const` value from a oneOf variant schema.
-    ///
-    /// Handles both inline schemas (direct `properties`) and `allOf` patterns
-    /// (where a `$ref` is combined with discriminator properties).
     fn find_tag_const<'a>(variant: &'a Value, tag_property: &str) -> Option<&'a str> {
-        // Check direct properties (inline variant)
-        if let Some(val) = variant
+        variant
             .get("properties")
             .and_then(|p| p.get(tag_property))
             .and_then(|p| p.get("const"))
             .and_then(|c| c.as_str())
-        {
-            return Some(val);
-        }
-
-        // Check allOf items
-        if let Some(all_of) = variant.get("allOf").and_then(|v| v.as_array()) {
-            for item in all_of {
-                if let Some(val) = item
-                    .get("properties")
-                    .and_then(|p| p.get(tag_property))
-                    .and_then(|p| p.get("const"))
-                    .and_then(|c| c.as_str())
-                {
-                    return Some(val);
-                }
-            }
-        }
-
-        None
     }
 
     /// Extract a `$ref` path from a oneOf variant schema.
     fn find_ref(variant: &Value) -> Option<&str> {
-        if let Some(ref_str) = variant.get("$ref").and_then(|r| r.as_str()) {
-            return Some(ref_str);
-        }
-
-        if let Some(all_of) = variant.get("allOf").and_then(|v| v.as_array()) {
-            for item in all_of {
-                if let Some(ref_str) = item.get("$ref").and_then(|r| r.as_str()) {
-                    return Some(ref_str);
-                }
-            }
-        }
-
-        None
+        variant.get("$ref").and_then(|r| r.as_str())
     }
+
 }
 
 impl schemars::transform::Transform for AddDiscriminator {
@@ -387,5 +353,74 @@ mod tests {
         );
 
         insta::assert_yaml_snapshot!("plugin_config_schema", value);
+    }
+
+    // ---- Test 8: Full pipeline (inline → extract → discriminator mapping) ----
+
+    #[derive(Serialize, Deserialize, JsonSchema)]
+    #[serde(tag = "action", rename_all = "camelCase")]
+    #[schemars(transform = AddDiscriminator::new("action"))]
+    enum PipelineEnum {
+        #[schemars(title = "Fail")]
+        Fail,
+        #[schemars(title = "UseDefault")]
+        UseDefault { default_value: serde_json::Value },
+        #[schemars(title = "Retry")]
+        Retry,
+    }
+
+    #[test]
+    fn full_pipeline_extracts_and_maps() {
+        // generate_json_schema_with_defs runs finalize_discriminators which
+        // extracts inline variants to $defs and builds discriminator mappings.
+        let value = crate::json_schema::generate_json_schema_with_defs::<PipelineEnum>();
+
+        // All oneOf entries should be $ref after extraction
+        let one_of = value
+            .get("oneOf")
+            .and_then(|v| v.as_array())
+            .expect("should have oneOf");
+        for variant in one_of {
+            assert!(
+                variant.get("$ref").is_some(),
+                "variant should be $ref after extraction, got: {variant}"
+            );
+        }
+
+        // $defs keys should match variant titles
+        let defs = value
+            .get("$defs")
+            .and_then(|v| v.as_object())
+            .expect("should have $defs");
+        assert!(defs.contains_key("Fail"), "$defs should have 'Fail'");
+        assert!(
+            defs.contains_key("UseDefault"),
+            "$defs should have 'UseDefault'"
+        );
+        assert!(defs.contains_key("Retry"), "$defs should have 'Retry'");
+
+        // Discriminator should have complete mapping
+        let disc = value
+            .get("discriminator")
+            .and_then(|d| d.as_object())
+            .expect("should have discriminator");
+        let mapping = disc
+            .get("mapping")
+            .and_then(|m| m.as_object())
+            .expect("discriminator should have mapping");
+        assert_eq!(
+            mapping.get("fail"),
+            Some(&Value::String("#/$defs/Fail".to_string()))
+        );
+        assert_eq!(
+            mapping.get("useDefault"),
+            Some(&Value::String("#/$defs/UseDefault".to_string()))
+        );
+        assert_eq!(
+            mapping.get("retry"),
+            Some(&Value::String("#/$defs/Retry".to_string()))
+        );
+
+        insta::assert_yaml_snapshot!("full_pipeline_schema", value);
     }
 }

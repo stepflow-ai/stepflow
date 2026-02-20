@@ -24,14 +24,15 @@ use crate::{ConfigError, Result};
 
 #[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum SupportedPlugin {
-    #[schemars(title = "StepflowPlugin")]
+    #[schemars(title = "StepflowPluginConfig")]
     Stepflow(StepflowPluginConfig),
-    #[schemars(title = "BuiltinPlugin")]
+    #[schemars(title = "BuiltinPluginConfig")]
     Builtin(BuiltinPluginConfig),
     #[schemars(title = "MockPlugin")]
     Mock(MockPlugin),
-    #[schemars(title = "McpPlugin")]
+    #[schemars(title = "McpPluginConfig")]
     Mcp(McpPluginConfig),
 }
 

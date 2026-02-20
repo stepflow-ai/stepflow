@@ -113,6 +113,7 @@ pub struct Stores {
     Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, Hash, schemars::JsonSchema,
 )]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum StoreConfig {
     /// In-memory storage (default, for testing and demos).
     ///

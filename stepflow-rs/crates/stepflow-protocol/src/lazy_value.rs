@@ -16,24 +16,13 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
 impl<T: erased_serde::Serialize + std::fmt::Debug> ErasedSerializeDebug for T {}
 
-#[derive(Debug)]
+#[derive(Debug, schemars::JsonSchema)]
+#[schemars(with = "serde_json::Value")]
 pub enum LazyValue<'a> {
     /// A value that can be efficiently serialized.
     Write(&'a (dyn ErasedSerializeDebug + Send + Sync)),
     /// A raw value that has not yet been deserialized.
     Read(&'a serde_json::value::RawValue),
-}
-
-impl<'a> schemars::JsonSchema for LazyValue<'a> {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "LazyValue".into()
-    }
-
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "Any JSON value (lazily deserialized)."
-        })
-    }
 }
 
 impl<'a> Serialize for LazyValue<'a> {

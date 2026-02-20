@@ -15,10 +15,10 @@
 import pytest
 
 from stepflow_py.worker import (
-    Fail,
-    Retry,
+    OnErrorDefault,
+    OnErrorFail,
+    OnErrorRetry,
     StepReference,
-    UseDefault,
     Value,
     WorkflowInput,
 )
@@ -168,13 +168,13 @@ def test_error_handling():
         id="fail_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=Fail(action="fail"),
+        on_error=OnErrorFail(action="fail"),
     )
     builder.add_step(
         id="retry_step",
         component="/test/component",
         input_data={"value": 3},
-        on_error=Retry(action="retry"),
+        on_error=OnErrorRetry(action="retry"),
     )
 
     # Set output to make the test complete
@@ -186,10 +186,10 @@ def test_error_handling():
     # Check that error actions were set correctly by type
     # on_error is wrapped in ErrorAction, check actual_instance
     fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
-    assert isinstance(fail_step.on_error.actual_instance, Fail)
+    assert isinstance(fail_step.on_error.actual_instance, OnErrorFail)
 
     retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
-    assert isinstance(retry_step.on_error.actual_instance, Retry)
+    assert isinstance(retry_step.on_error.actual_instance, OnErrorRetry)
 
 
 def test_error_default_handling():
@@ -202,7 +202,7 @@ def test_error_default_handling():
         id="default_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=UseDefault(action="useDefault", default_value="fallback_value"),
+        on_error=OnErrorDefault(action="useDefault", default_value="fallback_value"),
     )
 
     # Set output to make the test complete
@@ -214,7 +214,7 @@ def test_error_default_handling():
     # Check that UseDefault was set correctly
     # on_error is wrapped in ErrorAction, check actual_instance
     default_step = (flow.steps or [])[0]
-    assert isinstance(default_step.on_error.actual_instance, UseDefault)
+    assert isinstance(default_step.on_error.actual_instance, OnErrorDefault)
     assert default_step.on_error.actual_instance.default_value == "fallback_value"
 
 

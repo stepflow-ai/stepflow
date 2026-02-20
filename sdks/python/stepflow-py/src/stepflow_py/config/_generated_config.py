@@ -73,7 +73,7 @@ class FlowError(Struct, kw_only=True):
     data: Value | None | UnsetType = UNSET
 
 
-class McpPluginConfig(Struct, kw_only=True):
+class McpPluginConfig(Struct, kw_only=True, tag_field='type', tag='mcp'):
     command: str
     args: list[str]
     env: (
@@ -204,55 +204,72 @@ class BlobApiConfig(Struct, kw_only=True):
     ) = UNSET
 
 
-class BuiltinPlugin(Struct, kw_only=True):
-    type: Literal['BuiltinPlugin']
+class BuiltinPluginConfig(Struct, kw_only=True, tag_field='type', tag='builtin'):
+    pass
 
 
-class McpPlugin(Struct, kw_only=True):
-    command: str
-    args: list[str]
-    env: (
+class BackoffConfigConstant(Struct, kw_only=True, tag_field='type', tag='constant'):
+    delayMs: (
+        Annotated[int, Meta(description='Delay in milliseconds (default: 1000).', ge=0)]
+        | UnsetType
+    ) = 1000
+
+
+class BackoffConfigExponential(
+    Struct, kw_only=True, tag_field='type', tag='exponential'
+):
+    minDelayMs: (
         Annotated[
-            dict[str, str],
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | UnsetType
+    ) = 1000
+    maxDelayMs: (
+        Annotated[
+            int,
             Meta(
-                description='Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
             ),
         ]
         | UnsetType
-    ) = UNSET
-    type: Literal['McpPlugin']
+    ) = 10000
+    factor: (
+        Annotated[float, Meta(description='Multiplier per attempt (default: 2.0).')]
+        | UnsetType
+    ) = 2.0
 
 
-class Constant(Struct, kw_only=True):
-    delayMs: Annotated[int, Meta(ge=0)] | UnsetType = UNSET
-    type: Literal['Constant']
+class BackoffConfigFibonacci(Struct, kw_only=True, tag_field='type', tag='fibonacci'):
+    minDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | UnsetType
+    ) = 1000
+    maxDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
+            ),
+        ]
+        | UnsetType
+    ) = 10000
 
 
-class Exponential(Struct, kw_only=True):
-    factor: float | UnsetType = UNSET
-    minDelayMs: Annotated[int, Meta(ge=0)] | UnsetType = UNSET
-    maxDelayMs: Annotated[int, Meta(ge=0)] | UnsetType = UNSET
-    type: Literal['Exponential']
+class InMemoryStore(Struct, kw_only=True, tag_field='type', tag='inMemory'):
+    pass
 
 
-class Fibonacci(Struct, kw_only=True):
-    maxDelayMs: Annotated[int, Meta(ge=0)] | UnsetType = UNSET
-    minDelayMs: Annotated[int, Meta(ge=0)] | UnsetType = UNSET
-    type: Literal['Fibonacci']
-
-
-class InMemoryStore(Struct, kw_only=True):
-    type: Literal['InMemoryStore']
-
-
-class SqliteStore(Struct, kw_only=True):
+class SqliteStore(Struct, kw_only=True, tag_field='type', tag='sqlite'):
     databaseUrl: str
     maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
     autoMigrate: bool | UnsetType = True
-    type: Literal['SqliteStore']
 
 
-class FilesystemStore(Struct, kw_only=True):
+class FilesystemStore(Struct, kw_only=True, tag_field='type', tag='filesystem'):
     directory: (
         Annotated[
             str | None,
@@ -262,14 +279,13 @@ class FilesystemStore(Struct, kw_only=True):
         ]
         | UnsetType
     ) = UNSET
-    type: Literal['FilesystemStore']
 
 
-class NoOpLeaseManager(Struct, kw_only=True):
-    type: Literal['NoOpLeaseManager']
+class NoOpLeaseManager(Struct, kw_only=True, tag_field='type', tag='noOp'):
+    pass
 
 
-class EtcdLeaseManager(Struct, kw_only=True):
+class EtcdLeaseManager(Struct, kw_only=True, tag_field='type', tag='etcd'):
     endpoints: Annotated[
         list[str],
         Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
@@ -278,12 +294,13 @@ class EtcdLeaseManager(Struct, kw_only=True):
         Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
         | UnsetType
     ) = '/stepflow/leases'
-    type: Literal['EtcdLeaseManager']
 
 
 BackoffConfig: TypeAlias = Annotated[
-    Constant | Exponential | Fibonacci,
-    Meta(description='Backoff strategy for retry delays.'),
+    BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
+    Meta(
+        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
+    ),
 ]
 
 
@@ -353,6 +370,7 @@ class RetryConfig(Struct, kw_only=True):
 
 
 class StepflowPluginConfig1(Struct, kw_only=True):
+    type: Literal['stepflow']
     command: str
     retry: (
         Annotated[
@@ -383,6 +401,7 @@ class StepflowPluginConfig1(Struct, kw_only=True):
 
 
 class StepflowPluginConfig2(Struct, kw_only=True):
+    type: Literal['stepflow']
     url: str
     retry: (
         Annotated[
@@ -481,71 +500,18 @@ StorageConfig: TypeAlias = Annotated[
 ]
 
 
-class StepflowPlugin1(Struct, kw_only=True):
-    command: str
-    retry: (
-        Annotated[
-            RetryConfig | None,
-            Meta(
-                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    args: list[str] | UnsetType = UNSET
-    env: (
-        Annotated[
-            dict[str, str],
-            Meta(
-                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    healthCheck: (
-        Annotated[
-            HealthCheckConfig | None,
-            Meta(description='Health check configuration for the subprocess server.'),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-class StepflowPlugin2(Struct, kw_only=True):
-    url: str
-    retry: (
-        Annotated[
-            RetryConfig | None,
-            Meta(
-                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-StepflowPlugin: TypeAlias = Annotated[
-    StepflowPlugin1 | StepflowPlugin2,
-    Meta(
-        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server',
-        title='StepflowPlugin',
-    ),
-]
-
-
 class MockComponent(Struct, kw_only=True):
     input_schema: Schema
     output_schema: Schema
     behaviors: dict[str, MockComponentBehavior]
 
 
-class MockPlugin(Struct, kw_only=True):
+class MockPlugin(Struct, kw_only=True, tag_field='type', tag='mock'):
     components: dict[str, MockComponent]
-    type: Literal['MockPlugin']
 
 
 SupportedPluginConfig: TypeAlias = (
-    StepflowPlugin | BuiltinPlugin | MockPlugin | McpPlugin
+    StepflowPluginConfig | BuiltinPluginConfig | MockPlugin | McpPluginConfig
 )
 
 

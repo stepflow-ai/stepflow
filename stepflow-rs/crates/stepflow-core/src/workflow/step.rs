@@ -70,20 +70,20 @@ impl Step {
 pub enum ErrorAction {
     /// If the step fails, the flow will fail.
     #[default]
-    #[schemars(title = "Fail")]
+    #[schemars(title = "OnErrorFail")]
     Fail,
     /// If the step fails, use the `defaultValue` instead.
     /// If `defaultValue` is not specified, the step returns null.
     /// The default value must be a literal JSON value (not an expression).
     /// For dynamic defaults, use `$coalesce` in the consuming expression instead.
     #[serde(rename_all = "camelCase")]
-    #[schemars(title = "UseDefault")]
+    #[schemars(title = "OnErrorDefault")]
     UseDefault {
         #[serde(skip_serializing_if = "Option::is_none")]
         default_value: Option<serde_json::Value>,
     },
     /// If the step fails, retry it.
-    #[schemars(title = "Retry")]
+    #[schemars(title = "OnErrorRetry")]
     Retry,
 }
 

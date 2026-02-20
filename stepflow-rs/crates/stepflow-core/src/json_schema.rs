@@ -17,8 +17,6 @@
 
 use serde_json::Value;
 
-use crate::discriminator_schema::AddDiscriminator;
-
 /// Controls how external type references are handled in the generated schema.
 #[derive(Debug, Clone)]
 pub enum Refs {
@@ -46,12 +44,7 @@ pub fn generate_json_schema<T: schemars::JsonSchema>() -> Value {
 
 /// Generate a standalone JSON Schema document with all `$defs` included.
 ///
-/// This function:
-/// 1. Uses schemars to generate a complete JSON Schema for the type
-/// 2. Includes all referenced schemas in `$defs`
-/// 3. Applies AddDiscriminator transforms for tagged enums
-///
-/// Use this when you need a fully self-contained schema that can be validated
+/// This produces a fully self-contained schema suitable for validation
 /// without external references.
 pub fn generate_json_schema_with_defs<T: schemars::JsonSchema>() -> Value {
     generate_json_schema_with_refs::<T>(Refs::Local)
@@ -93,32 +86,297 @@ pub fn generate_json_schema_custom<T: schemars::JsonSchema>(
             }
         }
         Refs::Local => {
-            // $defs are already using local references - nothing to change
+            finalize_discriminators(&mut json);
         }
         Refs::External(ref base_url) => {
+            finalize_discriminators(&mut json);
             // Transform #/$defs/X references to {base_url}#/$defs/X
             transform_refs_external(&mut json, base_url);
         }
     }
 
-    // Apply AddDiscriminator transform to any oneOf schemas that have
-    // inline const tag properties (indicating serde tagged enums)
-    apply_discriminators(&mut json);
+    json
+}
 
-    // Extract inline discriminated variants into $defs.  Code generators like
-    // datamodel-code-generator produce invalid code when a variant is inlined
-    // (the tag field declared via `tag_field=` clashes with the `const` property).
-    // Moving them to $defs and referencing via $ref avoids this.
-    if !matches!(refs, Refs::Omit) {
-        extract_discriminated_variants(&mut json);
+/// Post-process a generated schema to make discriminated unions work correctly
+/// with code generators like `datamodel-code-generator`.
+///
+/// This runs three steps in order:
+/// 1. **Extract inline `oneOf` variants** to `$defs` — variants are keyed by
+///    their `title` attribute, so code generators produce the expected type names.
+/// 2. **Build discriminator mappings** by resolving `$ref` → `$defs` to read
+///    tag `const` values and populate `discriminator.mapping`.
+/// 3. **Add `default` alongside `const`** for discriminator tag properties —
+///    `datamodel-code-generator` uses `default` (not `const`) to set tag values.
+pub fn finalize_discriminators(root: &mut Value) {
+    extract_inline_oneof_to_defs(root);
+    build_discriminator_mappings(root);
+    add_defaults_to_discriminator_consts(root);
+}
+
+/// Extract inline oneOf variants to `$defs` in schemas with discriminators.
+///
+/// schemars inlines all variants in the `oneOf` array. Discriminator mappings
+/// require `$ref` paths, so this extracts inline variants to `$defs` (using
+/// their `title` as the key) and replaces them with `$ref` entries.
+fn extract_inline_oneof_to_defs(root: &mut Value) {
+    let mut extractions: Vec<(String, Value)> = Vec::new();
+    extract_inline_oneof_recursive(root, &mut extractions);
+
+    if extractions.is_empty() {
+        return;
     }
 
-    // Convert oneOf-of-string-consts to enum form.  schemars generates
-    // `oneOf: [{const: "a"}, {const: "b"}]` for simple string enums, but
-    // code generators like datamodel-code-generator expect `enum: ["a", "b"]`.
-    simplify_string_enums(&mut json);
+    let root_obj = root.as_object_mut().unwrap();
+    let defs = root_obj
+        .entry("$defs".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .unwrap();
 
-    json
+    for (key, schema) in extractions {
+        if let Some(existing) = defs.get_mut(&key) {
+            // Collision: the variant's title matches an existing $defs key (the inner
+            // type). Merge the discriminator tag property into the existing entry so
+            // that code generators can read the tag const value.
+            merge_tag_properties(existing, &schema);
+        } else {
+            defs.insert(key, schema);
+        }
+    }
+}
+
+fn extract_inline_oneof_recursive(
+    value: &mut Value,
+    extractions: &mut Vec<(String, Value)>,
+) {
+    match value {
+        Value::Object(obj) => {
+            if obj.contains_key("discriminator") {
+                if let Some(Value::Array(one_of)) = obj.get_mut("oneOf") {
+                    for variant in one_of.iter_mut() {
+                        // Skip variants that are already pure $ref entries
+                        if variant
+                            .as_object()
+                            .is_some_and(|o| o.len() == 1 && o.contains_key("$ref"))
+                        {
+                            continue;
+                        }
+                        // Extract inline variants with titles to $defs
+                        if let Some(title) = variant
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .map(|s| s.to_string())
+                        {
+                            extractions.push((title.clone(), variant.clone()));
+                            *variant = serde_json::json!({ "$ref": format!("#/$defs/{title}") });
+                        }
+                    }
+                }
+            }
+
+            for v in obj.values_mut() {
+                extract_inline_oneof_recursive(v, extractions);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                extract_inline_oneof_recursive(v, extractions);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Merge discriminator tag properties from an extracted variant into an existing `$defs` entry.
+///
+/// When a variant's title matches an existing `$defs` key (e.g., `StepflowPluginConfig`
+/// is both the inner type and the variant title), this adds the tag `const` property
+/// and updates `required` so code generators can resolve the discriminator tag value.
+fn merge_tag_properties(existing: &mut Value, variant: &Value) {
+    // Merge properties (adds tag property from variant)
+    if let Some(variant_props) = variant.get("properties").and_then(|p| p.as_object()) {
+        let def_props = existing
+            .as_object_mut()
+            .unwrap()
+            .entry("properties")
+            .or_insert_with(|| Value::Object(serde_json::Map::new()))
+            .as_object_mut()
+            .unwrap();
+        for (key, value) in variant_props {
+            def_props.entry(key.clone()).or_insert_with(|| value.clone());
+        }
+    }
+
+    // Merge required arrays
+    if let Some(variant_required) = variant.get("required").and_then(|r| r.as_array()) {
+        let def_required = existing
+            .as_object_mut()
+            .unwrap()
+            .entry("required")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .unwrap();
+        for req in variant_required {
+            if !def_required.contains(req) {
+                def_required.push(req.clone());
+            }
+        }
+    }
+}
+
+/// Build discriminator mappings by resolving `$ref` → `$defs` entries
+/// and reading tag `const` values.
+fn build_discriminator_mappings(root: &mut Value) {
+    let Some(root_obj) = root.as_object() else {
+        return;
+    };
+    let defs = root_obj.get("$defs").and_then(|v| v.as_object()).cloned();
+
+    // Recursively process all schemas in the document
+    build_discriminator_mappings_recursive(root, defs.as_ref());
+}
+
+fn build_discriminator_mappings_recursive(
+    value: &mut Value,
+    defs: Option<&serde_json::Map<String, Value>>,
+) {
+    let Some(defs) = defs else { return };
+    match value {
+        Value::Object(obj) => {
+            // Check if this object has a discriminator that needs mapping completion
+            let needs_mapping = obj
+                .get("discriminator")
+                .is_some_and(|d| d.get("propertyName").is_some());
+
+            if needs_mapping {
+                if let Some(property_name) = obj
+                    .get("discriminator")
+                    .and_then(|d| d.get("propertyName"))
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_string())
+                {
+                    if let Some(one_of) = obj.get("oneOf").and_then(|v| v.as_array()) {
+                        let mut mapping = serde_json::Map::new();
+
+                        for variant in one_of {
+                            // Resolve $ref to the $defs entry
+                            if let Some(ref_path) = variant
+                                .get("$ref")
+                                .and_then(|r| r.as_str())
+                            {
+                                if let Some(def_key) = ref_path.strip_prefix("#/$defs/") {
+                                    if let Some(def_schema) = defs.get(def_key) {
+                                        // Read the const value for the discriminator property
+                                        if let Some(const_val) = def_schema
+                                            .get("properties")
+                                            .and_then(|p| p.get(&property_name))
+                                            .and_then(|p| p.get("const"))
+                                            .and_then(|c| c.as_str())
+                                        {
+                                            mapping.insert(
+                                                const_val.to_string(),
+                                                Value::String(ref_path.to_string()),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !mapping.is_empty() {
+                            if let Some(disc) =
+                                obj.get_mut("discriminator").and_then(|d| d.as_object_mut())
+                            {
+                                // Replace the mapping entirely — the post-processing steps
+                                // (extract_inline_oneof_to_defs) may have changed $ref paths
+                                disc.insert("mapping".to_string(), Value::Object(mapping));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Recurse into all values
+            for v in obj.values_mut() {
+                build_discriminator_mappings_recursive(v, Some(defs));
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                build_discriminator_mappings_recursive(v, Some(defs));
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Add `default` alongside `const` for discriminator tag properties in `$defs`.
+///
+/// Code generators like `datamodel-code-generator` use `default` (not `const`)
+/// to determine tag values for generated tagged union types. This walks all
+/// `$defs` entries referenced by discriminator mappings and adds `default`
+/// equal to `const` for the discriminator tag property.
+fn add_defaults_to_discriminator_consts(root: &mut Value) {
+    let Some(root_obj) = root.as_object() else {
+        return;
+    };
+
+    // Collect (def_key, property_name) pairs from all discriminator mappings
+    let mut targets: Vec<(String, String)> = Vec::new();
+    collect_discriminator_targets(root_obj, &mut targets);
+
+    if targets.is_empty() {
+        return;
+    }
+
+    // Apply defaults to the collected targets
+    let Some(defs) = root.as_object_mut().and_then(|o| o.get_mut("$defs")).and_then(|d| d.as_object_mut()) else {
+        return;
+    };
+
+    for (def_key, property_name) in targets {
+        if let Some(def_schema) = defs.get_mut(&def_key) {
+            if let Some(prop) = def_schema
+                .get_mut("properties")
+                .and_then(|p| p.get_mut(&property_name))
+                .and_then(|p| p.as_object_mut())
+            {
+                if let Some(const_val) = prop.get("const").cloned() {
+                    prop.entry("default").or_insert(const_val);
+                }
+            }
+        }
+    }
+}
+
+fn collect_discriminator_targets(value: &serde_json::Map<String, Value>, targets: &mut Vec<(String, String)>) {
+    if let Some(disc) = value.get("discriminator").and_then(|d| d.as_object()) {
+        if let Some(property_name) = disc.get("propertyName").and_then(|p| p.as_str()) {
+            if let Some(mapping) = disc.get("mapping").and_then(|m| m.as_object()) {
+                for ref_path in mapping.values() {
+                    if let Some(ref_str) = ref_path.as_str() {
+                        if let Some(def_key) = ref_str.strip_prefix("#/$defs/") {
+                            targets.push((def_key.to_string(), property_name.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Recurse into nested objects
+    for v in value.values() {
+        if let Some(obj) = v.as_object() {
+            collect_discriminator_targets(obj, targets);
+        } else if let Some(arr) = v.as_array() {
+            for item in arr {
+                if let Some(obj) = item.as_object() {
+                    collect_discriminator_targets(obj, targets);
+                }
+            }
+        }
+    }
 }
 
 /// Recursively transform `#/$defs/X` references to `{base_url}#/$defs/X`.
@@ -143,254 +401,6 @@ fn transform_refs_external(value: &mut Value, base_url: &str) {
     }
 }
 
-/// Apply AddDiscriminator transforms to oneOf schemas that have
-/// inline const tag properties (from serde tagged enums).
-///
-/// We detect these by looking for oneOf arrays where variants have
-/// a "properties" object containing a field with a "const" value.
-fn apply_discriminators(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            // Check if this object has a oneOf with const discriminators
-            if let Some(Value::Array(one_of)) = map.get("oneOf")
-                && let Some(tag_name) = detect_tag_property(one_of)
-            {
-                // Apply the discriminator transform
-                let mut schema = schemars::Schema::try_from(Value::Object(map.clone())).unwrap();
-                let mut transform = AddDiscriminator::new(tag_name);
-                schemars::transform::Transform::transform(&mut transform, &mut schema);
-                let transformed = serde_json::to_value(schema).expect("Failed to serialize schema");
-                if let Value::Object(new_map) = transformed {
-                    *map = new_map;
-                }
-            }
-
-            // Recurse into all values (including $defs)
-            for v in map.values_mut() {
-                apply_discriminators(v);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                apply_discriminators(v);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Extract inline oneOf variants that have a discriminator into top-level `$defs`.
-///
-/// Code generators like datamodel-code-generator produce a `tag_field='type'`
-/// parameter when they see a discriminator, but if the variant is inlined and
-/// already contains a `type` property with a `const` value, the tag field
-/// conflicts with the existing field.  By extracting titled variants into
-/// `$defs` and referencing them via `$ref`, code generators handle them
-/// correctly as named types.
-fn extract_discriminated_variants(root: &mut Value) {
-    // Collect all inline variants that need extraction
-    let mut extracted: serde_json::Map<String, Value> = serde_json::Map::new();
-    collect_inline_variants(root, &mut extracted);
-
-    if extracted.is_empty() {
-        return;
-    }
-
-    // Merge extracted variants into the root $defs
-    if let Some(defs) = root
-        .as_object_mut()
-        .and_then(|obj| obj.get_mut("$defs"))
-        .and_then(|d| d.as_object_mut())
-    {
-        for (name, schema) in extracted {
-            defs.entry(name).or_insert(schema);
-        }
-    }
-}
-
-/// Walk the schema tree, collecting inline variants from discriminated oneOf
-/// schemas.  Each collected variant is replaced in-place with a `$ref`.
-///
-/// The const tag property (e.g. `"type": {"const": "builtin"}`) is stripped
-/// from extracted variants because code generators handle the tag via the
-/// discriminator, and having it as a field causes conflicts.
-fn collect_inline_variants(value: &mut Value, extracted: &mut serde_json::Map<String, Value>) {
-    match value {
-        Value::Object(map) => {
-            // Check if this object has a oneOf with a discriminator
-            let tag_property = map
-                .get("discriminator")
-                .and_then(|d| d.get("propertyName"))
-                .and_then(|p| p.as_str())
-                .map(|s| s.to_string());
-
-            if let Some(ref tag_prop) = tag_property {
-                let mut did_extract = false;
-                if let Some(Value::Array(one_of)) = map.get_mut("oneOf") {
-                    for variant in one_of.iter_mut() {
-                        // Skip pure $ref variants (only have "$ref" key)
-                        let is_pure_ref = variant
-                            .as_object()
-                            .is_some_and(|o| o.len() == 1 && o.contains_key("$ref"));
-                        if is_pure_ref {
-                            continue;
-                        }
-                        if let Some(title) = variant
-                            .as_object()
-                            .and_then(|v| v.get("title"))
-                            .and_then(|t| t.as_str())
-                        {
-                            let name = title.to_string();
-                            let mut schema = variant.clone();
-
-                            // Strip the const tag property from the variant so
-                            // code generators don't conflict with the discriminator
-                            strip_tag_property(&mut schema, tag_prop);
-
-                            extracted.insert(name.clone(), schema);
-                            *variant = serde_json::json!({ "$ref": format!("#/$defs/{name}") });
-                            did_extract = true;
-                        }
-                    }
-                }
-                // Remove the discriminator mapping since extracted $refs have
-                // changed paths.  The mapping is optional per OpenAPI spec and
-                // code generators can infer it from $ref paths.
-                if did_extract && let Some(Value::Object(disc)) = map.get_mut("discriminator") {
-                    disc.remove("mapping");
-                }
-            }
-
-            // Recurse into all values
-            for v in map.values_mut() {
-                collect_inline_variants(v, extracted);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                collect_inline_variants(v, extracted);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Remove the discriminator tag property from a variant schema.
-///
-/// Removes the tag from `properties` and from `required`.
-fn strip_tag_property(schema: &mut Value, tag_prop: &str) {
-    if let Some(obj) = schema.as_object_mut() {
-        if let Some(Value::Object(props)) = obj.get_mut("properties") {
-            props.remove(tag_prop);
-        }
-        if let Some(Value::Array(required)) = obj.get_mut("required") {
-            required.retain(|v| v.as_str() != Some(tag_prop));
-        }
-    }
-}
-
-/// Detect if a oneOf array represents a tagged enum by checking if all
-/// variants have a common property with a "const" value.
-fn detect_tag_property(one_of: &[Value]) -> Option<String> {
-    // Skip if empty or only one variant
-    if one_of.len() < 2 {
-        return None;
-    }
-
-    // For each variant, find properties that have a "const" value
-    let mut candidate_tags: Option<Vec<String>> = None;
-
-    for variant in one_of {
-        let props = variant
-            .as_object()
-            .and_then(|obj| obj.get("properties"))
-            .and_then(|p| p.as_object());
-
-        let Some(props) = props else {
-            return None; // Not all variants have properties - not a tagged enum
-        };
-
-        let const_props: Vec<String> = props
-            .iter()
-            .filter(|(_, v)| v.get("const").is_some())
-            .map(|(k, _)| k.clone())
-            .collect();
-
-        if const_props.is_empty() {
-            return None; // No const properties in this variant
-        }
-
-        match &mut candidate_tags {
-            None => candidate_tags = Some(const_props),
-            Some(candidates) => {
-                // Intersect with const props from this variant
-                candidates.retain(|c| const_props.contains(c));
-                if candidates.is_empty() {
-                    return None; // No common tag property
-                }
-            }
-        }
-    }
-
-    candidate_tags.and_then(|tags| tags.into_iter().next())
-}
-
-/// Convert `oneOf` arrays of string `const` values to `enum` form.
-///
-/// schemars generates `oneOf: [{type:"string", const:"a"}, {type:"string", const:"b"}]`
-/// for simple string enums, but code generators expect `{type:"string", enum:["a","b"]}`.
-fn simplify_string_enums(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::Array(one_of)) = map.get("oneOf") {
-                // Check if all variants are simple string const values
-                let consts: Vec<&str> = one_of
-                    .iter()
-                    .filter_map(|v| {
-                        let obj = v.as_object()?;
-                        // Must be a simple const string (type: string, const: "...")
-                        // with optionally a description
-                        let is_string = obj
-                            .get("type")
-                            .and_then(|t| t.as_str())
-                            .is_some_and(|t| t == "string");
-                        let const_val = obj.get("const").and_then(|c| c.as_str());
-                        let only_simple_keys = obj
-                            .keys()
-                            .all(|k| matches!(k.as_str(), "type" | "const" | "description"));
-                        if is_string && only_simple_keys {
-                            const_val
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                if consts.len() == one_of.len() && !consts.is_empty() {
-                    // Replace oneOf with enum
-                    let enum_values: Vec<Value> = consts
-                        .iter()
-                        .map(|c| Value::String(c.to_string()))
-                        .collect();
-                    map.remove("oneOf");
-                    map.insert("type".to_string(), Value::String("string".to_string()));
-                    map.insert("enum".to_string(), Value::Array(enum_values));
-                }
-            }
-
-            // Recurse into all values
-            for v in map.values_mut() {
-                simplify_string_enums(v);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                simplify_string_enums(v);
-            }
-        }
-        _ => {}
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -456,47 +466,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_detect_tag_property() {
-        // Tagged enum variants with "type" discriminator
-        let one_of = vec![
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "type": { "type": "string", "const": "variant_a" },
-                    "value": { "type": "string" }
-                }
-            }),
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "type": { "type": "string", "const": "variant_b" },
-                    "count": { "type": "integer" }
-                }
-            }),
-        ];
-
-        assert_eq!(detect_tag_property(&one_of), Some("type".to_string()));
-    }
-
-    #[test]
-    fn test_detect_tag_property_no_const() {
-        // No const values - not a tagged enum
-        let one_of = vec![
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "value": { "type": "string" }
-                }
-            }),
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "count": { "type": "integer" }
-                }
-            }),
-        ];
-
-        assert_eq!(detect_tag_property(&one_of), None);
-    }
 }

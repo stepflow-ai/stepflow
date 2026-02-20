@@ -180,17 +180,22 @@
       "description": "Error action determines what happens when a step fails.",
       "oneOf": [
         {
-          "$ref": "#/$defs/Fail"
+          "$ref": "#/$defs/OnErrorFail"
         },
         {
-          "$ref": "#/$defs/UseDefault"
+          "$ref": "#/$defs/OnErrorDefault"
         },
         {
-          "$ref": "#/$defs/Retry"
+          "$ref": "#/$defs/OnErrorRetry"
         }
       ],
       "discriminator": {
-        "propertyName": "action"
+        "propertyName": "action",
+        "mapping": {
+          "fail": "#/$defs/OnErrorFail",
+          "useDefault": "#/$defs/OnErrorDefault",
+          "retry": "#/$defs/OnErrorRetry"
+        }
       }
     },
     "ValueExpr": {
@@ -485,28 +490,51 @@
         "input"
       ]
     },
-    "Fail": {
-      "title": "Fail",
+    "OnErrorFail": {
+      "title": "OnErrorFail",
       "description": "If the step fails, the flow will fail.",
       "type": "object",
-      "properties": {},
-      "required": []
+      "properties": {
+        "action": {
+          "type": "string",
+          "const": "fail",
+          "default": "fail"
+        }
+      },
+      "required": [
+        "action"
+      ]
     },
-    "UseDefault": {
-      "title": "UseDefault",
+    "OnErrorDefault": {
+      "title": "OnErrorDefault",
       "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
       "type": "object",
       "properties": {
-        "defaultValue": true
+        "defaultValue": true,
+        "action": {
+          "type": "string",
+          "const": "useDefault",
+          "default": "useDefault"
+        }
       },
-      "required": []
+      "required": [
+        "action"
+      ]
     },
-    "Retry": {
-      "title": "Retry",
+    "OnErrorRetry": {
+      "title": "OnErrorRetry",
       "description": "If the step fails, retry it.",
       "type": "object",
-      "properties": {},
-      "required": []
+      "properties": {
+        "action": {
+          "type": "string",
+          "const": "retry",
+          "default": "retry"
+        }
+      },
+      "required": [
+        "action"
+      ]
     }
   }
 }

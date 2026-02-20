@@ -195,15 +195,10 @@ class Method(StrEnum):
     runs_get = 'runs/get'
 
 
-LazyValue: TypeAlias = Annotated[
-    Any, Meta(description='Any JSON value (lazily deserialized).')
-]
-
-
 class MethodSuccess(Struct, kw_only=True):
     id: RequestId
     result: Annotated[
-        LazyValue, Meta(description='The result of a successful method execution.')
+        Any, Meta(description='The result of a successful method execution.')
     ]
     jsonrpc: JsonRpc | UnsetType = '2.0'
 
@@ -215,7 +210,7 @@ class Error(Struct, kw_only=True):
     ]
     data: (
         Annotated[
-            LazyValue | None,
+            Any,
             Meta(
                 description='Primitive or structured value that contains additional information about the error.'
             ),
@@ -408,7 +403,7 @@ class MethodRequest(Struct, kw_only=True):
     jsonrpc: JsonRpc | UnsetType = '2.0'
     params: (
         Annotated[
-            LazyValue | None,
+            Any,
             Meta(
                 description='The parameters for the method call. Set on method requests.'
             ),

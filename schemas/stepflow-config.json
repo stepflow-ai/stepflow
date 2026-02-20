@@ -69,20 +69,26 @@
       "type": "object",
       "oneOf": [
         {
-          "$ref": "#/$defs/StepflowPlugin"
+          "$ref": "#/$defs/StepflowPluginConfig"
         },
         {
-          "$ref": "#/$defs/BuiltinPlugin"
+          "$ref": "#/$defs/BuiltinPluginConfig"
         },
         {
           "$ref": "#/$defs/MockPlugin"
         },
         {
-          "$ref": "#/$defs/McpPlugin"
+          "$ref": "#/$defs/McpPluginConfig"
         }
       ],
       "discriminator": {
-        "propertyName": "type"
+        "propertyName": "type",
+        "mapping": {
+          "stepflow": "#/$defs/StepflowPluginConfig",
+          "builtin": "#/$defs/BuiltinPluginConfig",
+          "mock": "#/$defs/MockPlugin",
+          "mcp": "#/$defs/McpPluginConfig"
+        }
       }
     },
     "HealthCheckConfig": {
@@ -135,20 +141,25 @@
       }
     },
     "BackoffConfig": {
-      "description": "Backoff strategy for retry delays.",
+      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
       "oneOf": [
         {
-          "$ref": "#/$defs/Constant"
+          "$ref": "#/$defs/BackoffConfigConstant"
         },
         {
-          "$ref": "#/$defs/Exponential"
+          "$ref": "#/$defs/BackoffConfigExponential"
         },
         {
-          "$ref": "#/$defs/Fibonacci"
+          "$ref": "#/$defs/BackoffConfigFibonacci"
         }
       ],
       "discriminator": {
-        "propertyName": "type"
+        "propertyName": "type",
+        "mapping": {
+          "constant": "#/$defs/BackoffConfigConstant",
+          "exponential": "#/$defs/BackoffConfigExponential",
+          "fibonacci": "#/$defs/BackoffConfigFibonacci"
+        }
       }
     },
     "StepflowPluginConfig": {
@@ -165,6 +176,11 @@
               "type": "null"
             }
           ]
+        },
+        "type": {
+          "type": "string",
+          "const": "stepflow",
+          "default": "stepflow"
         }
       },
       "anyOf": [
@@ -216,6 +232,9 @@
             "url"
           ]
         }
+      ],
+      "required": [
+        "type"
       ]
     },
     "MockComponent": {
@@ -354,10 +373,16 @@
           "additionalProperties": {
             "$ref": "#/$defs/MockComponent"
           }
+        },
+        "type": {
+          "type": "string",
+          "const": "mock",
+          "default": "mock"
         }
       },
       "required": [
-        "components"
+        "components",
+        "type"
       ]
     },
     "McpPluginConfig": {
@@ -378,11 +403,17 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "type": {
+          "type": "string",
+          "const": "mcp",
+          "default": "mcp"
         }
       },
       "required": [
         "command",
-        "args"
+        "args",
+        "type"
       ]
     },
     "RouteRule": {
@@ -514,7 +545,12 @@
         }
       ],
       "discriminator": {
-        "propertyName": "type"
+        "propertyName": "type",
+        "mapping": {
+          "inMemory": "#/$defs/InMemoryStore",
+          "sqlite": "#/$defs/SqliteStore",
+          "filesystem": "#/$defs/FilesystemStore"
+        }
       }
     },
     "SqliteStateStoreConfig": {
@@ -564,7 +600,11 @@
         }
       ],
       "discriminator": {
-        "propertyName": "type"
+        "propertyName": "type",
+        "mapping": {
+          "noOp": "#/$defs/NoOpLeaseManager",
+          "etcd": "#/$defs/EtcdLeaseManager"
+        }
       }
     },
     "EtcdLeaseManagerConfig": {
@@ -654,110 +694,183 @@
         }
       }
     },
-    "StepflowPlugin": {
-      "title": "StepflowPlugin",
+    "BuiltinPluginConfig": {
+      "title": "BuiltinPluginConfig",
       "type": "object",
-      "properties": {},
-      "$ref": "#/$defs/StepflowPluginConfig",
-      "required": []
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "builtin",
+          "default": "builtin"
+        }
+      },
+      "required": [
+        "type"
+      ]
     },
-    "BuiltinPlugin": {
-      "title": "BuiltinPlugin",
-      "type": "object",
-      "properties": {},
-      "required": []
-    },
-    "McpPlugin": {
-      "title": "McpPlugin",
-      "type": "object",
-      "properties": {},
-      "$ref": "#/$defs/McpPluginConfig",
-      "required": []
-    },
-    "Constant": {
-      "title": "Constant",
+    "BackoffConfigConstant": {
+      "title": "BackoffConfigConstant",
       "description": "Fixed delay between retries.",
       "type": "object",
       "properties": {
         "delayMs": {
+          "description": "Delay in milliseconds (default: 1000).",
           "type": "integer",
-          "minimum": 0
+          "format": "uint64",
+          "minimum": 0,
+          "default": 1000
+        },
+        "type": {
+          "type": "string",
+          "const": "constant",
+          "default": "constant"
         }
       },
-      "required": []
+      "required": [
+        "type"
+      ]
     },
-    "Exponential": {
-      "title": "Exponential",
+    "BackoffConfigExponential": {
+      "title": "BackoffConfigExponential",
       "description": "Exponential backoff (delay doubles each attempt by default).",
       "type": "object",
       "properties": {
-        "factor": {
-          "type": "number"
-        },
         "minDelayMs": {
+          "description": "Starting delay in milliseconds (default: 1000).",
           "type": "integer",
-          "minimum": 0
+          "format": "uint64",
+          "minimum": 0,
+          "default": 1000
         },
         "maxDelayMs": {
+          "description": "Maximum delay cap in milliseconds (default: 10000).",
           "type": "integer",
-          "minimum": 0
+          "format": "uint64",
+          "minimum": 0,
+          "default": 10000
+        },
+        "factor": {
+          "description": "Multiplier per attempt (default: 2.0).",
+          "type": "number",
+          "format": "float",
+          "default": 2.0
+        },
+        "type": {
+          "type": "string",
+          "const": "exponential",
+          "default": "exponential"
         }
       },
-      "required": []
+      "required": [
+        "type"
+      ]
     },
-    "Fibonacci": {
-      "title": "Fibonacci",
+    "BackoffConfigFibonacci": {
+      "title": "BackoffConfigFibonacci",
       "description": "Fibonacci backoff (delay follows the Fibonacci sequence).",
       "type": "object",
       "properties": {
-        "maxDelayMs": {
-          "type": "integer",
-          "minimum": 0
-        },
         "minDelayMs": {
+          "description": "Starting delay in milliseconds (default: 1000).",
           "type": "integer",
-          "minimum": 0
+          "format": "uint64",
+          "minimum": 0,
+          "default": 1000
+        },
+        "maxDelayMs": {
+          "description": "Maximum delay cap in milliseconds (default: 10000).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 10000
+        },
+        "type": {
+          "type": "string",
+          "const": "fibonacci",
+          "default": "fibonacci"
         }
       },
-      "required": []
+      "required": [
+        "type"
+      ]
     },
     "InMemoryStore": {
       "title": "InMemoryStore",
       "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
       "type": "object",
-      "properties": {},
-      "required": []
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "inMemory",
+          "default": "inMemory"
+        }
+      },
+      "required": [
+        "type"
+      ]
     },
     "SqliteStore": {
       "title": "SqliteStore",
       "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
       "type": "object",
-      "properties": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "sqlite",
+          "default": "sqlite"
+        }
+      },
       "$ref": "#/$defs/SqliteStateStoreConfig",
-      "required": []
+      "required": [
+        "type"
+      ]
     },
     "FilesystemStore": {
       "title": "FilesystemStore",
       "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments.",
       "type": "object",
-      "properties": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "filesystem",
+          "default": "filesystem"
+        }
+      },
       "$ref": "#/$defs/FilesystemBlobStoreConfig",
-      "required": []
+      "required": [
+        "type"
+      ]
     },
     "NoOpLeaseManager": {
       "title": "NoOpLeaseManager",
       "description": "No-op lease management (single orchestrator mode).\n\nThis is the default for single-node deployments where there's no need\nfor distributed coordination. All lease requests succeed immediately.",
       "type": "object",
-      "properties": {},
-      "required": []
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "noOp",
+          "default": "noOp"
+        }
+      },
+      "required": [
+        "type"
+      ]
     },
     "EtcdLeaseManager": {
       "title": "EtcdLeaseManager",
       "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation.",
       "type": "object",
-      "properties": {},
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "etcd",
+          "default": "etcd"
+        }
+      },
       "$ref": "#/$defs/EtcdLeaseManagerConfig",
-      "required": []
+      "required": [
+        "type"
+      ]
     }
   }
 }

@@ -30,11 +30,11 @@ from pydantic import (
     model_serializer,
 )
 
-from stepflow_py.api.models.fail import Fail
-from stepflow_py.api.models.retry import Retry
-from stepflow_py.api.models.use_default import UseDefault
+from stepflow_py.api.models.on_error_default import OnErrorDefault
+from stepflow_py.api.models.on_error_fail import OnErrorFail
+from stepflow_py.api.models.on_error_retry import OnErrorRetry
 
-ERRORACTION_ONE_OF_SCHEMAS = ["Fail", "Retry", "UseDefault"]
+ERRORACTION_ONE_OF_SCHEMAS = ["OnErrorDefault", "OnErrorFail", "OnErrorRetry"]
 
 
 class ErrorAction(BaseModel):
@@ -42,14 +42,14 @@ class ErrorAction(BaseModel):
     Error action determines what happens when a step fails.
     """
 
-    # data type: Fail
-    oneof_schema_1_validator: Fail | None = None
-    # data type: UseDefault
-    oneof_schema_2_validator: UseDefault | None = None
-    # data type: Retry
-    oneof_schema_3_validator: Retry | None = None
-    actual_instance: Fail | Retry | UseDefault | None = None
-    one_of_schemas: set[str] = {"Fail", "Retry", "UseDefault"}
+    # data type: OnErrorFail
+    oneof_schema_1_validator: OnErrorFail | None = None
+    # data type: OnErrorDefault
+    oneof_schema_2_validator: OnErrorDefault | None = None
+    # data type: OnErrorRetry
+    oneof_schema_3_validator: OnErrorRetry | None = None
+    actual_instance: OnErrorDefault | OnErrorFail | OnErrorRetry | None = None
+    one_of_schemas: set[str] = {"OnErrorDefault", "OnErrorFail", "OnErrorRetry"}
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -82,31 +82,35 @@ class ErrorAction(BaseModel):
         instance = ErrorAction.model_construct()
         error_messages = []
         match = 0
-        # validate data type: Fail
-        if not isinstance(v, Fail):
-            error_messages.append(f"Error! Input type `{type(v)}` is not `Fail`")
+        # validate data type: OnErrorFail
+        if not isinstance(v, OnErrorFail):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `OnErrorFail`")
         else:
             match += 1
-        # validate data type: UseDefault
-        if not isinstance(v, UseDefault):
-            error_messages.append(f"Error! Input type `{type(v)}` is not `UseDefault`")
+        # validate data type: OnErrorDefault
+        if not isinstance(v, OnErrorDefault):
+            error_messages.append(
+                f"Error! Input type `{type(v)}` is not `OnErrorDefault`"
+            )
         else:
             match += 1
-        # validate data type: Retry
-        if not isinstance(v, Retry):
-            error_messages.append(f"Error! Input type `{type(v)}` is not `Retry`")
+        # validate data type: OnErrorRetry
+        if not isinstance(v, OnErrorRetry):
+            error_messages.append(
+                f"Error! Input type `{type(v)}` is not `OnErrorRetry`"
+            )
         else:
             match += 1
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when setting `actual_instance` in ErrorAction with oneOf schemas: Fail, Retry, UseDefault. Details: "
+                "Multiple matches found when setting `actual_instance` in ErrorAction with oneOf schemas: OnErrorDefault, OnErrorFail, OnErrorRetry. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when setting `actual_instance` in ErrorAction with oneOf schemas: Fail, Retry, UseDefault. Details: "
+                "No match found when setting `actual_instance` in ErrorAction with oneOf schemas: OnErrorDefault, OnErrorFail, OnErrorRetry. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -123,21 +127,21 @@ class ErrorAction(BaseModel):
         error_messages = []
         match = 0
 
-        # deserialize data into Fail
+        # deserialize data into OnErrorFail
         try:
-            instance.actual_instance = Fail.from_json(json_str)
+            instance.actual_instance = OnErrorFail.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into UseDefault
+        # deserialize data into OnErrorDefault
         try:
-            instance.actual_instance = UseDefault.from_json(json_str)
+            instance.actual_instance = OnErrorDefault.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into Retry
+        # deserialize data into OnErrorRetry
         try:
-            instance.actual_instance = Retry.from_json(json_str)
+            instance.actual_instance = OnErrorRetry.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
@@ -145,13 +149,13 @@ class ErrorAction(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when deserializing the JSON string into ErrorAction with oneOf schemas: Fail, Retry, UseDefault. Details: "
+                "Multiple matches found when deserializing the JSON string into ErrorAction with oneOf schemas: OnErrorDefault, OnErrorFail, OnErrorRetry. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when deserializing the JSON string into ErrorAction with oneOf schemas: Fail, Retry, UseDefault. Details: "
+                "No match found when deserializing the JSON string into ErrorAction with oneOf schemas: OnErrorDefault, OnErrorFail, OnErrorRetry. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -169,7 +173,9 @@ class ErrorAction(BaseModel):
         else:
             return json.dumps(self.actual_instance)
 
-    def to_dict(self) -> dict[str, Any] | Fail | Retry | UseDefault | None:
+    def to_dict(
+        self,
+    ) -> dict[str, Any] | OnErrorDefault | OnErrorFail | OnErrorRetry | None:
         """Returns the dict representation of the actual instance"""
         if self.actual_instance is None:
             return None

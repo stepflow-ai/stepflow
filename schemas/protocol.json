@@ -330,10 +330,17 @@
     },
     "OverrideType": {
       "description": "The type of override operation to perform.",
-      "type": "string",
-      "enum": [
-        "merge_patch",
-        "json_patch"
+      "oneOf": [
+        {
+          "description": "Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.",
+          "type": "string",
+          "const": "merge_patch"
+        },
+        {
+          "description": "Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
+          "type": "string",
+          "const": "json_patch"
+        }
       ]
     },
     "GetRunProtocolParams": {
@@ -386,10 +393,17 @@
     },
     "ResultOrder": {
       "description": "Order in which to return results.",
-      "type": "string",
-      "enum": [
-        "by_index",
-        "by_completion"
+      "oneOf": [
+        {
+          "description": "Results in input order (index 0, 1, 2, ...).",
+          "type": "string",
+          "const": "by_index"
+        },
+        {
+          "description": "Results in completion order (first completed first).",
+          "type": "string",
+          "const": "by_completion"
+        }
       ]
     },
     "RunStatusProtocol": {
@@ -525,14 +539,37 @@
     },
     "ExecutionStatus": {
       "description": "Status of a workflow execution",
-      "type": "string",
-      "enum": [
-        "running",
-        "completed",
-        "failed",
-        "cancelled",
-        "paused",
-        "recoveryFailed"
+      "oneOf": [
+        {
+          "description": "Execution is currently running",
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "description": "Execution completed successfully",
+          "type": "string",
+          "const": "completed"
+        },
+        {
+          "description": "Execution failed with an error",
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "description": "Execution was cancelled by user request",
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "description": "Execution is paused (debug mode)",
+          "type": "string",
+          "const": "paused"
+        },
+        {
+          "description": "Execution failed during recovery after orchestrator restart",
+          "type": "string",
+          "const": "recoveryFailed"
+        }
       ]
     },
     "FlowResult": {
@@ -712,15 +749,7 @@
           "$ref": "#/$defs/Method"
         },
         "params": {
-          "description": "The parameters for the method call. Set on method requests.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/LazyValue"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "description": "The parameters for the method call. Set on method requests."
         }
       },
       "required": [
@@ -759,9 +788,6 @@
         "runs/get"
       ]
     },
-    "LazyValue": {
-      "description": "Any JSON value (lazily deserialized)."
-    },
     "MethodResponse": {
       "description": "Response to a method request. Success responses have a 'result' field while error responses have an 'error' field.",
       "oneOf": [
@@ -785,8 +811,7 @@
           "$ref": "#/$defs/RequestId"
         },
         "result": {
-          "description": "The result of a successful method execution.",
-          "$ref": "#/$defs/LazyValue"
+          "description": "The result of a successful method execution."
         }
       },
       "required": [
@@ -828,15 +853,7 @@
           "type": "string"
         },
         "data": {
-          "description": "Primitive or structured value that contains additional information about the error.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/LazyValue"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "description": "Primitive or structured value that contains additional information about the error."
         }
       },
       "required": [

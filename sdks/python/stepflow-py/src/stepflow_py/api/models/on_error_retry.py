@@ -26,9 +26,9 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 
 
-class Fail(BaseModel):
+class OnErrorRetry(BaseModel):
     """
-    If the step fails, the flow will fail.
+    If the step fails, retry it.
     """  # noqa: E501
 
     action: StrictStr
@@ -37,8 +37,8 @@ class Fail(BaseModel):
     @field_validator("action")
     def action_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["fail"]):
-            raise ValueError("must be one of enum values ('fail')")
+        if value not in set(["retry"]):
+            raise ValueError("must be one of enum values ('retry')")
         return value
 
     model_config = ConfigDict(
@@ -58,7 +58,7 @@ class Fail(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of Fail from a JSON string"""
+        """Create an instance of OnErrorRetry from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,12 +82,14 @@ class Fail(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of Fail from a dict"""
+        """Create an instance of OnErrorRetry from a dict"""
         if obj is None:
             return None
 
         if not isinstance(obj, dict):
             return cls.model_validate(obj)
 
-        _obj = cls.model_validate({"action": obj.get("action")})
+        _obj = cls.model_validate(
+            {"action": obj.get("action") if obj.get("action") is not None else "retry"}
+        )
         return _obj

@@ -23,23 +23,22 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 
 
-class UseDefault(BaseModel):
+class OnErrorFail(BaseModel):
     """
-    If the step fails, use the `defaultValue` instead. If `defaultValue` is not specified, the step returns null. The default value must be a literal JSON value (not an expression). For dynamic defaults, use `$coalesce` in the consuming expression instead.
+    If the step fails, the flow will fail.
     """  # noqa: E501
 
-    default_value: Any | None = Field(default=None, alias="defaultValue")
     action: StrictStr
-    __properties: ClassVar[list[str]] = ["defaultValue", "action"]
+    __properties: ClassVar[list[str]] = ["action"]
 
     @field_validator("action")
     def action_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["useDefault"]):
-            raise ValueError("must be one of enum values ('useDefault')")
+        if value not in set(["fail"]):
+            raise ValueError("must be one of enum values ('fail')")
         return value
 
     model_config = ConfigDict(
@@ -59,7 +58,7 @@ class UseDefault(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of UseDefault from a JSON string"""
+        """Create an instance of OnErrorFail from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -79,16 +78,11 @@ class UseDefault(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if default_value (nullable) is None
-        # and model_fields_set contains the field
-        if self.default_value is None and "default_value" in self.model_fields_set:
-            _dict["defaultValue"] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of UseDefault from a dict"""
+        """Create an instance of OnErrorFail from a dict"""
         if obj is None:
             return None
 
@@ -96,6 +90,6 @@ class UseDefault(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"defaultValue": obj.get("defaultValue"), "action": obj.get("action")}
+            {"action": obj.get("action") if obj.get("action") is not None else "fail"}
         )
         return _obj

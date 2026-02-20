@@ -25,6 +25,7 @@ use crate::ConfigError;
 /// ensuring only one orchestrator executes a given run at a time.
 #[derive(Serialize, Deserialize, Debug, Default, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum LeaseManagerConfig {
     /// No-op lease management (single orchestrator mode).
     ///
