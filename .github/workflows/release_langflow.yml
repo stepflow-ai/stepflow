@@ -1,0 +1,347 @@
+name: Release - Langflow Integration
+
+on:
+  repository_dispatch:
+    types: [build-langflow-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
+      skip_tag_creation:
+        description: 'Skip creating git tag (for testing)'
+        required: false
+        type: boolean
+        default: false
+
+# Limit concurrency to a single run per branch (ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+
+jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      skip_tag: ${{ steps.version.outputs.skip_tag }}
+
+    steps:
+      - name: Set version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=false" >> $GITHUB_OUTPUT
+            echo "Source: repository dispatch"
+            echo "Version: ${{ github.event.client_payload.version }}"
+            echo "Tag: ${{ github.event.client_payload.tag }}"
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-langflow-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
+            echo "Source: manual workflow dispatch"
+            echo "Version: ${{ inputs.version }}"
+            echo "Tag: stepflow-langflow-${{ inputs.version }}"
+            echo "Skip tag: ${{ inputs.skip_tag_creation }}"
+          fi
+
+  build-and-test:
+    name: Build and Test Langflow Package
+    runs-on: ubuntu-22.04
+    needs: determine-version
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        working-directory: integrations/langflow
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -U pip
+
+      - name: Install dependencies
+        working-directory: integrations/langflow
+        run: |
+          uv sync --all-extras --group dev
+
+      - name: Run linting
+        working-directory: integrations/langflow
+        run: |
+          uv run poe fmt-check
+          uv run poe lint-check
+
+      - name: Run type checking
+        working-directory: integrations/langflow
+        run: uv run poe type-check
+
+      - name: Run dependency checking
+        working-directory: integrations/langflow
+        run: uv run poe dep-check
+
+      - name: Run tests
+        working-directory: integrations/langflow
+        run: uv run poe test
+
+      - name: Build package
+        working-directory: integrations/langflow
+        run: uv build --out-dir dist/
+
+      - name: Verify build
+        working-directory: integrations/langflow
+        run: |
+          echo "Built packages:"
+          ls -la dist/
+
+          # Verify expected files exist
+          if ! ls dist/stepflow_langflow_integration-*.whl 1> /dev/null 2>&1; then
+            echo "ERROR: No wheel file found"
+            exit 1
+          fi
+
+          if ! ls dist/stepflow_langflow_integration-*.tar.gz 1> /dev/null 2>&1; then
+            echo "ERROR: No source distribution found"
+            exit 1
+          fi
+
+          echo "✅ All expected artifacts found"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: langflow-package-distributions
+          path: integrations/langflow/dist/
+          retention-days: 7
+
+  build-docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/langflow-component-server/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/langflow-component-server:${{ needs.determine-version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/langflow-component-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/stepflow-langflow-integration
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: langflow-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true
+
+  create-tag-and-release:
+    name: Create Tag and Release
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test, publish-to-pypi, build-docker]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: langflow-package-distributions
+          path: ./release-artifacts
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## Stepflow Langflow Integration v${{ needs.determine-version.outputs.version }}
+
+          📋 **[View Release Changelog](https://github.com/${{ github.repository }}/blob/main/integrations/langflow/CHANGELOG.md#${{ needs.determine-version.outputs.version }})** | **[PyPI Package](https://pypi.org/project/stepflow-langflow-integration/${{ needs.determine-version.outputs.version }}/)**
+
+          This release includes the Langflow integration for Stepflow.
+
+          ### 📥 Installation
+
+          **Via pip:**
+          ```bash
+          pip install stepflow-langflow-integration==${{ needs.determine-version.outputs.version }}
+          ```
+
+          **With HTTP support:**
+          ```bash
+          pip install stepflow-langflow-integration[http]==${{ needs.determine-version.outputs.version }}
+          ```
+
+          **Via uv:**
+          ```bash
+          uv add stepflow-langflow-integration==${{ needs.determine-version.outputs.version }}
+          ```
+
+          ### 🐳 Docker Image
+
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ github.repository }}/langflow-component-server:${{ needs.determine-version.outputs.version }}
+          ```
+
+          ### 📦 Distribution Files
+
+          The following files are included in this release:
+          - **Wheel**: `stepflow_langflow_integration-${{ needs.determine-version.outputs.version }}-py3-none-any.whl`
+          - **Source Distribution**: `stepflow_langflow_integration-${{ needs.determine-version.outputs.version }}.tar.gz`
+          - **Docker Image**: `${{ env.REGISTRY }}/${{ github.repository }}/langflow-component-server:${{ needs.determine-version.outputs.version }}`
+
+          ### 🔗 Links
+
+          - **PyPI Package**: https://pypi.org/project/stepflow-langflow-integration/${{ needs.determine-version.outputs.version }}/
+          - **Documentation**: https://github.com/${{ github.repository }}/tree/main/integrations/langflow
+          - **Docker Image**: https://github.com/${{ github.repository }}/pkgs/container/stepflow%2Flangflow-component-server
+          EOF
+
+      - name: Verify release artifacts
+        run: |
+          echo "Checking release artifacts in ./release-artifacts/"
+          ls -la ./release-artifacts/
+
+          # Verify expected files exist
+          if ! ls ./release-artifacts/stepflow_langflow_integration-*.whl 1> /dev/null 2>&1; then
+            echo "ERROR: No wheel file found matching stepflow_langflow_integration-*.whl"
+            exit 1
+          fi
+
+          if ! ls ./release-artifacts/stepflow_langflow_integration-*.tar.gz 1> /dev/null 2>&1; then
+            echo "ERROR: No source distribution found matching stepflow_langflow_integration-*.tar.gz"
+            exit 1
+          fi
+
+          echo "✅ All expected artifacts found"
+
+      - name: Create GitHub release with tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.determine-version.outputs.tag }}" \
+            --title "Stepflow Langflow Integration v${{ needs.determine-version.outputs.version }}" \
+            --notes-file release-notes.md \
+            integrations/langflow/CHANGELOG.md \
+            ./release-artifacts/stepflow_langflow_integration-*.whl \
+            ./release-artifacts/stepflow_langflow_integration-*.tar.gz
+
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test, publish-to-pypi, build-docker, create-tag-and-release]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## Langflow Integration Release Summary v${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build-and-test.result }}" = "success" ]; then
+            echo "| Build & Test | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Build & Test | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
+            if [ "${{ needs.build-docker.result }}" = "success" ]; then
+              echo "| Docker Image | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.build-docker.result }}" = "skipped" ]; then
+              echo "| Docker Image | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Docker Image | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ needs.publish-to-pypi.result }}" = "success" ]; then
+              echo "| PyPI Publishing | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.publish-to-pypi.result }}" = "skipped" ]; then
+              echo "| PyPI Publishing | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| PyPI Publishing | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+              echo "| GitHub Release | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
+              echo "| GitHub Release | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| GitHub Release | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Docker Image | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| PyPI Publishing | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Release | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Langflow Integration Features" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version**: ${{ env.PYTHON_VERSION }}+" >> $GITHUB_STEP_SUMMARY
+          echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTTP Support**: Optional extra (stepflow-langflow-integration[http])" >> $GITHUB_STEP_SUMMARY
+          echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Image**: langflow-component-server" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🎉 Release Complete" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "**PyPI:** [stepflow-langflow-integration v${{ needs.determine-version.outputs.version }}](https://pypi.org/project/stepflow-langflow-integration/${{ needs.determine-version.outputs.version }}/)" >> $GITHUB_STEP_SUMMARY
+            echo "**Docker:** \`${{ env.REGISTRY }}/${{ github.repository }}/langflow-component-server:${{ needs.determine-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** [Stepflow Langflow Integration v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          fi

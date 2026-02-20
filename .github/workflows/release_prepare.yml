@@ -10,6 +10,7 @@ on:
         options:
           - stepflow
           - stepflow-py
+          - stepflow-langflow
         default: 'stepflow'
       bump_type:
         description: 'Type of version bump'
@@ -47,8 +48,8 @@ jobs:
       - name: Install git-cliff
         uses: kenji-miyake/setup-git-cliff@v1
 
-      - name: Install uv (for Python SDK)
-        if: inputs.package == 'stepflow-py'
+      - name: Install uv (for Python packages)
+        if: inputs.package == 'stepflow-py' || inputs.package == 'stepflow-langflow'
         uses: astral-sh/setup-uv@v3
 
       - name: Configure git
@@ -71,6 +72,13 @@ jobs:
                 ./scripts/prepare-release-python.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
               else
                 ./scripts/prepare-release-python.sh ${{ inputs.bump_type }} --pr
+              fi
+              ;;
+            stepflow-langflow)
+              if [[ -n "${{ inputs.message }}" ]]; then
+                ./scripts/prepare-release-langflow.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+              else
+                ./scripts/prepare-release-langflow.sh ${{ inputs.bump_type }} --pr
               fi
               ;;
             *)
