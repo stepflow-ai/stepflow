@@ -27,6 +27,18 @@ class LeaseManagerConfig1(Struct, kw_only=True):
     type: Literal['noOp']
 
 
+class LeaseManagerConfig2(Struct, kw_only=True):
+    type: Literal['etcd']
+
+
+LeaseManagerConfig = Annotated[
+    LeaseManagerConfig1 | LeaseManagerConfig2,
+    Meta(
+        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
+    ),
+]
+
+
 class RecoveryConfig(Struct, kw_only=True):
     enabled: (
         Annotated[
@@ -239,29 +251,6 @@ class FilesystemBlobStoreConfig(Struct, kw_only=True):
         ]
         | None
     ) = None
-
-
-class EtcdLeaseManagerConfig(Struct, kw_only=True):
-    endpoints: Annotated[
-        List[str],
-        Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
-    ]
-    key_prefix: (
-        Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
-        | None
-    ) = None
-
-
-class LeaseManagerConfig2(EtcdLeaseManagerConfig, kw_only=True):
-    type: Literal['etcd']
-
-
-LeaseManagerConfig = Annotated[
-    LeaseManagerConfig1 | LeaseManagerConfig2,
-    Meta(
-        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
-    ),
-]
 
 
 class SupportedPlugin2(Struct, kw_only=True):
