@@ -42,6 +42,12 @@ This document describes how to perform releases and how the release machinery wo
 - **Publishing**: PyPI via Trusted Publishing (no tokens required)
 - **Artifacts**: Python wheel and source distribution
 
+#### Langflow Integration (`stepflow-langflow`)
+- **Output**: PyPI package, Docker image, GitHub release
+- **Tag Format**: `stepflow-langflow-X.Y.Z`
+- **Publishing**: PyPI via Trusted Publishing, Docker image to GHCR
+- **Artifacts**: Python wheel, source distribution, Docker image (`langflow-component-server`)
+
 ## How Releases Are Implemented
 
 ### Architecture Overview
@@ -154,6 +160,21 @@ git diff
 git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANGELOG.md
 ```
 
+**Langflow Integration:**
+```bash
+# Test patch release locally (safe - no commits/PRs)
+./scripts/prepare-release-langflow.sh patch
+
+# Test with custom message
+./scripts/prepare-release-langflow.sh patch --message "Bug fixes and improvements"
+
+# Review what changed
+git diff
+
+# Reset changes to test again
+git checkout -- integrations/langflow/pyproject.toml integrations/langflow/uv.lock integrations/langflow/CHANGELOG.md
+```
+
 #### Testing Different Bump Types
 
 **Rust Package:**
@@ -180,6 +201,19 @@ git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANG
 ./scripts/prepare-release-python.sh major
 git diff
 git checkout -- sdks/python/pyproject.toml sdks/python/uv.lock sdks/python/CHANGELOG.md
+```
+
+**Langflow Integration:**
+```bash
+# Test minor version bump
+./scripts/prepare-release-langflow.sh minor
+git diff
+git checkout -- integrations/langflow/pyproject.toml integrations/langflow/uv.lock integrations/langflow/CHANGELOG.md
+
+# Test major version bump
+./scripts/prepare-release-langflow.sh major
+git diff
+git checkout -- integrations/langflow/pyproject.toml integrations/langflow/uv.lock integrations/langflow/CHANGELOG.md
 ```
 
 #### Verifying Changelog Generation
@@ -246,6 +280,20 @@ git branch -D test-release-script
 # 3. Skip PyPI publishing and tag creation
 ```
 
+**Langflow Integration:**
+```bash
+# Test the entire release process without publishing
+# Go to Actions → Release Langflow Integration → Run workflow
+# Inputs:
+#   version: 1.2.3-test
+#   skip_tag_creation: true
+
+# This will:
+# 1. Build Python wheel and source distribution
+# 2. Run comprehensive tests
+# 3. Skip PyPI publishing, Docker push, and tag creation
+```
+
 #### Validating Path Filtering
 
 ```bash
@@ -269,6 +317,10 @@ git log --oneline stepflow-rs-0.1.0..HEAD -- stepflow-rs/ CLAUDE.md CONTRIBUTING
 **Python SDK Additional Requirements:**
 - `uv`: Package manager (https://docs.astral.sh/uv/getting-started/installation/)
 - Python 3.13+ (automatically installed by uv)
+
+**Langflow Integration Additional Requirements:**
+- `uv`: Package manager (https://docs.astral.sh/uv/getting-started/installation/)
+- Python 3.11+ (automatically installed by uv)
 
 **Environment:**
 - Clean git working directory (for `--pr` flag)

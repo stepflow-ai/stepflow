@@ -94,3 +94,46 @@ jobs:
           echo "2. Run comprehensive tests" >> $GITHUB_STEP_SUMMARY
           echo "3. Publish to PyPI using Trusted Publishing" >> $GITHUB_STEP_SUMMARY
           echo "4. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
+
+  dispatch-langflow-release:
+    name: Dispatch Langflow Integration Release
+    runs-on: ubuntu-22.04
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:stepflow-langflow')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Extract version from pyproject.toml
+        id: version
+        working-directory: integrations/langflow
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=stepflow-langflow-$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Dispatch Langflow release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "Release - Langflow Integration" \
+            --field version="${{ steps.version.outputs.version }}" \
+            --field skip_tag_creation=false
+
+      - name: Summary
+        run: |
+          echo "## Langflow Integration Release Build Dispatched" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Dispatched release build for **stepflow-langflow-integration v${{ steps.version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Langflow release workflow will:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Build Python wheel and source distribution" >> $GITHUB_STEP_SUMMARY
+          echo "2. Run comprehensive tests" >> $GITHUB_STEP_SUMMARY
+          echo "3. Build and push Docker image" >> $GITHUB_STEP_SUMMARY
+          echo "4. Publish to PyPI using Trusted Publishing" >> $GITHUB_STEP_SUMMARY
+          echo "5. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
