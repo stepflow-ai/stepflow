@@ -707,11 +707,13 @@ impl Plugin for StepflowPlugin {
             input
         };
 
-        // The component sees the orchestrator-level attempt number.
-        // Transport-level retries happen within a single execution attempt
-        // and do not change the attempt number visible to the component.
+        // The component sees a combined attempt number: the orchestrator-level
+        // attempt (from journal replay after crashes) plus transport-level retries
+        // (from connection failures within a single execution). This means the
+        // component always sees a monotonically increasing attempt number regardless
+        // of whether the retry was caused by an orchestrator crash or a worker crash.
         for retry in 0..max_retries {
-            let component_attempt = attempt;
+            let component_attempt = attempt + retry;
 
             // Create observability context from run context and step
             let observability = ObservabilityContext::from_run_context(run_context, step);

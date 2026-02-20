@@ -238,7 +238,7 @@ pub struct StepRunner {
     step_input: FlowResult,
     /// Run context containing run hierarchy, environment, flow, and subflow submission.
     run_context: Arc<RunContext>,
-    /// Execution attempt number (1-based, increases across all retry causes).
+    /// Orchestrator-level attempt number (1-based, increases on journal recovery).
     attempt: u32,
 }
 
