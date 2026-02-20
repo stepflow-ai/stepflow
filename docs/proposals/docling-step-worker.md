@@ -8,7 +8,7 @@
 
 ## Summary
 
-Replace the current docling-serve HTTP proxy architecture with a `docling_step_worker` that wraps docling's Python library directly as Stepflow components. This eliminates the HTTP round-trip to docling-serve, enables conditional pipeline configuration per document, and establishes the flow-based orchestration pattern that later phases (pipeline disaggregation, Rust-native processing) build upon.
+Mirror docling's document processing pipeline as a Stepflow flow, using docling's Python library directly rather than proxying through docling-serve. The immediate goal is **output parity** — a caller should be able to submit a document to this Stepflow flow and get back the same `DoclingDocument` and chunks they would get from docling-serve. This establishes the flow as the control plane for document processing, creating the stable abstraction boundary behind which every subsequent improvement (pipeline disaggregation, conditional routing, Rust-native components) is a component swap rather than a rearchitecture.
 
 The key constraint: **zero duplication of docling internals.** All image manipulation, PDF parsing, model inference, and assembly logic uses docling's existing classes directly. If something can't be cleanly extracted as a separate component without reimplementing docling logic, it stays inside docling's `DocumentConverter`. Deeper disaggregation is deferred to later phases.
 
@@ -17,21 +17,33 @@ The key constraint: **zero duplication of docling internals.** All image manipul
 
 ## Motivation
 
-### Why Now
+### Primary Goal: Establish the Flow Abstraction
 
-The current architecture routes all document processing through docling-serve's HTTP API. This works, but introduces constraints that become painful as we scale:
+The central motivation is to **express docling's document processing pipeline as a Stepflow flow.** Today, document processing is a black box — a request goes into docling-serve and a result comes back. By modeling the same pipeline as a flow with discrete steps (classify, convert, chunk), we gain a stable contract that decouples *what happens* from *how it's implemented*.
 
-- **HTTP serialization overhead.** Every document is base64-encoded into a JSON request body, sent to localhost, decoded by docling-serve, processed, then the result is serialized back. For large PDFs, this is measurable.
-- **One-size-fits-all pipeline.** Every document runs through the same pipeline configuration regardless of content. A born-digital PDF with no tables still initializes TableFormer. A scanned document gets the same OCR settings as a clean digital one.
-- **Opaque processing.** Stepflow sees a single "docling conversion" step. There's no visibility into whether time was spent on layout analysis, table extraction, OCR, or assembly.
-- **Sidecar complexity.** The docling-serve sidecar adds operational weight: its own health checks, resource limits, startup ordering, and failure modes independent of the worker.
+This is the foundation for everything that follows. The Rust-native proposal (`rust-native-docling.md`) describes pipeline disaggregation, page-level fan-out, and native ONNX inference — all of which assume an orchestration layer that can route work to different component implementations. This proposal builds that layer.
 
-### What This Enables
+Critically, the first version should produce **identical output to docling-serve.** That's the correctness proof. If a caller can swap a docling-serve API call for a Stepflow flow invocation and get the same `DoclingDocument` and chunks back, the abstraction is validated and we can begin improving what's behind it.
 
-- **Conditional pipeline selection.** Route documents to different `DocumentConverter` configurations based on classification: skip OCR for born-digital PDFs, use `TableFormerMode.ACCURATE` for financial reports, skip table extraction entirely for text-only documents.
-- **Per-step observability.** Classification, conversion, and chunking are separate Stepflow steps with individual fastrace spans, timing, and failure tracking.
+### Secondary Benefits
+
+Beyond establishing the flow abstraction, this work delivers immediate operational improvements:
+
+- **No sidecar.** Eliminating the docling-serve sidecar removes HTTP serialization overhead, simplifies the pod topology, and reduces per-pod memory by ~500MB.
+- **Conditional pipeline selection.** The classify step enables routing documents to different `DocumentConverter` configurations: skip OCR for born-digital PDFs, use `TableFormerMode.ACCURATE` for financial reports, skip table extraction for text-only documents. This isn't possible with a one-size-fits-all docling-serve configuration.
+- **Per-step observability.** Classification, conversion, and chunking are separate Stepflow steps with individual fastrace spans, timing, and failure tracking. This data directly informs later optimization decisions — we'll see exactly where time is spent before deciding which stages to disaggregate.
 - **Document-level fan-out.** Batch processing naturally distributes across worker pods via the existing `/map` component, with Stepflow managing concurrency limits and partial failure.
-- **Architectural runway.** The flow definition becomes the stable contract. Individual components can be replaced with deeper integrations (page-level fan-out, Rust-native chunking, ONNX inference) without changing the flow's external interface.
+
+### Incremental Improvement Path
+
+This proposal is explicitly designed as the first step in a progression:
+
+1. **This proposal:** Mirror docling's pipeline as a Stepflow flow. Output parity with docling-serve. Validates the flow abstraction.
+2. **Next:** Use observability data to identify bottlenecks. Introduce conditional routing based on classification. Tune pipeline options per document type.
+3. **Later:** Disaggregate the convert step — fan out layout analysis and table extraction across pages using `/map`. The flow definition evolves but its external interface stays the same.
+4. **Eventually:** Swap in Rust-native components (chunking, ONNX inference) behind the same flow contract.
+
+Each step is a component-level change, not a rearchitecture. The flow definition is the stable contract that makes this possible.
 
 ## Design
 
