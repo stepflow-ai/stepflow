@@ -45,6 +45,28 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
             description: Some("Default development server (port 7840)".into()),
             ..Default::default()
         }],
+        tags: vec![
+            aide::openapi::Tag {
+                name: "Blob".into(),
+                description: Some("Blob API endpoints".into()),
+                ..Default::default()
+            },
+            aide::openapi::Tag {
+                name: "Component".into(),
+                description: Some("Component API endpoints".into()),
+                ..Default::default()
+            },
+            aide::openapi::Tag {
+                name: "Flow".into(),
+                description: Some("Flow API endpoints".into()),
+                ..Default::default()
+            },
+            aide::openapi::Tag {
+                name: "Run".into(),
+                description: Some("Run API endpoints".into()),
+                ..Default::default()
+            },
+        ],
         ..Default::default()
     };
 
@@ -113,97 +135,16 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
 /// Fixes issues that aide doesn't handle:
 /// - Renames schemas, builds discriminator mappings, and adds defaults (same
 ///   pipeline as JSON Schema generation — see [`stepflow_core::json_schema`])
-/// - Rewrites `#/$defs/X` references to `#/components/schemas/X` (schemars generates
-///   `$defs`-style refs which are valid JSON Schema but not valid in an OpenAPI document
-///   where schemas live under `components.schemas`)
 /// - Removes unreferenced component schemas (aide registers query parameter structs
 ///   in `components.schemas` but inlines the individual fields in `parameters`)
 pub fn finalize_openapi(api: &OpenApi) -> Value {
     let mut json = serde_json::to_value(api).expect("Failed to serialize OpenAPI");
-    finalize_openapi_discriminators(&mut json);
+    stepflow_core::json_schema::finalize_discriminators_with_prefix(
+        &mut json,
+        "#/components/schemas/",
+    );
     remove_unreferenced_schemas(&mut json);
     json
-}
-
-/// Run the discriminator finalization pipeline on OpenAPI `components.schemas`.
-///
-/// The pipeline expects schemas under root `$defs` with `#/$defs/X` refs.
-/// Aide generates `#/components/schemas/X` refs, so we:
-/// 1. Rewrite refs to `#/$defs/X`
-/// 2. Move `components.schemas` to root `$defs`
-/// 3. Run the finalization pipeline (rename, extract, build mappings, add defaults)
-/// 4. Move `$defs` back to `components.schemas`
-/// 5. Rewrite refs back to `#/components/schemas/X`
-fn finalize_openapi_discriminators(root: &mut Value) {
-    // Step 1: Rewrite #/components/schemas/X → #/$defs/X
-    rewrite_components_to_defs(root);
-
-    // Step 2: Move components.schemas → root $defs
-    let root_obj = root.as_object_mut().unwrap();
-    let schemas = root_obj
-        .get_mut("components")
-        .and_then(|c| c.as_object_mut())
-        .and_then(|c| c.remove("schemas"));
-
-    let Some(schemas) = schemas else { return };
-    root_obj.insert("$defs".to_string(), schemas);
-
-    // Step 3: Run discriminator finalization pipeline
-    stepflow_core::json_schema::finalize_discriminators(root);
-
-    // Step 4: Move $defs → components.schemas
-    let root_obj = root.as_object_mut().unwrap();
-    if let Some(new_defs) = root_obj.remove("$defs") {
-        if let Some(comp) = root_obj
-            .get_mut("components")
-            .and_then(|c| c.as_object_mut())
-        {
-            comp.insert("schemas".to_string(), new_defs);
-        }
-    }
-
-    // Step 5: Rewrite #/$defs/X → #/components/schemas/X
-    rewrite_defs_to_components(root);
-}
-
-/// Recursively rewrite `#/components/schemas/X` references to `#/$defs/X`.
-fn rewrite_components_to_defs(value: &mut Value) {
-    match value {
-        Value::String(s) if s.starts_with("#/components/schemas/") => {
-            *s = s.replacen("#/components/schemas/", "#/$defs/", 1);
-        }
-        Value::Object(map) => {
-            for v in map.values_mut() {
-                rewrite_components_to_defs(v);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                rewrite_components_to_defs(v);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Recursively rewrite `#/$defs/X` references to `#/components/schemas/X`.
-fn rewrite_defs_to_components(value: &mut Value) {
-    match value {
-        Value::String(s) if s.starts_with("#/$defs/") => {
-            *s = s.replacen("#/$defs/", "#/components/schemas/", 1);
-        }
-        Value::Object(map) => {
-            for v in map.values_mut() {
-                rewrite_defs_to_components(v);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                rewrite_defs_to_components(v);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// Remove component schemas that are not referenced anywhere in the document.

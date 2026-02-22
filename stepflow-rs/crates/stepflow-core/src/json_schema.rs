@@ -102,37 +102,78 @@ pub fn generate_json_schema_custom<T: schemars::JsonSchema>(
 /// with code generators like `datamodel-code-generator`.
 ///
 /// This runs three steps in order:
-/// 1. **Extract inline `oneOf` variants** to `$defs` — variants are keyed by
-///    their `title` attribute, so code generators produce the expected type names.
-/// 2. **Build discriminator mappings** by resolving `$ref` → `$defs` to read
+/// 1. **Extract inline `oneOf` variants** to the definitions section — variants
+///    are keyed by their `title` attribute, so code generators produce the
+///    expected type names.
+/// 2. **Build discriminator mappings** by resolving `$ref` → definitions to read
 ///    tag `const` values and populate `discriminator.mapping`.
 /// 3. **Add `default` alongside `const`** for discriminator tag properties —
 ///    `datamodel-code-generator` uses `default` (not `const`) to set tag values.
+///
+/// Schemas are resolved using `#/$defs/` references. For OpenAPI documents
+/// where schemas live under `#/components/schemas/`, use
+/// [`finalize_discriminators_with_prefix`].
 pub fn finalize_discriminators(root: &mut Value) {
-    extract_inline_oneof_to_defs(root);
-    build_discriminator_mappings(root);
-    add_defaults_to_discriminator_consts(root);
+    finalize_discriminators_with_prefix(root, "#/$defs/");
 }
 
-/// Extract inline oneOf variants to `$defs` in schemas with discriminators.
+/// Like [`finalize_discriminators`], but with a configurable `$ref` prefix.
+///
+/// The `ref_prefix` determines both where definitions are stored in the JSON
+/// tree and the `$ref` prefix used in references:
+/// - `"#/$defs/"` — JSON Schema (definitions at `root.$defs`)
+/// - `"#/components/schemas/"` — OpenAPI (definitions at `root.components.schemas`)
+pub fn finalize_discriminators_with_prefix(root: &mut Value, ref_prefix: &str) {
+    extract_inline_oneof_to_defs(root, ref_prefix);
+    build_discriminator_mappings(root, ref_prefix);
+    add_defaults_to_discriminator_consts(root, ref_prefix);
+}
+
+/// Derive a JSON pointer path from a `$ref` prefix.
+///
+/// - `"#/$defs/"` → `"/$defs"`
+/// - `"#/components/schemas/"` → `"/components/schemas"`
+fn defs_pointer(ref_prefix: &str) -> &str {
+    ref_prefix
+        .strip_prefix('#')
+        .unwrap_or(ref_prefix)
+        .strip_suffix('/')
+        .unwrap_or(ref_prefix)
+}
+
+/// Navigate to (and create if needed) the definitions object at the path
+/// implied by `ref_prefix`.
+fn get_or_create_defs_mut<'a>(
+    root: &'a mut Value,
+    ref_prefix: &str,
+) -> &'a mut serde_json::Map<String, Value> {
+    let pointer = defs_pointer(ref_prefix);
+    let mut current = root;
+    for segment in pointer.split('/').filter(|s| !s.is_empty()) {
+        current = current
+            .as_object_mut()
+            .unwrap()
+            .entry(segment.to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    }
+    current.as_object_mut().unwrap()
+}
+
+/// Extract inline oneOf variants to the definitions section in schemas with
+/// discriminators.
 ///
 /// schemars inlines all variants in the `oneOf` array. Discriminator mappings
-/// require `$ref` paths, so this extracts inline variants to `$defs` (using
+/// require `$ref` paths, so this extracts inline variants to definitions (using
 /// their `title` as the key) and replaces them with `$ref` entries.
-fn extract_inline_oneof_to_defs(root: &mut Value) {
+fn extract_inline_oneof_to_defs(root: &mut Value, ref_prefix: &str) {
     let mut extractions: Vec<(String, Value)> = Vec::new();
-    extract_inline_oneof_recursive(root, &mut extractions);
+    extract_inline_oneof_recursive(root, ref_prefix, &mut extractions);
 
     if extractions.is_empty() {
         return;
     }
 
-    let root_obj = root.as_object_mut().unwrap();
-    let defs = root_obj
-        .entry("$defs".to_string())
-        .or_insert_with(|| Value::Object(serde_json::Map::new()))
-        .as_object_mut()
-        .unwrap();
+    let defs = get_or_create_defs_mut(root, ref_prefix);
 
     for (key, schema) in extractions {
         if let Some(existing) = defs.get_mut(&key) {
@@ -148,6 +189,7 @@ fn extract_inline_oneof_to_defs(root: &mut Value) {
 
 fn extract_inline_oneof_recursive(
     value: &mut Value,
+    ref_prefix: &str,
     extractions: &mut Vec<(String, Value)>,
 ) {
     match value {
@@ -169,19 +211,20 @@ fn extract_inline_oneof_recursive(
                             .map(|s| s.to_string())
                         {
                             extractions.push((title.clone(), variant.clone()));
-                            *variant = serde_json::json!({ "$ref": format!("#/$defs/{title}") });
+                            *variant =
+                                serde_json::json!({ "$ref": format!("{ref_prefix}{title}") });
                         }
                     }
                 }
             }
 
             for v in obj.values_mut() {
-                extract_inline_oneof_recursive(v, extractions);
+                extract_inline_oneof_recursive(v, ref_prefix, extractions);
             }
         }
         Value::Array(arr) => {
             for v in arr.iter_mut() {
-                extract_inline_oneof_recursive(v, extractions);
+                extract_inline_oneof_recursive(v, ref_prefix, extractions);
             }
         }
         _ => {}
@@ -225,20 +268,21 @@ fn merge_tag_properties(existing: &mut Value, variant: &Value) {
     }
 }
 
-/// Build discriminator mappings by resolving `$ref` → `$defs` entries
+/// Build discriminator mappings by resolving `$ref` → definition entries
 /// and reading tag `const` values.
-fn build_discriminator_mappings(root: &mut Value) {
-    let Some(root_obj) = root.as_object() else {
-        return;
-    };
-    let defs = root_obj.get("$defs").and_then(|v| v.as_object()).cloned();
+fn build_discriminator_mappings(root: &mut Value, ref_prefix: &str) {
+    let defs = root
+        .pointer(defs_pointer(ref_prefix))
+        .and_then(|v| v.as_object())
+        .cloned();
 
     // Recursively process all schemas in the document
-    build_discriminator_mappings_recursive(root, defs.as_ref());
+    build_discriminator_mappings_recursive(root, ref_prefix, defs.as_ref());
 }
 
 fn build_discriminator_mappings_recursive(
     value: &mut Value,
+    ref_prefix: &str,
     defs: Option<&serde_json::Map<String, Value>>,
 ) {
     let Some(defs) = defs else { return };
@@ -260,12 +304,12 @@ fn build_discriminator_mappings_recursive(
                         let mut mapping = serde_json::Map::new();
 
                         for variant in one_of {
-                            // Resolve $ref to the $defs entry
+                            // Resolve $ref to the definition entry
                             if let Some(ref_path) = variant
                                 .get("$ref")
                                 .and_then(|r| r.as_str())
                             {
-                                if let Some(def_key) = ref_path.strip_prefix("#/$defs/") {
+                                if let Some(def_key) = ref_path.strip_prefix(ref_prefix) {
                                     if let Some(def_schema) = defs.get(def_key) {
                                         // Read the const value for the discriminator property
                                         if let Some(const_val) = def_schema
@@ -299,39 +343,40 @@ fn build_discriminator_mappings_recursive(
 
             // Recurse into all values
             for v in obj.values_mut() {
-                build_discriminator_mappings_recursive(v, Some(defs));
+                build_discriminator_mappings_recursive(v, ref_prefix, Some(defs));
             }
         }
         Value::Array(arr) => {
             for v in arr.iter_mut() {
-                build_discriminator_mappings_recursive(v, Some(defs));
+                build_discriminator_mappings_recursive(v, ref_prefix, Some(defs));
             }
         }
         _ => {}
     }
 }
 
-/// Add `default` alongside `const` for discriminator tag properties in `$defs`.
+/// Add `default` alongside `const` for discriminator tag properties in definitions.
 ///
 /// Code generators like `datamodel-code-generator` use `default` (not `const`)
 /// to determine tag values for generated tagged union types. This walks all
-/// `$defs` entries referenced by discriminator mappings and adds `default`
+/// definition entries referenced by discriminator mappings and adds `default`
 /// equal to `const` for the discriminator tag property.
-fn add_defaults_to_discriminator_consts(root: &mut Value) {
+fn add_defaults_to_discriminator_consts(root: &mut Value, ref_prefix: &str) {
     let Some(root_obj) = root.as_object() else {
         return;
     };
 
     // Collect (def_key, property_name) pairs from all discriminator mappings
     let mut targets: Vec<(String, String)> = Vec::new();
-    collect_discriminator_targets(root_obj, &mut targets);
+    collect_discriminator_targets(root_obj, ref_prefix, &mut targets);
 
     if targets.is_empty() {
         return;
     }
 
     // Apply defaults to the collected targets
-    let Some(defs) = root.as_object_mut().and_then(|o| o.get_mut("$defs")).and_then(|d| d.as_object_mut()) else {
+    let pointer = defs_pointer(ref_prefix);
+    let Some(defs) = root.pointer_mut(pointer).and_then(|d| d.as_object_mut()) else {
         return;
     };
 
@@ -350,13 +395,17 @@ fn add_defaults_to_discriminator_consts(root: &mut Value) {
     }
 }
 
-fn collect_discriminator_targets(value: &serde_json::Map<String, Value>, targets: &mut Vec<(String, String)>) {
+fn collect_discriminator_targets(
+    value: &serde_json::Map<String, Value>,
+    ref_prefix: &str,
+    targets: &mut Vec<(String, String)>,
+) {
     if let Some(disc) = value.get("discriminator").and_then(|d| d.as_object()) {
         if let Some(property_name) = disc.get("propertyName").and_then(|p| p.as_str()) {
             if let Some(mapping) = disc.get("mapping").and_then(|m| m.as_object()) {
                 for ref_path in mapping.values() {
                     if let Some(ref_str) = ref_path.as_str() {
-                        if let Some(def_key) = ref_str.strip_prefix("#/$defs/") {
+                        if let Some(def_key) = ref_str.strip_prefix(ref_prefix) {
                             targets.push((def_key.to_string(), property_name.to_string()));
                         }
                     }
@@ -368,11 +417,11 @@ fn collect_discriminator_targets(value: &serde_json::Map<String, Value>, targets
     // Recurse into nested objects
     for v in value.values() {
         if let Some(obj) = v.as_object() {
-            collect_discriminator_targets(obj, targets);
+            collect_discriminator_targets(obj, ref_prefix, targets);
         } else if let Some(arr) = v.as_array() {
             for item in arr {
                 if let Some(obj) = item.as_object() {
-                    collect_discriminator_targets(obj, targets);
+                    collect_discriminator_targets(obj, ref_prefix, targets);
                 }
             }
         }

@@ -173,8 +173,13 @@
       ]
     },
     "Component": {
-      "description": "Identifies a specific plugin and atomic functionality to execute.",
-      "type": "string"
+      "description": "Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+      "type": "string",
+      "examples": [
+        "/builtin/eval",
+        "/mcpfs/list_files",
+        "/python/udf"
+      ]
     },
     "ErrorAction": {
       "description": "Error action determines what happens when a step fails.",
@@ -319,7 +324,21 @@
         },
         {
           "title": "Literal",
-          "description": "A literal JSON value (string, number, boolean, or null)"
+          "description": "A literal JSON value (string, number, boolean, or null)",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ]
         }
       ]
     },

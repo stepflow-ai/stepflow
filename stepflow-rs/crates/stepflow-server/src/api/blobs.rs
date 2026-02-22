@@ -73,7 +73,8 @@ pub struct GetBlobResponse {
 }
 
 pub fn store_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
-    op.id("storeBlob")
+    let mut op = op
+        .id("storeBlob")
         .summary("Store a blob")
         .description(
             "Store a blob and return its content-based ID. Supports two content types: \
@@ -81,8 +82,42 @@ pub fn store_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
              and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).",
         )
         .tag("Blob")
-        .response_with::<200, Json<StoreBlobResponse>, _>(|res| res.description("Blob stored successfully"))
-        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid request body"))
+        .response_with::<200, Json<StoreBlobResponse>, _>(|res| {
+            res.description("Blob stored successfully")
+        })
+        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid request body"));
+
+    // Manually set request body to document both content types
+    let json_schema = aide::generate::in_context(|ctx| ctx.schema.subschema_for::<StoreBlobRequest>());
+    op.inner_mut().request_body = Some(aide::openapi::ReferenceOr::Item(
+        aide::openapi::RequestBody {
+            description: Some("Blob data to store".into()),
+            content: indexmap::indexmap! {
+                "application/json".into() => aide::openapi::MediaType {
+                    schema: Some(aide::openapi::SchemaObject {
+                        json_schema,
+                        example: None,
+                        external_docs: None,
+                    }),
+                    ..Default::default()
+                },
+                "application/octet-stream".into() => aide::openapi::MediaType {
+                    schema: Some(aide::openapi::SchemaObject {
+                        json_schema: schemars::json_schema!({
+                            "type": "string",
+                            "format": "binary"
+                        }),
+                        example: None,
+                        external_docs: None,
+                    }),
+                    ..Default::default()
+                },
+            },
+            required: true,
+            extensions: Default::default(),
+        },
+    ));
+    op
 }
 
 /// Store a blob and return its content-based ID.

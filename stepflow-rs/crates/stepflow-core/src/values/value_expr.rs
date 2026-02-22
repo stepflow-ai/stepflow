@@ -478,8 +478,13 @@ impl schemars::JsonSchema for ValueExpr {
         "ValueExpr".into()
     }
 
-    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Build self-ref using the generator's definitions_path so refs are correct
+        // for both JSON Schema (#/$defs/ValueExpr) and OpenAPI (#/components/schemas/ValueExpr).
+        let defs_path = generator.settings().definitions_path.trim_matches('/');
+        let self_ref = format!("#/{defs_path}/ValueExpr");
+
+        serde_json::json!({
             "oneOf": [
                 {
                     "title": "StepRef",
@@ -508,7 +513,7 @@ impl schemars::JsonSchema for ValueExpr {
                     "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
                     "properties": {
                         "$variable": { "type": "string", "description": "JSONPath expression including variable name" },
-                        "default": { "$ref": "#/$defs/ValueExpr" }
+                        "default": { "$ref": self_ref }
                     },
                     "required": ["$variable"],
                     "additionalProperties": false
@@ -528,9 +533,9 @@ impl schemars::JsonSchema for ValueExpr {
                     "type": "object",
                     "description": "Conditional: { $if: condition, then: expr, else?: expr }",
                     "properties": {
-                        "$if": { "$ref": "#/$defs/ValueExpr" },
-                        "then": { "$ref": "#/$defs/ValueExpr" },
-                        "else": { "$ref": "#/$defs/ValueExpr" }
+                        "$if": { "$ref": self_ref },
+                        "then": { "$ref": self_ref },
+                        "else": { "$ref": self_ref }
                     },
                     "required": ["$if", "then"],
                     "additionalProperties": false
@@ -542,7 +547,7 @@ impl schemars::JsonSchema for ValueExpr {
                     "properties": {
                         "$coalesce": {
                             "type": "array",
-                            "items": { "$ref": "#/$defs/ValueExpr" }
+                            "items": { "$ref": self_ref }
                         }
                     },
                     "required": ["$coalesce"],
@@ -552,20 +557,28 @@ impl schemars::JsonSchema for ValueExpr {
                     "title": "ArrayExpr",
                     "type": "array",
                     "description": "Array with expressions as elements",
-                    "items": { "$ref": "#/$defs/ValueExpr" }
+                    "items": { "$ref": self_ref }
                 },
                 {
                     "title": "ObjectExpr",
                     "type": "object",
                     "description": "Object with expressions as values",
-                    "additionalProperties": { "$ref": "#/$defs/ValueExpr" }
+                    "additionalProperties": { "$ref": self_ref }
                 },
                 {
                     "title": "Literal",
-                    "description": "A literal JSON value (string, number, boolean, or null)"
+                    "description": "A literal JSON value (string, number, boolean, or null)",
+                    "oneOf": [
+                        { "type": "null" },
+                        { "type": "boolean" },
+                        { "type": "number" },
+                        { "type": "string" }
+                    ]
                 }
             ]
         })
+        .try_into()
+        .expect("ValueExpr schema is valid")
     }
 }
 
