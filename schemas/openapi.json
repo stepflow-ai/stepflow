@@ -109,6 +109,19 @@
         "summary": "Get a blob by ID",
         "description": "Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.",
         "operationId": "getBlob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "blob_id",
+            "description": "The blob's content-based hash ID",
+            "required": true,
+            "schema": {
+              "description": "The blob's content-based hash ID",
+              "$ref": "#/components/schemas/BlobId"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Blob data",
@@ -130,17 +143,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "blob_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/components": {
@@ -409,6 +412,18 @@
         "operationId": "getRun",
         "parameters": [
           {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          },
+          {
             "in": "query",
             "name": "wait",
             "description": "If true, wait for the run to reach a terminal state before responding.",
@@ -437,14 +452,6 @@
               "default": null
             },
             "style": "form"
-          },
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -477,6 +484,20 @@
         "summary": "Delete a completed execution",
         "description": "Delete a completed execution by ID. Running executions cannot be deleted.",
         "operationId": "deleteRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "no content"
@@ -501,17 +522,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/runs/{run_id}/items": {
@@ -522,6 +533,20 @@
         "summary": "Get all item results for a run",
         "description": "Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.",
         "operationId": "getRunItems",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response for listing run items",
@@ -543,17 +568,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/runs/{run_id}/flow": {
@@ -564,6 +579,20 @@
         "summary": "Get the workflow definition for a run",
         "description": "Retrieve the workflow definition associated with a specific run.",
         "operationId": "getRunFlow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response containing a flow definition and its hash for run endpoints",
@@ -585,17 +614,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/runs/{run_id}/steps": {
@@ -607,6 +626,18 @@
         "description": "Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.",
         "operationId": "getRunSteps",
         "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          },
           {
             "in": "query",
             "name": "itemIndex",
@@ -622,14 +653,6 @@
               "default": null
             },
             "style": "form"
-          },
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -664,6 +687,20 @@
         "summary": "Cancel a running execution",
         "description": "Cancel a running execution by ID.",
         "operationId": "cancelRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Summary information about a flow run.",
@@ -695,17 +732,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     },
     "/flows": {
@@ -759,6 +786,19 @@
         "summary": "Get a flow by ID",
         "description": "Retrieve a flow definition by its content-based hash ID.",
         "operationId": "getFlow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "description": "The flow's content-based hash ID",
+            "required": true,
+            "schema": {
+              "description": "The flow's content-based hash ID",
+              "$ref": "#/components/schemas/BlobId"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response containing a flow definition and its ID",
@@ -780,17 +820,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "flow_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       },
       "delete": {
         "tags": [
@@ -799,6 +829,19 @@
         "summary": "Delete a flow by ID",
         "description": "Delete a flow by its content-based hash ID.",
         "operationId": "deleteFlow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "description": "The flow's content-based hash ID",
+            "required": true,
+            "schema": {
+              "description": "The flow's content-based hash ID",
+              "$ref": "#/components/schemas/BlobId"
+            },
+            "style": "simple"
+          }
+        ],
         "responses": {
           "200": {
             "description": "no content"
@@ -813,17 +856,7 @@
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "flow_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ]
+        }
       }
     }
   },
@@ -950,6 +983,22 @@
         "description": "A SHA-256 hash of the blob content, represented as a hexadecimal string.",
         "type": "string"
       },
+      "OnErrorDefault": {
+        "title": "OnErrorDefault",
+        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+        "type": "object",
+        "properties": {
+          "defaultValue": true,
+          "action": {
+            "type": "string",
+            "const": "useDefault",
+            "default": "useDefault"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
       "GetBlobResponse": {
         "description": "Response when retrieving a blob (JSON mode)",
         "type": "object",
@@ -1007,16 +1056,15 @@
           }
         ]
       },
-      "OnErrorDefault": {
-        "title": "OnErrorDefault",
-        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+      "OnErrorFail": {
+        "title": "OnErrorFail",
+        "description": "If the step fails, the flow will fail.",
         "type": "object",
         "properties": {
-          "defaultValue": true,
           "action": {
             "type": "string",
-            "const": "useDefault",
-            "default": "useDefault"
+            "const": "fail",
+            "default": "fail"
           }
         },
         "required": [
@@ -1091,19 +1139,38 @@
       "Schema": {
         "description": "A valid JSON Schema object."
       },
-      "OnErrorFail": {
-        "title": "OnErrorFail",
-        "description": "If the step fails, the flow will fail.",
+      "FlowResponse": {
+        "description": "Response containing a flow definition and its ID",
         "type": "object",
         "properties": {
-          "action": {
-            "type": "string",
-            "const": "fail",
-            "default": "fail"
+          "flow": {
+            "description": "The flow definition",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Flow"
+              }
+            ]
+          },
+          "flowId": {
+            "description": "The flow ID",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlobId"
+              }
+            ]
+          },
+          "allExamples": {
+            "description": "All available examples (includes both examples and test cases)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            }
           }
         },
         "required": [
-          "action"
+          "flow",
+          "flowId",
+          "allExamples"
         ]
       },
       "ExecutionStatus": {
@@ -1592,39 +1659,59 @@
           "message"
         ]
       },
-      "FlowResponse": {
-        "description": "Response containing a flow definition and its ID",
+      "Diagnostic": {
+        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
         "type": "object",
         "properties": {
-          "flow": {
-            "description": "The flow definition",
+          "kind": {
+            "description": "The diagnostic kind name (camelCase)",
+            "type": "string"
+          },
+          "code": {
+            "description": "Numeric error code",
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "level": {
+            "description": "The severity level",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Flow"
+                "$ref": "#/components/schemas/DiagnosticLevel"
               }
             ]
           },
-          "flowId": {
-            "description": "The flow ID",
+          "formatted": {
+            "description": "Human-readable formatted message",
+            "type": "string"
+          },
+          "data": {
+            "description": "Structured data with camelCase keys (null if no data)"
+          },
+          "path": {
+            "description": "JSON path to the field with the issue",
             "allOf": [
               {
-                "$ref": "#/components/schemas/BlobId"
+                "$ref": "#/components/schemas/Path"
               }
             ]
           },
-          "allExamples": {
-            "description": "All available examples (includes both examples and test cases)",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleInput"
-            }
+          "experimental": {
+            "description": "Whether this diagnostic is experimental (may have false positives)",
+            "type": "boolean"
           }
         },
         "required": [
-          "flow",
-          "flowId",
-          "allExamples"
+          "kind",
+          "code",
+          "level",
+          "formatted"
         ]
+      },
+      "Path": {
+        "description": "Path to a location in the workflow definition, serialized as a string",
+        "type": "string"
       },
       "RunDetails": {
         "description": "Detailed flow run information including item details.\n\nFor completed runs, `item_details` contains per-item information including\ninputs and step statuses. For active runs, `item_details` may be `None`\n(query the owning orchestrator for live status).",
@@ -2301,9 +2388,25 @@
           "input"
         ]
       },
-      "Path": {
-        "description": "Path to a location in the workflow definition, serialized as a string",
-        "type": "string"
+      "DiagnosticLevel": {
+        "description": "Diagnostic level indicating severity and impact",
+        "oneOf": [
+          {
+            "description": "Fatal: Prevents analysis from proceeding",
+            "type": "string",
+            "const": "fatal"
+          },
+          {
+            "description": "Error: Will definitely fail during execution",
+            "type": "string",
+            "const": "error"
+          },
+          {
+            "description": "Warning: Likely to cause problems during execution",
+            "type": "string",
+            "const": "warning"
+          }
+        ]
       },
       "ListStepRunsResponse": {
         "description": "Response for listing step runs",
@@ -2446,76 +2549,6 @@
           "numFatal",
           "numError",
           "numWarning"
-        ]
-      },
-      "Diagnostic": {
-        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
-        "type": "object",
-        "properties": {
-          "kind": {
-            "description": "The diagnostic kind name (camelCase)",
-            "type": "string"
-          },
-          "code": {
-            "description": "Numeric error code",
-            "type": "integer",
-            "format": "uint16",
-            "minimum": 0,
-            "maximum": 65535
-          },
-          "level": {
-            "description": "The severity level",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DiagnosticLevel"
-              }
-            ]
-          },
-          "formatted": {
-            "description": "Human-readable formatted message",
-            "type": "string"
-          },
-          "data": {
-            "description": "Structured data with camelCase keys (null if no data)"
-          },
-          "path": {
-            "description": "JSON path to the field with the issue",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Path"
-              }
-            ]
-          },
-          "experimental": {
-            "description": "Whether this diagnostic is experimental (may have false positives)",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "kind",
-          "code",
-          "level",
-          "formatted"
-        ]
-      },
-      "DiagnosticLevel": {
-        "description": "Diagnostic level indicating severity and impact",
-        "oneOf": [
-          {
-            "description": "Fatal: Prevents analysis from proceeding",
-            "type": "string",
-            "const": "fatal"
-          },
-          {
-            "description": "Error: Will definitely fail during execution",
-            "type": "string",
-            "const": "error"
-          },
-          {
-            "description": "Warning: Likely to cause problems during execution",
-            "type": "string",
-            "const": "warning"
-          }
         ]
       }
     }

@@ -48,7 +48,7 @@ class RunApi:
     @validate_call
     async def cancel_run(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -63,7 +63,7 @@ class RunApi:
 
         Cancel a running execution by ID.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -112,7 +112,7 @@ class RunApi:
     @validate_call
     async def cancel_run_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -127,7 +127,7 @@ class RunApi:
 
         Cancel a running execution by ID.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -176,7 +176,7 @@ class RunApi:
     @validate_call
     async def cancel_run_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -191,7 +191,7 @@ class RunApi:
 
         Cancel a running execution by ID.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -558,7 +558,7 @@ class RunApi:
     @validate_call
     async def delete_run(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -573,7 +573,7 @@ class RunApi:
 
         Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -622,7 +622,7 @@ class RunApi:
     @validate_call
     async def delete_run_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -637,7 +637,7 @@ class RunApi:
 
         Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -686,7 +686,7 @@ class RunApi:
     @validate_call
     async def delete_run_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -701,7 +701,7 @@ class RunApi:
 
         Delete a completed execution by ID. Running executions cannot be deleted.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -799,7 +799,7 @@ class RunApi:
     @validate_call
     async def get_run(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -826,7 +826,7 @@ class RunApi:
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -880,7 +880,7 @@ class RunApi:
     @validate_call
     async def get_run_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -907,7 +907,7 @@ class RunApi:
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -961,7 +961,7 @@ class RunApi:
     @validate_call
     async def get_run_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         wait: Annotated[
             StrictBool | None,
             Field(
@@ -988,7 +988,7 @@ class RunApi:
 
         Returns the current run status and details. Use `wait=true` to long-poll until the run reaches a terminal state (completed, failed, or cancelled).
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param wait: If true, wait for the run to reach a terminal state before responding.
         :type wait: bool
@@ -1099,7 +1099,7 @@ class RunApi:
     @validate_call
     async def get_run_flow(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1114,7 +1114,7 @@ class RunApi:
 
         Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1162,7 +1162,7 @@ class RunApi:
     @validate_call
     async def get_run_flow_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1177,7 +1177,7 @@ class RunApi:
 
         Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1225,7 +1225,7 @@ class RunApi:
     @validate_call
     async def get_run_flow_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1240,7 +1240,7 @@ class RunApi:
 
         Retrieve the workflow definition associated with a specific run.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1337,7 +1337,7 @@ class RunApi:
     @validate_call
     async def get_run_items(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1352,7 +1352,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1400,7 +1400,7 @@ class RunApi:
     @validate_call
     async def get_run_items_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1415,7 +1415,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1463,7 +1463,7 @@ class RunApi:
     @validate_call
     async def get_run_items_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -1478,7 +1478,7 @@ class RunApi:
 
         Returns results for all items in the run, ordered by item index. For single-item runs (item_count=1), returns a single item.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -1575,7 +1575,7 @@ class RunApi:
     @validate_call
     async def get_run_steps(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
@@ -1596,7 +1596,7 @@ class RunApi:
 
         Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int
@@ -1647,7 +1647,7 @@ class RunApi:
     @validate_call
     async def get_run_steps_with_http_info(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
@@ -1668,7 +1668,7 @@ class RunApi:
 
         Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int
@@ -1719,7 +1719,7 @@ class RunApi:
     @validate_call
     async def get_run_steps_without_preload_content(
         self,
-        run_id: StrictStr,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
         item_index: Annotated[
             Annotated[int, Field(strict=True, ge=0)] | None,
             Field(
@@ -1740,7 +1740,7 @@ class RunApi:
 
         Get step-level execution details for a specific run. Use `item_index` to get statuses for a specific item in batch runs. Without `item_index`, statuses are aggregated across all items.
 
-        :param run_id: (required)
+        :param run_id: Run ID (UUID) (required)
         :type run_id: str
         :param item_index: Optional item index for multi-item (batch) runs. If not specified, step statuses are aggregated across all items using \"worst status\" precedence (Failed > Running > Runnable > Blocked > Skipped > Completed).
         :type item_index: int

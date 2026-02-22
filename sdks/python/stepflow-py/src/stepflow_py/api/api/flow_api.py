@@ -43,7 +43,9 @@ class FlowApi:
     @validate_call
     async def delete_flow(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -58,7 +60,7 @@ class FlowApi:
 
         Delete a flow by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -106,7 +108,9 @@ class FlowApi:
     @validate_call
     async def delete_flow_with_http_info(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -121,7 +125,7 @@ class FlowApi:
 
         Delete a flow by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -169,7 +173,9 @@ class FlowApi:
     @validate_call
     async def delete_flow_without_preload_content(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -184,7 +190,7 @@ class FlowApi:
 
         Delete a flow by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -281,7 +287,9 @@ class FlowApi:
     @validate_call
     async def get_flow(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -296,7 +304,7 @@ class FlowApi:
 
         Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -344,7 +352,9 @@ class FlowApi:
     @validate_call
     async def get_flow_with_http_info(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -359,7 +369,7 @@ class FlowApi:
 
         Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -407,7 +417,9 @@ class FlowApi:
     @validate_call
     async def get_flow_without_preload_content(
         self,
-        flow_id: StrictStr,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -422,7 +434,7 @@ class FlowApi:
 
         Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request

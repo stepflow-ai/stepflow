@@ -32,6 +32,13 @@ use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
 
+/// Path parameters for run endpoints
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct RunPath {
+    /// Run ID (UUID)
+    pub run_id: Uuid,
+}
+
 /// Request to create/execute a flow.
 ///
 /// The `input` field is always an array of input values:
@@ -316,7 +323,7 @@ pub fn get_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// until the run reaches a terminal state (completed, failed, or cancelled).
 pub async fn get_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
     Query(query): Query<GetRunQuery>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
     // If wait=true, block until the run reaches a terminal state (with timeout)
@@ -362,7 +369,7 @@ pub fn get_run_items_docs(op: TransformOperation<'_>) -> TransformOperation<'_> 
 /// For single-item runs (item_count=1), returns a single item.
 pub async fn get_run_items(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<ListItemsResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
 
@@ -393,7 +400,7 @@ pub fn get_run_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// Get the workflow definition for an execution
 pub async fn get_run_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<RunFlowResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
     let blob_store = executor.blob_store();
@@ -464,7 +471,7 @@ pub fn get_run_steps_docs(op: TransformOperation<'_>) -> TransformOperation<'_> 
 /// Get step-level execution details for a specific execution
 pub async fn get_run_steps(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
     Query(query): Query<StepRunsQuery>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
@@ -593,7 +600,7 @@ pub fn cancel_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// Cancel a running execution
 pub async fn cancel_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<RunSummary>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
 
@@ -647,7 +654,7 @@ pub fn delete_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// Delete a completed execution
 pub async fn delete_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<(), ErrorResponse> {
     let metadata_store = executor.metadata_store();
 

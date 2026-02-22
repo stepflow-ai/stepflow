@@ -42,7 +42,9 @@ class BlobApi:
     @validate_call
     async def get_blob(
         self,
-        blob_id: StrictStr,
+        blob_id: Annotated[
+            StrictStr, Field(description="The blob's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -57,7 +59,7 @@ class BlobApi:
 
         Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: (required)
+        :param blob_id: The blob's content-based hash ID (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -105,7 +107,9 @@ class BlobApi:
     @validate_call
     async def get_blob_with_http_info(
         self,
-        blob_id: StrictStr,
+        blob_id: Annotated[
+            StrictStr, Field(description="The blob's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -120,7 +124,7 @@ class BlobApi:
 
         Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: (required)
+        :param blob_id: The blob's content-based hash ID (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -168,7 +172,9 @@ class BlobApi:
     @validate_call
     async def get_blob_without_preload_content(
         self,
-        blob_id: StrictStr,
+        blob_id: Annotated[
+            StrictStr, Field(description="The blob's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -183,7 +189,7 @@ class BlobApi:
 
         Retrieve a blob by its content-based ID. Supports content negotiation via `Accept` header: `application/json` (default) returns JSON with data, blobType, blobId, and filename; `application/octet-stream` returns raw bytes.
 
-        :param blob_id: (required)
+        :param blob_id: The blob's content-based hash ID (required)
         :type blob_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request

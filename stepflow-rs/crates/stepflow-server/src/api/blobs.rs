@@ -25,6 +25,13 @@ use stepflow_state::BlobStoreExt as _;
 
 use crate::error::ErrorResponse;
 
+/// Path parameters for blob endpoints
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct BlobPath {
+    /// The blob's content-based hash ID
+    pub blob_id: BlobId,
+}
+
 /// Request to store a blob (JSON mode)
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -170,7 +177,7 @@ pub fn get_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 ///   For data/flow blobs, returns UTF-8 JSON bytes. Sets `Content-Disposition` if filename exists.
 pub async fn get_blob(
     State(env): State<Arc<StepflowEnvironment>>,
-    Path(blob_id): Path<BlobId>,
+    Path(BlobPath { blob_id }): Path<BlobPath>,
     headers: HeaderMap,
 ) -> Result<Response, ErrorResponse> {
     let blob_store = env.blob_store();

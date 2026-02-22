@@ -24,6 +24,13 @@ use stepflow_state::BlobStoreExt as _;
 
 use crate::error::ErrorResponse;
 
+/// Path parameters for flow endpoints
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct FlowPath {
+    /// The flow's content-based hash ID
+    pub flow_id: BlobId,
+}
+
 /// Request to store a flow
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -125,7 +132,7 @@ pub fn get_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// Get a flow by its ID
 pub async fn get_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(flow_id): Path<BlobId>,
+    Path(FlowPath { flow_id }): Path<FlowPath>,
 ) -> Result<Json<FlowResponse>, ErrorResponse> {
     let blob_store = executor.blob_store();
 
@@ -181,7 +188,7 @@ pub fn delete_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
 /// Delete a flow by ID
 pub async fn delete_flow(
     State(_executor): State<Arc<StepflowEnvironment>>,
-    Path(_flow_id): Path<BlobId>,
+    Path(_path): Path<FlowPath>,
 ) -> Result<(), ErrorResponse> {
     // TODO: Implement proper flow deletion with run checks
     // For now, just return success since blobs are content-addressed and can't be easily deleted

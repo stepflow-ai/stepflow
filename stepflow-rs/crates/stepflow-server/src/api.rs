@@ -116,15 +116,11 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
 /// - Rewrites `#/$defs/X` references to `#/components/schemas/X` (schemars generates
 ///   `$defs`-style refs which are valid JSON Schema but not valid in an OpenAPI document
 ///   where schemas live under `components.schemas`)
-/// - Adds missing path parameter definitions (aide doesn't auto-generate path params
-///   from `Path<T>` extractors when T is a simple type rather than a named struct)
 /// - Removes unreferenced component schemas (aide registers query parameter structs
 ///   in `components.schemas` but inlines the individual fields in `parameters`)
 pub fn finalize_openapi(api: &OpenApi) -> Value {
     let mut json = serde_json::to_value(api).expect("Failed to serialize OpenAPI");
     finalize_openapi_discriminators(&mut json);
-    // Note: rewrite_defs_to_components is called inside finalize_openapi_discriminators
-    add_missing_path_parameters(&mut json);
     remove_unreferenced_schemas(&mut json);
     json
 }
@@ -208,79 +204,6 @@ fn rewrite_defs_to_components(value: &mut Value) {
         }
         _ => {}
     }
-}
-
-/// Add missing path parameter definitions by parsing `{param}` from path templates.
-fn add_missing_path_parameters(root: &mut Value) {
-    let paths = match root
-        .get("paths")
-        .and_then(|p| p.as_object())
-        .map(|p| p.keys().cloned().collect::<Vec<_>>())
-    {
-        Some(keys) => keys,
-        None => return,
-    };
-
-    for path_template in paths {
-        let params = extract_path_params(&path_template);
-        if params.is_empty() {
-            continue;
-        }
-
-        let path_item = match root
-            .get_mut("paths")
-            .and_then(|p| p.get_mut(&path_template))
-            .and_then(|p| p.as_object_mut())
-        {
-            Some(o) => o,
-            None => continue,
-        };
-
-        for method in ["get", "post", "put", "delete", "patch"] {
-            let op = match path_item.get_mut(method).and_then(|o| o.as_object_mut()) {
-                Some(o) => o,
-                None => continue,
-            };
-
-            let parameters = op
-                .entry("parameters")
-                .or_insert_with(|| Value::Array(vec![]))
-                .as_array_mut()
-                .unwrap();
-
-            for param_name in &params {
-                let already_defined = parameters.iter().any(|p| {
-                    p.get("name").and_then(|n| n.as_str()) == Some(param_name)
-                        && p.get("in").and_then(|i| i.as_str()) == Some("path")
-                });
-
-                if !already_defined {
-                    parameters.push(serde_json::json!({
-                        "name": param_name,
-                        "in": "path",
-                        "required": true,
-                        "schema": { "type": "string" }
-                    }));
-                }
-            }
-        }
-    }
-}
-
-/// Extract `{param}` names from a path template string.
-fn extract_path_params(template: &str) -> Vec<String> {
-    let mut params = vec![];
-    let mut remaining = template;
-    while let Some(start) = remaining.find('{') {
-        if let Some(end) = remaining[start..].find('}') {
-            let param = &remaining[start + 1..start + end];
-            params.push(param.to_string());
-            remaining = &remaining[start + end + 1..];
-        } else {
-            break;
-        }
-    }
-    params
 }
 
 /// Remove component schemas that are not referenced anywhere in the document.
