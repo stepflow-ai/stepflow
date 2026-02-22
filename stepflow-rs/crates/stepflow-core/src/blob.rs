@@ -306,3 +306,13 @@ impl AsRef<str> for BlobId {
         &self.0
     }
 }
+
+impl fmt::Display for BlobType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BlobType::Flow => write!(f, "flow"),
+            BlobType::Data => write!(f, "data"),
+            BlobType::Binary => write!(f, "binary"),
+        }
+    }
+}

@@ -45,3 +45,72 @@ pub fn record_workflow_execution(outcome: &str, duration_seconds: f64) {
         &[KeyValue::new("outcome", outcome.to_string())],
     );
 }
+
+// =========================================================================
+// Blob Store Metrics
+// =========================================================================
+
+/// Total bytes stored via put_blob
+static BLOB_PUT_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("blob_store.put.bytes")
+        .with_description("Total bytes stored in blob store")
+        .with_unit("By")
+        .build()
+});
+
+/// Total bytes retrieved via get_blob
+static BLOB_GET_BYTES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("blob_store.get.bytes")
+        .with_description("Total bytes retrieved from blob store")
+        .with_unit("By")
+        .build()
+});
+
+/// Put operation duration
+static BLOB_PUT_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .f64_histogram("blob_store.put.duration")
+        .with_description("Blob store put operation duration")
+        .with_unit("s")
+        .build()
+});
+
+/// Get operation duration
+static BLOB_GET_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .f64_histogram("blob_store.get.duration")
+        .with_description("Blob store get operation duration")
+        .with_unit("s")
+        .build()
+});
+
+/// Blob size distribution
+static BLOB_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_histogram("blob_store.blob_size")
+        .with_description("Blob size distribution")
+        .with_unit("By")
+        .build()
+});
+
+/// Record metrics for a blob put operation.
+pub fn record_blob_put(blob_type: &str, size_bytes: u64, duration_seconds: f64) {
+    let attrs = [KeyValue::new("blob_type", blob_type.to_string())];
+    BLOB_PUT_BYTES.add(size_bytes, &attrs);
+    BLOB_PUT_DURATION.record(duration_seconds, &attrs);
+    BLOB_SIZE.record(size_bytes, &attrs);
+}
+
+/// Record metrics for a blob get operation.
+pub fn record_blob_get(blob_type: &str, size_bytes: u64, duration_seconds: f64) {
+    let attrs = [KeyValue::new("blob_type", blob_type.to_string())];
+    BLOB_GET_BYTES.add(size_bytes, &attrs);
+    BLOB_GET_DURATION.record(duration_seconds, &attrs);
+}

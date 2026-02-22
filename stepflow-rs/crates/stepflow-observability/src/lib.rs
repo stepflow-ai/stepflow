@@ -29,7 +29,7 @@ pub use log;
 use opentelemetry_otlp::{WithExportConfig, WithTonicConfig};
 
 mod metrics;
-pub use metrics::record_workflow_execution;
+pub use metrics::{record_blob_get, record_blob_put, record_workflow_execution};
 
 mod run_diagnostic_context;
 pub use run_diagnostic_context::{
