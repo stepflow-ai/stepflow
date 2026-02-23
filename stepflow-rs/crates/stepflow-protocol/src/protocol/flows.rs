@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, ResultOrder};
 use stepflow_dtos::{ItemResult, ItemStatistics, RunStatus};
+use uuid::Uuid;
 
 use crate::protocol::Method;
 
@@ -43,6 +44,14 @@ pub struct SubmitRunProtocolParams {
     /// Observability context for tracing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
+    /// Caller-provided key for subflow deduplication during recovery.
+    ///
+    /// When a component submits a subflow via the bidirectional protocol,
+    /// it can provide a key that uniquely identifies this submission within
+    /// the scope of `(parent_run_id, item_index, step_index)`. If not
+    /// provided, a random UUID is used (no recovery deduplication).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subflow_key: Option<Uuid>,
 }
 
 impl ProtocolMethod for SubmitRunProtocolParams {

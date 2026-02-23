@@ -504,15 +504,10 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | UnsetType
-    ) = UNSET
-    observability: (
-        Annotated[
-            ObservabilityContext | None,
-            Meta(description='Observability context for tracing.'),
-        ]
-        | UnsetType
-    ) = UNSET
+        | None
+    ) = None
+    observability: ObservabilityContext | None = None
+    subflowKey: str | None = None
 
 
 class ItemResult(Struct, kw_only=True):

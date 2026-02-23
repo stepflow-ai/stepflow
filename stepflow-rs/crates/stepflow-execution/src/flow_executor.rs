@@ -633,9 +633,10 @@ impl FlowExecutor {
         // Get the flow_id for this run
         let flow_id = run_state.flow_id().clone();
 
-        // Create RunContext with subflow submitter for this task's run
-        // The submitter uses this run as the parent_run_id for any subflows
-        let submitter = self.submit_sender.for_run(task.run_id);
+        // Create RunContext with subflow submitter scoped to this task.
+        // The submitter carries (parent_run_id, item_index, step_index) so that
+        // subflow submissions include full parent task context for recovery.
+        let submitter = self.submit_sender.for_task(task.run_id, task.item_index, task.step_index);
         let run_context = Arc::new(
             RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
         );
@@ -1677,6 +1678,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
 
@@ -1733,6 +1737,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: main_run_id,
             run_id: Uuid::now_v7(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -1820,6 +1827,7 @@ mod tests {
                 std::collections::HashMap::new(),
                 None,
                 None,
+                Uuid::now_v7(),
             )
             .await
             .expect("subflow submit should succeed");
@@ -1882,6 +1890,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -1958,6 +1969,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2046,6 +2060,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2122,6 +2139,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2184,6 +2204,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: root_run_id,
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2248,6 +2271,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx: response_tx1,
         };
         items_executor
@@ -2268,6 +2294,9 @@ mod tests {
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
             run_id: subflow_run_id, // Same run_id!
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             response_tx: response_tx2,
         };
         items_executor

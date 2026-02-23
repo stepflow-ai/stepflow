@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from typing import Any, TypeVar
 from uuid import uuid4
 
@@ -72,6 +73,7 @@ class StepflowContext:
         self._attempt = attempt
         self._observability = observability
         self._blob_api_url = blob_api_url
+        self._next_subflow_key: int = 0
 
     def current_observability_context(self) -> ObservabilityContext | None:
         """Get the current observability context for bidirectional requests.
@@ -194,13 +196,33 @@ class StepflowContext:
         """Get the current attempt number (1-based, for retry logic)."""
         return self._attempt
 
-    async def evaluate_flow(self, flow: Flow, input: Any, overrides: Any = None) -> Any:
+    def _generate_subflow_key(self) -> str:
+        """Generate a deterministic subflow key.
+
+        Uses UUID v5 with the run_id as namespace and an incrementing counter.
+        This ensures that when a step re-executes after recovery, the same
+        sequence of calls produces the same keys.
+        """
+        counter = self._next_subflow_key
+        self._next_subflow_key += 1
+        namespace = uuid.UUID(self._run_id) if self._run_id else uuid.NAMESPACE_DNS
+        return str(uuid.uuid5(namespace, counter.to_bytes(8, "little").decode("latin-1")))
+
+    async def evaluate_flow(
+        self,
+        flow: Flow,
+        input: Any,
+        overrides: Any = None,
+        subflow_key: str | None = None,
+    ) -> Any:
         """Evaluate a flow with the given input.
 
         Args:
             flow: The flow definition
             input: The input to provide to the flow
             overrides: Optional workflow overrides to apply before execution
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             The result value on success
@@ -216,10 +238,16 @@ class StepflowContext:
         flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
 
         # Delegate to evaluate_flow_by_id for the actual evaluation
-        return await self.evaluate_flow_by_id(flow_id, input, overrides=overrides)
+        return await self.evaluate_flow_by_id(
+            flow_id, input, overrides=overrides, subflow_key=subflow_key
+        )
 
     async def evaluate_flow_by_id(
-        self, flow_id: str, input: Any, overrides: Any = None
+        self,
+        flow_id: str,
+        input: Any,
+        overrides: Any = None,
+        subflow_key: str | None = None,
     ) -> Any:
         """Evaluate a flow by its blob ID with the given input.
 
@@ -227,6 +255,8 @@ class StepflowContext:
             flow_id: The blob ID of the flow to evaluate
             input: The input to provide to the flow
             overrides: Optional workflow overrides to apply before execution
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             The result value on success
@@ -236,7 +266,9 @@ class StepflowContext:
             Exception: For system/runtime errors
         """
         # Use the new unified runs API with a single input
-        results = await self.evaluate_run_by_id(flow_id, [input], overrides=overrides)
+        results = await self.evaluate_run_by_id(
+            flow_id, [input], overrides=overrides, subflow_key=subflow_key
+        )
         # Return the single result
         return results[0]
 
@@ -251,6 +283,7 @@ class StepflowContext:
         wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
+        subflow_key: str | None = None,
     ) -> RunStatusProtocol:
         """Submit a run (1 or N items) for execution.
 
@@ -260,6 +293,8 @@ class StepflowContext:
             wait: If True, wait for completion before returning
             max_concurrency: Maximum number of concurrent executions (optional)
             overrides: Optional workflow overrides to apply
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             RunStatusProtocol with run status and optionally results if wait=True
@@ -272,7 +307,8 @@ class StepflowContext:
 
         # Delegate to submit_run_by_id
         return await self.submit_run_by_id(
-            flow_id, inputs, wait, max_concurrency, overrides=overrides
+            flow_id, inputs, wait, max_concurrency, overrides=overrides,
+            subflow_key=subflow_key,
         )
 
     async def submit_run_by_id(
@@ -282,6 +318,7 @@ class StepflowContext:
         wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
+        subflow_key: str | None = None,
     ) -> RunStatusProtocol:
         """Submit a run by flow ID.
 
@@ -291,6 +328,8 @@ class StepflowContext:
             wait: If True, wait for completion before returning
             max_concurrency: Maximum number of concurrent executions (optional)
             overrides: Optional workflow overrides to apply
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             RunStatusProtocol with run status and optionally results if wait=True
@@ -306,6 +345,10 @@ class StepflowContext:
         if max_concurrency is not None:
             attributes["max_concurrency"] = max_concurrency
 
+        # Auto-generate a deterministic subflow key if not provided
+        if subflow_key is None:
+            subflow_key = self._generate_subflow_key()
+
         with tracer.start_as_current_span("submit_run", attributes=attributes):
             params = SubmitRunProtocolParams(
                 flowId=flow_id,
@@ -314,6 +357,7 @@ class StepflowContext:
                 maxConcurrency=max_concurrency,
                 overrides=overrides,
                 observability=self.current_observability_context(),
+                subflowKey=subflow_key,
             )
             response = await self._send_request(
                 Method.runs_submit, params, RunStatusProtocol
@@ -367,6 +411,7 @@ class StepflowContext:
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
+        subflow_key: str | None = None,
     ) -> list[Any]:
         """Submit a run, wait for completion, and return all results.
 
@@ -378,6 +423,8 @@ class StepflowContext:
             inputs: List of inputs to process
             max_concurrency: Maximum number of concurrent executions (optional)
             overrides: Optional workflow overrides to apply
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             List of results corresponding to each input, in the same order
@@ -393,7 +440,8 @@ class StepflowContext:
 
         # Delegate to evaluate_run_by_id
         return await self.evaluate_run_by_id(
-            flow_id, inputs, max_concurrency, overrides=overrides
+            flow_id, inputs, max_concurrency, overrides=overrides,
+            subflow_key=subflow_key,
         )
 
     async def evaluate_run_by_id(
@@ -402,6 +450,7 @@ class StepflowContext:
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
+        subflow_key: str | None = None,
     ) -> list[Any]:
         """Submit a run by flow ID, wait for completion, and return all results.
 
@@ -413,6 +462,8 @@ class StepflowContext:
             inputs: List of inputs to process
             max_concurrency: Maximum number of concurrent executions (optional)
             overrides: Optional workflow overrides to apply
+            subflow_key: Optional key for subflow deduplication during recovery.
+                If not provided, a deterministic key is auto-generated.
 
         Returns:
             List of results corresponding to each input, in the same order
@@ -429,6 +480,7 @@ class StepflowContext:
             wait=True,
             max_concurrency=max_concurrency,
             overrides=overrides,
+            subflow_key=subflow_key,
         )
 
         # Extract results

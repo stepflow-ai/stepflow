@@ -304,6 +304,14 @@
               "type": "null"
             }
           ]
+        },
+        "subflowKey": {
+          "description": "Caller-provided key for subflow deduplication during recovery.\n\nWhen a component submits a subflow via the bidirectional protocol,\nit can provide a key that uniquely identifies this submission within\nthe scope of `(parent_run_id, item_index, step_index)`. If not\nprovided, a random UUID is used (no recovery deduplication).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
         }
       },
       "required": [

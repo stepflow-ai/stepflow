@@ -36,6 +36,7 @@ impl MethodHandler for SubmitRunHandler {
         run_context: &'a Arc<RunContext>,
     ) -> BoxFuture<'a, error_stack::Result<(), TransportError>> {
         let env = run_context.env().clone();
+        let submitter = run_context.subflow_submitter().cloned();
         handle_method_call(
             request,
             response_tx,
@@ -56,63 +57,115 @@ impl MethodHandler for SubmitRunHandler {
                         .map_err(|_| Error::internal("Invalid flow blob"))?,
                 );
 
-                // Build submit params
-                let params = stepflow_core::SubmitRunParams {
-                    max_concurrency: request.max_concurrency,
-                    overrides: request.overrides.unwrap_or_default(),
-                    ..Default::default()
-                };
+                if let Some(submitter) = &submitter {
+                    // Use the in-process subflow channel — this makes the
+                    // submitted run a true in-tree subflow sharing the parent's
+                    // executor, journal, and recovery scope.
+                    let subflow_key = request
+                        .subflow_key
+                        .unwrap_or_else(uuid::Uuid::now_v7);
+                    let run_id = submitter
+                        .submit(
+                            flow,
+                            request.flow_id.clone(),
+                            request.inputs,
+                            std::collections::HashMap::new(),
+                            request.overrides,
+                            request.max_concurrency,
+                            subflow_key,
+                        )
+                        .await
+                        .map_err(|e| {
+                            log::error!("Failed to submit subflow via channel: {e}");
+                            Error::internal("Failed to submit subflow")
+                        })?;
 
-                // Submit the run using stepflow_execution
-                let run_status = stepflow_execution::submit_run(
-                    &env,
-                    flow,
-                    request.flow_id,
-                    request.inputs,
-                    params,
-                )
-                .await
-                .map_err(|e| {
-                    log::error!("Failed to submit run: {e}");
-                    Error::internal("Failed to submit run")
-                })?;
-
-                // If wait=true, wait for completion and fetch results
-                let run_status = if request.wait {
-                    let timeout_duration = std::time::Duration::from_secs(
-                        request.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS),
-                    );
-                    // Ignore timeout — return current status either way
-                    if let Ok(Err(e)) = tokio::time::timeout(
-                        timeout_duration,
-                        stepflow_execution::wait_for_completion(&env, run_status.run_id),
-                    )
-                    .await
-                    {
-                        log::error!("Failed while waiting for run completion: {e}");
-                        return Err(Error::internal("Failed to wait for run completion"));
+                    // If wait=true, wait for completion and fetch results
+                    if request.wait {
+                        let timeout_duration = std::time::Duration::from_secs(
+                            request.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS),
+                        );
+                        if let Ok(Err(e)) = tokio::time::timeout(
+                            timeout_duration,
+                            stepflow_execution::wait_for_completion(&env, run_id),
+                        )
+                        .await
+                        {
+                            log::error!("Failed while waiting for subflow completion: {e}");
+                            return Err(Error::internal("Failed to wait for subflow completion"));
+                        }
                     }
 
-                    // Fetch final status with results
-
-                    stepflow_execution::get_run(
+                    let run_status = stepflow_execution::get_run(
                         &env,
-                        run_status.run_id,
+                        run_id,
                         GetRunParams {
-                            include_results: true,
+                            include_results: request.wait,
                             ..Default::default()
                         },
                     )
                     .await
                     .map_err(|e| {
-                        log::error!("Failed to get run after completion: {e}");
-                        Error::internal("Failed to get run after completion")
-                    })?
-                } else {
-                    run_status
-                };
+                        log::error!("Failed to get subflow run status: {e}");
+                        Error::internal("Failed to get subflow run status")
+                    })?;
 
-                Ok(crate::protocol::RunStatusProtocol::from(run_status))
+                    Ok(crate::protocol::RunStatusProtocol::from(run_status))
+                } else {
+                    // No submitter available — fall back to independent run
+                    let params = stepflow_core::SubmitRunParams {
+                        max_concurrency: request.max_concurrency,
+                        overrides: request.overrides.unwrap_or_default(),
+                        ..Default::default()
+                    };
+
+                    let run_status = stepflow_execution::submit_run(
+                        &env,
+                        flow,
+                        request.flow_id,
+                        request.inputs,
+                        params,
+                    )
+                    .await
+                    .map_err(|e| {
+                        log::error!("Failed to submit run: {e}");
+                        Error::internal("Failed to submit run")
+                    })?;
+
+                    // If wait=true, wait for completion and fetch results
+                    let run_status = if request.wait {
+                        let timeout_duration = std::time::Duration::from_secs(
+                            request.timeout_secs.unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS),
+                        );
+                        if let Ok(Err(e)) = tokio::time::timeout(
+                            timeout_duration,
+                            stepflow_execution::wait_for_completion(&env, run_status.run_id),
+                        )
+                        .await
+                        {
+                            log::error!("Failed while waiting for run completion: {e}");
+                            return Err(Error::internal("Failed to wait for run completion"));
+                        }
+
+                        stepflow_execution::get_run(
+                            &env,
+                            run_status.run_id,
+                            GetRunParams {
+                                include_results: true,
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                        .map_err(|e| {
+                            log::error!("Failed to get run after completion: {e}");
+                            Error::internal("Failed to get run after completion")
+                        })?
+                    } else {
+                        run_status
+                    };
+
+                    Ok(crate::protocol::RunStatusProtocol::from(run_status))
+                }
             },
         )
         .boxed()
