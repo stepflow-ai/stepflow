@@ -169,6 +169,35 @@ steps:
 2. JSONPath (with $.): `path: "$.nested.field"` - Nested field access
 3. No path: Returns entire object/result
 
+### Subflows (Nested Workflows)
+
+Subflows are executed by storing a flow definition as a blob (`/builtin/put_blob`) and evaluating it (`/builtin/eval`). When defining an inner flow inline, wrap it in `$literal:` to prevent the outer flow's validator from interpreting the inner flow's `$step`/`$input` references as outer-scope references.
+
+```yaml
+steps:
+- id: store_inner
+  component: /builtin/put_blob
+  input:
+    blob_type: flow
+    data:
+      $literal:         # Prevents validator from traversing inner references
+        name: my_inner_flow
+        steps:
+        - id: inner_step
+          component: /some/component
+          input:
+            value: { $input: "" }    # This is the INNER flow's input
+        output: { $step: inner_step }
+
+- id: run_inner
+  component: /builtin/eval
+  input:
+    flow_id: { $step: store_inner, path: "$.blob_id" }
+    input: { $input: "data" }       # Pass outer input to inner flow
+```
+
+Without `$literal:`, the validator would flag `$step: inner_step` as referencing an undefined step in the outer flow. See `tests/builtins/nested_eval.yaml` for a complete example.
+
 ### Workflow Overrides
 
 Runtime modifications to step properties without changing workflow files.

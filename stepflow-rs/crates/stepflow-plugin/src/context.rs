@@ -15,6 +15,7 @@
 use crate::subflow::SubflowSubmitter;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use stepflow_core::{
     BlobId, FlowResult, StepflowEnvironment,
     workflow::{Flow, ValueRef, WorkflowOverrides},
@@ -33,7 +34,6 @@ use uuid::Uuid;
 ///
 /// `RunContext` is passed to plugins during step execution. The step being
 /// executed is passed separately as a `StepId` parameter.
-#[derive(Clone)]
 pub struct RunContext {
     /// The current run ID.
     pub run_id: Uuid,
@@ -53,6 +53,14 @@ pub struct RunContext {
     /// When present, sub-flows can be submitted directly to the parent
     /// executor without going through the external API.
     pub subflow_submitter: Option<SubflowSubmitter>,
+    /// Counter for generating deterministic subflow keys.
+    ///
+    /// Each call to `execute_via_channel` increments this and generates a
+    /// `Uuid::new_v5(run_id, &counter.to_le_bytes())` key. This ensures
+    /// that when a step re-executes after recovery, it produces the same
+    /// sequence of subflow keys, allowing the executor to match submissions
+    /// to their pre-crash counterparts.
+    next_subflow_key: AtomicU64,
 }
 
 impl std::fmt::Debug for RunContext {
@@ -83,13 +91,14 @@ impl RunContext {
             flow_id,
             env,
             subflow_submitter: None,
+            next_subflow_key: AtomicU64::new(0),
         }
     }
 
     /// Create a new RunContext for a sub-flow within an existing run tree.
     ///
     /// The `root_run_id` and `subflow_submitter` are inherited from the parent context.
-    /// The environment is shared.
+    /// The environment is shared. The subflow key counter is reset to 0 for the new context.
     pub fn for_subflow(&self, run_id: Uuid, flow: Arc<Flow>, flow_id: BlobId) -> Self {
         Self {
             run_id,
@@ -98,6 +107,7 @@ impl RunContext {
             flow_id,
             env: self.env.clone(),
             subflow_submitter: self.subflow_submitter.clone(),
+            next_subflow_key: AtomicU64::new(0),
         }
     }
 
@@ -244,6 +254,14 @@ impl RunContext {
     ) -> crate::Result<Vec<FlowResult>> {
         use error_stack::ResultExt as _;
 
+        // Generate a deterministic subflow key from the run_id and a monotonic counter.
+        // UUID v5 is deterministic: same (run_id, counter) produces the same key.
+        // This means if a step re-executes after recovery, the same sequence of
+        // execute_flow / execute_batch calls produces the same keys, enabling
+        // the executor to match submissions to their pre-crash counterparts.
+        let counter = self.next_subflow_key.fetch_add(1, Ordering::Relaxed);
+        let subflow_key = Uuid::new_v5(&self.run_id, &counter.to_le_bytes());
+
         // Submit the subflow
         let run_id = submitter
             .submit(
@@ -253,6 +271,7 @@ impl RunContext {
                 std::collections::HashMap::new(), // TODO: support variables
                 overrides,
                 None, // TODO: support max_concurrency
+                subflow_key,
             )
             .await
             .change_context(crate::PluginError::Execution)?;

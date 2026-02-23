@@ -304,11 +304,17 @@
               "type": "null"
             }
           ]
+        },
+        "subflowKey": {
+          "description": "Client-provided key for subflow deduplication during recovery.\n\nThis key uniquely identifies a subflow submission within the scope\nof the executing step. The orchestrator records this key in the\njournal. If the parent step re-executes after a crash, the\norchestrator matches new submissions by key and returns the existing\nsubflow's run ID instead of creating a duplicate.\n\nThe client must generate the same key on re-execution for recovery\nto work. A common approach is to derive a deterministic UUID from a\nmonotonic counter scoped to the step execution.",
+          "type": "string",
+          "format": "uuid"
         }
       },
       "required": [
         "flowId",
-        "inputs"
+        "inputs",
+        "subflowKey"
       ]
     },
     "WorkflowOverrides": {

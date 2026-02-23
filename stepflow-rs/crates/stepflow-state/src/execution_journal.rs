@@ -273,10 +273,28 @@ pub enum JournalEvent {
         /// The item result.
         result: FlowResult,
     },
-    // Note: Subflow events are not needed as a separate category.
-    // Subflows are tracked via their own RunCreated events with parent_run_id set.
-    // Since all events for an execution tree share the same journal (keyed by root_run_id),
-    // the parent-child relationship is implicit in the journal structure.
+
+    // =========================================================================
+    // Subflow Lifecycle
+    // =========================================================================
+    /// A subflow was submitted by a parent step.
+    ///
+    /// Records the association between a parent task `(parent_run_id, item_index,
+    /// step_index, subflow_key)` and the `subflow_run_id` it created. During
+    /// recovery, this mapping allows the executor to match re-submitted subflows
+    /// to their pre-crash counterparts, avoiding duplicate execution.
+    SubflowSubmitted {
+        /// The parent run that submitted this subflow.
+        parent_run_id: Uuid,
+        /// Item index within the parent run.
+        item_index: u32,
+        /// Step index within the parent run.
+        step_index: usize,
+        /// Caller-provided deduplication key.
+        subflow_key: Uuid,
+        /// The run ID assigned to the subflow.
+        subflow_run_id: Uuid,
+    },
 }
 
 impl JournalEvent {
@@ -293,6 +311,7 @@ impl JournalEvent {
             | JournalEvent::StepsUnblocked { run_id, .. }
             | JournalEvent::ItemCompleted { run_id, .. } => *run_id == target,
             JournalEvent::TasksStarted { runs } => runs.iter().any(|r| r.run_id == target),
+            JournalEvent::SubflowSubmitted { parent_run_id, .. } => *parent_run_id == target,
         }
     }
 }

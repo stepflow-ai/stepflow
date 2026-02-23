@@ -476,6 +476,12 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
     inputs: Annotated[
         list[Value], Meta(description='Input values for each item in the run.')
     ]
+    subflowKey: Annotated[
+        str,
+        Meta(
+            description="Client-provided key for subflow deduplication during recovery.\n\nThis key uniquely identifies a subflow submission within the scope\nof the executing step. The orchestrator records this key in the\njournal. If the parent step re-executes after a crash, the\norchestrator matches new submissions by key and returns the existing\nsubflow's run ID instead of creating a duplicate.\n\nThe client must generate the same key on re-execution for recovery\nto work. A common approach is to derive a deterministic UUID from a\nmonotonic counter scoped to the step execution."
+        ),
+    ]
     wait: (
         Annotated[
             bool, Meta(description='If true, wait for completion before returning.')

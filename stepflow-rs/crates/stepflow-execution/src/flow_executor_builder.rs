@@ -67,6 +67,10 @@ pub struct FlowExecutorBuilder {
     scheduler: Option<Box<dyn Scheduler>>,
     max_concurrency: usize,
     skip_validation: bool,
+    /// Additional run states to include (e.g., recovered subflow RunStates).
+    additional_runs: HashMap<uuid::Uuid, RunState>,
+    /// Recovered subflow mappings for deduplication during re-execution.
+    recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
 }
 
 impl FlowExecutorBuilder {
@@ -81,6 +85,8 @@ impl FlowExecutorBuilder {
             scheduler: None,
             max_concurrency: 10,
             skip_validation: false,
+            additional_runs: HashMap::new(),
+            recovered_subflows: HashMap::new(),
         }
     }
 
@@ -102,6 +108,22 @@ impl FlowExecutorBuilder {
     /// Set maximum concurrency (default: 10).
     pub fn max_concurrency(mut self, max: usize) -> Self {
         self.max_concurrency = max;
+        self
+    }
+
+    /// Add recovered subflow states and deduplication mappings.
+    ///
+    /// During recovery, subflow `RunState` objects are reconstructed from journal
+    /// replay and injected here. When parent steps re-execute and re-submit
+    /// subflows, the executor matches by `(parent_run_id, item_index, step_index,
+    /// subflow_key)` and returns the existing run_id instead of creating a duplicate.
+    pub fn with_recovered_subflows(
+        mut self,
+        additional_runs: HashMap<uuid::Uuid, RunState>,
+        recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
+    ) -> Self {
+        self.additional_runs = additional_runs;
+        self.recovered_subflows = recovered_subflows;
         self
     }
 
@@ -159,6 +181,8 @@ impl FlowExecutorBuilder {
 
         let mut runs = HashMap::new();
         runs.insert(run_id, self.run_state);
+        // Merge in any recovered subflow RunStates
+        runs.extend(self.additional_runs);
 
         Ok(FlowExecutor::new_from_builder(
             self.env,
@@ -169,6 +193,7 @@ impl FlowExecutorBuilder {
             state_store,
             submit_sender,
             submit_receiver,
+            self.recovered_subflows,
         ))
     }
 }

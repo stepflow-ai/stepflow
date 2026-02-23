@@ -145,7 +145,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 trait-variant = "0.1.2"
 url = { version = "2.5.4", features = ["serde"] }
-uuid = { version = "1.16.0", features = ["v7", "serde"] }
+uuid = { version = "1.16.0", features = ["v5", "v7", "serde"] }
 walkdir = "2.5.0"
 which = { version = "7.0.3", features = ["tracing"] }
 strum = { version = "0.26", features = ["derive"] }

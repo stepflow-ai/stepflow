@@ -87,6 +87,11 @@ pub struct FlowExecutor {
     /// Receiver for sub-flow submission requests.
     /// Processed in the execution loop alongside task completions.
     submit_receiver: SubflowReceiver,
+    /// Recovered subflow mappings from journal replay.
+    /// Maps (parent_run_id, item_index, step_index, subflow_key) → subflow_run_id.
+    /// When a parent step re-executes after recovery and submits the "same" subflow,
+    /// the dedup check in `handle_submit_request` returns the existing run_id.
+    recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
 }
 
 impl FlowExecutor {
@@ -103,6 +108,7 @@ impl FlowExecutor {
         metadata_store: Arc<dyn MetadataStore>,
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
+        recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
     ) -> Self {
         let journal = env.execution_journal().clone();
         Self {
@@ -115,6 +121,7 @@ impl FlowExecutor {
             journal,
             submit_sender,
             submit_receiver,
+            recovered_subflows,
         }
     }
 
@@ -336,6 +343,28 @@ impl FlowExecutor {
         let parent_run_id = request.parent_run_id;
         let input_count = request.inputs.len();
 
+        // Check for recovered subflow: if a pre-crash subflow matches this
+        // (parent_run_id, item_index, step_index, subflow_key), return its run_id.
+        // The parent step's wait_for_completion will pick up the existing subflow.
+        let lookup_key = (
+            parent_run_id,
+            request.item_index,
+            request.step_index,
+            request.subflow_key,
+        );
+        if let Some(recovered_run_id) = self.recovered_subflows.remove(&lookup_key) {
+            log::info!(
+                "Matched recovered subflow: key=({}, {}, {}, {}) -> run_id={}",
+                parent_run_id,
+                request.item_index,
+                request.step_index,
+                request.subflow_key,
+                recovered_run_id
+            );
+            let _ = request.response_tx.send(recovered_run_id);
+            return Ok(());
+        }
+
         // Check for idempotent retry: if run already exists, just acknowledge
         if self.runs.contains_key(&run_id) {
             log::debug!(
@@ -373,6 +402,16 @@ impl FlowExecutor {
             inputs: request.inputs.clone(),
             variables,
             parent_run_id: Some(parent_run_id),
+        })
+        .await?;
+
+        // Journal: Record the parent→subflow association for recovery deduplication.
+        self.write_journal(JournalEvent::SubflowSubmitted {
+            parent_run_id,
+            item_index: request.item_index,
+            step_index: request.step_index,
+            subflow_key: request.subflow_key,
+            subflow_run_id: run_id,
         })
         .await?;
 
@@ -633,9 +672,12 @@ impl FlowExecutor {
         // Get the flow_id for this run
         let flow_id = run_state.flow_id().clone();
 
-        // Create RunContext with subflow submitter for this task's run
-        // The submitter uses this run as the parent_run_id for any subflows
-        let submitter = self.submit_sender.for_run(task.run_id);
+        // Create RunContext with subflow submitter scoped to this task.
+        // The submitter carries (parent_run_id, item_index, step_index) so that
+        // subflow submissions include full parent task context for recovery.
+        let submitter = self
+            .submit_sender
+            .for_task(task.run_id, task.item_index, task.step_index);
         let run_context = Arc::new(
             RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
         );
@@ -1676,6 +1718,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -1732,6 +1777,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: main_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: Uuid::now_v7(),
             response_tx,
         };
@@ -1820,6 +1868,7 @@ mod tests {
                 std::collections::HashMap::new(),
                 None,
                 None,
+                Uuid::now_v7(),
             )
             .await
             .expect("subflow submit should succeed");
@@ -1881,6 +1930,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -1957,6 +2009,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -2045,6 +2100,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -2121,6 +2179,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -2183,6 +2244,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: root_run_id,
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx,
         };
@@ -2247,6 +2311,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id,
             response_tx: response_tx1,
         };
@@ -2267,6 +2334,9 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
+            item_index: 0,
+            step_index: 0,
+            subflow_key: Uuid::now_v7(),
             run_id: subflow_run_id, // Same run_id!
             response_tx: response_tx2,
         };

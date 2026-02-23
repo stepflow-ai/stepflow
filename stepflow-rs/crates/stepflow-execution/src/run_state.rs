@@ -253,6 +253,10 @@ impl RunState {
                 // Terminal state - no state update needed
                 Vec::new()
             }
+            JournalEvent::SubflowSubmitted { .. } => {
+                // Subflow tracking - handled by recovery, not RunState
+                Vec::new()
+            }
         }
     }
 

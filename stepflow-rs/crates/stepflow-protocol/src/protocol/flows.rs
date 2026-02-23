@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::{ValueRef, WorkflowOverrides};
 use stepflow_core::{BlobId, ResultOrder};
 use stepflow_dtos::{ItemResult, ItemStatistics, RunStatus};
+use uuid::Uuid;
 
 use crate::protocol::Method;
 
@@ -43,6 +44,18 @@ pub struct SubmitRunProtocolParams {
     /// Observability context for tracing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
+    /// Client-provided key for subflow deduplication during recovery.
+    ///
+    /// This key uniquely identifies a subflow submission within the scope
+    /// of the executing step. The orchestrator records this key in the
+    /// journal. If the parent step re-executes after a crash, the
+    /// orchestrator matches new submissions by key and returns the existing
+    /// subflow's run ID instead of creating a duplicate.
+    ///
+    /// The client must generate the same key on re-execution for recovery
+    /// to work. A common approach is to derive a deterministic UUID from a
+    /// monotonic counter scoped to the step execution.
+    pub subflow_key: Uuid,
 }
 
 impl ProtocolMethod for SubmitRunProtocolParams {
