@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.10.0"></a> [stepflow-py 0.10.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.10.0) - 2026-02-23
+### Features
+
+- Split StateStore and add recovery architecture ([#585](https://github.com/stepflow-ai/stepflow/pull/585))
+- Add Blob HTTP API for scalable blob storage ([#600](https://github.com/stepflow-ai/stepflow/pull/600))
+- Add filesystem-based BlobStore ([#610](https://github.com/stepflow-ai/stepflow/pull/610))
+- Blob references, binary blobs, and automatic blobification ([#612](https://github.com/stepflow-ai/stepflow/pull/612))
+- Support direct binary transfer for Blob Service ([#621](https://github.com/stepflow-ai/stepflow/pull/621))
+- Make runs API async by default with optional wait ([#630](https://github.com/stepflow-ai/stepflow/pull/630))
+- Recovery tests for orchestrator and worker crashes ([#635](https://github.com/stepflow-ai/stepflow/pull/635))
+- Replace utoipa with aide + schemars for OpenAPI and JSON Schema ([#652](https://github.com/stepflow-ai/stepflow/pull/652))
+- Subflow recovery ([#651](https://github.com/stepflow-ai/stepflow/pull/651)) ([#658](https://github.com/stepflow-ai/stepflow/pull/658))
+
+### Miscellaneous Tasks
+
+- Updates and tweaks for getting latest openrag ingestion flow working on k8s example architecture ([#577](https://github.com/stepflow-ai/stepflow/pull/577))
+
+### Refactoring
+
+- Refine LeaseManager trait and add orchestrator tracking ([#604](https://github.com/stepflow-ai/stepflow/pull/604))
+- Add blob_store module with contextvars ([#611](https://github.com/stepflow-ai/stepflow/pull/611))
+
 ## <a id="0.9.2"></a> [stepflow-py 0.9.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.9.2) - 2026-01-30
 ### Bug Fixes
 
