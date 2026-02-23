@@ -51,11 +51,11 @@ pub struct SubmitRunProtocolParams {
     /// the scope of `(parent_run_id, item_index, step_index)`.
     ///
     /// Both Rust (`RunContext`) and Python (`StepflowContext`) auto-generate
-    /// deterministic keys using UUID v5 with the run_id as namespace and a
-    /// monotonic counter. This ensures recovery produces the same keys when
-    /// a step re-executes. If a caller provides its own key, it must be
-    /// unique within the step scope; if not provided, a random UUID is used
-    /// (no recovery deduplication).
+    /// deterministic keys using a monotonic counter. Each runtime's keys
+    /// only need to be self-consistent (same sequence on re-execution);
+    /// cross-runtime parity is not required. If a caller provides its own
+    /// key, it must be unique within the step scope; if not provided, a
+    /// random UUID is used (no recovery deduplication).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subflow_key: Option<Uuid>,
 }

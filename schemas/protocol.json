@@ -306,7 +306,7 @@
           ]
         },
         "subflowKey": {
-          "description": "Caller-provided key for subflow deduplication during recovery.\n\nWhen a component submits a subflow via the bidirectional protocol,\nit can provide a key that uniquely identifies this submission within\nthe scope of `(parent_run_id, item_index, step_index)`.\n\nBoth Rust (`RunContext`) and Python (`StepflowContext`) auto-generate\ndeterministic keys using UUID v5 with the run_id as namespace and a\nmonotonic counter. This ensures recovery produces the same keys when\na step re-executes. If a caller provides its own key, it must be\nunique within the step scope; if not provided, a random UUID is used\n(no recovery deduplication).",
+          "description": "Caller-provided key for subflow deduplication during recovery.\n\nWhen a component submits a subflow via the bidirectional protocol,\nit can provide a key that uniquely identifies this submission within\nthe scope of `(parent_run_id, item_index, step_index)`.\n\nBoth Rust (`RunContext`) and Python (`StepflowContext`) auto-generate\ndeterministic keys using a monotonic counter. Each runtime's keys\nonly need to be self-consistent (same sequence on re-execution);\ncross-runtime parity is not required. If a caller provides its own\nkey, it must be unique within the step scope; if not provided, a\nrandom UUID is used (no recovery deduplication).",
           "type": [
             "string",
             "null"

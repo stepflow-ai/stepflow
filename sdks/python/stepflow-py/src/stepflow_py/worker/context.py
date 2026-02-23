@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import uuid
 from typing import Any, TypeVar
 from uuid import uuid4
@@ -200,27 +199,19 @@ class StepflowContext:
     def _generate_subflow_key(self) -> str:
         """Generate a deterministic subflow key.
 
-        Uses UUID v5 with the run_id as namespace and an incrementing counter
-        (little-endian 8-byte encoding). This ensures that when a step
-        re-executes after recovery, the same sequence of calls produces the
-        same keys.
+        Uses UUID v5 with the run_id as namespace and an incrementing
+        counter as the name. This ensures that when a step re-executes
+        after recovery, the same sequence of calls produces the same
+        keys, allowing the executor to match submissions to their
+        pre-crash counterparts.
 
-        We construct the UUID v5 manually (SHA-1 over namespace bytes +
-        raw counter bytes) to match Rust's ``Uuid::new_v5``.
-        Python's ``uuid.uuid5()`` encodes the name as UTF-8, which
-        differs from raw bytes for values >= 128.
+        The generated UUIDs don't need to match Rust's output — they
+        only need to be self-consistent within the Python runtime.
         """
         counter = self._next_subflow_key
         self._next_subflow_key += 1
         namespace = uuid.UUID(self._run_id) if self._run_id else uuid.NAMESPACE_DNS
-        # UUID v5: SHA-1(namespace_bytes + name_bytes), set version/variant
-        name_bytes = counter.to_bytes(8, "little")
-        digest = hashlib.sha1(namespace.bytes + name_bytes).digest()  # noqa: S324
-        # Set version (5) and variant (RFC 4122) bits
-        fields = bytearray(digest[:16])
-        fields[6] = (fields[6] & 0x0F) | 0x50  # version 5
-        fields[8] = (fields[8] & 0x3F) | 0x80  # variant RFC 4122
-        return str(uuid.UUID(bytes=bytes(fields)))
+        return str(uuid.uuid5(namespace, str(counter)))
 
     async def evaluate_flow(
         self,
