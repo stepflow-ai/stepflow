@@ -200,13 +200,13 @@ else
     sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$ORCHESTRATOR_PYPROJECT"
 fi
 
-# Update Cargo.lock
+# Update Cargo.lock (workspace members only to avoid pulling in breaking dep updates)
 echo -e "${BLUE}Updating Cargo.lock...${NC}"
-cargo update > /dev/null
+cargo update -w > /dev/null
 
 # Regenerate OpenAPI schema with new version
 echo -e "${BLUE}Regenerating OpenAPI schema...${NC}"
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation --quiet 2>/dev/null || {
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation --quiet || {
     echo -e "${RED}Error: Failed to regenerate OpenAPI schema${NC}" >&2
     exit 1
 }
@@ -214,7 +214,7 @@ STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_ge
 # Regenerate Python API client
 echo -e "${BLUE}Regenerating Python API client...${NC}"
 cd ../sdks/python
-uv run python scripts/generate_api_client.py > /dev/null || {
+uv run python scripts/generate_api_client.py || {
     echo -e "${RED}Error: Failed to regenerate Python API client${NC}" >&2
     exit 1
 }
