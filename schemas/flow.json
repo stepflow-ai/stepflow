@@ -42,7 +42,7 @@
     },
     "test": {
       "description": "Test configuration for the flow.",
-      "anyOf": [
+      "oneOf": [
         {
           "$ref": "#/$defs/TestConfig"
         },
@@ -133,7 +133,7 @@
           "$ref": "#/$defs/Component"
         },
         "onError": {
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/ErrorAction"
             },
@@ -378,7 +378,7 @@
         },
         "output": {
           "description": "Expected output from the workflow for this test case.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/FlowResult"
             },
@@ -461,7 +461,7 @@
           "type": "string"
         },
         "data": {
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/Value"
             },

@@ -124,6 +124,8 @@ pub fn finalize_discriminators(root: &mut Value) {
 /// - `"#/$defs/"` — JSON Schema (definitions at `root.$defs`)
 /// - `"#/components/schemas/"` — OpenAPI (definitions at `root.components.schemas`)
 pub fn finalize_discriminators_with_prefix(root: &mut Value, ref_prefix: &str) {
+    flatten_string_enum_oneofs(root);
+    convert_nullable_anyof_to_oneof(root);
     extract_inline_oneof_to_defs(root, ref_prefix);
     build_discriminator_mappings(root, ref_prefix);
     add_defaults_to_discriminator_consts(root, ref_prefix);
@@ -157,6 +159,113 @@ fn get_or_create_defs_mut<'a>(
             .or_insert_with(|| Value::Object(serde_json::Map::new()));
     }
     current.as_object_mut().unwrap()
+}
+
+/// Convert `oneOf` schemas of string-const variants into simple string enums.
+///
+/// schemars generates documented Rust enums as `oneOf` arrays with per-variant
+/// `const` + `description` entries.  This is valid JSON Schema but code generators
+/// (openapi-generator, datamodel-code-generator) produce broken or overly complex
+/// types because every variant resolves to `str`.
+///
+/// This rewrites such schemas into `{ "type": "string", "enum": ["a", "b", ...] }`
+/// which all code generators handle correctly.  Schemas that have a `discriminator`
+/// are left untouched — those are tagged unions, not simple enums.
+fn flatten_string_enum_oneofs(root: &mut Value) {
+    match root {
+        Value::Object(obj) => {
+            // Check if this object is a string-const oneOf (without a discriminator)
+            let should_flatten = !obj.contains_key("discriminator")
+                && obj.get("oneOf").and_then(|v| v.as_array()).is_some_and(|arr| {
+                    !arr.is_empty()
+                        && arr.iter().all(|v| {
+                            v.get("type").and_then(|t| t.as_str()) == Some("string")
+                                && v.get("const").is_some()
+                        })
+                });
+
+            if should_flatten {
+                if let Some(Value::Array(one_of)) = obj.remove("oneOf") {
+                    let enum_values: Vec<Value> = one_of
+                        .iter()
+                        .filter_map(|v| v.get("const").cloned())
+                        .collect();
+
+                    // Append per-variant descriptions to the enum's description
+                    let case_docs: Vec<String> = one_of
+                        .iter()
+                        .filter_map(|v| {
+                            let name = v.get("const")?.as_str()?;
+                            let desc = v.get("description")?.as_str()?;
+                            Some(format!("* `{name}`: {desc}"))
+                        })
+                        .collect();
+
+                    if !case_docs.is_empty() {
+                        let existing = obj
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or_default();
+                        let full = format!("{existing}\n\nCases:\n{}", case_docs.join("\n"));
+                        obj.insert("description".to_string(), Value::String(full));
+                    }
+
+                    obj.insert("type".to_string(), Value::String("string".to_string()));
+                    obj.insert("enum".to_string(), Value::Array(enum_values));
+                }
+            } else {
+                // Recurse into all values
+                for v in obj.values_mut() {
+                    flatten_string_enum_oneofs(v);
+                }
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                flatten_string_enum_oneofs(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Convert nullable `anyOf` patterns to `oneOf`.
+///
+/// schemars generates `Option<T>` as `anyOf: [T, {type: null}]`, but
+/// code generators like openapi-generator handle `oneOf` nullable patterns
+/// correctly (the existing `fix_any_type_from_dict` post-processing in the
+/// Python codegen handles `OneOf` references).  This matches the schema
+/// output that utoipa previously produced.
+fn convert_nullable_anyof_to_oneof(root: &mut Value) {
+    match root {
+        Value::Object(obj) => {
+            // Check for anyOf with exactly one null variant (nullable pattern)
+            let is_nullable_anyof = obj.get("anyOf").and_then(|v| v.as_array()).is_some_and(
+                |arr| {
+                    arr.len() == 2
+                        && arr.iter().any(|v| {
+                            v.get("type").and_then(|t| t.as_str()) == Some("null")
+                        })
+                },
+            );
+
+            if is_nullable_anyof {
+                if let Some(any_of) = obj.remove("anyOf") {
+                    obj.insert("oneOf".to_string(), any_of);
+                }
+            }
+
+            for v in obj.values_mut() {
+                convert_nullable_anyof_to_oneof(v);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                convert_nullable_anyof_to_oneof(v);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Extract inline oneOf variants to the definitions section in schemas with

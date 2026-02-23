@@ -24,6 +24,7 @@ from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
 from stepflow_py.api.models.create_run_request import CreateRunRequest
 from stepflow_py.api.models.create_run_response import CreateRunResponse
+from stepflow_py.api.models.execution_status import ExecutionStatus
 from stepflow_py.api.models.list_items_response import ListItemsResponse
 from stepflow_py.api.models.list_runs_response import ListRunsResponse
 from stepflow_py.api.models.list_step_runs_response import ListStepRunsResponse
@@ -1845,7 +1846,7 @@ class RunApi:
     async def list_runs(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -1962,7 +1963,7 @@ class RunApi:
     async def list_runs_with_http_info(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -2079,7 +2080,7 @@ class RunApi:
     async def list_runs_without_preload_content(
         self,
         status: Annotated[
-            Any | None, Field(description="Filter by execution status")
+            ExecutionStatus | None, Field(description="Filter by execution status")
         ] = None,
         flow_name: Annotated[
             StrictStr | None, Field(description="Filter by flow name")
@@ -2219,7 +2220,7 @@ class RunApi:
         # process the path parameters
         # process the query parameters
         if status is not None:
-            _query_params.append(("status", status))
+            _query_params.append(("status", status.value))
 
         if flow_name is not None:
             _query_params.append(("flowName", flow_name))

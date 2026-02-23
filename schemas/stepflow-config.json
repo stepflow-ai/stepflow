@@ -168,7 +168,7 @@
       "properties": {
         "retry": {
           "description": "Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/RetryConfig"
             },
@@ -206,7 +206,7 @@
             },
             "healthCheck": {
               "description": "Health check configuration for the subprocess server.",
-              "anyOf": [
+              "oneOf": [
                 {
                   "$ref": "#/$defs/HealthCheckConfig"
                 },
@@ -350,7 +350,7 @@
           "type": "string"
         },
         "data": {
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/Value"
             },
@@ -499,27 +499,27 @@
             },
             "blobs": {
               "description": "Configuration for the blob store (defaults to metadata config if not specified)",
-              "anyOf": [
+              "default": null,
+              "oneOf": [
                 {
                   "$ref": "#/$defs/StoreConfig"
                 },
                 {
                   "type": "null"
                 }
-              ],
-              "default": null
+              ]
             },
             "journal": {
               "description": "Configuration for the execution journal (defaults to metadata config if not specified)",
-              "anyOf": [
+              "default": null,
+              "oneOf": [
                 {
                   "$ref": "#/$defs/StoreConfig"
                 },
                 {
                   "type": "null"
                 }
-              ],
-              "default": null
+              ]
             }
           },
           "required": [

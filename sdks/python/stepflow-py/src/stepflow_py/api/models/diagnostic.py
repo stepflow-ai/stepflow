@@ -94,9 +94,6 @@ class Diagnostic(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of level
-        if self.level:
-            _dict["level"] = self.level.to_dict()
         # set to None if data (nullable) is None
         # and model_fields_set contains the field
         if self.data is None and "data" in self.model_fields_set:
@@ -117,9 +114,7 @@ class Diagnostic(BaseModel):
             {
                 "kind": obj.get("kind"),
                 "code": obj.get("code"),
-                "level": DiagnosticLevel.from_dict(obj["level"])
-                if obj.get("level") is not None
-                else None,
+                "level": obj.get("level"),
                 "formatted": obj.get("formatted"),
                 "data": obj.get("data"),
                 "path": obj.get("path"),

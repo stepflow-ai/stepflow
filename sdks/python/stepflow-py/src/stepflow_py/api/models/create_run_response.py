@@ -117,9 +117,6 @@ class CreateRunResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of status
-        if self.status:
-            _dict["status"] = self.status.to_dict()
         # override the default output from pydantic by calling `to_dict()` of items
         if self.items:
             _dict["items"] = self.items.to_dict()
@@ -171,9 +168,7 @@ class CreateRunResponse(BaseModel):
                 "runId": obj.get("runId"),
                 "flowId": obj.get("flowId"),
                 "flowName": obj.get("flowName"),
-                "status": ExecutionStatus.from_dict(obj["status"])
-                if obj.get("status") is not None
-                else None,
+                "status": obj.get("status"),
                 "items": ItemStatistics.from_dict(obj["items"])
                 if obj.get("items") is not None
                 else None,

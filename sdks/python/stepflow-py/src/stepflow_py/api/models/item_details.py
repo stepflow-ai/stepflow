@@ -92,9 +92,6 @@ class ItemDetails(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of status
-        if self.status:
-            _dict["status"] = self.status.to_dict()
         # override the default output from pydantic by calling `to_dict()` of each item in steps (list)
         _items = []
         if self.steps:
@@ -127,9 +124,7 @@ class ItemDetails(BaseModel):
             {
                 "itemIndex": obj.get("itemIndex"),
                 "input": obj.get("input"),
-                "status": ExecutionStatus.from_dict(obj["status"])
-                if obj.get("status") is not None
-                else None,
+                "status": obj.get("status"),
                 "steps": [StepStatusInfo.from_dict(_item) for _item in obj["steps"]]
                 if obj.get("steps") is not None
                 else None,

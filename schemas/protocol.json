@@ -83,7 +83,7 @@
         },
         "flow_id": {
           "description": "The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/BlobId"
             },
@@ -263,7 +263,7 @@
         },
         "overrides": {
           "description": "Optional workflow overrides to apply.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/WorkflowOverrides"
             },
@@ -283,7 +283,7 @@
         },
         "observability": {
           "description": "Observability context for tracing.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/ObservabilityContext"
             },
@@ -323,18 +323,11 @@
       ]
     },
     "OverrideType": {
-      "description": "The type of override operation to perform.",
-      "oneOf": [
-        {
-          "description": "Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.",
-          "type": "string",
-          "const": "merge_patch"
-        },
-        {
-          "description": "Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
-          "type": "string",
-          "const": "json_patch"
-        }
+      "description": "The type of override operation to perform.\n\nCases:\n* `merge_patch`: Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.\n* `json_patch`: Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
+      "type": "string",
+      "enum": [
+        "merge_patch",
+        "json_patch"
       ]
     },
     "GetRunProtocolParams": {
@@ -371,7 +364,7 @@
         },
         "observability": {
           "description": "Observability context for tracing.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/ObservabilityContext"
             },
@@ -386,18 +379,11 @@
       ]
     },
     "ResultOrder": {
-      "description": "Order in which to return results.",
-      "oneOf": [
-        {
-          "description": "Results in input order (index 0, 1, 2, ...).",
-          "type": "string",
-          "const": "by_index"
-        },
-        {
-          "description": "Results in completion order (first completed first).",
-          "type": "string",
-          "const": "by_completion"
-        }
+      "description": "Order in which to return results.\n\nCases:\n* `by_index`: Results in input order (index 0, 1, 2, ...).\n* `by_completion`: Results in completion order (first completed first).",
+      "type": "string",
+      "enum": [
+        "by_index",
+        "by_completion"
       ]
     },
     "RunStatusProtocol": {
@@ -508,7 +494,7 @@
         },
         "result": {
           "description": "Result of this item, if completed.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/FlowResult"
             },
@@ -532,38 +518,15 @@
       ]
     },
     "ExecutionStatus": {
-      "description": "Status of a workflow execution",
-      "oneOf": [
-        {
-          "description": "Execution is currently running",
-          "type": "string",
-          "const": "running"
-        },
-        {
-          "description": "Execution completed successfully",
-          "type": "string",
-          "const": "completed"
-        },
-        {
-          "description": "Execution failed with an error",
-          "type": "string",
-          "const": "failed"
-        },
-        {
-          "description": "Execution was cancelled by user request",
-          "type": "string",
-          "const": "cancelled"
-        },
-        {
-          "description": "Execution is paused (debug mode)",
-          "type": "string",
-          "const": "paused"
-        },
-        {
-          "description": "Execution failed during recovery after orchestrator restart",
-          "type": "string",
-          "const": "recoveryFailed"
-        }
+      "description": "Status of a workflow execution\n\nCases:\n* `running`: Execution is currently running\n* `completed`: Execution completed successfully\n* `failed`: Execution failed with an error\n* `cancelled`: Execution was cancelled by user request\n* `paused`: Execution is paused (debug mode)\n* `recoveryFailed`: Execution failed during recovery after orchestrator restart",
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "paused",
+        "recoveryFailed"
       ]
     },
     "FlowResult": {
@@ -631,7 +594,7 @@
           "type": "string"
         },
         "data": {
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/Value"
             },
@@ -658,7 +621,7 @@
         },
         "observability": {
           "description": "Observability context for tracing initialization (trace context only, no flow/run).",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/ObservabilityContext"
             },
@@ -669,7 +632,7 @@
         },
         "capabilities": {
           "description": "Runtime capabilities provided to the component server.",
-          "anyOf": [
+          "oneOf": [
             {
               "$ref": "#/$defs/RuntimeCapabilities"
             },

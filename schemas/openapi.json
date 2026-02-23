@@ -217,7 +217,7 @@
             "description": "Filter by execution status",
             "schema": {
               "description": "Filter by execution status",
-              "anyOf": [
+              "oneOf": [
                 {
                   "$ref": "#/components/schemas/ExecutionStatus"
                 },
@@ -1023,23 +1023,12 @@
         ]
       },
       "BlobType": {
-        "description": "Type of blob stored in the blob store.",
-        "oneOf": [
-          {
-            "description": "A workflow/flow definition",
-            "type": "string",
-            "const": "flow"
-          },
-          {
-            "description": "Generic data blob",
-            "type": "string",
-            "const": "data"
-          },
-          {
-            "description": "Raw binary data (base64-encoded in JSON transport)",
-            "type": "string",
-            "const": "binary"
-          }
+        "description": "Type of blob stored in the blob store.\n\nCases:\n* `flow`: A workflow/flow definition\n* `data`: Generic data blob\n* `binary`: Raw binary data (base64-encoded in JSON transport)",
+        "type": "string",
+        "enum": [
+          "flow",
+          "data",
+          "binary"
         ]
       },
       "OnErrorDefault": {
@@ -1209,38 +1198,15 @@
         ]
       },
       "ExecutionStatus": {
-        "description": "Status of a workflow execution",
-        "oneOf": [
-          {
-            "description": "Execution is currently running",
-            "type": "string",
-            "const": "running"
-          },
-          {
-            "description": "Execution completed successfully",
-            "type": "string",
-            "const": "completed"
-          },
-          {
-            "description": "Execution failed with an error",
-            "type": "string",
-            "const": "failed"
-          },
-          {
-            "description": "Execution was cancelled by user request",
-            "type": "string",
-            "const": "cancelled"
-          },
-          {
-            "description": "Execution is paused (debug mode)",
-            "type": "string",
-            "const": "paused"
-          },
-          {
-            "description": "Execution failed during recovery after orchestrator restart",
-            "type": "string",
-            "const": "recoveryFailed"
-          }
+        "description": "Status of a workflow execution\n\nCases:\n* `running`: Execution is currently running\n* `completed`: Execution completed successfully\n* `failed`: Execution failed with an error\n* `cancelled`: Execution was cancelled by user request\n* `paused`: Execution is paused (debug mode)\n* `recoveryFailed`: Execution failed during recovery after orchestrator restart",
+        "type": "string",
+        "enum": [
+          "running",
+          "completed",
+          "failed",
+          "cancelled",
+          "paused",
+          "recoveryFailed"
         ]
       },
       "ListRunsResponse": {
@@ -1472,18 +1438,11 @@
         ]
       },
       "OverrideType": {
-        "description": "The type of override operation to perform.",
-        "oneOf": [
-          {
-            "description": "Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.",
-            "type": "string",
-            "const": "merge_patch"
-          },
-          {
-            "description": "Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
-            "type": "string",
-            "const": "json_patch"
-          }
+        "description": "The type of override operation to perform.\n\nCases:\n* `merge_patch`: Apply a JSON Merge Patch (RFC 7396) to the step.\n\nThis is the default override type. The value should be a JSON object\nwhere null values indicate fields to remove and other values are merged\ninto the target step.\n* `json_patch`: Apply a JSON Patch (RFC 6902) to the step. (Future extension)\n\nThe value should be an array of JSON Patch operations.\nThis is reserved for future use.",
+        "type": "string",
+        "enum": [
+          "merge_patch",
+          "json_patch"
         ]
       },
       "CreateRunResponse": {
@@ -1591,7 +1550,7 @@
           },
           "result": {
             "description": "Result of this item, if completed.",
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/FlowResult"
               },
@@ -1679,7 +1638,7 @@
             "type": "string"
           },
           "data": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/Value"
               },
@@ -1826,7 +1785,7 @@
           },
           "overrides": {
             "description": "Optional workflow overrides applied to this run (per-run, not per-item).",
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOverrides"
               },
@@ -1916,38 +1875,15 @@
         ]
       },
       "StepStatus": {
-        "description": "Status of an individual step within a workflow",
-        "oneOf": [
-          {
-            "description": "Step is waiting for dependencies to complete",
-            "type": "string",
-            "const": "blocked"
-          },
-          {
-            "description": "Step is ready to be executed",
-            "type": "string",
-            "const": "runnable"
-          },
-          {
-            "description": "Step is currently executing",
-            "type": "string",
-            "const": "running"
-          },
-          {
-            "description": "Step has been executed successfully",
-            "type": "string",
-            "const": "completed"
-          },
-          {
-            "description": "Step was skipped due to conditions",
-            "type": "string",
-            "const": "skipped"
-          },
-          {
-            "description": "Step failed with an error",
-            "type": "string",
-            "const": "failed"
-          }
+        "description": "Status of an individual step within a workflow\n\nCases:\n* `blocked`: Step is waiting for dependencies to complete\n* `runnable`: Step is ready to be executed\n* `running`: Step is currently executing\n* `completed`: Step has been executed successfully\n* `skipped`: Step was skipped due to conditions\n* `failed`: Step failed with an error",
+        "type": "string",
+        "enum": [
+          "blocked",
+          "runnable",
+          "running",
+          "completed",
+          "skipped",
+          "failed"
         ]
       },
       "ListItemsResponse": {
@@ -2049,7 +1985,7 @@
           },
           "test": {
             "description": "Test configuration for the flow.",
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/TestConfig"
               },
@@ -2144,7 +2080,7 @@
             ]
           },
           "onError": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ErrorAction"
               },
@@ -2388,7 +2324,7 @@
           },
           "output": {
             "description": "Expected output from the workflow for this test case.",
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/FlowResult"
               },
@@ -2433,23 +2369,12 @@
         ]
       },
       "DiagnosticLevel": {
-        "description": "Diagnostic level indicating severity and impact",
-        "oneOf": [
-          {
-            "description": "Fatal: Prevents analysis from proceeding",
-            "type": "string",
-            "const": "fatal"
-          },
-          {
-            "description": "Error: Will definitely fail during execution",
-            "type": "string",
-            "const": "error"
-          },
-          {
-            "description": "Warning: Likely to cause problems during execution",
-            "type": "string",
-            "const": "warning"
-          }
+        "description": "Diagnostic level indicating severity and impact\n\nCases:\n* `fatal`: Fatal: Prevents analysis from proceeding\n* `error`: Error: Will definitely fail during execution\n* `warning`: Warning: Likely to cause problems during execution",
+        "type": "string",
+        "enum": [
+          "fatal",
+          "error",
+          "warning"
         ]
       },
       "ListStepRunsResponse": {
@@ -2493,7 +2418,7 @@
           },
           "result": {
             "description": "The result of the step execution (if completed)",
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/FlowResult"
               },
