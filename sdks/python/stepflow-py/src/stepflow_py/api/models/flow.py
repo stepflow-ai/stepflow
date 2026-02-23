@@ -151,11 +151,6 @@ class Flow(BaseModel):
         if self.version is None and "version" in self.model_fields_set:
             _dict["version"] = None
 
-        # set to None if output (nullable) is None
-        # and model_fields_set contains the field
-        if self.output is None and "output" in self.model_fields_set:
-            _dict["output"] = None
-
         # set to None if test (nullable) is None
         # and model_fields_set contains the field
         if self.test is None and "test" in self.model_fields_set:

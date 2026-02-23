@@ -106,11 +106,6 @@ class Step(BaseModel):
         if self.on_error is None and "on_error" in self.model_fields_set:
             _dict["onError"] = None
 
-        # set to None if input (nullable) is None
-        # and model_fields_set contains the field
-        if self.input is None and "input" in self.model_fields_set:
-            _dict["input"] = None
-
         # set to None if must_execute (nullable) is None
         # and model_fields_set contains the field
         if self.must_execute is None and "must_execute" in self.model_fields_set:

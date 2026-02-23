@@ -194,26 +194,25 @@ fn extract_inline_oneof_recursive(
 ) {
     match value {
         Value::Object(obj) => {
-            if obj.contains_key("discriminator") {
-                if let Some(Value::Array(one_of)) = obj.get_mut("oneOf") {
-                    for variant in one_of.iter_mut() {
-                        // Skip variants that are already pure $ref entries
-                        if variant
-                            .as_object()
-                            .is_some_and(|o| o.len() == 1 && o.contains_key("$ref"))
-                        {
-                            continue;
-                        }
-                        // Extract inline variants with titles to $defs
-                        if let Some(title) = variant
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .map(|s| s.to_string())
-                        {
-                            extractions.push((title.clone(), variant.clone()));
-                            *variant =
-                                serde_json::json!({ "$ref": format!("{ref_prefix}{title}") });
-                        }
+            if obj.contains_key("discriminator")
+                && let Some(Value::Array(one_of)) = obj.get_mut("oneOf")
+            {
+                for variant in one_of.iter_mut() {
+                    // Skip variants that are already pure $ref entries
+                    if variant
+                        .as_object()
+                        .is_some_and(|o| o.len() == 1 && o.contains_key("$ref"))
+                    {
+                        continue;
+                    }
+                    // Extract inline variants with titles to $defs
+                    if let Some(title) = variant
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
+                    {
+                        extractions.push((title.clone(), variant.clone()));
+                        *variant = serde_json::json!({ "$ref": format!("{ref_prefix}{title}") });
                     }
                 }
             }
@@ -295,48 +294,41 @@ fn build_discriminator_mappings_recursive(
                 .get("discriminator")
                 .is_some_and(|d| d.get("propertyName").is_some());
 
-            if needs_mapping {
-                if let Some(property_name) = obj
+            if needs_mapping
+                && let Some(property_name) = obj
                     .get("discriminator")
                     .and_then(|d| d.get("propertyName"))
                     .and_then(|p| p.as_str())
                     .map(|s| s.to_string())
-                {
-                    if let Some(one_of) = obj.get("oneOf").and_then(|v| v.as_array()) {
-                        let mut mapping = serde_json::Map::new();
+                && let Some(one_of) = obj.get("oneOf").and_then(|v| v.as_array())
+            {
+                let mut mapping = serde_json::Map::new();
 
-                        for variant in one_of {
-                            // Resolve $ref to the definition entry
-                            if let Some(ref_path) = variant.get("$ref").and_then(|r| r.as_str()) {
-                                if let Some(def_key) = ref_path.strip_prefix(ref_prefix) {
-                                    if let Some(def_schema) = defs.get(def_key) {
-                                        // Read the const value for the discriminator property
-                                        if let Some(const_val) = def_schema
-                                            .get("properties")
-                                            .and_then(|p| p.get(&property_name))
-                                            .and_then(|p| p.get("const"))
-                                            .and_then(|c| c.as_str())
-                                        {
-                                            mapping.insert(
-                                                const_val.to_string(),
-                                                Value::String(ref_path.to_string()),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if !mapping.is_empty() {
-                            if let Some(disc) =
-                                obj.get_mut("discriminator").and_then(|d| d.as_object_mut())
-                            {
-                                // Replace the mapping entirely — the post-processing steps
-                                // (extract_inline_oneof_to_defs) may have changed $ref paths
-                                disc.insert("mapping".to_string(), Value::Object(mapping));
-                            }
+                for variant in one_of {
+                    // Resolve $ref to the definition entry
+                    if let Some(ref_path) = variant.get("$ref").and_then(|r| r.as_str())
+                        && let Some(def_key) = ref_path.strip_prefix(ref_prefix)
+                        && let Some(def_schema) = defs.get(def_key)
+                    {
+                        // Read the const value for the discriminator property
+                        if let Some(const_val) = def_schema
+                            .get("properties")
+                            .and_then(|p| p.get(&property_name))
+                            .and_then(|p| p.get("const"))
+                            .and_then(|c| c.as_str())
+                        {
+                            mapping
+                                .insert(const_val.to_string(), Value::String(ref_path.to_string()));
                         }
                     }
+                }
+
+                if !mapping.is_empty()
+                    && let Some(disc) = obj.get_mut("discriminator").and_then(|d| d.as_object_mut())
+                {
+                    // Replace the mapping entirely — the post-processing steps
+                    // (extract_inline_oneof_to_defs) may have changed $ref paths
+                    disc.insert("mapping".to_string(), Value::Object(mapping));
                 }
             }
 
@@ -380,16 +372,14 @@ fn add_defaults_to_discriminator_consts(root: &mut Value, ref_prefix: &str) {
     };
 
     for (def_key, property_name) in targets {
-        if let Some(def_schema) = defs.get_mut(&def_key) {
-            if let Some(prop) = def_schema
+        if let Some(def_schema) = defs.get_mut(&def_key)
+            && let Some(prop) = def_schema
                 .get_mut("properties")
                 .and_then(|p| p.get_mut(&property_name))
                 .and_then(|p| p.as_object_mut())
-            {
-                if let Some(const_val) = prop.get("const").cloned() {
-                    prop.entry("default").or_insert(const_val);
-                }
-            }
+            && let Some(const_val) = prop.get("const").cloned()
+        {
+            prop.entry("default").or_insert(const_val);
         }
     }
 }
@@ -399,16 +389,15 @@ fn collect_discriminator_targets(
     ref_prefix: &str,
     targets: &mut Vec<(String, String)>,
 ) {
-    if let Some(disc) = value.get("discriminator").and_then(|d| d.as_object()) {
-        if let Some(property_name) = disc.get("propertyName").and_then(|p| p.as_str()) {
-            if let Some(mapping) = disc.get("mapping").and_then(|m| m.as_object()) {
-                for ref_path in mapping.values() {
-                    if let Some(ref_str) = ref_path.as_str() {
-                        if let Some(def_key) = ref_str.strip_prefix(ref_prefix) {
-                            targets.push((def_key.to_string(), property_name.to_string()));
-                        }
-                    }
-                }
+    if let Some(disc) = value.get("discriminator").and_then(|d| d.as_object())
+        && let Some(property_name) = disc.get("propertyName").and_then(|p| p.as_str())
+        && let Some(mapping) = disc.get("mapping").and_then(|m| m.as_object())
+    {
+        for ref_path in mapping.values() {
+            if let Some(ref_str) = ref_path.as_str()
+                && let Some(def_key) = ref_str.strip_prefix(ref_prefix)
+            {
+                targets.push((def_key.to_string(), property_name.to_string()));
             }
         }
     }

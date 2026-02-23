@@ -241,10 +241,14 @@
       "type": "object",
       "properties": {
         "input_schema": {
-          "$ref": "#/$defs/Schema"
+          "description": "A valid JSON Schema object.",
+          "type": "object",
+          "additionalProperties": true
         },
         "output_schema": {
-          "$ref": "#/$defs/Schema"
+          "description": "A valid JSON Schema object.",
+          "type": "object",
+          "additionalProperties": true
         },
         "behaviors": {
           "type": "object",
@@ -258,9 +262,6 @@
         "output_schema",
         "behaviors"
       ]
-    },
-    "Schema": {
-      "description": "A valid JSON Schema object."
     },
     "MockComponentBehavior": {
       "description": "Enumeration of behaviors for the mock components.",

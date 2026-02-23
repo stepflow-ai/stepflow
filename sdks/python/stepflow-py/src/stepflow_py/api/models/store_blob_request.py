@@ -25,18 +25,24 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
+from stepflow_py.api.models.blob_type import BlobType
 
-class VariableRef(BaseModel):
+
+class StoreBlobRequest(BaseModel):
     """
-    Variable reference: { $variable: \"path\", default?: ValueExpr }
+    Request to store a blob (JSON mode)
     """  # noqa: E501
 
-    variable: StrictStr = Field(
-        description="JSONPath expression including variable name", alias="$variable"
+    data: Any | None
+    blob_type: BlobType | None = Field(
+        default=None,
+        description='The type of blob (data or flow). Defaults to "data".',
+        alias="blobType",
     )
-    default: ValueExpr | None = None
-    additional_properties: dict[str, Any] = Field(default={}, exclude=True)
-    __properties: ClassVar[list[str]] = ["$variable", "default"]
+    filename: StrictStr | None = Field(
+        default=None, description="Optional filename to associate with the blob."
+    )
+    __properties: ClassVar[list[str]] = ["data", "blobType", "filename"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -55,7 +61,7 @@ class VariableRef(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of VariableRef from a JSON string"""
+        """Create an instance of StoreBlobRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -67,32 +73,32 @@ class VariableRef(BaseModel):
         * `None` is only added to the output dict for nullable fields that
           were set at model initialization. Other fields with value `None`
           are ignored.
-        * Fields in `self.additional_properties` are added to the output dict.
         """
-        excluded_fields: set[str] = set(
-            [
-                "additional_properties",
-            ]
-        )
+        excluded_fields: set[str] = set([])
 
         _dict = self.model_dump(
             by_alias=True,
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of default
-        if self.default:
-            _dict["default"] = self.default.to_dict()
-        # puts key-value pairs in additional_properties in the top level
-        if self.additional_properties is not None:
-            for _key, _value in self.additional_properties.items():
-                _dict[_key] = _value
+        # override the default output from pydantic by calling `to_dict()` of blob_type
+        if self.blob_type:
+            _dict["blobType"] = self.blob_type.to_dict()
+        # set to None if data (nullable) is None
+        # and model_fields_set contains the field
+        if self.data is None and "data" in self.model_fields_set:
+            _dict["data"] = None
+
+        # set to None if filename (nullable) is None
+        # and model_fields_set contains the field
+        if self.filename is None and "filename" in self.model_fields_set:
+            _dict["filename"] = None
 
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of VariableRef from a dict"""
+        """Create an instance of StoreBlobRequest from a dict"""
         if obj is None:
             return None
 
@@ -101,21 +107,11 @@ class VariableRef(BaseModel):
 
         _obj = cls.model_validate(
             {
-                "$variable": obj.get("$variable"),
-                "default": ValueExpr.from_dict(obj["default"])
-                if obj.get("default") is not None
+                "data": obj.get("data"),
+                "blobType": BlobType.from_dict(obj["blobType"])
+                if obj.get("blobType") is not None
                 else None,
+                "filename": obj.get("filename"),
             }
         )
-        # store additional fields in additional_properties
-        for _key in obj.keys():
-            if _key not in cls.__properties:
-                _obj.additional_properties[_key] = obj.get(_key)
-
         return _obj
-
-
-from stepflow_py.api.models.value_expr import ValueExpr
-
-# TODO: Rewrite to not use raise_errors
-VariableRef.model_rebuild(raise_errors=False)

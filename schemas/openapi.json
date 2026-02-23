@@ -1146,25 +1146,19 @@
           },
           "input_schema": {
             "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           },
           "output_schema": {
             "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           }
         },
         "required": [
@@ -1179,9 +1173,6 @@
           "/mcpfs/list_files",
           "/python/udf"
         ]
-      },
-      "Schema": {
-        "description": "A valid JSON Schema object."
       },
       "FlowResponse": {
         "description": "Response containing a flow definition and its ID",
@@ -2092,47 +2083,42 @@
             "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Schema"
+              "description": "A valid JSON Schema object.",
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "input": {
             "description": "The input schema for the flow.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           },
           "output": {
             "description": "The output schema for the flow.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           },
           "variables": {
             "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
           },
           "steps": {
             "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/Schema"
+              "description": "A valid JSON Schema object.",
+              "type": "object",
+              "additionalProperties": true
             }
           }
         },
@@ -2260,7 +2246,7 @@
                 "type": "string"
               },
               "default": {
-                "$ref": "#/#/components/schemas/ValueExpr"
+                "$ref": "#/components/schemas/ValueExpr"
               }
             },
             "required": [
@@ -2286,13 +2272,13 @@
             "type": "object",
             "properties": {
               "$if": {
-                "$ref": "#/#/components/schemas/ValueExpr"
+                "$ref": "#/components/schemas/ValueExpr"
               },
               "then": {
-                "$ref": "#/#/components/schemas/ValueExpr"
+                "$ref": "#/components/schemas/ValueExpr"
               },
               "else": {
-                "$ref": "#/#/components/schemas/ValueExpr"
+                "$ref": "#/components/schemas/ValueExpr"
               }
             },
             "required": [
@@ -2309,7 +2295,7 @@
               "$coalesce": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/#/components/schemas/ValueExpr"
+                  "$ref": "#/components/schemas/ValueExpr"
                 }
               }
             },
@@ -2323,7 +2309,7 @@
             "description": "Array with expressions as elements",
             "type": "array",
             "items": {
-              "$ref": "#/#/components/schemas/ValueExpr"
+              "$ref": "#/components/schemas/ValueExpr"
             }
           },
           {
@@ -2331,7 +2317,7 @@
             "description": "Object with expressions as values",
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/#/components/schemas/ValueExpr"
+              "$ref": "#/components/schemas/ValueExpr"
             }
           },
           {

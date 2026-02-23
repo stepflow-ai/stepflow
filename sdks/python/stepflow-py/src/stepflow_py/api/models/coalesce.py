@@ -31,7 +31,7 @@ class Coalesce(BaseModel):
     Coalesce: { $coalesce: [expr, ...] }
     """  # noqa: E501
 
-    coalesce: list[ValueExpr | None] = Field(alias="$coalesce")
+    coalesce: list[ValueExpr] = Field(alias="$coalesce")
     additional_properties: dict[str, Any] = Field(default={}, exclude=True)
     __properties: ClassVar[list[str]] = ["$coalesce"]
 

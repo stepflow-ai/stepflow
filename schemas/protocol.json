@@ -160,33 +160,24 @@
         },
         "input_schema": {
           "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
         },
         "output_schema": {
           "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
         }
       },
       "required": [
         "component"
       ]
-    },
-    "Schema": {
-      "description": "A valid JSON Schema object."
     },
     "ComponentListParams": {
       "description": "Sent from Stepflow to the component server to request a list of all available components.",
@@ -218,7 +209,8 @@
         },
         "input_schema": {
           "description": "The schema of the input that will be provided to the component.",
-          "$ref": "#/$defs/Schema"
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "required": [
@@ -232,14 +224,11 @@
       "properties": {
         "output_schema": {
           "description": "The inferred output schema, or None if the component cannot determine it.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Schema"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": true
         }
       }
     },

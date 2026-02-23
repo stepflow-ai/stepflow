@@ -35,11 +35,11 @@ class ComponentInfo(BaseModel):
     description: StrictStr | None = Field(
         default=None, description="Optional description of the component."
     )
-    input_schema: Any | None = Field(
+    input_schema: dict[str, Any] | None = Field(
         default=None,
         description="The input schema for the component.  Can be any valid JSON schema (object, primitive, array, etc.).",
     )
-    output_schema: Any | None = Field(
+    output_schema: dict[str, Any] | None = Field(
         default=None,
         description="The output schema for the component.  Can be any valid JSON schema (object, primitive, array, etc.).",
     )
@@ -87,12 +87,6 @@ class ComponentInfo(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of input_schema
-        if self.input_schema:
-            _dict["input_schema"] = self.input_schema.to_dict()
-        # override the default output from pydantic by calling `to_dict()` of output_schema
-        if self.output_schema:
-            _dict["output_schema"] = self.output_schema.to_dict()
         # set to None if description (nullable) is None
         # and model_fields_set contains the field
         if self.description is None and "description" in self.model_fields_set:
@@ -123,12 +117,8 @@ class ComponentInfo(BaseModel):
             {
                 "component": obj.get("component"),
                 "description": obj.get("description"),
-                "input_schema": AnyOf.from_dict(obj["input_schema"])
-                if obj.get("input_schema") is not None
-                else None,
-                "output_schema": AnyOf.from_dict(obj["output_schema"])
-                if obj.get("output_schema") is not None
-                else None,
+                "input_schema": obj.get("input_schema"),
+                "output_schema": obj.get("output_schema"),
             }
         )
         return _obj

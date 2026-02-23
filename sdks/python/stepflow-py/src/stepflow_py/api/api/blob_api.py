@@ -23,6 +23,7 @@ from pydantic import Field, StrictFloat, StrictInt, StrictStr, validate_call
 from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
 from stepflow_py.api.models.get_blob_response import GetBlobResponse
+from stepflow_py.api.models.store_blob_request import StoreBlobRequest
 from stepflow_py.api.models.store_blob_response import StoreBlobResponse
 from stepflow_py.api.rest import RESTResponseType
 
@@ -286,6 +287,9 @@ class BlobApi:
     @validate_call
     async def store_blob(
         self,
+        store_blob_request: Annotated[
+            StoreBlobRequest, Field(description="Blob data to store")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -300,6 +304,8 @@ class BlobApi:
 
         Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
+        :param store_blob_request: Blob data to store (required)
+        :type store_blob_request: StoreBlobRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -323,6 +329,7 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
+            store_blob_request=store_blob_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -345,6 +352,9 @@ class BlobApi:
     @validate_call
     async def store_blob_with_http_info(
         self,
+        store_blob_request: Annotated[
+            StoreBlobRequest, Field(description="Blob data to store")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -359,6 +369,8 @@ class BlobApi:
 
         Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
+        :param store_blob_request: Blob data to store (required)
+        :type store_blob_request: StoreBlobRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -382,6 +394,7 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
+            store_blob_request=store_blob_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -404,6 +417,9 @@ class BlobApi:
     @validate_call
     async def store_blob_without_preload_content(
         self,
+        store_blob_request: Annotated[
+            StoreBlobRequest, Field(description="Blob data to store")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -418,6 +434,8 @@ class BlobApi:
 
         Store a blob and return its content-based ID. Supports two content types: `application/json` (JSON body with `data`, `blobType`, and optional `filename` fields) and `application/octet-stream` (raw binary body, use `X-Blob-Filename` header for filename).
 
+        :param store_blob_request: Blob data to store (required)
+        :type store_blob_request: StoreBlobRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
                                  timeout. It can also be a pair (tuple) of
@@ -441,6 +459,7 @@ class BlobApi:
         """  # noqa: E501
 
         _param = self._store_blob_serialize(
+            store_blob_request=store_blob_request,
             _request_auth=_request_auth,
             _content_type=_content_type,
             _headers=_headers,
@@ -458,6 +477,7 @@ class BlobApi:
 
     def _store_blob_serialize(
         self,
+        store_blob_request,
         _request_auth,
         _content_type,
         _headers,
@@ -481,6 +501,8 @@ class BlobApi:
         # process the header parameters
         # process the form parameters
         # process the body parameter
+        if store_blob_request is not None:
+            _body_params = store_blob_request
 
         # set the HTTP header `Accept`
         if "Accept" not in _header_params:
@@ -493,7 +515,7 @@ class BlobApi:
             _header_params["Content-Type"] = _content_type
         else:
             _default_content_type = self.api_client.select_header_content_type(
-                ["application/octet-stream"]
+                ["application/json", "application/octet-stream"]
             )
             if _default_content_type is not None:
                 _header_params["Content-Type"] = _default_content_type

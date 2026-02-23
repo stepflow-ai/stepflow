@@ -482,7 +482,11 @@ impl schemars::JsonSchema for ValueExpr {
         // Build self-ref using the generator's definitions_path so refs are correct
         // for both JSON Schema (#/$defs/ValueExpr) and OpenAPI (#/components/schemas/ValueExpr).
         let defs_path = generator.settings().definitions_path.trim_matches('/');
-        let self_ref = format!("#/{defs_path}/ValueExpr");
+        let self_ref = if defs_path.starts_with('#') {
+            format!("{defs_path}/ValueExpr")
+        } else {
+            format!("#/{defs_path}/ValueExpr")
+        };
 
         serde_json::json!({
             "oneOf": [
