@@ -504,10 +504,24 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
-    ) = None
-    observability: ObservabilityContext | None = None
-    subflowKey: str | None = None
+        | UnsetType
+    ) = UNSET
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing.'),
+        ]
+        | UnsetType
+    ) = UNSET
+    subflowKey: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Caller-provided key for subflow deduplication during recovery.\n\nWhen a component submits a subflow via the bidirectional protocol,\nit can provide a key that uniquely identifies this submission within\nthe scope of `(parent_run_id, item_index, step_index)`.\n\nBoth Rust (`RunContext`) and Python (`StepflowContext`) auto-generate\ndeterministic keys using UUID v5 with the run_id as namespace and a\nmonotonic counter. This ensures recovery produces the same keys when\na step re-executes. If a caller provides its own key, it must be\nunique within the step scope; if not provided, a random UUID is used\n(no recovery deduplication).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
 
 
 class ItemResult(Struct, kw_only=True):

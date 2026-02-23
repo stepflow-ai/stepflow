@@ -76,6 +76,14 @@ use stepflow_state::{
 
 use crate::{ExecutionError, Result, RunState};
 
+/// Information about a subflow discovered during journal replay.
+struct SubflowInfo {
+    flow_id: stepflow_core::BlobId,
+    parent_id: uuid::Uuid,
+    inputs: Vec<stepflow_core::workflow::ValueRef>,
+    variables: HashMap<String, stepflow_core::workflow::ValueRef>,
+}
+
 /// Result of a recovery operation.
 #[derive(Debug, Clone)]
 pub struct RecoveryResult {
@@ -527,8 +535,7 @@ async fn recover_execution_tree(
 
     // 1. Collect SubflowSubmitted events into a lookup map:
     //    (parent_run_id, item_index, step_index, subflow_key) -> subflow_run_id
-    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> =
-        HashMap::new();
+    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
     for event in &all_events {
         if let stepflow_state::JournalEvent::SubflowSubmitted {
             parent_run_id,
@@ -547,15 +554,7 @@ async fn recover_execution_tree(
 
     // 2. Find subflow RunCreated events (parent_run_id: Some(...))
     //    and check if they have matching RunCompleted events.
-    let mut subflow_created: HashMap<
-        uuid::Uuid,
-        (
-            stepflow_core::BlobId,
-            uuid::Uuid,
-            Vec<stepflow_core::workflow::ValueRef>,
-            HashMap<String, stepflow_core::workflow::ValueRef>,
-        ),
-    > = HashMap::new();
+    let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
     let mut completed_runs: std::collections::HashSet<uuid::Uuid> =
         std::collections::HashSet::new();
 
@@ -572,12 +571,12 @@ async fn recover_execution_tree(
                 if subflow_map.values().any(|id| id == sub_run_id) {
                     subflow_created.insert(
                         *sub_run_id,
-                        (
-                            sub_flow_id.clone(),
-                            *parent_id,
-                            sub_inputs.clone(),
-                            sub_variables.clone(),
-                        ),
+                        SubflowInfo {
+                            flow_id: sub_flow_id.clone(),
+                            parent_id: *parent_id,
+                            inputs: sub_inputs.clone(),
+                            variables: sub_variables.clone(),
+                        },
                     );
                 }
             }
@@ -596,33 +595,31 @@ async fn recover_execution_tree(
     // 3. For each subflow (both incomplete and completed), reconstruct its RunState.
     //    Completed subflows still need to be in the map so the parent step gets the
     //    old run_id and wait_for_completion returns immediately.
-    for (sub_run_id, (sub_flow_id, parent_id, sub_inputs, sub_variables)) in &subflow_created {
-        // Load the subflow's flow definition from blob store
-        let sub_flow = match blob_store
-            .get_flow(sub_flow_id)
+    for (sub_run_id, info) in &subflow_created {
+        // Load the subflow's flow definition from blob store.
+        // If the flow is missing, this indicates data corruption — fail recovery
+        // explicitly rather than leaving a dangling entry in the subflow map
+        // (which would cause wait_for_completion to hang).
+        let sub_flow = blob_store
+            .get_flow(&info.flow_id)
             .await
             .change_context(ExecutionError::RecoveryFailed)?
-        {
-            Some(f) => f,
-            None => {
-                log::warn!(
-                    "Subflow flow not found for run {}, flow_id={}, skipping",
-                    sub_run_id,
-                    sub_flow_id
-                );
-                continue;
-            }
-        };
+            .ok_or_else(|| {
+                error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(format!(
+                    "Subflow flow not found during recovery for run {}, flow_id={}",
+                    sub_run_id, info.flow_id
+                ))
+            })?;
 
         // Create subflow RunState
         let mut sub_state = RunState::new_subflow(
             *sub_run_id,
-            sub_flow_id.clone(),
+            info.flow_id.clone(),
             root_run_id,
-            *parent_id,
+            info.parent_id,
             sub_flow,
-            sub_inputs.clone(),
-            sub_variables.clone(),
+            info.inputs.clone(),
+            info.variables.clone(),
         );
 
         // Apply all journal events (RunState filters by run_id internally)
@@ -634,7 +631,7 @@ async fn recover_execution_tree(
             "Recovered subflow run {}: complete={}, parent={}",
             sub_run_id,
             sub_state.is_complete(),
-            parent_id
+            info.parent_id
         );
 
         additional_runs.insert(*sub_run_id, sub_state);

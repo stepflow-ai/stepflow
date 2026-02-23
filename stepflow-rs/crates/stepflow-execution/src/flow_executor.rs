@@ -675,7 +675,9 @@ impl FlowExecutor {
         // Create RunContext with subflow submitter scoped to this task.
         // The submitter carries (parent_run_id, item_index, step_index) so that
         // subflow submissions include full parent task context for recovery.
-        let submitter = self.submit_sender.for_task(task.run_id, task.item_index, task.step_index);
+        let submitter = self
+            .submit_sender
+            .for_task(task.run_id, task.item_index, task.step_index);
         let run_context = Arc::new(
             RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
         );

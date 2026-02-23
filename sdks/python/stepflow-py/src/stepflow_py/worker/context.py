@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import uuid
 from typing import Any, TypeVar
 from uuid import uuid4
@@ -199,21 +200,34 @@ class StepflowContext:
     def _generate_subflow_key(self) -> str:
         """Generate a deterministic subflow key.
 
-        Uses UUID v5 with the run_id as namespace and an incrementing counter.
-        This ensures that when a step re-executes after recovery, the same
-        sequence of calls produces the same keys.
+        Uses UUID v5 with the run_id as namespace and an incrementing counter
+        (little-endian 8-byte encoding). This ensures that when a step
+        re-executes after recovery, the same sequence of calls produces the
+        same keys.
+
+        We construct the UUID v5 manually (SHA-1 over namespace bytes +
+        raw counter bytes) to match Rust's ``Uuid::new_v5``.
+        Python's ``uuid.uuid5()`` encodes the name as UTF-8, which
+        differs from raw bytes for values >= 128.
         """
         counter = self._next_subflow_key
         self._next_subflow_key += 1
         namespace = uuid.UUID(self._run_id) if self._run_id else uuid.NAMESPACE_DNS
-        return str(uuid.uuid5(namespace, counter.to_bytes(8, "little").decode("latin-1")))
+        # UUID v5: SHA-1(namespace_bytes + name_bytes), set version/variant
+        name_bytes = counter.to_bytes(8, "little")
+        digest = hashlib.sha1(namespace.bytes + name_bytes).digest()  # noqa: S324
+        # Set version (5) and variant (RFC 4122) bits
+        fields = bytearray(digest[:16])
+        fields[6] = (fields[6] & 0x0F) | 0x50  # version 5
+        fields[8] = (fields[8] & 0x3F) | 0x80  # variant RFC 4122
+        return str(uuid.UUID(bytes=bytes(fields)))
 
     async def evaluate_flow(
         self,
         flow: Flow,
         input: Any,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> Any:
         """Evaluate a flow with the given input.
 
@@ -247,7 +261,7 @@ class StepflowContext:
         flow_id: str,
         input: Any,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> Any:
         """Evaluate a flow by its blob ID with the given input.
 
@@ -283,7 +297,7 @@ class StepflowContext:
         wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> RunStatusProtocol:
         """Submit a run (1 or N items) for execution.
 
@@ -307,7 +321,11 @@ class StepflowContext:
 
         # Delegate to submit_run_by_id
         return await self.submit_run_by_id(
-            flow_id, inputs, wait, max_concurrency, overrides=overrides,
+            flow_id,
+            inputs,
+            wait,
+            max_concurrency,
+            overrides=overrides,
             subflow_key=subflow_key,
         )
 
@@ -318,7 +336,7 @@ class StepflowContext:
         wait: bool = False,
         max_concurrency: int | None = None,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> RunStatusProtocol:
         """Submit a run by flow ID.
 
@@ -349,6 +367,9 @@ class StepflowContext:
         if subflow_key is None:
             subflow_key = self._generate_subflow_key()
 
+        # Convert UUID to string for the protocol wire format
+        subflow_key_str = str(subflow_key) if subflow_key is not None else None
+
         with tracer.start_as_current_span("submit_run", attributes=attributes):
             params = SubmitRunProtocolParams(
                 flowId=flow_id,
@@ -357,7 +378,7 @@ class StepflowContext:
                 maxConcurrency=max_concurrency,
                 overrides=overrides,
                 observability=self.current_observability_context(),
-                subflowKey=subflow_key,
+                subflowKey=subflow_key_str,
             )
             response = await self._send_request(
                 Method.runs_submit, params, RunStatusProtocol
@@ -411,7 +432,7 @@ class StepflowContext:
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> list[Any]:
         """Submit a run, wait for completion, and return all results.
 
@@ -440,7 +461,10 @@ class StepflowContext:
 
         # Delegate to evaluate_run_by_id
         return await self.evaluate_run_by_id(
-            flow_id, inputs, max_concurrency, overrides=overrides,
+            flow_id,
+            inputs,
+            max_concurrency,
+            overrides=overrides,
             subflow_key=subflow_key,
         )
 
@@ -450,7 +474,7 @@ class StepflowContext:
         inputs: list[Any],
         max_concurrency: int | None = None,
         overrides: Any = None,
-        subflow_key: str | None = None,
+        subflow_key: uuid.UUID | str | None = None,
     ) -> list[Any]:
         """Submit a run by flow ID, wait for completion, and return all results.
 

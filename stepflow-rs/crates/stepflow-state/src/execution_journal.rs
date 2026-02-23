@@ -311,9 +311,7 @@ impl JournalEvent {
             | JournalEvent::StepsUnblocked { run_id, .. }
             | JournalEvent::ItemCompleted { run_id, .. } => *run_id == target,
             JournalEvent::TasksStarted { runs } => runs.iter().any(|r| r.run_id == target),
-            JournalEvent::SubflowSubmitted {
-                parent_run_id, ..
-            } => *parent_run_id == target,
+            JournalEvent::SubflowSubmitted { parent_run_id, .. } => *parent_run_id == target,
         }
     }
 }

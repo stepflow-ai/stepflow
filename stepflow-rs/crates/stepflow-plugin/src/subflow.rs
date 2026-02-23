@@ -187,6 +187,7 @@ impl SubflowSubmitter {
     ///   closed. This indicates the receiver had an error between receiving the
     ///   `SubflowRequest` and sending a response. The actual error is likely
     ///   logged elsewhere.
+    #[allow(clippy::too_many_arguments)]
     pub async fn submit(
         &self,
         flow: Arc<Flow>,
@@ -320,7 +321,15 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         let run_id = submitter
-            .submit(flow, flow_id, inputs, HashMap::new(), None, None, subflow_key)
+            .submit(
+                flow,
+                flow_id,
+                inputs,
+                HashMap::new(),
+                None,
+                None,
+                subflow_key,
+            )
             .await
             .unwrap();
 
@@ -378,7 +387,15 @@ mod tests {
         let subflow_key = Uuid::now_v7();
 
         let result = submitter
-            .submit(flow, flow_id, vec![], HashMap::new(), None, None, subflow_key)
+            .submit(
+                flow,
+                flow_id,
+                vec![],
+                HashMap::new(),
+                None,
+                None,
+                subflow_key,
+            )
             .await;
 
         assert_eq!(result.unwrap_err(), SubflowSubmitError::ChannelClosed);
