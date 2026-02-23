@@ -207,7 +207,5 @@ class ValueExpr:
             ...     ValueExpr.literal({"timeout": 30}),
             ... )
         """
-        wrapped_values: list[GenValueExpr | None] = [
-            _wrap_value_expr(v) for v in values
-        ]
+        wrapped_values: list[GenValueExpr] = [_wrap_value_expr(v) for v in values]
         return Coalesce(coalesce=wrapped_values)

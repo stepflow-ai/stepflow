@@ -58,11 +58,42 @@ class ComponentInfoParams(Struct, kw_only=True):
     ]
 
 
-Schema: TypeAlias = Annotated[Any, Meta(description='A valid JSON Schema object.')]
+class ComponentInfo(Struct, kw_only=True):
+    component: Annotated[Component, Meta(description='The component ID.')]
+    description: (
+        Annotated[
+            str | None, Meta(description='Optional description of the component.')
+        ]
+        | UnsetType
+    ) = UNSET
+    input_schema: (
+        Annotated[
+            dict[str, Any] | None,
+            Meta(
+                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    output_schema: (
+        Annotated[
+            dict[str, Any] | None,
+            Meta(
+                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
 
 
 class ComponentListParams(Struct, kw_only=True):
     pass
+
+
+class ListComponentsResult(Struct, kw_only=True):
+    components: Annotated[
+        list[ComponentInfo], Meta(description='A list of all available components.')
+    ]
 
 
 class ComponentInferSchemaParams(Struct, kw_only=True):
@@ -70,7 +101,7 @@ class ComponentInferSchemaParams(Struct, kw_only=True):
         Component, Meta(description='The component to infer the schema for.')
     ]
     input_schema: Annotated[
-        Schema,
+        dict[str, Any],
         Meta(
             description='The schema of the input that will be provided to the component.'
         ),
@@ -80,7 +111,7 @@ class ComponentInferSchemaParams(Struct, kw_only=True):
 class ComponentInferSchemaResult(Struct, kw_only=True):
     output_schema: (
         Annotated[
-            Schema | None,
+            dict[str, Any] | None,
             Meta(
                 description='The inferred output schema, or None if the component cannot determine it.'
             ),
@@ -277,38 +308,8 @@ class ObservabilityContext(Struct, kw_only=True):
     ) = UNSET
 
 
-class ComponentInfo(Struct, kw_only=True):
-    component: Annotated[Component, Meta(description='The component ID.')]
-    description: (
-        Annotated[
-            str | None, Meta(description='Optional description of the component.')
-        ]
-        | UnsetType
-    ) = UNSET
-    input_schema: (
-        Annotated[
-            Schema | None,
-            Meta(
-                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    output_schema: (
-        Annotated[
-            Schema | None,
-            Meta(
-                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-class ListComponentsResult(Struct, kw_only=True):
-    components: Annotated[
-        list[ComponentInfo], Meta(description='A list of all available components.')
-    ]
+class ComponentInfoResult(Struct, kw_only=True):
+    info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
 
 
 class StepOverride(Struct, kw_only=True):
@@ -435,10 +436,6 @@ class ComponentExecuteParams(Struct, kw_only=True):
         ObservabilityContext,
         Meta(description='Observability context for tracing and logging.'),
     ]
-
-
-class ComponentInfoResult(Struct, kw_only=True):
-    info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
 
 
 WorkflowOverrides: TypeAlias = dict[str, StepOverride]

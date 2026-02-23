@@ -300,7 +300,9 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        on_error: OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None = None,
+        on_error: (
+            OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None
+        ) = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:

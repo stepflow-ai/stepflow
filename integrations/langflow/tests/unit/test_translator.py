@@ -422,7 +422,9 @@ class CustomComponent(Component):
         code_value = blob_data["code"]
         # Primitives are wrapped in LiteralExpr by the flow builder
         assert hasattr(code_value, "literal"), "code should be a LiteralExpr"
-        assert "CustomComponent" in code_value.literal, "Should contain custom component class"
+        assert "CustomComponent" in code_value.literal, (
+            "Should contain custom component class"
+        )
 
     def test_component_routing_strategy_rejects_incomplete_components(self):
         """Test that components without custom code are rejected (unified approach)."""

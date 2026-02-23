@@ -52,9 +52,6 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = 100
 
 
-Schema: TypeAlias = Annotated[Any, Meta(description='A valid JSON Schema object.')]
-
-
 class MockComponentBehavior1(Struct, kw_only=True):
     error: str
 
@@ -501,8 +498,12 @@ StorageConfig: TypeAlias = Annotated[
 
 
 class MockComponent(Struct, kw_only=True):
-    input_schema: Schema
-    output_schema: Schema
+    input_schema: Annotated[
+        dict[str, Any], Meta(description='A valid JSON Schema object.')
+    ]
+    output_schema: Annotated[
+        dict[str, Any], Meta(description='A valid JSON Schema object.')
+    ]
     behaviors: dict[str, MockComponentBehavior]
 
 
