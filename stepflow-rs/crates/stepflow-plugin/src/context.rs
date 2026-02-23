@@ -259,10 +259,6 @@ impl RunContext {
         // This means if a step re-executes after recovery, the same sequence of
         // execute_flow / execute_batch calls produces the same keys, enabling
         // the executor to match submissions to their pre-crash counterparts.
-        //
-        // Note: This counter is scoped to a single RunContext (one step execution).
-        // Client-provided keys go through a separate code path and should not use
-        // UUID v5 with the run_id as namespace to avoid collisions with this scheme.
         let counter = self.next_subflow_key.fetch_add(1, Ordering::Relaxed);
         let subflow_key = Uuid::new_v5(&self.run_id, &counter.to_le_bytes());
 

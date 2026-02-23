@@ -61,7 +61,6 @@ impl MethodHandler for SubmitRunHandler {
                     // Use the in-process subflow channel — this makes the
                     // submitted run a true in-tree subflow sharing the parent's
                     // executor, journal, and recovery scope.
-                    let subflow_key = request.subflow_key.unwrap_or_else(uuid::Uuid::now_v7);
                     let run_id = submitter
                         .submit(
                             flow,
@@ -70,7 +69,7 @@ impl MethodHandler for SubmitRunHandler {
                             std::collections::HashMap::new(),
                             request.overrides,
                             request.max_concurrency,
-                            subflow_key,
+                            request.subflow_key,
                         )
                         .await
                         .map_err(|e| {

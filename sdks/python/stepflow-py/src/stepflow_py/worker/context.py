@@ -358,8 +358,8 @@ class StepflowContext:
         if subflow_key is None:
             subflow_key = self._generate_subflow_key()
 
-        # Convert UUID to string for the protocol wire format
-        subflow_key_str = str(subflow_key) if subflow_key is not None else None
+        # Convert to string for the protocol wire format
+        subflow_key_str = str(subflow_key)
 
         with tracer.start_as_current_span("submit_run", attributes=attributes):
             params = SubmitRunProtocolParams(

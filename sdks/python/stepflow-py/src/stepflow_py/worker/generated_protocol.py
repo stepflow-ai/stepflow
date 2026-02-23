@@ -476,6 +476,12 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
     inputs: Annotated[
         list[Value], Meta(description='Input values for each item in the run.')
     ]
+    subflowKey: Annotated[
+        str,
+        Meta(
+            description="Client-provided key for subflow deduplication during recovery.\n\nThis key uniquely identifies a subflow submission within the scope\nof the executing step. The orchestrator records this key in the\njournal. If the parent step re-executes after a crash, the\norchestrator matches new submissions by key and returns the existing\nsubflow's run ID instead of creating a duplicate.\n\nThe client must generate the same key on re-execution for recovery\nto work. A common approach is to derive a deterministic UUID from a\nmonotonic counter scoped to the step execution."
+        ),
+    ]
     wait: (
         Annotated[
             bool, Meta(description='If true, wait for completion before returning.')
@@ -510,15 +516,6 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
         Annotated[
             ObservabilityContext | None,
             Meta(description='Observability context for tracing.'),
-        ]
-        | UnsetType
-    ) = UNSET
-    subflowKey: (
-        Annotated[
-            str | None,
-            Meta(
-                description="Caller-provided key for subflow deduplication during recovery.\n\nWhen a component submits a subflow via the bidirectional protocol,\nit can provide a key that uniquely identifies this submission within\nthe scope of `(parent_run_id, item_index, step_index)`.\n\nBoth Rust (`RunContext`) and Python (`StepflowContext`) auto-generate\ndeterministic keys using a monotonic counter. Each runtime's keys\nonly need to be self-consistent (same sequence on re-execution);\ncross-runtime parity is not required. If a caller provides its own\nkey, it must be unique within the step scope; if not provided, a\nrandom UUID is used (no recovery deduplication)."
-            ),
         ]
         | UnsetType
     ) = UNSET

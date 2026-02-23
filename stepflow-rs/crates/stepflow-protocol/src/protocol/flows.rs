@@ -44,20 +44,18 @@ pub struct SubmitRunProtocolParams {
     /// Observability context for tracing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observability: Option<ObservabilityContext>,
-    /// Caller-provided key for subflow deduplication during recovery.
+    /// Client-provided key for subflow deduplication during recovery.
     ///
-    /// When a component submits a subflow via the bidirectional protocol,
-    /// it can provide a key that uniquely identifies this submission within
-    /// the scope of `(parent_run_id, item_index, step_index)`.
+    /// This key uniquely identifies a subflow submission within the scope
+    /// of the executing step. The orchestrator records this key in the
+    /// journal. If the parent step re-executes after a crash, the
+    /// orchestrator matches new submissions by key and returns the existing
+    /// subflow's run ID instead of creating a duplicate.
     ///
-    /// Both Rust (`RunContext`) and Python (`StepflowContext`) auto-generate
-    /// deterministic keys using a monotonic counter. Each runtime's keys
-    /// only need to be self-consistent (same sequence on re-execution);
-    /// cross-runtime parity is not required. If a caller provides its own
-    /// key, it must be unique within the step scope; if not provided, a
-    /// random UUID is used (no recovery deduplication).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subflow_key: Option<Uuid>,
+    /// The client must generate the same key on re-execution for recovery
+    /// to work. A common approach is to derive a deterministic UUID from a
+    /// monotonic counter scoped to the step execution.
+    pub subflow_key: Uuid,
 }
 
 impl ProtocolMethod for SubmitRunProtocolParams {
