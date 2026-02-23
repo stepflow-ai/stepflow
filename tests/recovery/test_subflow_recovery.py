@@ -34,6 +34,7 @@ import pytest
 from helpers import (
     ORCH1_URL,
     ORCH2_URL,
+    clear_tracker,
     count_step_executions,
     docker_kill,
     docker_start,
@@ -62,6 +63,9 @@ async def test_subflow_restart_recovery(compose_env):
     6. Assert: inner_delay executed exactly once (recovered, not restarted)
     7. Assert: final_step executed once
     """
+    # Clear tracker so we only see records from this test.
+    clear_tracker()
+
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "subflow_test"}})
 
@@ -92,11 +96,12 @@ async def test_subflow_restart_recovery(compose_env):
 
     # Key assertion: inner_delay should have executed exactly once.
     # Without subflow recovery, it would execute twice (once before crash, once after).
-    assert count_step_executions(records, "inner_delay", run_id) == 1, (
+    # Note: inner_delay runs in the subflow (different run_id), so don't filter by parent run_id.
+    assert count_step_executions(records, "inner_delay") == 1, (
         "inner_delay should execute exactly once — subflow recovery should prevent re-execution"
     )
 
-    # final_step should have executed once after recovery
+    # final_step runs in the parent flow so its run_id matches
     assert count_step_executions(records, "final_step", run_id) >= 1, (
         "final_step should have executed after recovery"
     )
@@ -114,6 +119,8 @@ async def test_subflow_failover_recovery(compose_env):
     5. Assert: inner_delay executed exactly once
     6. Assert: final_step executed once
     """
+    clear_tracker()
+
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "failover_test"}})
 
@@ -139,8 +146,8 @@ async def test_subflow_failover_recovery(compose_env):
 
     records = read_tracker_records()
 
-    # inner_delay should execute exactly once (subflow recovery prevents restart)
-    assert count_step_executions(records, "inner_delay", run_id) == 1, (
+    # inner_delay runs in the subflow (different run_id from parent)
+    assert count_step_executions(records, "inner_delay") == 1, (
         "inner_delay should execute exactly once — subflow recovery should prevent re-execution"
     )
 
@@ -160,6 +167,8 @@ async def test_completed_subflow_not_restarted(compose_env):
     4. Restart orch-1
     5. Assert: inner_delay count is exactly 1 (completed subflow not restarted)
     """
+    clear_tracker()
+
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "completed_subflow"}})
 
@@ -188,7 +197,8 @@ async def test_completed_subflow_not_restarted(compose_env):
     records = read_tracker_records()
 
     # The inner subflow completed before the crash — it must not be re-executed
-    assert count_step_executions(records, "inner_delay", run_id) == 1, (
+    # inner_delay runs in the subflow (different run_id from parent)
+    assert count_step_executions(records, "inner_delay") == 1, (
         "inner_delay should not be re-executed — subflow was already complete"
     )
 
