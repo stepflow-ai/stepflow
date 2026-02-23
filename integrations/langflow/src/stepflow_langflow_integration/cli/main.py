@@ -321,9 +321,7 @@ def run(
         if tweaks:
             try:
                 parsed_tweaks = json.loads(tweaks)
-                click.echo(
-                    f"🔧 Applying tweaks to {len(parsed_tweaks)} components..."
-                )
+                click.echo(f"🔧 Applying tweaks to {len(parsed_tweaks)} components...")
                 workflow_dict = yaml.safe_load(stepflow_yaml)
                 tweaked_dict = apply_stepflow_tweaks_to_dict(
                     workflow_dict, parsed_tweaks
@@ -350,9 +348,7 @@ def run(
 
         if local:
             click.echo("🚀 Starting local orchestrator...")
-            result = asyncio.run(
-                _run_local(flow_dict, inputs, timeout)
-            )
+            result = asyncio.run(_run_local(flow_dict, inputs, timeout))
         else:
             assert url is not None
             click.echo(f"🚀 Submitting to {url}...")
@@ -462,7 +458,8 @@ def _submit_flow_http(
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout + 30) as resp:
-            return json.loads(resp.read())
+            result: dict = json.loads(resp.read())
+            return result
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Execution failed: {e.code} {body}") from e
