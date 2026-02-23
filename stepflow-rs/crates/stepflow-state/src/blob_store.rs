@@ -63,6 +63,15 @@ pub struct RawBlob {
 /// Implementors provide [`put_blob`](Self::put_blob) and [`get_blob`](Self::get_blob).
 /// Convenience defaults are provided for flow storage and typed retrieval.
 pub trait BlobStore: Send + Sync {
+    /// Initialize the blob store backend (e.g., create tables, set up schema).
+    ///
+    /// Called by the configuration layer after the store is created and before
+    /// it is used. The default implementation is a no-op, suitable for backends
+    /// that require no initialization (e.g., in-memory stores).
+    fn initialize_blob_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async { Ok(()) }.boxed()
+    }
+
     /// Store raw content bytes as a blob and return its content-based ID.
     ///
     /// The blob ID is generated as a SHA-256 hash of `content`,

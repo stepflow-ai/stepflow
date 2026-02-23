@@ -14,30 +14,71 @@ use error_stack::{Result, ResultExt as _};
 use sqlx::{Row as _, SqlitePool};
 use stepflow_state::StateError;
 
-/// Run migrations to set up the database schema
-pub async fn run_migrations(pool: &SqlitePool) -> Result<(), StateError> {
-    // Create migration tracking table first
+/// Run blob store migrations (creates the `blobs` table and indexes).
+pub async fn run_blob_migrations(pool: &SqlitePool) -> Result<(), StateError> {
+    create_migrations_table(pool).await?;
+    apply_migration(pool, "001_create_blob_tables", || create_blob_tables(pool)).await?;
+    Ok(())
+}
+
+/// Run metadata store migrations (creates `runs`, `step_results`, `step_info`,
+/// `run_items` tables and their indexes).
+///
+/// Metadata tables have no FK references to the blobs table because blobs may
+/// live in a different backend (e.g., S3, filesystem).
+pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
 
-    // Apply the unified schema migration
-    apply_migration(pool, "001_create_unified_schema", || {
-        create_unified_schema(pool)
+    apply_migration(pool, "001_create_metadata_tables", || {
+        create_metadata_tables(pool)
     })
     .await?;
 
-    // Apply journal tables migration
-    apply_migration(pool, "002_create_journal_tables", || {
-        create_journal_tables(pool)
-    })
-    .await?;
-
-    // Add step_statuses_json column to run_items
     apply_migration(pool, "003_add_step_statuses_to_run_items", || {
         add_step_statuses_column(pool)
     })
     .await?;
 
-    // Add orchestrator_id column to runs for multi-orchestrator recovery
+    apply_migration(pool, "004_add_orchestrator_id_to_runs", || {
+        add_orchestrator_id_column(pool)
+    })
+    .await?;
+
+    Ok(())
+}
+
+/// Run journal migrations (creates the `journal_entries` table and indexes).
+pub async fn run_journal_migrations(pool: &SqlitePool) -> Result<(), StateError> {
+    create_migrations_table(pool).await?;
+    apply_migration(pool, "002_create_journal_tables", || {
+        create_journal_tables(pool)
+    })
+    .await?;
+    Ok(())
+}
+
+/// Run all migrations (blob + metadata + journal). Convenience for tests and
+/// single-instance deployments where one SQLite database backs all stores.
+pub async fn run_all_migrations(pool: &SqlitePool) -> Result<(), StateError> {
+    create_migrations_table(pool).await?;
+
+    apply_migration(pool, "001_create_blob_tables", || create_blob_tables(pool)).await?;
+
+    apply_migration(pool, "001_create_metadata_tables", || {
+        create_metadata_tables(pool)
+    })
+    .await?;
+
+    apply_migration(pool, "002_create_journal_tables", || {
+        create_journal_tables(pool)
+    })
+    .await?;
+
+    apply_migration(pool, "003_add_step_statuses_to_run_items", || {
+        add_step_statuses_column(pool)
+    })
+    .await?;
+
     apply_migration(pool, "004_add_orchestrator_id_to_runs", || {
         add_orchestrator_id_column(pool)
     })
@@ -125,11 +166,9 @@ where
     Ok(())
 }
 
-/// Create the unified database schema in one migration
-async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
-    // Create all tables with their final schema
-    let table_commands = vec![
-        // Unified blobs table for content-addressable storage (both data and flows)
+/// Create the blob tables for content-addressable storage.
+async fn create_blob_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    sqlx::query(
         r#"
             CREATE TABLE IF NOT EXISTS blobs (
                 id TEXT PRIMARY KEY,
@@ -139,7 +178,25 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         "#,
-        // Runs table with flow metadata and hierarchy support for sub-flows
+    )
+    .execute(pool)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_blobs_type ON blobs(blob_type)")
+        .execute(pool)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create the metadata tables for runs, steps, and run items.
+async fn create_metadata_tables(pool: &SqlitePool) -> Result<(), StateError> {
+    let table_commands = vec![
+        // Runs table with flow metadata and hierarchy support for sub-flows.
+        // flow_id is a blob reference but has no FK constraint because blobs
+        // may be stored in a different backend (e.g., S3, filesystem).
         r#"
             CREATE TABLE IF NOT EXISTS runs (
                 id TEXT PRIMARY KEY,
@@ -150,8 +207,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
                 root_run_id TEXT NOT NULL,
                 parent_run_id TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                completed_at DATETIME,
-                FOREIGN KEY (flow_id) REFERENCES blobs(id)
+                completed_at DATETIME
             )
         "#,
         // Step results table for flow step execution results
@@ -196,7 +252,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         "#,
     ];
 
-    // Execute table creation commands
     for sql in table_commands {
         sqlx::query(sql)
             .execute(pool)
@@ -204,10 +259,7 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
             .change_context(StateError::Initialization)?;
     }
 
-    // Create all indexes for optimal performance
     let index_commands = vec![
-        // Blob indexes
-        "CREATE INDEX IF NOT EXISTS idx_blobs_type ON blobs(blob_type)",
         // Step results indexes
         "CREATE INDEX IF NOT EXISTS idx_step_results_step_id ON step_results(run_id, step_id)",
         // Step info indexes
@@ -224,7 +276,6 @@ async fn create_unified_schema(pool: &SqlitePool) -> Result<(), StateError> {
         "CREATE INDEX IF NOT EXISTS idx_run_items_status ON run_items(run_id, status)",
     ];
 
-    // Execute index creation commands
     for sql in index_commands {
         sqlx::query(sql)
             .execute(pool)

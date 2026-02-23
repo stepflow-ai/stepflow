@@ -15,7 +15,7 @@
 //! Provides persistent storage for blobs and execution state using SQLite.
 //! Future versions will support PostgreSQL and MySQL.
 
-mod migrations;
+pub(crate) mod migrations;
 mod sqlite_state_store;
 
 pub use sqlite_state_store::{SqliteStateStore, SqliteStateStoreConfig};

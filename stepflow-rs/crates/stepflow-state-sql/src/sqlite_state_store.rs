@@ -75,7 +75,11 @@ pub struct SqliteStateStore {
 }
 
 impl SqliteStateStore {
-    /// Create a new SqliteStateStore with the given configuration
+    /// Create a new SqliteStateStore with the given configuration.
+    ///
+    /// If `auto_migrate` is true, runs all migrations (blob, metadata, journal).
+    /// For selective initialization, set `auto_migrate` to false and call the
+    /// trait-level `initialize_*` methods instead.
     pub async fn new(config: SqliteStateStoreConfig) -> Result<Self, StateError> {
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)
@@ -98,7 +102,7 @@ impl SqliteStateStore {
             .attach_printable("Failed to set busy timeout")?;
 
         if config.auto_migrate {
-            migrations::run_migrations(&pool).await?;
+            migrations::run_all_migrations(&pool).await?;
         }
 
         Ok(Self {
@@ -107,7 +111,7 @@ impl SqliteStateStore {
         })
     }
 
-    /// Create SqliteStateStore directly from a database URL
+    /// Create SqliteStateStore directly from a database URL.
     pub async fn from_url(database_url: &str) -> Result<Self, StateError> {
         let config = SqliteStateStoreConfig {
             database_url: database_url.to_string(),
@@ -171,6 +175,11 @@ impl SqliteStateStore {
 }
 
 impl BlobStore for SqliteStateStore {
+    fn initialize_blob_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move { migrations::run_blob_migrations(&pool).await }.boxed()
+    }
+
     fn put_blob(
         &self,
         content: &[u8],
@@ -251,6 +260,11 @@ impl BlobStore for SqliteStateStore {
 }
 
 impl MetadataStore for SqliteStateStore {
+    fn initialize_metadata_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move { migrations::run_metadata_migrations(&pool).await }.boxed()
+    }
+
     fn create_run(
         &self,
         params: stepflow_state::CreateRunParams,
@@ -897,6 +911,11 @@ impl MetadataStore for SqliteStateStore {
 }
 
 impl ExecutionJournal for SqliteStateStore {
+    fn initialize_journal(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move { migrations::run_journal_migrations(&pool).await }.boxed()
+    }
+
     fn write(
         &self,
         root_run_id: Uuid,

@@ -416,7 +416,7 @@ async fn sqlite_blob_compliance() {
 // Migration Idempotency Tests
 // =========================================================================
 
-/// Migrations must be idempotent: calling run_migrations twice on the same
+/// Migrations must be idempotent: calling run_all_migrations twice on the same
 /// database must succeed. This exercises the `INSERT OR IGNORE` and
 /// concurrent-failure-recheck logic in `apply_migration`.
 #[tokio::test]
@@ -425,7 +425,7 @@ async fn test_migrations_idempotent() {
     let store = SqliteStateStore::in_memory().await.unwrap();
 
     // Second call on the same pool should be a no-op (all migrations already applied)
-    crate::migrations::run_migrations(&store.pool)
+    crate::migrations::run_all_migrations(&store.pool)
         .await
         .unwrap();
 }
@@ -472,8 +472,8 @@ async fn test_migrations_concurrent_pools() {
 
     // Run migrations from both pools concurrently
     let (r1, r2) = tokio::join!(
-        crate::migrations::run_migrations(&pool1),
-        crate::migrations::run_migrations(&pool2),
+        crate::migrations::run_all_migrations(&pool1),
+        crate::migrations::run_all_migrations(&pool2),
     );
 
     r1.expect("pool1 migrations should succeed");
@@ -498,4 +498,116 @@ async fn test_migrations_concurrent_pools() {
         )
         .await
         .unwrap();
+}
+
+// =========================================================================
+// Selective Migration Tests
+// =========================================================================
+
+/// Helper to check if a table exists in the database.
+async fn table_exists(pool: &sqlx::SqlitePool, table_name: &str) -> bool {
+    let row =
+        sqlx::query("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name=?")
+            .bind(table_name)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    let count: i64 = sqlx::Row::get(&row, "count");
+    count > 0
+}
+
+/// Blob-only migration should only create the blobs table.
+#[tokio::test]
+async fn test_blob_only_migration() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    crate::migrations::run_blob_migrations(&pool).await.unwrap();
+
+    assert!(table_exists(&pool, "blobs").await);
+    assert!(!table_exists(&pool, "runs").await);
+    assert!(!table_exists(&pool, "step_results").await);
+    assert!(!table_exists(&pool, "step_info").await);
+    assert!(!table_exists(&pool, "run_items").await);
+    assert!(!table_exists(&pool, "journal_entries").await);
+}
+
+/// Metadata migration should create only metadata tables (no blobs, no journal).
+/// Blobs may live in a different backend (e.g., S3), so no FK or table dependency.
+#[tokio::test]
+async fn test_metadata_only_migration() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    crate::migrations::run_metadata_migrations(&pool)
+        .await
+        .unwrap();
+
+    // Blob tables NOT created (blobs are independent)
+    assert!(!table_exists(&pool, "blobs").await);
+    // Metadata tables created
+    assert!(table_exists(&pool, "runs").await);
+    assert!(table_exists(&pool, "step_results").await);
+    assert!(table_exists(&pool, "step_info").await);
+    assert!(table_exists(&pool, "run_items").await);
+    // Journal not created
+    assert!(!table_exists(&pool, "journal_entries").await);
+}
+
+/// Journal-only migration should only create the journal_entries table.
+#[tokio::test]
+async fn test_journal_only_migration() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    crate::migrations::run_journal_migrations(&pool)
+        .await
+        .unwrap();
+
+    assert!(!table_exists(&pool, "blobs").await);
+    assert!(!table_exists(&pool, "runs").await);
+    assert!(table_exists(&pool, "journal_entries").await);
+}
+
+/// Running migrations incrementally should add tables for new store types.
+#[tokio::test]
+async fn test_incremental_migrations() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    // First: only blob tables
+    crate::migrations::run_blob_migrations(&pool).await.unwrap();
+
+    assert!(table_exists(&pool, "blobs").await);
+    assert!(!table_exists(&pool, "runs").await);
+
+    // Second: add metadata tables
+    crate::migrations::run_metadata_migrations(&pool)
+        .await
+        .unwrap();
+
+    assert!(table_exists(&pool, "blobs").await);
+    assert!(table_exists(&pool, "runs").await);
+    assert!(table_exists(&pool, "step_results").await);
+    assert!(table_exists(&pool, "run_items").await);
 }
