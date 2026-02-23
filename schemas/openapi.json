@@ -1135,19 +1135,25 @@
           },
           "input_schema": {
             "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "output_schema": {
             "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1162,6 +1168,11 @@
           "/mcpfs/list_files",
           "/python/udf"
         ]
+      },
+      "Schema": {
+        "description": "A valid JSON Schema object.",
+        "type": "object",
+        "additionalProperties": true
       },
       "FlowResponse": {
         "description": "Response containing a flow definition and its ID",
@@ -1412,9 +1423,18 @@
       "WorkflowOverrides": {
         "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
         "type": "object",
-        "additionalProperties": {
-          "$ref": "#/components/schemas/StepOverride"
-        }
+        "properties": {
+          "steps": {
+            "description": "Map of step ID to override specification",
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/StepOverride"
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ]
       },
       "StepOverride": {
         "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",
@@ -2019,42 +2039,47 @@
             "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
             "type": "object",
             "additionalProperties": {
-              "description": "A valid JSON Schema object.",
-              "type": "object",
-              "additionalProperties": true
+              "$ref": "#/components/schemas/Schema"
             }
           },
           "input": {
             "description": "The input schema for the flow.",
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "output": {
             "description": "The output schema for the flow.",
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variables": {
             "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types.",
-            "type": [
-              "object",
-              "null"
-            ],
-            "additionalProperties": true
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "steps": {
             "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
             "type": "object",
             "additionalProperties": {
-              "description": "A valid JSON Schema object.",
-              "type": "object",
-              "additionalProperties": true
+              "$ref": "#/components/schemas/Schema"
             }
           }
         },

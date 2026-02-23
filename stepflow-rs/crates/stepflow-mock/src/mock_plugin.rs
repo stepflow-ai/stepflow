@@ -72,8 +72,10 @@ impl std::fmt::Debug for MockPlugin {
 #[serde(untagged, rename_all = "camelCase")]
 pub enum MockComponentBehavior {
     /// Produce the given internal (non-flow) error.
+    #[schemars(title = "MockComponentError")]
     Error { error: String },
     /// Return the given result (success or flow-error).
+    #[schemars(title = "MockComponentResult")]
     Result {
         #[serde(flatten)]
         result: FlowResult,

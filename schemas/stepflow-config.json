@@ -185,6 +185,7 @@
       },
       "anyOf": [
         {
+          "title": "StepflowSubprocessConfig",
           "description": "Subprocess mode: launch a process that runs an HTTP server.\nThe process must print {\"port\": N} to stdout when ready.",
           "type": "object",
           "properties": {
@@ -221,6 +222,7 @@
           ]
         },
         {
+          "title": "StepflowRemoteConfig",
           "description": "Remote mode: connect directly to an existing HTTP endpoint.",
           "type": "object",
           "properties": {
@@ -241,14 +243,10 @@
       "type": "object",
       "properties": {
         "input_schema": {
-          "description": "A valid JSON Schema object.",
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "#/$defs/Schema"
         },
         "output_schema": {
-          "description": "A valid JSON Schema object.",
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "#/$defs/Schema"
         },
         "behaviors": {
           "type": "object",
@@ -263,10 +261,16 @@
         "behaviors"
       ]
     },
+    "Schema": {
+      "description": "A valid JSON Schema object.",
+      "type": "object",
+      "additionalProperties": true
+    },
     "MockComponentBehavior": {
       "description": "Enumeration of behaviors for the mock components.",
       "anyOf": [
         {
+          "title": "MockComponentError",
           "description": "Produce the given internal (non-flow) error.",
           "type": "object",
           "properties": {
@@ -279,6 +283,7 @@
           ]
         },
         {
+          "title": "MockComponentResult",
           "description": "Return the given result (success or flow-error).",
           "type": "object",
           "oneOf": [
@@ -490,6 +495,7 @@
       "description": "Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: \"sqlite:workflow_state.db\"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  blobs:\n    type: sqlite\n    databaseUrl: \"sqlite:workflow_state.db\"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).",
       "anyOf": [
         {
+          "title": "ExpandedStorageConfig",
           "description": "Expanded form: individual config per store",
           "type": "object",
           "properties": {
@@ -527,6 +533,7 @@
           ]
         },
         {
+          "title": "SimpleStorageConfig",
           "description": "Simple form: all stores share one backend",
           "$ref": "#/$defs/StoreConfig"
         }

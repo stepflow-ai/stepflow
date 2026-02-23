@@ -171,6 +171,7 @@ pub enum StoreConfig {
 #[serde(untagged)]
 pub enum StorageConfig {
     /// Expanded form: individual config per store
+    #[schemars(title = "ExpandedStorageConfig")]
     Expanded {
         /// Configuration for the metadata store
         metadata: StoreConfig,
@@ -182,6 +183,7 @@ pub enum StorageConfig {
         journal: Option<StoreConfig>,
     },
     /// Simple form: all stores share one backend
+    #[schemars(title = "SimpleStorageConfig")]
     Simple(StoreConfig),
 }
 

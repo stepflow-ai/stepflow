@@ -23,7 +23,6 @@ use super::Flow;
 /// Overrides are keyed by step ID and contain merge patches or other transformation
 /// specifications to modify step properties before execution.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(transparent)]
 pub struct WorkflowOverrides {
     /// Map of step ID to override specification
     pub steps: HashMap<String, StepOverride>,

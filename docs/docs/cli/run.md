@@ -90,10 +90,10 @@ stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
    Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.
 * `--overrides-json <JSON>` — Workflow overrides as a JSON string.
 
-   Specify overrides inline as JSON. Example: `--overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'`
+   Specify overrides inline as JSON. Example: `--overrides-json '{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}'`
 * `--overrides-yaml <YAML>` — Workflow overrides as a YAML string.
 
-   Specify overrides inline as YAML. Example: `--overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'`
+   Specify overrides inline as YAML. Example: `--overrides-yaml 'steps: {step1: {value: {input: {temperature: 0.8}}}}'`
 * `--output <FILE>` — Path to write the output to.
 
    If not set, will write to stdout.

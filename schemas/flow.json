@@ -76,42 +76,47 @@
           "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
           "type": "object",
           "additionalProperties": {
-            "description": "A valid JSON Schema object.",
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/$defs/Schema"
           }
         },
         "input": {
           "description": "The input schema for the flow.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "output": {
           "description": "The output schema for the flow.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "variables": {
           "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "steps": {
           "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
           "type": "object",
           "additionalProperties": {
-            "description": "A valid JSON Schema object.",
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/$defs/Schema"
           }
         }
       },
@@ -119,6 +124,11 @@
         "defs",
         "steps"
       ]
+    },
+    "Schema": {
+      "description": "A valid JSON Schema object.",
+      "type": "object",
+      "additionalProperties": true
     },
     "Step": {
       "description": "A step in a workflow that executes a component with specific arguments.\n\nNote: Step output schemas are stored in the flow's `types.steps` field,\nnot on individual steps. This allows for shared `$defs` and avoids duplication.",

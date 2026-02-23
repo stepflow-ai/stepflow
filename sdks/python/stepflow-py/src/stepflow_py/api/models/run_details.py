@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from stepflow_py.api.models.execution_status import ExecutionStatus
 from stepflow_py.api.models.item_details import ItemDetails
 from stepflow_py.api.models.item_statistics import ItemStatistics
-from stepflow_py.api.models.step_override import StepOverride
+from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
 
 class RunDetails(BaseModel):
@@ -68,10 +68,7 @@ class RunDetails(BaseModel):
         description="Item details with inputs and step statuses. - `None`: details not requested, or run is active (query executor) - `Some`: item-level details available",
         alias="itemDetails",
     )
-    overrides: dict[str, StepOverride] | None = Field(
-        default=None,
-        description="Workflow overrides that can be applied to modify step behavior at runtime.  Overrides are keyed by step ID and contain merge patches or other transformation specifications to modify step properties before execution.",
-    )
+    overrides: WorkflowOverrides | None = None
     __properties: ClassVar[list[str]] = [
         "runId",
         "flowId",
@@ -134,15 +131,9 @@ class RunDetails(BaseModel):
                 if _item_item_details:
                     _items.append(_item_item_details.to_dict())
             _dict["itemDetails"] = _items
-        # override the default output from pydantic by calling `to_dict()` of each value in overrides (dict)
-        _field_dict = {}
+        # override the default output from pydantic by calling `to_dict()` of overrides
         if self.overrides:
-            for _key_overrides in self.overrides:
-                if self.overrides[_key_overrides]:
-                    _field_dict[_key_overrides] = self.overrides[
-                        _key_overrides
-                    ].to_dict()
-            _dict["overrides"] = _field_dict
+            _dict["overrides"] = self.overrides.to_dict()
         # set to None if flow_name (nullable) is None
         # and model_fields_set contains the field
         if self.flow_name is None and "flow_name" in self.model_fields_set:
@@ -167,6 +158,11 @@ class RunDetails(BaseModel):
         # and model_fields_set contains the field
         if self.item_details is None and "item_details" in self.model_fields_set:
             _dict["itemDetails"] = None
+
+        # set to None if overrides (nullable) is None
+        # and model_fields_set contains the field
+        if self.overrides is None and "overrides" in self.model_fields_set:
+            _dict["overrides"] = None
 
         return _dict
 
@@ -198,10 +194,7 @@ class RunDetails(BaseModel):
                 ]
                 if obj.get("itemDetails") is not None
                 else None,
-                "overrides": dict(
-                    (_k, StepOverride.from_dict(_v))
-                    for _k, _v in obj["overrides"].items()
-                )
+                "overrides": WorkflowOverrides.from_dict(obj["overrides"])
                 if obj.get("overrides") is not None
                 else None,
             }

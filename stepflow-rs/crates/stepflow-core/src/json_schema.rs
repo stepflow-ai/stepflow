@@ -176,13 +176,16 @@ fn flatten_string_enum_oneofs(root: &mut Value) {
         Value::Object(obj) => {
             // Check if this object is a string-const oneOf (without a discriminator)
             let should_flatten = !obj.contains_key("discriminator")
-                && obj.get("oneOf").and_then(|v| v.as_array()).is_some_and(|arr| {
-                    !arr.is_empty()
-                        && arr.iter().all(|v| {
-                            v.get("type").and_then(|t| t.as_str()) == Some("string")
-                                && v.get("const").is_some()
-                        })
-                });
+                && obj
+                    .get("oneOf")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|arr| {
+                        !arr.is_empty()
+                            && arr.iter().all(|v| {
+                                v.get("type").and_then(|t| t.as_str()) == Some("string")
+                                    && v.get("const").is_some()
+                            })
+                    });
 
             if should_flatten {
                 if let Some(Value::Array(one_of)) = obj.remove("oneOf") {
@@ -240,19 +243,18 @@ fn convert_nullable_anyof_to_oneof(root: &mut Value) {
     match root {
         Value::Object(obj) => {
             // Check for anyOf with exactly one null variant (nullable pattern)
-            let is_nullable_anyof = obj.get("anyOf").and_then(|v| v.as_array()).is_some_and(
-                |arr| {
-                    arr.len() == 2
-                        && arr.iter().any(|v| {
-                            v.get("type").and_then(|t| t.as_str()) == Some("null")
-                        })
-                },
-            );
+            let is_nullable_anyof =
+                obj.get("anyOf")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|arr| {
+                        arr.len() == 2
+                            && arr
+                                .iter()
+                                .any(|v| v.get("type").and_then(|t| t.as_str()) == Some("null"))
+                    });
 
-            if is_nullable_anyof {
-                if let Some(any_of) = obj.remove("anyOf") {
-                    obj.insert("oneOf".to_string(), any_of);
-                }
+            if is_nullable_anyof && let Some(any_of) = obj.remove("anyOf") {
+                obj.insert("oneOf".to_string(), any_of);
             }
 
             for v in obj.values_mut() {

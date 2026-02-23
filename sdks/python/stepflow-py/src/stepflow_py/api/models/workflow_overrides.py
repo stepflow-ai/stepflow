@@ -23,30 +23,20 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field
+
+from stepflow_py.api.models.step_override import StepOverride
 
 
-class ComponentInfo(BaseModel):
+class WorkflowOverrides(BaseModel):
     """
-    ComponentInfo
+    Workflow overrides that can be applied to modify step behavior at runtime.  Overrides are keyed by step ID and contain merge patches or other transformation specifications to modify step properties before execution.
     """  # noqa: E501
 
-    component: StrictStr = Field(description="The component ID.")
-    description: StrictStr | None = Field(
-        default=None, description="Optional description of the component."
+    steps: dict[str, StepOverride] = Field(
+        description="Map of step ID to override specification"
     )
-    input_schema: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
-    )
-    output_schema: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
-    )
-    __properties: ClassVar[list[str]] = [
-        "component",
-        "description",
-        "input_schema",
-        "output_schema",
-    ]
+    __properties: ClassVar[list[str]] = ["steps"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -65,7 +55,7 @@ class ComponentInfo(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of ComponentInfo from a JSON string"""
+        """Create an instance of WorkflowOverrides from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,16 +75,18 @@ class ComponentInfo(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if description (nullable) is None
-        # and model_fields_set contains the field
-        if self.description is None and "description" in self.model_fields_set:
-            _dict["description"] = None
-
+        # override the default output from pydantic by calling `to_dict()` of each value in steps (dict)
+        _field_dict = {}
+        if self.steps:
+            for _key_steps in self.steps:
+                if self.steps[_key_steps]:
+                    _field_dict[_key_steps] = self.steps[_key_steps].to_dict()
+            _dict["steps"] = _field_dict
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of ComponentInfo from a dict"""
+        """Create an instance of WorkflowOverrides from a dict"""
         if obj is None:
             return None
 
@@ -103,10 +95,11 @@ class ComponentInfo(BaseModel):
 
         _obj = cls.model_validate(
             {
-                "component": obj.get("component"),
-                "description": obj.get("description"),
-                "input_schema": obj.get("input_schema"),
-                "output_schema": obj.get("output_schema"),
+                "steps": dict(
+                    (_k, StepOverride.from_dict(_v)) for _k, _v in obj["steps"].items()
+                )
+                if obj.get("steps") is not None
+                else None
             }
         )
         return _obj

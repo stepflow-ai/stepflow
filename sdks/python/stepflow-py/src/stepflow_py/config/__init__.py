@@ -49,10 +49,10 @@ from stepflow_py.config._generated_config import (
     SqliteStore as SqliteStoreConfig,
 )
 from stepflow_py.config._generated_config import (
-    StepflowPluginConfig1 as SubprocessTransport,
+    StepflowRemoteConfig as RemoteTransport,
 )
 from stepflow_py.config._generated_config import (
-    StepflowPluginConfig2 as RemoteTransport,
+    StepflowSubprocessConfig as SubprocessTransport,
 )
 
 # ============================================================================

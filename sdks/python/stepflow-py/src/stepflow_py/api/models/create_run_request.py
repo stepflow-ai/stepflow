@@ -25,7 +25,7 @@ from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
-from stepflow_py.api.models.step_override import StepOverride
+from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
 
 class CreateRunRequest(BaseModel):
@@ -37,7 +37,7 @@ class CreateRunRequest(BaseModel):
     input: list[Any] = Field(
         description="Input data for the flow - always an array (one element per run)"
     )
-    overrides: dict[str, StepOverride] | None = Field(
+    overrides: WorkflowOverrides | None = Field(
         default=None,
         description="Optional workflow overrides to apply before execution",
     )
@@ -106,15 +106,9 @@ class CreateRunRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each value in overrides (dict)
-        _field_dict = {}
+        # override the default output from pydantic by calling `to_dict()` of overrides
         if self.overrides:
-            for _key_overrides in self.overrides:
-                if self.overrides[_key_overrides]:
-                    _field_dict[_key_overrides] = self.overrides[
-                        _key_overrides
-                    ].to_dict()
-            _dict["overrides"] = _field_dict
+            _dict["overrides"] = self.overrides.to_dict()
         # set to None if max_concurrency (nullable) is None
         # and model_fields_set contains the field
         if self.max_concurrency is None and "max_concurrency" in self.model_fields_set:
@@ -140,10 +134,7 @@ class CreateRunRequest(BaseModel):
             {
                 "flowId": obj.get("flowId"),
                 "input": obj.get("input"),
-                "overrides": dict(
-                    (_k, StepOverride.from_dict(_v))
-                    for _k, _v in obj["overrides"].items()
-                )
+                "overrides": WorkflowOverrides.from_dict(obj["overrides"])
                 if obj.get("overrides") is not None
                 else None,
                 "variables": obj.get("variables"),

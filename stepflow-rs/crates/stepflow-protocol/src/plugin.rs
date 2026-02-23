@@ -179,6 +179,7 @@ pub struct StepflowPluginConfig {
 pub enum StepflowTransport {
     /// Subprocess mode: launch a process that runs an HTTP server.
     /// The process must print {"port": N} to stdout when ready.
+    #[schemars(title = "StepflowSubprocessConfig")]
     Subprocess {
         command: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -196,6 +197,7 @@ pub enum StepflowTransport {
         health_check: Option<HealthCheckConfig>,
     },
     /// Remote mode: connect directly to an existing HTTP endpoint.
+    #[schemars(title = "StepflowRemoteConfig")]
     Remote { url: String },
 }
 

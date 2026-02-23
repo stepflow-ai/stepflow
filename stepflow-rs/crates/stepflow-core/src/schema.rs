@@ -43,10 +43,6 @@ impl schemars::JsonSchema for SchemaRef {
         "Schema".into()
     }
 
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
             "type": "object",

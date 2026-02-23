@@ -160,24 +160,35 @@
         },
         "input_schema": {
           "description": "The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "output_schema": {
           "description": "The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "component"
       ]
+    },
+    "Schema": {
+      "description": "A valid JSON Schema object.",
+      "type": "object",
+      "additionalProperties": true
     },
     "ComponentListParams": {
       "description": "Sent from Stepflow to the component server to request a list of all available components.",
@@ -209,8 +220,7 @@
         },
         "input_schema": {
           "description": "The schema of the input that will be provided to the component.",
-          "type": "object",
-          "additionalProperties": true
+          "$ref": "#/$defs/Schema"
         }
       },
       "required": [
@@ -224,11 +234,14 @@
       "properties": {
         "output_schema": {
           "description": "The inferred output schema, or None if the component cannot determine it.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -301,9 +314,18 @@
     "WorkflowOverrides": {
       "description": "Workflow overrides that can be applied to modify step behavior at runtime.\n\nOverrides are keyed by step ID and contain merge patches or other transformation\nspecifications to modify step properties before execution.",
       "type": "object",
-      "additionalProperties": {
-        "$ref": "#/$defs/StepOverride"
-      }
+      "properties": {
+        "steps": {
+          "description": "Map of step ID to override specification",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/StepOverride"
+          }
+        }
+      },
+      "required": [
+        "steps"
+      ]
     },
     "StepOverride": {
       "description": "Override specification for a single step.\n\nContains the override type (merge patch, json patch, etc.) and the value\nto apply. The type field uses `$type` to avoid collisions with step properties.",

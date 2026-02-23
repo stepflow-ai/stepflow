@@ -52,7 +52,11 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = 100
 
 
-class MockComponentBehavior1(Struct, kw_only=True):
+class Schema(Struct, kw_only=True):
+    pass
+
+
+class MockComponentError(Struct, kw_only=True):
     error: str
 
 
@@ -301,13 +305,11 @@ BackoffConfig: TypeAlias = Annotated[
 ]
 
 
-class FlowResultSuccess(Struct, kw_only=True):
-    outcome: Literal['success']
+class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
     result: Value
 
 
-class FlowResultFailed(Struct, kw_only=True):
-    outcome: Literal['failed']
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
     error: FlowError
 
 
@@ -366,7 +368,7 @@ class RetryConfig(Struct, kw_only=True):
     )
 
 
-class StepflowPluginConfig1(Struct, kw_only=True):
+class StepflowSubprocessConfig(Struct, kw_only=True):
     type: Literal['stepflow']
     command: str
     retry: (
@@ -397,7 +399,7 @@ class StepflowPluginConfig1(Struct, kw_only=True):
     ) = UNSET
 
 
-class StepflowPluginConfig2(Struct, kw_only=True):
+class StepflowRemoteConfig(Struct, kw_only=True):
     type: Literal['stepflow']
     url: str
     retry: (
@@ -412,15 +414,24 @@ class StepflowPluginConfig2(Struct, kw_only=True):
 
 
 StepflowPluginConfig: TypeAlias = Annotated[
-    StepflowPluginConfig1 | StepflowPluginConfig2,
+    StepflowSubprocessConfig | StepflowRemoteConfig,
     Meta(
         description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
     ),
 ]
 
 
+MockComponentResult: TypeAlias = Annotated[
+    FlowResultSuccess | FlowResultFailed,
+    Meta(
+        description='Return the given result (success or flow-error).',
+        title='MockComponentResult',
+    ),
+]
+
+
 MockComponentBehavior: TypeAlias = Annotated[
-    MockComponentBehavior1 | FlowResultSuccess | FlowResultFailed,
+    MockComponentError | MockComponentResult,
     Meta(description='Enumeration of behaviors for the mock components.'),
 ]
 
@@ -465,7 +476,7 @@ class RouteRule(Struct, kw_only=True):
     ) = UNSET
 
 
-class StorageConfig1(Struct, kw_only=True):
+class ExpandedStorageConfig(Struct, kw_only=True):
     metadata: Annotated[
         StoreConfig, Meta(description='Configuration for the metadata store')
     ]
@@ -490,7 +501,7 @@ class StorageConfig1(Struct, kw_only=True):
 
 
 StorageConfig: TypeAlias = Annotated[
-    StorageConfig1 | StoreConfig,
+    ExpandedStorageConfig | StoreConfig,
     Meta(
         description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).'
     ),
@@ -498,12 +509,8 @@ StorageConfig: TypeAlias = Annotated[
 
 
 class MockComponent(Struct, kw_only=True):
-    input_schema: Annotated[
-        dict[str, Any], Meta(description='A valid JSON Schema object.')
-    ]
-    output_schema: Annotated[
-        dict[str, Any], Meta(description='A valid JSON Schema object.')
-    ]
+    input_schema: Schema
+    output_schema: Schema
     behaviors: dict[str, MockComponentBehavior]
 
 
