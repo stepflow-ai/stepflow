@@ -42,9 +42,7 @@ class StepRunResponse(BaseModel):
         default=None, description="Component name/URL that this step executes"
     )
     status: StepStatus = Field(description="Current status of the step")
-    result: FlowResult | None = Field(
-        default=None, description="The result of the step execution (if completed)"
-    )
+    result: FlowResult | None = None
     __properties: ClassVar[list[str]] = ["stepId", "component", "status", "result"]
 
     model_config = ConfigDict(

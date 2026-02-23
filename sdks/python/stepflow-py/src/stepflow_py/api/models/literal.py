@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import pprint
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -31,15 +31,14 @@ from pydantic import (
     StrictStr,
     ValidationError,
     field_validator,
-    model_serializer,
 )
 
-PRIMITIVEVALUE_ONE_OF_SCHEMAS = ["bool", "float", "str"]
+LITERAL_ONE_OF_SCHEMAS = ["bool", "float", "str"]
 
 
-class PrimitiveValue(BaseModel):
+class Literal(BaseModel):
     """
-    Literal primitive value
+    A literal JSON value (string, number, boolean, or null)
     """
 
     # data type: bool
@@ -55,11 +54,6 @@ class PrimitiveValue(BaseModel):
         validate_assignment=True,
         protected_namespaces=(),
     )
-
-    @model_serializer(mode="plain")
-    def _serialize(self) -> Any:
-        """Serialize by returning only the actual_instance, ignoring wrapper fields."""
-        return self.actual_instance
 
     def __init__(self, *args, **kwargs) -> None:
         if args:
@@ -80,7 +74,7 @@ class PrimitiveValue(BaseModel):
         if v is None:
             return v
 
-        instance = PrimitiveValue.model_construct()
+        instance = Literal.model_construct()
         error_messages = []
         match = 0
         # validate data type: bool
@@ -104,13 +98,13 @@ class PrimitiveValue(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when setting `actual_instance` in PrimitiveValue with oneOf schemas: bool, float, str. Details: "
+                "Multiple matches found when setting `actual_instance` in Literal with oneOf schemas: bool, float, str. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when setting `actual_instance` in PrimitiveValue with oneOf schemas: bool, float, str. Details: "
+                "No match found when setting `actual_instance` in Literal with oneOf schemas: bool, float, str. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -161,13 +155,13 @@ class PrimitiveValue(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when deserializing the JSON string into PrimitiveValue with oneOf schemas: bool, float, str. Details: "
+                "Multiple matches found when deserializing the JSON string into Literal with oneOf schemas: bool, float, str. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when deserializing the JSON string into PrimitiveValue with oneOf schemas: bool, float, str. Details: "
+                "No match found when deserializing the JSON string into Literal with oneOf schemas: bool, float, str. Details: "
                 + ", ".join(error_messages)
             )
         else:

@@ -48,13 +48,13 @@ impl PluginConfig for MockPlugin {
 type WaitSignalKey = (Component, ValueRef);
 
 /// A mock plugin that can be used to test various things in the plugin protocol.
-#[derive(Serialize, Deserialize, Default, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Default, schemars::JsonSchema)]
 pub struct MockPlugin {
     components: HashMap<Component, MockComponent>,
     /// Runtime-only wait signals that block execution until signaled.
     /// Each signal can only be used once (oneshot).
     #[serde(skip)]
-    #[schema(ignore)]
+    #[schemars(skip)]
     wait_signals: Arc<Mutex<HashMap<WaitSignalKey, WaitSignal>>>,
 }
 
@@ -68,12 +68,14 @@ impl std::fmt::Debug for MockPlugin {
 }
 
 /// Enumeration of behaviors for the mock components.
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, schemars::JsonSchema)]
 #[serde(untagged, rename_all = "camelCase")]
 pub enum MockComponentBehavior {
     /// Produce the given internal (non-flow) error.
+    #[schemars(title = "MockComponentError")]
     Error { error: String },
     /// Return the given result (success or flow-error).
+    #[schemars(title = "MockComponentResult")]
     Result {
         #[serde(flatten)]
         result: FlowResult,
@@ -92,7 +94,7 @@ impl MockComponentBehavior {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, schemars::JsonSchema)]
 pub struct MockComponent {
     input_schema: SchemaRef,
     output_schema: SchemaRef,

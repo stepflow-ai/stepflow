@@ -25,7 +25,7 @@ from typing import Self
 
 class DiagnosticLevel(str, Enum):
     """
-    Diagnostic level indicating severity and impact
+    Diagnostic level indicating severity and impact  Cases: * `fatal`: Fatal: Prevents analysis from proceeding * `error`: Error: Will definitely fail during execution * `warning`: Warning: Likely to cause problems during execution
     """
 
     """

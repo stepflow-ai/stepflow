@@ -1,0 +1,30 @@
+---
+source: crates/stepflow-core/src/discriminator_schema.rs
+expression: value
+---
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: CustomTaggedResult
+oneOf:
+  - title: Success
+    type: object
+    properties:
+      outcome:
+        type: string
+        const: success
+      value: {}
+    required:
+      - outcome
+      - value
+  - title: Failure
+    type: object
+    properties:
+      outcome:
+        type: string
+        const: failure
+      error:
+        type: string
+    required:
+      - outcome
+      - error
+discriminator:
+  propertyName: outcome

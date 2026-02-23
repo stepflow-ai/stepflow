@@ -66,7 +66,9 @@ pub struct GetRunParams {
 }
 
 /// Order in which to return results.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultOrder {
     /// Results in input order (index 0, 1, 2, ...).

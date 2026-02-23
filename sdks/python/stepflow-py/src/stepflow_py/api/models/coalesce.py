@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class Coalesce(BaseModel):
     """
-    Coalesce: { $coalesce: [expr1, expr2, ...] }
+    Coalesce: { $coalesce: [expr, ...] }
     """  # noqa: E501
 
     coalesce: list[ValueExpr] = Field(alias="$coalesce")

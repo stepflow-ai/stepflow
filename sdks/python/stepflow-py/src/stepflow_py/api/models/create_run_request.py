@@ -33,10 +33,7 @@ class CreateRunRequest(BaseModel):
     Request to create/execute a flow.  The `input` field is always an array of input values: - Single-item array `[value]`: Executes one run with `value` as input - Multi-item array `[v1, v2, ...]`: Executes multiple runs (batch mode)  This design avoids ambiguity: to run a workflow with an array as input, wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
     """  # noqa: E501
 
-    flow_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="flowId",
-    )
+    flow_id: StrictStr = Field(description="The flow hash to execute", alias="flowId")
     input: list[Any] = Field(
         description="Input data for the flow - always an array (one element per run)"
     )
@@ -54,7 +51,7 @@ class CreateRunRequest(BaseModel):
         alias="maxConcurrency",
     )
     wait: StrictBool | None = Field(
-        default=None,
+        default=False,
         description="If true, block until the run completes and return the result (200 OK). If false (default), return immediately with status Running (202 Accepted).",
     )
     timeout_secs: Annotated[int, Field(strict=True, ge=0)] | None = Field(
@@ -142,7 +139,7 @@ class CreateRunRequest(BaseModel):
                 else None,
                 "variables": obj.get("variables"),
                 "maxConcurrency": obj.get("maxConcurrency"),
-                "wait": obj.get("wait"),
+                "wait": obj.get("wait") if obj.get("wait") is not None else False,
                 "timeoutSecs": obj.get("timeoutSecs"),
             }
         )

@@ -10,14 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use aide::transform::TransformOperation;
 use axum::{extract::Query, response::Json};
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
 
 use crate::error::{ErrorResponse, ServerError};
 
 /// Health check query parameters
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthQuery {
     /// Trigger an error for testing error response format
@@ -25,7 +25,7 @@ pub struct HealthQuery {
 }
 
 /// Health check response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthResponse {
     /// Service status
@@ -36,18 +36,20 @@ pub struct HealthResponse {
     pub version: String,
 }
 
+pub fn health_check_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("healthCheck")
+        .summary("Check service health")
+        .description(
+            "Returns the current health status of the service. \
+             Use the `error` query parameter to trigger test error responses.",
+        )
+        .tag("Health")
+        .response_with::<400, crate::error::ErrorResponse, _>(|res| {
+            res.description("Error triggered via query parameter")
+        })
+}
+
 /// Check service health
-#[utoipa::path(
-    get,
-    path = "/health",
-    params(HealthQuery),
-    responses(
-        (status = 200, description = "Service is healthy", body = HealthResponse),
-        (status = 400, description = "Bad request - triggered by ?error=bad_request"),
-        (status = 404, description = "Not found - triggered by ?error=not_found"),
-        (status = 500, description = "Internal server error - triggered by ?error=internal or ?error=stack")
-    )
-)]
 pub async fn health_check(
     Query(params): Query<HealthQuery>,
 ) -> Result<Json<HealthResponse>, ErrorResponse> {

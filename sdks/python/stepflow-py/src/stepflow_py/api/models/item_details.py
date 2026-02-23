@@ -39,7 +39,7 @@ class ItemDetails(BaseModel):
         description="Index of this item in the input array (0-based).",
         alias="itemIndex",
     )
-    input: Any | None
+    input: Any | None = Field(description="Input value for this item.")
     status: ExecutionStatus = Field(description="Execution status of this item.")
     steps: list[StepStatusInfo] = Field(description="Step statuses for this item.")
     completed_at: datetime | None = Field(

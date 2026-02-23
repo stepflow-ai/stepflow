@@ -13,7 +13,6 @@
 use std::borrow::Cow;
 
 use ::serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::lazy_value::LazyValue;
@@ -31,88 +30,20 @@ pub enum Message<'a> {
     Notification(Notification<'a>),
 }
 
-impl<'a> utoipa::PartialSchema for Message<'a> {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::RefOr::Ref(utoipa::openapi::Ref::new("#/components/schemas/Message"))
-    }
-}
-
-impl<'a> ToSchema for Message<'a> {
-    fn name() -> Cow<'static, str> {
-        Cow::Borrowed("Message")
+impl<'a> schemars::JsonSchema for Message<'a> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Message".into()
     }
 
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        use crate::protocol::components::*;
-        use crate::protocol::flows::*;
-        use crate::protocol::initialization::*;
-        use crate::protocol::observability::*;
-        use utoipa::PartialSchema;
-        use utoipa::openapi::schema::*;
-        use utoipa::openapi::*;
-
-        // Helper to add a type's schema AND its dependencies
-        fn push_schema<T: ToSchema + PartialSchema>(schemas: &mut Vec<(String, RefOr<Schema>)>) {
-            T::schemas(schemas);
-            schemas.push((T::name().to_string(), T::schema()));
-        }
-
-        // Helper for types that register themselves in schemas()
-        fn push_self_registering<T: ToSchema + PartialSchema>(
-            schemas: &mut Vec<(String, RefOr<Schema>)>,
-        ) {
-            T::schemas(schemas);
-        }
-
-        // Message types
-        push_schema::<MethodRequest<'static>>(schemas);
-        push_self_registering::<MethodResponse<'static>>(schemas);
-        push_schema::<MethodSuccess<'static>>(schemas);
-        push_schema::<MethodError<'static>>(schemas);
-        push_self_registering::<Notification<'static>>(schemas);
-
-        // Initialization
-        push_schema::<InitializeParams>(schemas);
-        push_schema::<InitializeResult>(schemas);
-        push_schema::<Initialized>(schemas);
-
-        // Components
-        push_schema::<ComponentExecuteParams>(schemas);
-        push_schema::<ComponentExecuteResult>(schemas);
-        push_schema::<ComponentInfoParams>(schemas);
-        push_schema::<ComponentInfoResult>(schemas);
-        push_schema::<ComponentListParams>(schemas);
-        push_schema::<ListComponentsResult>(schemas);
-        push_schema::<ComponentInferSchemaParams>(schemas);
-        push_schema::<ComponentInferSchemaResult>(schemas);
-
-        // Runs
-        push_schema::<SubmitRunProtocolParams>(schemas);
-        push_schema::<GetRunProtocolParams>(schemas);
-        push_schema::<RunStatusProtocol>(schemas);
-
-        // Observability
-        push_schema::<ObservabilityContext>(schemas);
-
-        // Create oneOf schema with all message types (flattening MethodResponse)
-        let message_schema = Schema::OneOf(
-            OneOfBuilder::new()
-                .item(RefOr::Ref(Ref::new("#/components/schemas/MethodRequest")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/MethodSuccess")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/MethodError")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/Notification")))
-                .description(Some(
-                    "The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.",
-                ))
-                .build(),
-        );
-
-        schemas.push(("Message".to_string(), RefOr::T(message_schema)));
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "The messages supported by the Stepflow protocol (JSON-RPC 2.0).",
+            "oneOf": [
+                generator.subschema_for::<MethodRequest<'static>>(),
+                generator.subschema_for::<MethodResponse<'static>>(),
+                generator.subschema_for::<Notification<'static>>()
+            ]
+        })
     }
 }
 
@@ -126,7 +57,7 @@ impl<'a> Message<'a> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema, Eq, PartialEq, Clone, Hash)]
 #[serde(untagged)]
 /// The identifier for a JSON-RPC request. Can be either a string or an integer.
 /// The RequestId is used to match method responses to corresponding requests.
@@ -183,7 +114,7 @@ impl From<&'_ Uuid> for RequestId {
 }
 
 /// An error returned from a method execution.
-#[derive(Serialize, Deserialize, Debug, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct Error<'a> {
     /// A numeric code indicating the error type.
     pub code: i64,
@@ -238,7 +169,7 @@ impl<'a> Error<'a> {
 }
 
 /// Request to execute a method.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct MethodRequest<'a> {
     #[serde(default)]
     pub jsonrpc: JsonRpc,
@@ -261,7 +192,7 @@ impl<'a> MethodRequest<'a> {
     }
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 /// The result of a successful method execution.
 pub struct MethodSuccess<'a> {
@@ -273,7 +204,7 @@ pub struct MethodSuccess<'a> {
     pub result: LazyValue<'a>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MethodError<'a> {
     #[serde(default)]
@@ -295,56 +226,19 @@ pub enum MethodResponse<'a> {
     Error(MethodError<'a>),
 }
 
-impl<'a> utoipa::PartialSchema for MethodResponse<'a> {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::RefOr::Ref(utoipa::openapi::Ref::new(
-            "#/components/schemas/MethodResponse",
-        ))
-    }
-}
-
-impl<'a> utoipa::ToSchema for MethodResponse<'a> {
-    fn name() -> Cow<'static, str> {
-        Cow::Borrowed("MethodResponse")
+impl<'a> schemars::JsonSchema for MethodResponse<'a> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "MethodResponse".into()
     }
 
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        use utoipa::PartialSchema as _;
-        use utoipa::openapi::schema::*;
-        use utoipa::openapi::*;
-
-        // Include the schemas for the variants (these register themselves)
-        MethodSuccess::<'static>::schemas(schemas);
-        MethodError::<'static>::schemas(schemas);
-        schemas.push((
-            MethodError::<'static>::name().to_string(),
-            MethodError::<'static>::schema(),
-        ));
-
-        // Create oneOf schema that references MethodSuccess and MethodError
-        // The discrimination is based on presence of "result" vs "error" field
-        let method_response_schema = Schema::OneOf(
-            OneOfBuilder::new()
-                .item(RefOr::Ref(Ref::new("#/components/schemas/MethodSuccess")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/MethodError")))
-                .description(Some(
-                    "Response to a method request. This is an untagged union - \
-                     success responses have a 'result' field while error responses \
-                     have an 'error' field.",
-                ))
-                .build(),
-        );
-
-        // Register the MethodResponse schema itself
-        schemas.push((
-            "MethodResponse".to_string(),
-            RefOr::T(method_response_schema),
-        ));
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Response to a method request. Success responses have a 'result' field while error responses have an 'error' field.",
+            "oneOf": [
+                generator.subschema_for::<MethodSuccess<'static>>(),
+                generator.subschema_for::<MethodError<'static>>()
+            ]
+        })
     }
 }
 
@@ -396,68 +290,22 @@ pub struct Notification<'a> {
     pub params: Option<LazyValue<'a>>,
 }
 
-impl<'a> utoipa::PartialSchema for Notification<'a> {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        use utoipa::openapi::schema::*;
-        use utoipa::openapi::*;
-
-        RefOr::T(Schema::Object(
-            ObjectBuilder::new()
-                .schema_type(SchemaType::Type(Type::Object))
-                .description(Some(
-                    "A JSON-RPC notification message. Unlike requests, notifications do not \
-                     have an 'id' field and do not expect a response. They are used for \
-                     one-way communication.",
-                ))
-                .property("jsonrpc", JsonRpc::schema())
-                .property(
-                    "method",
-                    ObjectBuilder::new()
-                        .schema_type(SchemaType::AnyValue)
-                        .description(Some("The notification method being called."))
-                        .build(),
-                )
-                .required("method")
-                .property(
-                    "params",
-                    Schema::OneOf(
-                        OneOfBuilder::new()
-                            .item(Schema::Object(
-                                ObjectBuilder::new()
-                                    .schema_type(SchemaType::Type(Type::Null))
-                                    .build(),
-                            ))
-                            .item(LazyValue::schema())
-                            .description(Some("The parameters for the notification."))
-                            .build(),
-                    ),
-                )
-                .build(),
-        ))
-    }
-}
-
-impl<'a> utoipa::ToSchema for Notification<'a> {
-    fn name() -> Cow<'static, str> {
-        Cow::Borrowed("Notification")
+impl<'a> schemars::JsonSchema for Notification<'a> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Notification".into()
     }
 
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        use utoipa::PartialSchema as _;
-
-        // Include the schemas for nested types
-        JsonRpc::schemas(schemas);
-        schemas.push((JsonRpc::name().to_string(), JsonRpc::schema()));
-        Method::schemas(schemas);
-        schemas.push((Method::name().to_string(), Method::schema()));
-
-        // Push our own schema
-        schemas.push((Self::name().to_string(), Self::schema()));
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A JSON-RPC notification message.",
+            "properties": {
+                "jsonrpc": generator.subschema_for::<JsonRpc>(),
+                "method": { "type": "string", "description": "The notification method being called." },
+                "params": { "description": "The parameters for the notification." }
+            },
+            "required": ["method"]
+        })
     }
 }
 
@@ -576,10 +424,31 @@ mod tests {
 
     #[test]
     fn test_schema_comparison_with_protocol_json() {
-        use stepflow_core::json_schema::generate_json_schema_with_defs;
+        use stepflow_core::json_schema::{Refs, generate_json_schema_custom};
 
-        // Generate schema using the utoipa-based utility
-        let generated_json = generate_json_schema_with_defs::<Message<'static>>();
+        // Generate schema from Rust types, seeding all protocol types that the
+        // Python SDK depends on.  Without this, schemars only includes types
+        // transitively reachable from Message (the root), but the SDK also needs
+        // the concrete params/result types for each method.
+        let generated_json = generate_json_schema_custom::<Message<'static>>(Refs::Local, |g| {
+            use crate::protocol::components::*;
+            use crate::protocol::flows::*;
+            use crate::protocol::initialization::*;
+            g.subschema_for::<ComponentExecuteParams>();
+            g.subschema_for::<ComponentExecuteResult>();
+            g.subschema_for::<ComponentInfoParams>();
+            g.subschema_for::<ComponentInfoResult>();
+            g.subschema_for::<ComponentListParams>();
+            g.subschema_for::<ListComponentsResult>();
+            g.subschema_for::<ComponentInferSchemaParams>();
+            g.subschema_for::<ComponentInferSchemaResult>();
+            g.subschema_for::<SubmitRunProtocolParams>();
+            g.subschema_for::<GetRunProtocolParams>();
+            g.subschema_for::<RunStatusProtocol>();
+            g.subschema_for::<InitializeParams>();
+            g.subschema_for::<InitializeResult>();
+            g.subschema_for::<Initialized>();
+        });
         let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
 
         // Validate that all titles are valid Python class names
@@ -626,42 +495,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn test_utoipa_protocol_schema_generation() {
-        use stepflow_core::json_schema::generate_json_schema_with_defs;
-
-        // Generate schema using the new utoipa-based utility
-        let generated = generate_json_schema_with_defs::<Message<'static>>();
-        let generated_str = serde_json::to_string_pretty(&generated).unwrap();
-
-        // Print the schema for manual comparison during development
-        #[allow(clippy::print_stdout)]
-        if std::env::var("PRINT_SCHEMA").is_ok() {
-            println!("Generated Protocol schema:\n{}", generated_str);
-        }
-
-        // Basic structural checks
-        assert!(generated.get("$schema").is_some(), "Missing $schema");
-        assert!(generated.get("title").is_some(), "Missing title");
-
-        // Should have $defs with referenced types
-        let defs = generated.get("$defs");
-        assert!(defs.is_some(), "Missing $defs");
-
-        // Verify no #/components/schemas references remain
-        assert!(
-            !generated_str.contains("#/components/schemas"),
-            "Found unconverted #/components/schemas reference"
-        );
-
-        // Validate that all titles are valid Python class names
-        let invalid_titles = validate_python_class_names(&generated);
-        assert!(
-            invalid_titles.is_empty(),
-            "Found invalid Python class names in protocol schema titles: {invalid_titles:?}. \
-             All titles must be valid Python class names for --use-title-as-name to work."
-        );
     }
 }

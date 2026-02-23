@@ -36,8 +36,7 @@ class GetBlobResponse(BaseModel):
     data: Any | None
     blob_type: BlobType = Field(description="The blob type", alias="blobType")
     blob_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="blobId",
+        description="The blob ID (for confirmation)", alias="blobId"
     )
     filename: StrictStr | None = Field(
         default=None, description="The filename if one was set"

@@ -103,24 +103,18 @@ impl<'de> Deserialize<'de> for Path {
     }
 }
 
-// Custom OpenAPI schema: declare as a string type
-impl utoipa::PartialSchema for Path {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        utoipa::openapi::RefOr::T(utoipa::openapi::Schema::Object(
-            utoipa::openapi::ObjectBuilder::new()
-                .schema_type(utoipa::openapi::schema::SchemaType::Type(
-                    utoipa::openapi::schema::Type::String,
-                ))
-                .description(Some(
-                    "Path to a location in the workflow definition, serialized as a string",
-                ))
-                .examples(["$.steps[0].input", "$.output", "$.steps[2].component"])
-                .build(),
-        ))
+impl schemars::JsonSchema for Path {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Path".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "Path to a location in the workflow definition, serialized as a string"
+        })
     }
 }
-
-impl utoipa::ToSchema for Path {}
 
 macro_rules! make_path {
     ($($es:expr),*) => {

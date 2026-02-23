@@ -34,7 +34,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 
-from stepflow_py.api.models.blob_type import BlobType
+from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA
 
 logger = logging.getLogger(__name__)
 
@@ -121,12 +121,12 @@ def _get_client() -> Any:
     return client
 
 
-async def put_blob(data: Any, blob_type: BlobType = BlobType.DATA) -> str:
+async def put_blob(data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
     """Store JSON data as a blob and return its content-based ID (SHA-256).
 
     Args:
         data: The JSON-serializable data to store.
-        blob_type: The type of blob to store (flow or data).
+        blob_type: The type of blob to store ("flow" or "data").
 
     Returns:
         The blob ID (SHA-256 hash) for the stored data.
@@ -142,19 +142,15 @@ async def put_blob(data: Any, blob_type: BlobType = BlobType.DATA) -> str:
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
         "put_blob",
-        attributes={"blob_type": blob_type.value},
+        attributes={"blob_type": blob_type},
     ):
         try:
-            resp = await client.post(
-                url, json={"data": data, "blobType": blob_type.value}
-            )
+            resp = await client.post(url, json={"data": data, "blobType": blob_type})
             resp.raise_for_status()
             blob_id: str = resp.json()["blobId"]
             return blob_id
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to store blob (type={blob_type.value}): {e}"
-            ) from e
+            raise RuntimeError(f"Failed to store blob (type={blob_type}): {e}") from e
 
 
 async def get_blob(blob_id: str) -> Any:

@@ -25,7 +25,7 @@ from typing import Self
 
 class StepStatus(str, Enum):
     """
-    Status of an individual step within a workflow
+    Status of an individual step within a workflow  Cases: * `blocked`: Step is waiting for dependencies to complete * `runnable`: Step is ready to be executed * `running`: Step is currently executing * `completed`: Step has been executed successfully * `skipped`: Step was skipped due to conditions * `failed`: Step failed with an error
     """
 
     """

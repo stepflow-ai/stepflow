@@ -433,19 +433,21 @@ async fn test_create_run_with_overrides() {
                     "test_input": "Hello with overrides"
                 }],
                 "overrides": {
-                    "step1": {
-                        "value": {
-                            "input": {
-                                "temperature": 0.8,
-                                "user_prompt": "Overridden prompt"
+                    "steps": {
+                        "step1": {
+                            "value": {
+                                "input": {
+                                    "temperature": 0.8,
+                                    "user_prompt": "Overridden prompt"
+                                }
                             }
-                        }
-                    },
-                    "step2": {
-                        "$type": "merge_patch",
-                        "value": {
-                            "input": {
-                                "expression": "100"
+                        },
+                        "step2": {
+                            "$type": "merge_patch",
+                            "value": {
+                                "input": {
+                                    "expression": "100"
+                                }
                             }
                         }
                     }
@@ -525,10 +527,12 @@ async fn test_create_run_with_invalid_overrides() {
                     "test_input": "Hello"
                 }],
                 "overrides": {
-                    "nonexistent_step": {
-                        "value": {
-                            "input": {
-                                "temperature": 0.8
+                    "steps": {
+                        "nonexistent_step": {
+                            "value": {
+                                "input": {
+                                    "temperature": 0.8
+                                }
                             }
                         }
                     }
@@ -602,7 +606,7 @@ async fn test_create_run_empty_overrides() {
                 "input": [{
                     "test_input": "Hello"
                 }],
-                "overrides": {},
+                "overrides": {"steps": {}},
                 "wait": true
             }))
             .unwrap(),

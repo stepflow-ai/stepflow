@@ -146,7 +146,7 @@ def shared_config():
             "/langflow/{*component}": [RouteRule(plugin="langflow")],
             "/builtin/{*component}": [RouteRule(plugin="builtin")],
         },
-        storageConfig=InMemoryStoreConfig(type="inMemory"),
+        storageConfig=InMemoryStoreConfig(),
     )
 
     # Cleanup after all tests in module complete

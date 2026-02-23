@@ -1,0 +1,41 @@
+---
+source: crates/stepflow-core/src/discriminator_schema.rs
+expression: value
+---
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: PluginConfig
+oneOf:
+  - title: NoOp
+    type: object
+    properties:
+      type:
+        type: string
+        const: noOp
+    required:
+      - type
+  - title: Remote
+    type: object
+    properties:
+      type:
+        type: string
+        const: remote
+    $ref: "#/$defs/InnerConfig"
+    required:
+      - type
+discriminator:
+  propertyName: type
+  mapping:
+    remote: "#/$defs/InnerConfig"
+$defs:
+  InnerConfig:
+    type: object
+    properties:
+      endpoint:
+        type: string
+      timeoutMs:
+        type: integer
+        format: uint64
+        minimum: 0
+    required:
+      - endpoint
+      - timeoutMs

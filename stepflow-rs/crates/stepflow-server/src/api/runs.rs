@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -27,10 +28,16 @@ use stepflow_core::{
 use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunStatus, RunSummary};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{BlobStoreExt as _, MetadataStoreExt as _};
-use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
+
+/// Path parameters for run endpoints
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct RunPath {
+    /// Run ID (UUID)
+    pub run_id: Uuid,
+}
 
 /// Request to create/execute a flow.
 ///
@@ -40,7 +47,7 @@ use crate::error::{ErrorResponse, ServerError};
 ///
 /// This design avoids ambiguity: to run a workflow with an array as input,
 /// wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunRequest {
     /// The flow hash to execute
@@ -70,7 +77,7 @@ pub struct CreateRunRequest {
 ///
 /// Shares the same base fields as `RunDetails` (GET /runs/{id}) via `RunSummary`,
 /// with optional item results when `wait=true`.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunResponse {
     /// Run summary fields (run_id, flow_id, status, items, timestamps, etc.)
@@ -103,7 +110,7 @@ impl From<RunStatus> for CreateRunResponse {
 }
 
 /// Response for listing runs
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListRunsResponse {
     /// List of run summaries
@@ -111,7 +118,7 @@ pub struct ListRunsResponse {
 }
 
 /// Query parameters for listing runs
-#[derive(Debug, Clone, Default, Deserialize, ToSchema, utoipa::IntoParams)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListRunsQuery {
     /// Filter by execution status
@@ -141,7 +148,7 @@ pub struct ListRunsQuery {
 }
 
 /// Response for listing run items
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListItemsResponse {
     /// Total number of items in this run
@@ -151,7 +158,7 @@ pub struct ListItemsResponse {
 }
 
 /// Response for step run details
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepRunResponse {
     /// Step ID (the stable identifier for this step in the workflow)
@@ -167,7 +174,7 @@ pub struct StepRunResponse {
 }
 
 /// Response for listing step runs
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListStepRunsResponse {
     /// Dictionary of step run results keyed by step ID
@@ -175,7 +182,7 @@ pub struct ListStepRunsResponse {
 }
 
 /// Query parameters for step runs endpoint
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepRunsQuery {
     /// Optional item index for multi-item (batch) runs.
@@ -186,13 +193,32 @@ pub struct StepRunsQuery {
 }
 
 /// Response containing a flow definition and its hash for run endpoints
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunFlowResponse {
     /// The flow definition
     pub flow: Arc<Flow>,
     /// The flow hash
     pub flow_id: BlobId,
+}
+
+pub fn create_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("createRun")
+        .summary("Create and execute a flow run")
+        .description(
+            "Create and execute a flow by hash. Supports both single and batch execution. \
+             By default, returns immediately with 202 Accepted. Set `wait: true` to block \
+             until the run completes and return 200 OK with the result.",
+        )
+        .tag("Run")
+        .response_with::<202, Json<CreateRunResponse>, _>(|res| {
+            res.description("Run created and executing asynchronously")
+        })
+        .response_with::<200, Json<CreateRunResponse>, _>(|res| {
+            res.description("Run completed (when wait=true)")
+        })
+        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid request"))
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Flow not found"))
 }
 
 /// Create and execute a flow by hash
@@ -204,19 +230,6 @@ pub struct RunFlowResponse {
 /// By default, returns immediately with 202 Accepted and status Running.
 /// Set `wait: true` in the request body to block until the run completes
 /// and return 200 OK with the result.
-#[utoipa::path(
-    post,
-    path = "/runs",
-    request_body = CreateRunRequest,
-    responses(
-        (status = 200, description = "Flow run completed (wait=true)", body = CreateRunResponse),
-        (status = 202, description = "Flow run accepted for execution", body = CreateRunResponse),
-        (status = 400, description = "Invalid request"),
-        (status = 404, description = "Flow not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn create_run(
     State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<CreateRunRequest>,
@@ -281,7 +294,7 @@ pub async fn create_run(
 }
 
 /// Query parameters for getting a run by ID
-#[derive(Debug, Clone, Default, Deserialize, ToSchema, utoipa::IntoParams)]
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRunQuery {
     /// If true, wait for the run to reach a terminal state before responding.
@@ -293,28 +306,24 @@ pub struct GetRunQuery {
     pub timeout_secs: Option<u64>,
 }
 
+pub fn get_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getRun")
+        .summary("Get run details by ID")
+        .description(
+            "Returns the current run status and details. Use `wait=true` to long-poll \
+             until the run reaches a terminal state (completed, failed, or cancelled).",
+        )
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+}
+
 /// Get execution details by ID
 ///
 /// Returns the current run status and details. Use `wait=true` to long-poll
 /// until the run reaches a terminal state (completed, failed, or cancelled).
-#[utoipa::path(
-    get,
-    path = "/runs/{run_id}",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
-        GetRunQuery
-    ),
-    responses(
-        (status = 200, description = "Run details retrieved successfully", body = RunDetails),
-        (status = 400, description = "Invalid run ID format"),
-        (status = 404, description = "Run not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn get_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
     Query(query): Query<GetRunQuery>,
 ) -> Result<Json<RunDetails>, ErrorResponse> {
     // If wait=true, block until the run reaches a terminal state (with timeout)
@@ -343,27 +352,24 @@ pub async fn get_run(
     Ok(Json(details))
 }
 
+pub fn get_run_items_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getRunItems")
+        .summary("Get all item results for a run")
+        .description(
+            "Returns results for all items in the run, ordered by item index. \
+             For single-item runs (item_count=1), returns a single item.",
+        )
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+}
+
 /// Get all item results for a run
 ///
 /// Returns results for all items in the run, ordered by item index.
 /// For single-item runs (item_count=1), returns a single item.
-#[utoipa::path(
-    get,
-    path = "/runs/{run_id}/items",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
-    ),
-    responses(
-        (status = 200, description = "Run items retrieved successfully", body = ListItemsResponse),
-        (status = 400, description = "Invalid run ID format"),
-        (status = 404, description = "Run not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn get_run_items(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<ListItemsResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
 
@@ -383,24 +389,18 @@ pub async fn get_run_items(
     Ok(Json(ListItemsResponse { item_count, items }))
 }
 
+pub fn get_run_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getRunFlow")
+        .summary("Get the workflow definition for a run")
+        .description("Retrieve the workflow definition associated with a specific run.")
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+}
+
 /// Get the workflow definition for an execution
-#[utoipa::path(
-    get,
-    path = "/runs/{run_id}/flow",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
-    ),
-    responses(
-        (status = 200, description = "Run workflow retrieved successfully", body = RunFlowResponse),
-        (status = 400, description = "Invalid run ID format"),
-        (status = 404, description = "Run or workflow not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn get_run_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<RunFlowResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
     let blob_store = executor.blob_store();
@@ -424,19 +424,15 @@ pub async fn get_run_flow(
     }))
 }
 
+pub fn list_runs_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("listRuns")
+        .summary("List runs with optional filtering")
+        .description("List executions with optional status, flow name, and hierarchy filtering.")
+        .tag("Run")
+        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid query parameters"))
+}
+
 /// List executions with optional filtering
-#[utoipa::path(
-    get,
-    path = "/runs",
-    params(
-        ListRunsQuery
-    ),
-    responses(
-        (status = 200, description = "Runs listed successfully", body = ListRunsResponse),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn list_runs(
     State(executor): State<Arc<StepflowEnvironment>>,
     Query(query): Query<ListRunsQuery>,
@@ -460,25 +456,22 @@ pub async fn list_runs(
     Ok(Json(ListRunsResponse { runs: executions }))
 }
 
+pub fn get_run_steps_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getRunSteps")
+        .summary("Get step-level execution details")
+        .description(
+            "Get step-level execution details for a specific run. \
+             Use `item_index` to get statuses for a specific item in batch runs. \
+             Without `item_index`, statuses are aggregated across all items.",
+        )
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+}
+
 /// Get step-level execution details for a specific execution
-#[utoipa::path(
-    get,
-    path = "/runs/{run_id}/steps",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)"),
-        ("item_index" = Option<usize>, Query, description = "Item index for multi-item runs. If not specified, aggregates across all items.")
-    ),
-    responses(
-        (status = 200, description = "Run step details retrieved successfully", body = ListStepRunsResponse),
-        (status = 400, description = "Invalid run ID format or item index out of bounds"),
-        (status = 404, description = "Run not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn get_run_steps(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
     Query(query): Query<StepRunsQuery>,
 ) -> Result<Json<ListStepRunsResponse>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
@@ -593,25 +586,21 @@ fn status_precedence(status: StepStatus) -> u8 {
     }
 }
 
+pub fn cancel_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("cancelRun")
+        .summary("Cancel a running execution")
+        .description("Cancel a running execution by ID.")
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+        .response_with::<409, ErrorResponse, _>(|res| {
+            res.description("Run cannot be cancelled (already completed)")
+        })
+}
+
 /// Cancel a running execution
-#[utoipa::path(
-    post,
-    path = "/runs/{run_id}/cancel",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
-    ),
-    responses(
-        (status = 200, description = "Run cancelled successfully", body = RunSummary),
-        (status = 400, description = "Invalid run ID format"),
-        (status = 404, description = "Run not found"),
-        (status = 409, description = "Run already completed"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn cancel_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<Json<RunSummary>, ErrorResponse> {
     let metadata_store = executor.metadata_store();
 
@@ -651,25 +640,21 @@ pub async fn cancel_run(
     Ok(Json(updated_execution.summary))
 }
 
+pub fn delete_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("deleteRun")
+        .summary("Delete a completed execution")
+        .description("Delete a completed execution by ID. Running executions cannot be deleted.")
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+        .response_with::<409, ErrorResponse, _>(|res| {
+            res.description("Run is still running and cannot be deleted")
+        })
+}
+
 /// Delete a completed execution
-#[utoipa::path(
-    delete,
-    path = "/runs/{run_id}",
-    params(
-        ("run_id" = Uuid, Path, description = "Run ID (UUID)")
-    ),
-    responses(
-        (status = 204, description = "Run deleted successfully"),
-        (status = 400, description = "Invalid run ID format"),
-        (status = 404, description = "Run not found"),
-        (status = 409, description = "Run still running"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = crate::api::RUN_TAG,
-)]
 pub async fn delete_run(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(run_id): Path<Uuid>,
+    Path(RunPath { run_id }): Path<RunPath>,
 ) -> Result<(), ErrorResponse> {
     let metadata_store = executor.metadata_store();
 

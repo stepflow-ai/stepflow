@@ -25,12 +25,10 @@ use crate::schema::SchemaRef;
 ///
 /// Serializes as a valid JSON Schema with `type: "object"` and flow-specific
 /// properties (`input`, `output`, `variables`, `steps`) under the `properties` key.
-#[derive(Debug, Clone, PartialEq, Default, utoipa::ToSchema)]
-#[schema(default)]
+#[derive(Debug, Clone, PartialEq, Default, schemars::JsonSchema)]
 pub struct FlowSchema {
     /// Shared type definitions that can be referenced by other schemas.
     /// References use the format `#/schemas/$defs/TypeName`.
-    #[schema(default)]
     pub defs: HashMap<String, SchemaRef>,
 
     /// The input schema for the flow.
@@ -47,7 +45,6 @@ pub struct FlowSchema {
     /// Note: Step input schemas are not included here as they are
     /// component metadata, not flow-specific schemas.
     /// Uses IndexMap to preserve insertion order for deterministic serialization.
-    #[schema(default)]
     pub steps: IndexMap<String, SchemaRef>,
 }
 

@@ -34,15 +34,14 @@ class Diagnostic(BaseModel):
     """  # noqa: E501
 
     kind: StrictStr = Field(description="The diagnostic kind name (camelCase)")
-    code: Annotated[int, Field(strict=True, ge=0)] = Field(
+    code: Annotated[int, Field(le=65535, strict=True, ge=0)] = Field(
         description="Numeric error code"
     )
     level: DiagnosticLevel = Field(description="The severity level")
     formatted: StrictStr = Field(description="Human-readable formatted message")
     data: Any | None = None
     path: StrictStr | None = Field(
-        default=None,
-        description="Path to a location in the workflow definition, serialized as a string",
+        default=None, description="JSON path to the field with the issue"
     )
     experimental: StrictBool | None = Field(
         default=None,

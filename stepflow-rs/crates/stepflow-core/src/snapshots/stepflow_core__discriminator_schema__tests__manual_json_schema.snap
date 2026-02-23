@@ -1,0 +1,15 @@
+---
+source: crates/stepflow-core/src/discriminator_schema.rs
+expression: value
+---
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: SimpleExpr
+oneOf:
+  - title: Number
+    type: number
+  - title: Text
+    type: string
+  - title: Bool
+    type: boolean
+  - title: "Null"
+    type: "null"

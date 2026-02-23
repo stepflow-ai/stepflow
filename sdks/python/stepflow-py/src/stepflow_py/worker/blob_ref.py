@@ -30,11 +30,14 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from stepflow_py.api.models.blob_type import BlobType
-
 logger = logging.getLogger(__name__)
 
 BLOB_REF_KEY = "$blob"
+
+# Blob type constants (plain strings matching the server's BlobType enum variants)
+BLOB_TYPE_DATA = "data"
+BLOB_TYPE_FLOW = "flow"
+BLOB_TYPE_BINARY = "binary"
 
 
 @dataclass
@@ -42,14 +45,14 @@ class BlobRef:
     """A reference to a blob stored in the blob store."""
 
     blob_id: str
-    blob_type: BlobType = BlobType.DATA
+    blob_type: str = BLOB_TYPE_DATA
     size: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dict."""
         d: dict[str, Any] = {BLOB_REF_KEY: self.blob_id}
-        if self.blob_type != BlobType.DATA:
-            d["blobType"] = self.blob_type.value
+        if self.blob_type != BLOB_TYPE_DATA:
+            d["blobType"] = self.blob_type
         if self.size is not None:
             d["size"] = self.size
         return d
@@ -62,11 +65,9 @@ class BlobRef:
         blob_id = d[BLOB_REF_KEY]
         if not isinstance(blob_id, str) or len(blob_id) != 64:
             return None
-        blob_type_str = d.get("blobType", "data")
-        try:
-            blob_type = BlobType(blob_type_str)
-        except ValueError:
-            blob_type = BlobType.DATA
+        blob_type = d.get("blobType", BLOB_TYPE_DATA)
+        if not isinstance(blob_type, str):
+            blob_type = BLOB_TYPE_DATA
         size = d.get("size")
         return cls(blob_id=blob_id, blob_type=blob_type, size=size)
 
@@ -109,7 +110,7 @@ async def blobify_inputs(
         size = len(serialized)
         if size > threshold:
             blob_id = await blob_store.put_blob(value)
-            ref = BlobRef(blob_id=blob_id, blob_type=BlobType.DATA, size=size)
+            ref = BlobRef(blob_id=blob_id, blob_type=BLOB_TYPE_DATA, size=size)
             result[key] = ref.to_dict()
             created_ids.append(blob_id)
             logger.debug("Blobified field %r (%d bytes) -> %s", key, size, blob_id[:12])

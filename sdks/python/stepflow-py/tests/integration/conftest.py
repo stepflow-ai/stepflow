@@ -71,7 +71,7 @@ def integration_config():
             "/builtin/{*component}": [RouteRule(plugin="builtin")],
             "/python/{*component}": [RouteRule(plugin="python")],
         },
-        storageConfig=InMemoryStoreConfig(type="inMemory"),
+        storageConfig=InMemoryStoreConfig(),
     )
 
 

@@ -43,7 +43,9 @@ class FlowApi:
     @validate_call
     async def delete_flow(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to delete")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -56,8 +58,9 @@ class FlowApi:
     ) -> None:
         """Delete a flow by ID
 
+        Delete a flow by its content-based hash ID.
 
-        :param flow_id: Flow ID to delete (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -90,9 +93,8 @@ class FlowApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "404": None,
-            "409": None,
+            "200": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -106,7 +108,9 @@ class FlowApi:
     @validate_call
     async def delete_flow_with_http_info(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to delete")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -119,8 +123,9 @@ class FlowApi:
     ) -> ApiResponse[None]:
         """Delete a flow by ID
 
+        Delete a flow by its content-based hash ID.
 
-        :param flow_id: Flow ID to delete (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -153,9 +158,8 @@ class FlowApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "404": None,
-            "409": None,
+            "200": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -169,7 +173,9 @@ class FlowApi:
     @validate_call
     async def delete_flow_without_preload_content(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to delete")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -182,8 +188,9 @@ class FlowApi:
     ) -> RESTResponseType:
         """Delete a flow by ID
 
+        Delete a flow by its content-based hash ID.
 
-        :param flow_id: Flow ID to delete (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -216,9 +223,8 @@ class FlowApi:
         )
 
         _response_types_map: dict[str, str | None] = {
-            "204": None,
-            "404": None,
-            "409": None,
+            "200": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -254,6 +260,12 @@ class FlowApi:
         # process the form parameters
         # process the body parameter
 
+        # set the HTTP header `Accept`
+        if "Accept" not in _header_params:
+            _header_params["Accept"] = self.api_client.select_header_accept(
+                ["application/json"]
+            )
+
         # authentication setting
         _auth_settings: list[str] = []
 
@@ -275,7 +287,9 @@ class FlowApi:
     @validate_call
     async def get_flow(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to retrieve")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -286,10 +300,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> FlowResponse:
-        """Get a flow by its ID
+        """Get a flow by ID
 
+        Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: Flow ID to retrieve (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -323,7 +338,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "FlowResponse",
-            "404": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -337,7 +352,9 @@ class FlowApi:
     @validate_call
     async def get_flow_with_http_info(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to retrieve")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -348,10 +365,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[FlowResponse]:
-        """Get a flow by its ID
+        """Get a flow by ID
 
+        Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: Flow ID to retrieve (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -385,7 +403,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "FlowResponse",
-            "404": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -399,7 +417,9 @@ class FlowApi:
     @validate_call
     async def get_flow_without_preload_content(
         self,
-        flow_id: Annotated[StrictStr, Field(description="Flow ID to retrieve")],
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -410,10 +430,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Get a flow by its ID
+        """Get a flow by ID
 
+        Retrieve a flow definition by its content-based hash ID.
 
-        :param flow_id: Flow ID to retrieve (required)
+        :param flow_id: The flow's content-based hash ID (required)
         :type flow_id: str
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -447,7 +468,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "FlowResponse",
-            "404": None,
+            "404": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -510,7 +531,9 @@ class FlowApi:
     @validate_call
     async def store_flow(
         self,
-        store_flow_request: StoreFlowRequest,
+        store_flow_request: Annotated[
+            StoreFlowRequest, Field(description="Request to store a flow")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -521,10 +544,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> StoreFlowResponse:
-        """Store a flow and return its hash
+        """Store a flow
 
+        Store a flow and return its content-based hash ID.
 
-        :param store_flow_request: (required)
+        :param store_flow_request: Request to store a flow (required)
         :type store_flow_request: StoreFlowRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -558,7 +582,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreFlowResponse",
-            "400": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -572,7 +596,9 @@ class FlowApi:
     @validate_call
     async def store_flow_with_http_info(
         self,
-        store_flow_request: StoreFlowRequest,
+        store_flow_request: Annotated[
+            StoreFlowRequest, Field(description="Request to store a flow")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -583,10 +609,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> ApiResponse[StoreFlowResponse]:
-        """Store a flow and return its hash
+        """Store a flow
 
+        Store a flow and return its content-based hash ID.
 
-        :param store_flow_request: (required)
+        :param store_flow_request: Request to store a flow (required)
         :type store_flow_request: StoreFlowRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -620,7 +647,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreFlowResponse",
-            "400": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -634,7 +661,9 @@ class FlowApi:
     @validate_call
     async def store_flow_without_preload_content(
         self,
-        store_flow_request: StoreFlowRequest,
+        store_flow_request: Annotated[
+            StoreFlowRequest, Field(description="Request to store a flow")
+        ],
         _request_timeout: None
         | Annotated[StrictFloat, Field(gt=0)]
         | tuple[
@@ -645,10 +674,11 @@ class FlowApi:
         _headers: dict[StrictStr, Any] | None = None,
         _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
     ) -> RESTResponseType:
-        """Store a flow and return its hash
+        """Store a flow
 
+        Store a flow and return its content-based hash ID.
 
-        :param store_flow_request: (required)
+        :param store_flow_request: Request to store a flow (required)
         :type store_flow_request: StoreFlowRequest
         :param _request_timeout: timeout setting for this request. If one
                                  number provided, it will be total request
@@ -682,7 +712,7 @@ class FlowApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "StoreFlowResponse",
-            "400": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout

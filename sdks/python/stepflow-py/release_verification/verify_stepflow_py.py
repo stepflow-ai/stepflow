@@ -63,7 +63,7 @@ def test_config_imports() -> bool:
         config = StepflowConfig(
             plugins={"builtin": BuiltinPluginConfig()},
             routes={"/{*component}": [RouteRule(plugin="builtin")]},
-            storageConfig=InMemoryStoreConfig(type="inMemory"),
+            storageConfig=InMemoryStoreConfig(),
         )
         print(f"  ✓ Config creation successful: {type(config).__name__}")
         return True
@@ -139,7 +139,7 @@ async def test_local_orchestrator() -> bool:
     config = StepflowConfig(
         plugins={"builtin": BuiltinPluginConfig()},
         routes={"/{*component}": [RouteRule(plugin="builtin")]},
-        storageConfig=InMemoryStoreConfig(type="inMemory"),
+        storageConfig=InMemoryStoreConfig(),
     )
 
     try:

@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use aide::transform::TransformOperation;
 use axum::{
     extract::{Path, State},
     response::Json,
@@ -20,12 +21,18 @@ use stepflow_analysis::{Diagnostics, validate};
 use stepflow_core::{BlobId, BlobType, workflow::Flow};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
-use utoipa::ToSchema;
 
 use crate::error::ErrorResponse;
 
+/// Path parameters for flow endpoints
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct FlowPath {
+    /// The flow's content-based hash ID
+    pub flow_id: BlobId,
+}
+
 /// Request to store a flow
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreFlowRequest {
     /// The flow to store
@@ -36,7 +43,7 @@ pub struct StoreFlowRequest {
 }
 
 /// Response when a flow is stored
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreFlowResponse {
     /// The ID of the flow (computed from content hash, always present)
@@ -48,7 +55,7 @@ pub struct StoreFlowResponse {
 }
 
 /// Response containing a flow definition and its ID
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowResponse {
     /// The flow definition
@@ -60,17 +67,15 @@ pub struct FlowResponse {
     pub all_examples: Vec<stepflow_core::workflow::ExampleInput>,
 }
 
+pub fn store_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("storeFlow")
+        .summary("Store a flow")
+        .description("Store a flow and return its content-based hash ID.")
+        .tag("Flow")
+        .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid flow definition"))
+}
+
 /// Store a flow and return its hash
-#[utoipa::path(
-    post,
-    path = "/flows",
-    request_body = StoreFlowRequest,
-    responses(
-        (status = 200, description = "Flow stored successfully", body = StoreFlowResponse),
-        (status = 400, description = "Invalid flow")
-    ),
-    tag = crate::api::FLOW_TAG,
-)]
 pub async fn store_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
     Json(req): Json<StoreFlowRequest>,
@@ -116,22 +121,18 @@ pub async fn store_flow(
     }))
 }
 
+pub fn get_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getFlow")
+        .summary("Get a flow by ID")
+        .description("Retrieve a flow definition by its content-based hash ID.")
+        .tag("Flow")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Flow not found"))
+}
+
 /// Get a flow by its ID
-#[utoipa::path(
-    get,
-    path = "/flows/{flow_id}",
-    params(
-        ("flow_id" = String, Path, description = "Flow ID to retrieve")
-    ),
-    responses(
-        (status = 200, description = "Flow retrieved successfully", body = FlowResponse),
-        (status = 404, description = "Flow not found")
-    ),
-    tag = crate::api::FLOW_TAG,
-)]
 pub async fn get_flow(
     State(executor): State<Arc<StepflowEnvironment>>,
-    Path(flow_id): Path<BlobId>,
+    Path(FlowPath { flow_id }): Path<FlowPath>,
 ) -> Result<Json<FlowResponse>, ErrorResponse> {
     let blob_store = executor.blob_store();
 
@@ -176,23 +177,18 @@ pub async fn get_flow(
     }))
 }
 
+pub fn delete_flow_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("deleteFlow")
+        .summary("Delete a flow by ID")
+        .description("Delete a flow by its content-based hash ID.")
+        .tag("Flow")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Flow not found"))
+}
+
 /// Delete a flow by ID
-#[utoipa::path(
-    delete,
-    path = "/flows/{flow_id}",
-    params(
-        ("flow_id" = String, Path, description = "Flow ID to delete")
-    ),
-    responses(
-        (status = 204, description = "Flow deleted successfully"),
-        (status = 404, description = "Flow not found"),
-        (status = 409, description = "Flow has active runs")
-    ),
-    tag = crate::api::FLOW_TAG,
-)]
 pub async fn delete_flow(
     State(_executor): State<Arc<StepflowEnvironment>>,
-    Path(_flow_id): Path<BlobId>,
+    Path(_path): Path<FlowPath>,
 ) -> Result<(), ErrorResponse> {
     // TODO: Implement proper flow deletion with run checks
     // For now, just return success since blobs are content-addressed and can't be easily deleted

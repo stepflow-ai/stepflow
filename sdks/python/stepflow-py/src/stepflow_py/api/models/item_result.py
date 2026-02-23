@@ -40,9 +40,7 @@ class ItemResult(BaseModel):
         alias="itemIndex",
     )
     status: ExecutionStatus = Field(description="Execution status of this item.")
-    result: FlowResult | None = Field(
-        default=None, description="Result of this item, if completed."
-    )
+    result: FlowResult | None = None
     completed_at: datetime | None = Field(
         default=None,
         description="When this item completed (if completed).",

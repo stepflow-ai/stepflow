@@ -18,13 +18,108 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, ClassVar, Dict, List, Literal
+from typing import Annotated, Any, Literal, TypeAlias
 
-from msgspec import Meta, Struct
+from msgspec import UNSET, Meta, Struct, UnsetType, convert, field
 
 
-class LeaseManagerConfig1(Struct, kw_only=True):
-    type: Literal['noOp']
+class HealthCheckConfig(Struct, kw_only=True):
+    path: (
+        Annotated[
+            str, Meta(description='Health check endpoint path. Default: "/health"')
+        ]
+        | UnsetType
+    ) = '/health'
+    timeoutMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)',
+                ge=0,
+            ),
+        ]
+        | UnsetType
+    ) = 60000
+    retryDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Delay between health check attempts in milliseconds. Default: 100',
+                ge=0,
+            ),
+        ]
+        | UnsetType
+    ) = 100
+
+
+class Schema(Struct, kw_only=True):
+    pass
+
+
+class MockComponentError(Struct, kw_only=True):
+    error: str
+
+
+Value: TypeAlias = Annotated[
+    Any,
+    Meta(
+        description='Any JSON value (object, array, string, number, boolean, or null)'
+    ),
+]
+
+
+class FlowError(Struct, kw_only=True):
+    code: int
+    message: str
+    data: Value | None | UnsetType = UNSET
+
+
+class McpPluginConfig(Struct, kw_only=True, tag_field='type', tag='mcp'):
+    command: str
+    args: list[str]
+    env: (
+        Annotated[
+            dict[str, str],
+            Meta(
+                description='Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+JsonPath: TypeAlias = Annotated[
+    str, Meta(description='JSON path expression to apply to the referenced value.')
+]
+
+
+class SqliteStateStoreConfig(Struct, kw_only=True):
+    databaseUrl: str
+    maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
+    autoMigrate: bool | UnsetType = True
+
+
+class FilesystemBlobStoreConfig(Struct, kw_only=True):
+    directory: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Directory path for storing blobs. If not specified, a temporary directory is used.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class EtcdLeaseManagerConfig(Struct, kw_only=True):
+    endpoints: Annotated[
+        list[str],
+        Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
+    ]
+    key_prefix: (
+        Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
+        | UnsetType
+    ) = '/stepflow/leases'
 
 
 class RecoveryConfig(Struct, kw_only=True):
@@ -35,7 +130,7 @@ class RecoveryConfig(Struct, kw_only=True):
                 description='Whether to enable periodic orphan claiming during execution.\n\nWhen enabled, the orchestrator will periodically check for orphaned\nruns (from crashed orchestrators) and claim them for execution.\nDefault: true'
             ),
         ]
-        | None
+        | UnsetType
     ) = True
     checkIntervalSecs: (
         Annotated[
@@ -45,7 +140,7 @@ class RecoveryConfig(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
+        | UnsetType
     ) = 30
     maxStartupRecovery: (
         Annotated[
@@ -55,7 +150,7 @@ class RecoveryConfig(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
+        | UnsetType
     ) = 100
     maxClaimsPerCheck: (
         Annotated[
@@ -65,7 +160,7 @@ class RecoveryConfig(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
+        | UnsetType
     ) = 10
     leaseTtlSecs: (
         Annotated[
@@ -75,7 +170,7 @@ class RecoveryConfig(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
+        | UnsetType
     ) = 30
 
 
@@ -87,7 +182,7 @@ class BlobApiConfig(Struct, kw_only=True):
                 description='Whether the orchestrator serves blob API endpoints.\n\nSet to `false` when running a separate blob service.\nDefault: `true`'
             ),
         ]
-        | None
+        | UnsetType
     ) = True
     url: (
         Annotated[
@@ -96,8 +191,8 @@ class BlobApiConfig(Struct, kw_only=True):
                 description="URL workers use to access the blob API.\n\nIf not set, defaults to `http://localhost:{port}/api/v1/blobs` where `{port}`\nis the server's bound port.\n\nThis value should be the base blobs endpoint URL. Workers will:\n- `POST {url}` to create blobs\n- `GET {url}/{blob_id}` to fetch blobs\n\nExamples:\n- Local dev: omit (auto-detected)\n- K8s with orchestrator blobs: `http://orchestrator-service/api/v1/blobs`\n- K8s with separate blob service: `http://blob-service/api/v1/blobs`"
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     blobThreshold: (
         Annotated[
             int | None,
@@ -106,130 +201,76 @@ class BlobApiConfig(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
 
 
-BuiltinPluginConfig = Any
-
-
-class McpPluginConfig(Struct, kw_only=True):
-    command: str
-    args: List[str]
-    env: (
-        Annotated[
-            Dict[str, str],
-            Meta(
-                description='Environment variables to pass to the MCP server process.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-class StepflowTransport2(Struct, kw_only=True):
-    url: str
-
-
-class HealthCheckConfig(Struct, kw_only=True):
-    path: (
-        Annotated[
-            str, Meta(description='Health check endpoint path. Default: "/health"')
-        ]
-        | None
-    ) = None
-    timeoutMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)',
-                ge=0,
-            ),
-        ]
-        | None
-    ) = None
-    retryDelayMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Delay between health check attempts in milliseconds. Default: 100',
-                ge=0,
-            ),
-        ]
-        | None
-    ) = None
-
-
-class BackoffConfigConstant(Struct, kw_only=True):
-    type: Literal['constant']
-    delayMs: Annotated[int, Meta(ge=0)] | None = None
-
-
-class BackoffConfigExponential(Struct, kw_only=True):
-    type: Literal['exponential']
-    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
-    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
-    factor: float | None = None
-
-
-class BackoffConfigFibonacci(Struct, kw_only=True):
-    type: Literal['fibonacci']
-    minDelayMs: Annotated[int, Meta(ge=0)] | None = None
-    maxDelayMs: Annotated[int, Meta(ge=0)] | None = None
-
-
-class Schema(Struct, kw_only=True):
+class BuiltinPluginConfig(Struct, kw_only=True, tag_field='type', tag='builtin'):
     pass
 
 
-class MockComponentBehavior1(Struct, kw_only=True):
-    error: str
+class BackoffConfigConstant(Struct, kw_only=True, tag_field='type', tag='constant'):
+    delayMs: (
+        Annotated[int, Meta(description='Delay in milliseconds (default: 1000).', ge=0)]
+        | UnsetType
+    ) = 1000
 
 
-Value = Annotated[
-    Any,
-    Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
-    ),
-]
+class BackoffConfigExponential(
+    Struct, kw_only=True, tag_field='type', tag='exponential'
+):
+    minDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | UnsetType
+    ) = 1000
+    maxDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
+            ),
+        ]
+        | UnsetType
+    ) = 10000
+    factor: (
+        Annotated[float, Meta(description='Multiplier per attempt (default: 2.0).')]
+        | UnsetType
+    ) = 2.0
 
 
-class FlowError(Struct, kw_only=True):
-    code: int
-    message: str
-    data: Value | None = None
+class BackoffConfigFibonacci(Struct, kw_only=True, tag_field='type', tag='fibonacci'):
+    minDelayMs: (
+        Annotated[
+            int,
+            Meta(description='Starting delay in milliseconds (default: 1000).', ge=0),
+        ]
+        | UnsetType
+    ) = 1000
+    maxDelayMs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum delay cap in milliseconds (default: 10000).', ge=0
+            ),
+        ]
+        | UnsetType
+    ) = 10000
 
 
-class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
-    outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
-    result: Value
+class InMemoryStore(Struct, kw_only=True, tag_field='type', tag='inMemory'):
+    pass
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
-    error: FlowError
-
-
-JsonPath = Annotated[
-    str,
-    Meta(
-        description='JSON path expression to apply to the referenced value. May use `$` to reference the whole value. May also be a bare field name (without the leading $) if the referenced value is an object.',
-        examples=['field', '$.field', '$["field"]', '$[0]', '$.field[0].nested'],
-    ),
-]
-
-
-class StoreConfig1(Struct, kw_only=True):
-    type: Literal['inMemory']
-
-
-class SqliteStateStoreConfig(Struct, kw_only=True):
+class SqliteStore(Struct, kw_only=True, tag_field='type', tag='sqlite'):
     databaseUrl: str
-    maxConnections: Annotated[int, Meta(ge=0)] | None = None
-    autoMigrate: bool | None = None
+    maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
+    autoMigrate: bool | UnsetType = True
 
 
-class FilesystemBlobStoreConfig(Struct, kw_only=True):
+class FilesystemStore(Struct, kw_only=True, tag_field='type', tag='filesystem'):
     directory: (
         Annotated[
             str | None,
@@ -237,65 +278,26 @@ class FilesystemBlobStoreConfig(Struct, kw_only=True):
                 description='Directory path for storing blobs. If not specified, a temporary directory is used.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
 
 
-class EtcdLeaseManagerConfig(Struct, kw_only=True):
+class NoOpLeaseManager(Struct, kw_only=True, tag_field='type', tag='noOp'):
+    pass
+
+
+class EtcdLeaseManager(Struct, kw_only=True, tag_field='type', tag='etcd'):
     endpoints: Annotated[
-        List[str],
+        list[str],
         Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
     ]
     key_prefix: (
         Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
-        | None
-    ) = None
+        | UnsetType
+    ) = '/stepflow/leases'
 
 
-class LeaseManagerConfig2(EtcdLeaseManagerConfig, kw_only=True):
-    type: Literal['etcd']
-
-
-LeaseManagerConfig = Annotated[
-    LeaseManagerConfig1 | LeaseManagerConfig2,
-    Meta(
-        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
-    ),
-]
-
-
-class SupportedPlugin2(Struct, kw_only=True):
-    type: Literal['builtin']
-
-
-class SupportedPlugin4(McpPluginConfig, kw_only=True):
-    type: Literal['mcp']
-
-
-class StepflowTransport1(Struct, kw_only=True):
-    command: str
-    args: List[str] | None = None
-    env: (
-        Annotated[
-            Dict[str, str],
-            Meta(
-                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
-            ),
-        ]
-        | None
-    ) = None
-    healthCheck: HealthCheckConfig | None = None
-
-
-StepflowTransport = Annotated[
-    StepflowTransport1 | StepflowTransport2,
-    Meta(
-        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
-    ),
-]
-
-
-BackoffConfig = Annotated[
+BackoffConfig: TypeAlias = Annotated[
     BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
     Meta(
         description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
@@ -303,10 +305,12 @@ BackoffConfig = Annotated[
 ]
 
 
-FlowResult = Annotated[
-    FlowResultSuccess | FlowResultFailed,
-    Meta(description='The results of a step execution.', title='FlowResult'),
-]
+class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
+    result: Value
+
+
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    error: FlowError
 
 
 class InputCondition(Struct, kw_only=True):
@@ -321,34 +325,18 @@ class InputCondition(Struct, kw_only=True):
     ]
 
 
-class StoreConfig2(SqliteStateStoreConfig, kw_only=True):
-    type: Literal['sqlite']
-
-
-class StoreConfig3(FilesystemBlobStoreConfig, kw_only=True):
-    type: Literal['filesystem']
-
-
-StoreConfig = Annotated[
-    StoreConfig1 | StoreConfig2 | StoreConfig3,
+StoreConfig: TypeAlias = Annotated[
+    InMemoryStore | SqliteStore | FilesystemStore,
     Meta(
         description='Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery'
     ),
 ]
 
 
-class StorageConfig1(Struct, kw_only=True):
-    metadata: Annotated[
-        StoreConfig, Meta(description='Configuration for the metadata store')
-    ]
-    blobs: StoreConfig | None = None
-    journal: StoreConfig | None = None
-
-
-StorageConfig = Annotated[
-    StorageConfig1 | StoreConfig,
+LeaseManagerConfig: TypeAlias = Annotated[
+    NoOpLeaseManager | EtcdLeaseManager,
     Meta(
-        description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).'
+        description='Configuration for the lease manager used in distributed deployments.\n\nThe lease manager handles run ownership in multi-orchestrator scenarios,\nensuring only one orchestrator executes a given run at a time.'
     ),
 ]
 
@@ -361,8 +349,8 @@ class RetryConfig(Struct, kw_only=True):
                 description='Maximum number of execution attempts (default: 3).', ge=0
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     backoff: (
         Annotated[
             BackoffConfig,
@@ -370,12 +358,80 @@ class RetryConfig(Struct, kw_only=True):
                 description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = field(
+        default_factory=lambda: {
+            'type': 'fibonacci',
+            'minDelayMs': 1000,
+            'maxDelayMs': 10000,
+        }
+    )
 
 
-MockComponentBehavior = Annotated[
-    MockComponentBehavior1 | FlowResult,
+class StepflowSubprocessConfig(Struct, kw_only=True):
+    type: Literal['stepflow']
+    command: str
+    retry: (
+        Annotated[
+            RetryConfig | None,
+            Meta(
+                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    args: list[str] | UnsetType = UNSET
+    env: (
+        Annotated[
+            dict[str, str],
+            Meta(
+                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    healthCheck: (
+        Annotated[
+            HealthCheckConfig | None,
+            Meta(description='Health check configuration for the subprocess server.'),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class StepflowRemoteConfig(Struct, kw_only=True):
+    type: Literal['stepflow']
+    url: str
+    retry: (
+        Annotated[
+            RetryConfig | None,
+            Meta(
+                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+StepflowPluginConfig: TypeAlias = Annotated[
+    StepflowSubprocessConfig | StepflowRemoteConfig,
+    Meta(
+        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
+    ),
+]
+
+
+MockComponentResult: TypeAlias = Annotated[
+    FlowResultSuccess | FlowResultFailed,
+    Meta(
+        description='Return the given result (success or flow-error).',
+        title='MockComponentResult',
+    ),
+]
+
+
+MockComponentBehavior: TypeAlias = Annotated[
+    MockComponentError | MockComponentResult,
     Meta(description='Enumeration of behaviors for the mock components.'),
 ]
 
@@ -384,31 +440,31 @@ class RouteRule(Struct, kw_only=True):
     plugin: Annotated[str, Meta(description='Plugin name to route to')]
     conditions: (
         Annotated[
-            List[InputCondition],
+            list[InputCondition],
             Meta(
                 description='Optional input conditions that must match for this rule to apply'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     componentAllow: (
         Annotated[
-            List[str],
+            list[str],
             Meta(
                 description='Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     componentDeny: (
         Annotated[
-            List[str],
+            list[str],
             Meta(
                 description='Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     component: (
         Annotated[
             str | None,
@@ -416,52 +472,65 @@ class RouteRule(Struct, kw_only=True):
                 description='Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., "{component}" or "{*component}".'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
 
 
-class RoutingConfig(Struct, kw_only=True):
-    routes: Annotated[
-        Dict[str, List[RouteRule]],
-        Meta(
-            description='Path-to-routing rules mapping\n\nKeys describe paths. For example "/python/{component}" or "/openai/{component}".\nPlaceholders may match a single segment (e.g., "{component}") or multiple segments (e.g., "{*component}").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.'
-        ),
+class ExpandedStorageConfig(Struct, kw_only=True):
+    metadata: Annotated[
+        StoreConfig, Meta(description='Configuration for the metadata store')
     ]
+    blobs: (
+        Annotated[
+            StoreConfig | None,
+            Meta(
+                description='Configuration for the blob store (defaults to metadata config if not specified)'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    journal: (
+        Annotated[
+            StoreConfig | None,
+            Meta(
+                description='Configuration for the execution journal (defaults to metadata config if not specified)'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
 
 
-class StepflowPluginConfig(Struct, kw_only=True):
-    retry: RetryConfig | None = None
+StorageConfig: TypeAlias = Annotated[
+    ExpandedStorageConfig | StoreConfig,
+    Meta(
+        description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).'
+    ),
+]
 
 
 class MockComponent(Struct, kw_only=True):
     input_schema: Schema
     output_schema: Schema
-    behaviors: Dict[str, MockComponentBehavior]
+    behaviors: dict[str, MockComponentBehavior]
 
 
-class SupportedPlugin1(StepflowPluginConfig, kw_only=True):
-    type: Literal['stepflow']
+class MockPlugin(Struct, kw_only=True, tag_field='type', tag='mock'):
+    components: dict[str, MockComponent]
 
 
-class MockPlugin(Struct, kw_only=True):
-    components: Dict[str, MockComponent]
-
-
-class SupportedPlugin3(MockPlugin, kw_only=True):
-    type: Literal['mock']
-
-
-SupportedPlugin = (
-    SupportedPlugin1 | SupportedPlugin2 | SupportedPlugin3 | SupportedPlugin4
+SupportedPluginConfig: TypeAlias = (
+    StepflowPluginConfig | BuiltinPluginConfig | MockPlugin | McpPluginConfig
 )
 
 
-class SupportedPluginConfig(Struct, kw_only=True):
-    pass
-
-
-class StepflowConfig(RoutingConfig, kw_only=True):
-    plugins: Dict[str, SupportedPluginConfig]
+class StepflowConfig(Struct, kw_only=True):
+    plugins: dict[str, SupportedPluginConfig]
+    routes: Annotated[
+        dict[str, list[RouteRule]],
+        Meta(
+            description='Path-to-routing rules mapping\n\nKeys describe paths. For example "/python/{component}" or "/openai/{component}".\nPlaceholders may match a single segment (e.g., "{component}") or multiple segments (e.g., "{*component}").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.'
+        ),
+    ]
     workingDirectory: (
         Annotated[
             str | None,
@@ -469,8 +538,8 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 description='Working directory for the configuration.\n\nIf not set, this will be the directory containing the config.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     storageConfig: (
         Annotated[
             StorageConfig,
@@ -478,8 +547,8 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 description='Storage configuration. If not specified, uses in-memory storage.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = field(default_factory=lambda: {'type': 'inMemory'})
     leaseManager: (
         Annotated[
             LeaseManagerConfig,
@@ -487,15 +556,26 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 description='Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = field(default_factory=lambda: {'type': 'noOp'})
     recovery: (
         Annotated[
             RecoveryConfig,
             Meta(description='Recovery configuration for handling interrupted runs.'),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = field(
+        default_factory=lambda: convert(
+            {
+                'enabled': True,
+                'checkIntervalSecs': 30,
+                'maxStartupRecovery': 100,
+                'maxClaimsPerCheck': 10,
+                'leaseTtlSecs': 30,
+            },
+            type=RecoveryConfig,
+        )
+    )
     blobApi: (
         Annotated[
             BlobApiConfig,
@@ -503,5 +583,5 @@ class StepflowConfig(RoutingConfig, kw_only=True):
                 description='Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = field(default_factory=lambda: convert({'enabled': True}, type=BlobApiConfig))

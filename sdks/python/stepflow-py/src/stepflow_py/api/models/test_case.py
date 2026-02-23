@@ -38,11 +38,10 @@ class TestCase(BaseModel):
         default=None,
         description="Optional description of what this test case verifies.",
     )
-    input: Any | None
-    output: FlowResult | None = Field(
-        default=None,
-        description="Expected output from the workflow for this test case.",
+    input: Any | None = Field(
+        description="Input data for the workflow in this test case."
     )
+    output: FlowResult | None = None
     __properties: ClassVar[list[str]] = ["name", "description", "input", "output"]
 
     model_config = ConfigDict(

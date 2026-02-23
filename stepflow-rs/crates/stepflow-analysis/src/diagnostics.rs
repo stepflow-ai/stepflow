@@ -19,7 +19,7 @@ pub use level::DiagnosticLevel;
 pub use message::{Diagnostic, DiagnosticKind};
 
 /// Collection of diagnostics with utility methods
-#[derive(Debug, Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostics {
     /// All diagnostics found

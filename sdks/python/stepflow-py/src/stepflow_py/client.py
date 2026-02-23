@@ -25,8 +25,8 @@ from stepflow_py.api import ApiClient, Configuration
 from stepflow_py.api.api import FlowApi, HealthApi, RunApi
 from stepflow_py.api.models import Flow
 from stepflow_py.api.models.create_run_request import CreateRunRequest
+from stepflow_py.api.models.step_override import StepOverride
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
-from stepflow_py.api.models.workflow_overrides import WorkflowOverrides
 
 if TYPE_CHECKING:
     from stepflow_py.api.models.create_run_response import CreateRunResponse
@@ -259,7 +259,9 @@ class StepflowClient:
         if variables is not None:
             request_kwargs["variables"] = variables
         if overrides is not None:
-            request_kwargs["overrides"] = WorkflowOverrides.from_dict(overrides)
+            request_kwargs["overrides"] = {
+                k: StepOverride.from_dict(v) for k, v in overrides.items()
+            }
         if max_concurrency is not None:
             request_kwargs["maxConcurrency"] = max_concurrency
         if wait_timeout is not None:
@@ -304,7 +306,9 @@ class StepflowClient:
         if variables is not None:
             request_kwargs["variables"] = variables
         if overrides is not None:
-            request_kwargs["overrides"] = WorkflowOverrides.from_dict(overrides)
+            request_kwargs["overrides"] = {
+                k: StepOverride.from_dict(v) for k, v in overrides.items()
+            }
         if max_concurrency is not None:
             request_kwargs["maxConcurrency"] = max_concurrency
 

@@ -19,7 +19,7 @@ use crate::ValueExpr;
 ///
 /// Note: Step output schemas are stored in the flow's `types.steps` field,
 /// not on individual steps. This allows for shared `$defs` and avoids duplication.
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, utoipa::ToSchema)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
     /// Identifier for the step
@@ -62,125 +62,29 @@ impl Step {
 }
 
 /// Error action determines what happens when a step fails.
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(tag = "action", rename_all = "camelCase")]
+#[schemars(transform = crate::discriminator_schema::AddDiscriminator::new("action"))]
 pub enum ErrorAction {
     /// If the step fails, the flow will fail.
     #[default]
+    #[schemars(title = "OnErrorFail")]
     Fail,
     /// If the step fails, use the `defaultValue` instead.
     /// If `defaultValue` is not specified, the step returns null.
     /// The default value must be a literal JSON value (not an expression).
     /// For dynamic defaults, use `$coalesce` in the consuming expression instead.
     #[serde(rename_all = "camelCase")]
+    #[schemars(title = "OnErrorDefault")]
     UseDefault {
         #[serde(skip_serializing_if = "Option::is_none")]
         default_value: Option<serde_json::Value>,
     },
     /// If the step fails, retry it.
+    #[schemars(title = "OnErrorRetry")]
     Retry,
-}
-
-/// Helper to create a variant schema with action property
-fn error_action_variant_schema(
-    title: &str,
-    description: &str,
-    extra_properties: Option<(&str, utoipa::openapi::schema::Schema)>,
-) -> utoipa::openapi::schema::Schema {
-    use utoipa::openapi::schema::*;
-
-    // The action property is defined as a plain string without const/enum constraint.
-    // The discriminator mapping provides the constraint at the oneOf level.
-    // This approach works with datamodel-code-generator without requiring post-processing.
-    let mut builder = ObjectBuilder::new()
-        .schema_type(SchemaType::Type(Type::Object))
-        .title(Some(title))
-        .description(Some(description))
-        .property(
-            "action",
-            ObjectBuilder::new().schema_type(SchemaType::Type(Type::String)),
-        )
-        .required("action");
-
-    if let Some((name, prop_schema)) = extra_properties {
-        builder = builder.property(name, prop_schema);
-    }
-
-    Schema::Object(builder.build())
-}
-
-impl utoipa::PartialSchema for ErrorAction {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
-        use utoipa::openapi::*;
-
-        // Create discriminator with mapping to $defs
-        let mut discriminator = Discriminator::new("action");
-        discriminator.mapping = [
-            (
-                "fail".to_string(),
-                "#/components/schemas/OnErrorFail".to_string(),
-            ),
-            (
-                "useDefault".to_string(),
-                "#/components/schemas/OnErrorDefault".to_string(),
-            ),
-            (
-                "retry".to_string(),
-                "#/components/schemas/OnErrorRetry".to_string(),
-            ),
-        ]
-        .into_iter()
-        .collect();
-
-        // Use $refs to the variants defined in $defs
-        RefOr::T(schema::Schema::OneOf(
-            schema::OneOfBuilder::new()
-                .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorFail")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorDefault")))
-                .item(RefOr::Ref(Ref::new("#/components/schemas/OnErrorRetry")))
-                .description(Some(
-                    "Error action determines what happens when a step fails.",
-                ))
-                .discriminator(Some(discriminator))
-                .build(),
-        ))
-    }
-}
-
-impl utoipa::ToSchema for ErrorAction {
-    fn schemas(
-        schemas: &mut Vec<(
-            String,
-            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
-        )>,
-    ) {
-        use utoipa::openapi::schema::*;
-        use utoipa::openapi::*;
-
-        // Register variant schemas in $defs
-        let fail = error_action_variant_schema(
-            "OnErrorFail",
-            "If the step fails, the flow will fail.",
-            None,
-        );
-        schemas.push(("OnErrorFail".to_string(), RefOr::T(fail)));
-
-        // defaultValue can be any JSON value (true in JSON Schema means "any")
-        let any_value_schema = Schema::AllOf(AllOfBuilder::new().build());
-        let use_default = error_action_variant_schema(
-            "OnErrorDefault",
-            "If the step fails, use the `defaultValue` instead.\n\
-             If `defaultValue` is not specified, the step returns null.\n\
-             The default value must be a literal JSON value (not an expression).\n\
-             For dynamic defaults, use `$coalesce` in the consuming expression instead.",
-            Some(("defaultValue", any_value_schema)),
-        );
-        schemas.push(("OnErrorDefault".to_string(), RefOr::T(use_default)));
-
-        let retry =
-            error_action_variant_schema("OnErrorRetry", "If the step fails, retry it.", None);
-        schemas.push(("OnErrorRetry".to_string(), RefOr::T(retry)));
-    }
 }
 
 impl ErrorAction {

@@ -27,7 +27,7 @@ use crate::{FlowResult, ValueExpr, schema::SchemaRef};
 /// reference or inside an `Arc`.
 #[serde_as]
 #[derive(
-    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, utoipa::ToSchema,
+    Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default, schemars::JsonSchema,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct Flow {
@@ -47,6 +47,7 @@ pub struct Flow {
     /// Contains input/output schemas, step output schemas, and shared `$defs`.
     #[serde(default, skip_serializing_if = "FlowSchema::is_empty")]
     #[serde_as(as = "DefaultOnNull")]
+    #[schemars(with = "FlowSchema")]
     pub schemas: FlowSchema,
 
     /// The steps to execute for the flow.
@@ -294,7 +295,7 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
 }
 
 /// Configuration for testing a workflow.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
     /// Path to an external stepflow config file for tests.
@@ -318,7 +319,7 @@ pub struct TestConfig {
 }
 
 /// A single test case for a workflow.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestCase {
     /// Unique identifier for the test case.
@@ -337,7 +338,7 @@ pub struct TestCase {
 }
 
 /// An example input for a workflow that can be used in UI dropdowns.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, utoipa::ToSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExampleInput {
     /// Name of the example input for display purposes.
@@ -527,7 +528,7 @@ mod tests {
         use crate::json_schema::generate_json_schema_with_defs;
         use std::env;
 
-        // Generate schema from Rust types using utoipa-based utility
+        // Generate schema from Rust types
         let generated_json = generate_json_schema_with_defs::<Flow>();
         let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
 
@@ -560,36 +561,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn test_utoipa_schema_generation() {
-        use crate::json_schema::generate_json_schema_with_defs;
-
-        // Generate schema using the utoipa-based utility
-        let generated = generate_json_schema_with_defs::<Flow>();
-        let generated_str = serde_json::to_string_pretty(&generated).unwrap();
-
-        // Print the schema for manual comparison during development
-        // This test is primarily for development/debugging - will be replaced
-        // by the actual schema comparison test once we verify the output
-        #[allow(clippy::print_stdout)]
-        if std::env::var("PRINT_SCHEMA").is_ok() {
-            println!("Generated Flow schema:\n{}", generated_str);
-        }
-
-        // Basic structural checks
-        assert!(generated.get("$schema").is_some(), "Missing $schema");
-        assert!(generated.get("title").is_some(), "Missing title");
-
-        // Should have $defs with referenced types
-        let defs = generated.get("$defs");
-        assert!(defs.is_some(), "Missing $defs");
-
-        // Verify no #/components/schemas references remain
-        assert!(
-            !generated_str.contains("#/components/schemas"),
-            "Found unconverted #/components/schemas reference"
-        );
     }
 }

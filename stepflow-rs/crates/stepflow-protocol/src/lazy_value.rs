@@ -10,35 +10,19 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
-
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Deserializer, Serialize};
-use stepflow_core::workflow::ValueRef;
-use utoipa::openapi::RefOr;
-use utoipa::{PartialSchema, ToSchema};
 
 pub trait ErasedSerializeDebug: erased_serde::Serialize + std::fmt::Debug {}
 impl<T: erased_serde::Serialize + std::fmt::Debug> ErasedSerializeDebug for T {}
 
-#[derive(Debug)]
+#[derive(Debug, schemars::JsonSchema)]
+#[schemars(with = "serde_json::Value")]
 pub enum LazyValue<'a> {
     /// A value that can be efficiently serialized.
     Write(&'a (dyn ErasedSerializeDebug + Send + Sync)),
     /// A raw value that has not yet been deserialized.
     Read(&'a serde_json::value::RawValue),
-}
-
-impl<'a> PartialSchema for LazyValue<'a> {
-    fn schema() -> RefOr<utoipa::openapi::schema::Schema> {
-        ValueRef::schema()
-    }
-}
-
-impl<'a> ToSchema for LazyValue<'a> {
-    fn name() -> Cow<'static, str> {
-        ValueRef::name()
-    }
 }
 
 impl<'a> Serialize for LazyValue<'a> {

@@ -23,14 +23,14 @@ use uuid::Uuid;
 /// conversion to `ErrorResponse`.
 ///
 /// Other `error_stack::Report` types will automatically convert to internal errors.
-#[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ErrorResponse {
     /// HTTP status code (e.g., 400, 404, 500)
     #[serde(
         serialize_with = "serialize_status_code",
         deserialize_with = "deserialize_status_code"
     )]
-    #[schema(value_type = u16)]
+    #[schemars(with = "u16")]
     pub code: StatusCode,
     /// Human-readable error message
     pub message: String,
@@ -91,6 +91,38 @@ where
     use serde::Deserialize as _;
     let code = u16::deserialize(d)?;
     StatusCode::from_u16(code).map_err(serde::de::Error::custom)
+}
+
+impl aide::OperationOutput for ErrorResponse {
+    type Inner = Self;
+
+    fn operation_response(
+        ctx: &mut aide::generate::GenContext,
+        _operation: &mut aide::openapi::Operation,
+    ) -> Option<aide::openapi::Response> {
+        let json_schema = ctx.schema.subschema_for::<Self>();
+        let resolved_schema = ctx.resolve_schema(&json_schema);
+
+        Some(aide::openapi::Response {
+            description: resolved_schema
+                .get("description")
+                .and_then(|d| d.as_str())
+                .map(String::from)
+                .unwrap_or_else(|| "Error response".into()),
+            content: indexmap::IndexMap::from_iter([(
+                "application/json".into(),
+                aide::openapi::MediaType {
+                    schema: Some(aide::openapi::SchemaObject {
+                        json_schema,
+                        example: None,
+                        external_docs: None,
+                    }),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        })
+    }
 }
 
 impl IntoResponse for ErrorResponse {

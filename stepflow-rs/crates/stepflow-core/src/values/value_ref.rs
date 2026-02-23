@@ -12,10 +12,7 @@
 
 use owning_ref::ArcRef;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 use std::sync::Arc;
-use utoipa::openapi::schema::Schema;
-use utoipa::openapi::{AllOfBuilder, RefOr};
 
 /// A literal value which may be passed to a component.
 ///
@@ -44,22 +41,15 @@ impl Default for ValueRef {
     }
 }
 
-impl utoipa::PartialSchema for ValueRef {
-    fn schema() -> RefOr<Schema> {
-        RefOr::T(utoipa::openapi::schema::Schema::AllOf(
-            AllOfBuilder::new()
-                .description(Some(
-                    "Any JSON value (object, array, string, number, boolean, or null)",
-                ))
-                .build(),
-        ))
+impl schemars::JsonSchema for ValueRef {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Value".into()
     }
-}
 
-impl utoipa::ToSchema for ValueRef {
-    fn name() -> Cow<'static, str> {
-        // Use "Value" as the semantic name (the "Ref" is an implementation detail)
-        Cow::Borrowed("Value")
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "Any JSON value (object, array, string, number, boolean, or null)"
+        })
     }
 }
 

@@ -57,6 +57,7 @@ class HealthApi:
     ) -> HealthResponse:
         """Check service health
 
+        Returns the current health status of the service. Use the `error` query parameter to trigger test error responses.
 
         :param error: Trigger an error for testing error response format
         :type error: str
@@ -92,9 +93,7 @@ class HealthApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "HealthResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -124,6 +123,7 @@ class HealthApi:
     ) -> ApiResponse[HealthResponse]:
         """Check service health
 
+        Returns the current health status of the service. Use the `error` query parameter to trigger test error responses.
 
         :param error: Trigger an error for testing error response format
         :type error: str
@@ -159,9 +159,7 @@ class HealthApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "HealthResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout
@@ -191,6 +189,7 @@ class HealthApi:
     ) -> RESTResponseType:
         """Check service health
 
+        Returns the current health status of the service. Use the `error` query parameter to trigger test error responses.
 
         :param error: Trigger an error for testing error response format
         :type error: str
@@ -226,9 +225,7 @@ class HealthApi:
 
         _response_types_map: dict[str, str | None] = {
             "200": "HealthResponse",
-            "400": None,
-            "404": None,
-            "500": None,
+            "400": "ErrorResponse",
         }
         response_data = await self.api_client.call_api(
             *_param, _request_timeout=_request_timeout

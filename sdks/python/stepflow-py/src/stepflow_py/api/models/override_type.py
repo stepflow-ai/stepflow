@@ -25,7 +25,7 @@ from typing import Self
 
 class OverrideType(str, Enum):
     """
-    The type of override operation to perform.
+    The type of override operation to perform.  Cases: * `merge_patch`: Apply a JSON Merge Patch (RFC 7396) to the step.  This is the default override type. The value should be a JSON object where null values indicate fields to remove and other values are merged into the target step. * `json_patch`: Apply a JSON Patch (RFC 6902) to the step. (Future extension)  The value should be an array of JSON Patch operations. This is reserved for future use.
     """
 
     """

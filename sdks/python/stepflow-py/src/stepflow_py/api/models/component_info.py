@@ -31,9 +31,7 @@ class ComponentInfo(BaseModel):
     ComponentInfo
     """  # noqa: E501
 
-    component: StrictStr = Field(
-        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf')."
-    )
+    component: StrictStr = Field(description="The component ID.")
     description: StrictStr | None = Field(
         default=None, description="Optional description of the component."
     )

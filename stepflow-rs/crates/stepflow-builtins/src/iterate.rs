@@ -40,7 +40,7 @@ impl Default for IterateComponent {
 }
 
 /// Input for the iterate component
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct IterateInput {
     /// The workflow to iterate. Must return either {"result": value} or {"next": value}
     flow: Flow,
@@ -58,7 +58,7 @@ fn default_max_iterations() -> u32 {
 }
 
 /// Output from the iterate component
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct IterateOutput {
     /// The final result value
     result: ValueRef,

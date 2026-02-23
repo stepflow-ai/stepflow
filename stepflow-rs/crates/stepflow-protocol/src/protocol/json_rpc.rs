@@ -10,33 +10,24 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::borrow::Cow;
-
 use serde::{Deserialize, Serialize};
-use utoipa::openapi::schema::{ObjectBuilder, SchemaType, Type};
-use utoipa::openapi::{RefOr, Schema};
-use utoipa::{PartialSchema, ToSchema};
 
 /// The JSON-RPC protocol version.
 #[derive(Debug, Default)]
 pub struct JsonRpc;
 
-impl PartialSchema for JsonRpc {
-    fn schema() -> RefOr<Schema> {
-        RefOr::T(Schema::Object(
-            ObjectBuilder::new()
-                .schema_type(SchemaType::Type(Type::String))
-                .description(Some("The version of the JSON-RPC protocol."))
-                .default(Some(serde_json::json!("2.0")))
-                .enum_values(Some(["2.0"]))
-                .build(),
-        ))
+impl schemars::JsonSchema for JsonRpc {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "JsonRpc".into()
     }
-}
 
-impl ToSchema for JsonRpc {
-    fn name() -> Cow<'static, str> {
-        Cow::Borrowed("JsonRpc")
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "description": "The version of the JSON-RPC protocol.",
+            "const": "2.0",
+            "default": "2.0"
+        })
     }
 }
 

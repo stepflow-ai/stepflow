@@ -11,7 +11,7 @@
 // the License.
 
 /// A single entry in an error stack for detailed error reporting
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ErrorStackEntry {
     /// The error message
     pub error: String,
@@ -24,7 +24,7 @@ pub struct ErrorStackEntry {
 }
 
 /// Error stack information for detailed system error debugging
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ErrorStack {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub stack: Vec<ErrorStackEntry>,

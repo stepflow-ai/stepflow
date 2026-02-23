@@ -23,6 +23,7 @@ from functools import wraps
 from typing import Any, assert_never
 
 import msgspec
+from msgspec import UnsetType
 
 from stepflow_py.worker.context import StepflowContext
 from stepflow_py.worker.exceptions import (
@@ -65,6 +66,11 @@ except ImportError:
     _HAS_LANGCHAIN = False
 
 logger = logging.getLogger(__name__)
+
+
+def _unset_as_none(value: Any) -> Any:
+    """Convert msgspec UNSET sentinel to None."""
+    return None if isinstance(value, UnsetType) else value
 
 
 @dataclass
@@ -367,8 +373,11 @@ class StepflowServer:
         """Handle the initialize method."""
         # Extract blob API URL and threshold from capabilities if provided
         if isinstance(request.params, InitializeParams):
-            if request.params.capabilities is not None:
-                blob_url = request.params.capabilities.blobApiUrl
+            caps = request.params.capabilities
+            if caps is not None and not isinstance(caps, UnsetType):
+                blob_url = (
+                    None if isinstance(caps.blobApiUrl, UnsetType) else caps.blobApiUrl
+                )
                 if blob_url is not None:
                     # Validate the URL has a valid scheme and netloc
                     from urllib.parse import urlparse
@@ -388,7 +397,10 @@ class StepflowServer:
                         )
 
                 # Extract blob threshold (only if blob API is reachable)
-                blob_threshold = request.params.capabilities.blobThreshold
+                raw_threshold = caps.blobThreshold
+                blob_threshold = (
+                    None if isinstance(raw_threshold, UnsetType) else raw_threshold
+                )
                 if (
                     blob_threshold is not None
                     and blob_threshold > 0
@@ -493,20 +505,28 @@ class StepflowServer:
                 set_diagnostic_context,
             )
 
+            # Normalize observability fields (UNSET -> None)
+            obs = params.observability
+            obs_flow_id: str | None = _unset_as_none(obs.flow_id)
+            obs_run_id: str | None = _unset_as_none(obs.run_id)
+            obs_step_id: str | None = _unset_as_none(obs.step_id)
+            obs_trace_id: str | None = _unset_as_none(obs.trace_id)
+            obs_span_id: str | None = _unset_as_none(obs.span_id)
+
             # Set diagnostic context for logging
             set_diagnostic_context(
-                flow_id=params.observability.flow_id,
-                run_id=params.observability.run_id,
-                step_id=params.observability.step_id,
+                flow_id=obs_flow_id,
+                run_id=obs_run_id,
+                step_id=obs_step_id,
             )
 
             # Set execution context for this component invocation
             from stepflow_py.worker import execution_context
 
             exec_token = execution_context.set_context(
-                run_id=params.observability.run_id,
-                step_id=params.observability.step_id,
-                flow_id=params.observability.flow_id,
+                run_id=obs_run_id,
+                step_id=obs_step_id,
+                flow_id=obs_flow_id,
                 attempt=params.attempt,
             )
 
@@ -516,10 +536,8 @@ class StepflowServer:
                 # Create a child span if trace context is available
                 tracer = get_tracer(__name__)
                 span_context = None
-                if params.observability.trace_id and params.observability.span_id:
-                    span_context = extract_trace_context(
-                        params.observability.trace_id, params.observability.span_id
-                    )
+                if obs_trace_id and obs_span_id:
+                    span_context = extract_trace_context(obs_trace_id, obs_span_id)
 
                 # Create OpenTelemetry context from span context
                 otel_context = None
@@ -535,21 +553,9 @@ class StepflowServer:
                     attributes={
                         "component": params.component,
                         "attempt": params.attempt,
-                        **(
-                            {"run_id": params.observability.run_id}
-                            if params.observability.run_id
-                            else {}
-                        ),
-                        **(
-                            {"flow_id": params.observability.flow_id}
-                            if params.observability.flow_id
-                            else {}
-                        ),
-                        **(
-                            {"step_id": params.observability.step_id}
-                            if params.observability.step_id
-                            else {}
-                        ),
+                        **({"run_id": obs_run_id} if obs_run_id else {}),
+                        **({"flow_id": obs_flow_id} if obs_flow_id else {}),
+                        **({"step_id": obs_step_id} if obs_step_id else {}),
                     },
                 ):
                     # Resolve blob refs in input before parsing

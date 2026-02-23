@@ -27,7 +27,7 @@ async fn test_override_args_parsing() {
     // Test JSON overrides parsing
     let args = OverrideArgs {
         overrides_json: Some(
-            r#"{"step1": {"value": {"input": {"temperature": 0.8}}}}"#.to_string(),
+            r#"{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}"#.to_string(),
         ),
         ..Default::default()
     };
@@ -37,7 +37,9 @@ async fn test_override_args_parsing() {
 
     // Test YAML overrides parsing
     let args = OverrideArgs {
-        overrides_yaml: Some("step1:\n  value:\n    input:\n      temperature: 0.8".to_string()),
+        overrides_yaml: Some(
+            "steps:\n  step1:\n    value:\n      input:\n        temperature: 0.8".to_string(),
+        ),
         ..Default::default()
     };
     let overrides = args.parse_overrides().unwrap();
@@ -76,7 +78,7 @@ async fn test_override_args_file_loading() {
     let json_file = temp_dir.path().join("overrides.json");
     fs::write(
         &json_file,
-        r#"{"step1": {"value": {"input": {"temperature": 0.8}}}}"#,
+        r#"{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}"#,
     )
     .unwrap();
 
@@ -92,7 +94,7 @@ async fn test_override_args_file_loading() {
     let yaml_file = temp_dir.path().join("overrides.yaml");
     fs::write(
         &yaml_file,
-        "step1:\n  value:\n    input:\n      temperature: 0.8",
+        "steps:\n  step1:\n    value:\n      input:\n        temperature: 0.8",
     )
     .unwrap();
 
@@ -125,25 +127,27 @@ fn test_override_args_conflicts() {
 async fn test_complex_override_structures() {
     // Test complex nested overrides
     let complex_json = json!({
-        "step1": {
-            "$type": "merge_patch",
-            "value": {
-                "input": {
-                    "temperature": 0.8,
-                    "max_tokens": 1000,
-                    "system_prompt": "You are a helpful assistant."
-                },
-                "component": "/builtin/openai",
-                "metadata": {
-                    "updated_by": "test",
-                    "version": "2.0"
+        "steps": {
+            "step1": {
+                "$type": "merge_patch",
+                "value": {
+                    "input": {
+                        "temperature": 0.8,
+                        "max_tokens": 1000,
+                        "system_prompt": "You are a helpful assistant."
+                    },
+                    "component": "/builtin/openai",
+                    "metadata": {
+                        "updated_by": "test",
+                        "version": "2.0"
+                    }
                 }
-            }
-        },
-        "step2": {
-            "value": {
-                "input": {
-                    "model": "gpt-4"
+            },
+            "step2": {
+                "value": {
+                    "input": {
+                        "model": "gpt-4"
+                    }
                 }
             }
         }

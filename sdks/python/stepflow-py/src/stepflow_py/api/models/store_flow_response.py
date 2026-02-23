@@ -34,7 +34,7 @@ class StoreFlowResponse(BaseModel):
     """  # noqa: E501
 
     flow_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+        description="The ID of the flow (computed from content hash, always present)",
         alias="flowId",
     )
     stored: StrictBool = Field(

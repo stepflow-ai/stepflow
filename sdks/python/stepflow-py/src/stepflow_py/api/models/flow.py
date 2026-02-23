@@ -55,9 +55,7 @@ class Flow(BaseModel):
         default=None,
         description="The outputs of the flow, mapping output names to their values.",
     )
-    test: TestConfig | None = Field(
-        default=None, description="Test configuration for the flow."
-    )
+    test: TestConfig | None = None
     examples: list[ExampleInput] | None = Field(
         default=None,
         description="Example inputs for the workflow that can be used for testing and UI dropdowns.",

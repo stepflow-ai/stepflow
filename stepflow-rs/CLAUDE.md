@@ -471,6 +471,27 @@ Use consistent derive patterns based on type purpose:
 
 **Note**: Avoid `Clone` on large structs like `Step` unless absolutely necessary. Use `Arc` references instead.
 
+### API Path Parameters (aide)
+
+For OpenAPI documentation, use typed structs for path parameters so aide
+auto-generates parameter names and descriptions from the JSON schema:
+
+```rust
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct RunPath {
+    /// Run ID (UUID)
+    pub run_id: Uuid,
+}
+
+pub async fn get_run(
+    Path(RunPath { run_id }): Path<RunPath>,
+) -> Result<Json<RunDetails>, ErrorResponse> { ... }
+```
+
+Doc comments on struct fields become OpenAPI parameter descriptions. The
+`Deserialize` derive is required for axum's path extraction at runtime;
+`JsonSchema` is required for aide's OpenAPI generation at build time.
+
 ## Project Dependencies
 
 - Keep dependencies minimal and well-documented

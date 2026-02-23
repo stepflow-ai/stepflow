@@ -30,7 +30,6 @@ from stepflow_py.api.models import (
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
-    PrimitiveValue,
     Step,
     StepRef,
     ValueExpr,
@@ -53,7 +52,7 @@ def _wrap_error_action(on_error: OnErrorType) -> ErrorAction | None:
     """Wrap an on_error value in an ErrorAction wrapper if needed.
 
     The generated Pydantic models use a oneOf pattern where the Step.on_error
-    field expects an ErrorAction wrapper around OnErrorFail, OnErrorDefault, etc.
+    field expects an ErrorAction wrapper around Fail, UseDefault, etc.
     """
     if on_error is None:
         return None
@@ -71,7 +70,6 @@ ValueExprInput = (
     | InputRef
     | VariableRef
     | LiteralExpr
-    | PrimitiveValue
     | dict[str, "ValueExprInput"]
     | list["ValueExprInput"]
     | str
@@ -103,10 +101,9 @@ def _wrap_value_expr(value: ValueExprInput) -> ValueExpr | None:
     if isinstance(value, list):
         wrapped_list = [_wrap_value_expr(item) for item in value]
         return ValueExpr(actual_instance=wrapped_list)
-    # For primitives, wrap in PrimitiveValue first, then ValueExpr
+    # For primitives, wrap in LiteralExpr then ValueExpr
     if isinstance(value, str | int | float | bool):
-        primitive = PrimitiveValue(actual_instance=value)
-        return ValueExpr(actual_instance=primitive)
+        return ValueExpr(actual_instance=LiteralExpr(literal=value))
     raise ValueError(f"Unsupported value type for wrapping: {type(value)}")
 
 
@@ -303,11 +300,9 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        on_error: OnErrorFail
-        | OnErrorDefault
-        | OnErrorRetry
-        | ErrorAction
-        | None = None,
+        on_error: (
+            OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None
+        ) = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:

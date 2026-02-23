@@ -22,8 +22,7 @@ use super::Flow;
 ///
 /// Overrides are keyed by step ID and contain merge patches or other transformation
 /// specifications to modify step properties before execution.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WorkflowOverrides {
     /// Map of step ID to override specification
     pub steps: HashMap<String, StepOverride>,
@@ -58,7 +57,7 @@ impl Default for WorkflowOverrides {
 ///
 /// Contains the override type (merge patch, json patch, etc.) and the value
 /// to apply. The type field uses `$type` to avoid collisions with step properties.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StepOverride {
     /// The type of override to apply. Defaults to "merge_patch" if not specified.
     #[serde(rename = "$type", default = "default_override_type")]
@@ -87,7 +86,7 @@ impl StepOverride {
 }
 
 /// The type of override operation to perform.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OverrideType {
     /// Apply a JSON Merge Patch (RFC 7396) to the step.

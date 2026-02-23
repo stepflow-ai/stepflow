@@ -1,0 +1,23 @@
+---
+source: crates/stepflow-core/src/discriminator_schema.rs
+expression: value
+---
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: NullableFields
+type: object
+properties:
+  requiredField:
+    type: string
+  optionalField:
+    type:
+      - string
+      - "null"
+  optionalComplex:
+    type:
+      - array
+      - "null"
+    items:
+      type: integer
+      format: int32
+required:
+  - requiredField

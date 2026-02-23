@@ -68,10 +68,7 @@ class RunDetails(BaseModel):
         description="Item details with inputs and step statuses. - `None`: details not requested, or run is active (query executor) - `Some`: item-level details available",
         alias="itemDetails",
     )
-    overrides: WorkflowOverrides | None = Field(
-        default=None,
-        description="Optional workflow overrides applied to this run (per-run, not per-item).",
-    )
+    overrides: WorkflowOverrides | None = None
     __properties: ClassVar[list[str]] = [
         "runId",
         "flowId",
@@ -137,6 +134,26 @@ class RunDetails(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of overrides
         if self.overrides:
             _dict["overrides"] = self.overrides.to_dict()
+        # set to None if flow_name (nullable) is None
+        # and model_fields_set contains the field
+        if self.flow_name is None and "flow_name" in self.model_fields_set:
+            _dict["flowName"] = None
+
+        # set to None if completed_at (nullable) is None
+        # and model_fields_set contains the field
+        if self.completed_at is None and "completed_at" in self.model_fields_set:
+            _dict["completedAt"] = None
+
+        # set to None if parent_run_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.parent_run_id is None and "parent_run_id" in self.model_fields_set:
+            _dict["parentRunId"] = None
+
+        # set to None if orchestrator_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.orchestrator_id is None and "orchestrator_id" in self.model_fields_set:
+            _dict["orchestratorId"] = None
+
         # set to None if item_details (nullable) is None
         # and model_fields_set contains the field
         if self.item_details is None and "item_details" in self.model_fields_set:

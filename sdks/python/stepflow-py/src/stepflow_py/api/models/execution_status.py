@@ -25,7 +25,7 @@ from typing import Self
 
 class ExecutionStatus(str, Enum):
     """
-    Status of a workflow execution
+    Status of a workflow execution  Cases: * `running`: Execution is currently running * `completed`: Execution completed successfully * `failed`: Execution failed with an error * `cancelled`: Execution was cancelled by user request * `paused`: Execution is paused (debug mode) * `recoveryFailed`: Execution failed during recovery after orchestrator restart
     """
 
     """

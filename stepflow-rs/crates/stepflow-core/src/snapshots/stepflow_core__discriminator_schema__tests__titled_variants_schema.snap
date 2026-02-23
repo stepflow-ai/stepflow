@@ -1,0 +1,35 @@
+---
+source: crates/stepflow-core/src/discriminator_schema.rs
+expression: value
+---
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: TitledVariantsEnum
+oneOf:
+  - title: Fail
+    type: object
+    properties:
+      action:
+        type: string
+        const: fail
+    required:
+      - action
+  - title: UseDefault
+    type: object
+    properties:
+      default_value: true
+      action:
+        type: string
+        const: useDefault
+    required:
+      - action
+      - default_value
+  - title: Retry
+    type: object
+    properties:
+      action:
+        type: string
+        const: retry
+    required:
+      - action
+discriminator:
+  propertyName: action

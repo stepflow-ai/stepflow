@@ -25,7 +25,7 @@ use uuid::Uuid;
 pub use stepflow_core::workflow::StepId;
 
 /// Status information for a single step execution.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepStatusInfo {
     /// Step name/identifier.
@@ -47,7 +47,7 @@ impl StepStatusInfo {
 /// Detailed information for a single item in a run.
 ///
 /// Includes the item's input, execution status, and step-level details.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemDetails {
     /// Index of this item in the input array (0-based).
@@ -65,7 +65,7 @@ pub struct ItemDetails {
 
 /// Statistics about items in a run.
 #[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ItemStatistics {
@@ -106,7 +106,7 @@ impl ItemStatistics {
 }
 
 /// Summary information about a flow run.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
     pub run_id: Uuid,
@@ -141,7 +141,7 @@ pub struct RunSummary {
 /// For completed runs, `item_details` contains per-item information including
 /// inputs and step statuses. For active runs, `item_details` may be `None`
 /// (query the owning orchestrator for live status).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunDetails {
     #[serde(flatten)]
@@ -183,7 +183,7 @@ pub struct RunFilters {
 pub use stepflow_core::ResultOrder;
 
 /// Result for an individual item in a multi-item run.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemResult {
     /// Index of this item in the input array (0-based).
@@ -201,7 +201,7 @@ pub struct ItemResult {
 /// Unified run status returned by submit_run and get_run.
 ///
 /// Contains status information and optionally item results.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatus {
     pub run_id: Uuid,

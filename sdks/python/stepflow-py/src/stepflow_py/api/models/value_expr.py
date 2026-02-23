@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import pprint
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -32,8 +32,8 @@ from pydantic import (
 )
 
 from stepflow_py.api.models.input_ref import InputRef
+from stepflow_py.api.models.literal import Literal
 from stepflow_py.api.models.literal_expr import LiteralExpr
-from stepflow_py.api.models.primitive_value import PrimitiveValue
 from stepflow_py.api.models.step_ref import StepRef
 
 VALUEEXPR_ONE_OF_SCHEMAS = [
@@ -41,9 +41,9 @@ VALUEEXPR_ONE_OF_SCHEMAS = [
     "Dict[str, ValueExpr]",
     "InputRef",
     "List[ValueExpr]",
+    "Literal",
     "LiteralExpr",
     "ModelIf",
-    "PrimitiveValue",
     "StepRef",
     "VariableRef",
 ]
@@ -51,7 +51,7 @@ VALUEEXPR_ONE_OF_SCHEMAS = [
 
 class ValueExpr(BaseModel):
     """
-    A value expression that can contain literal data or references to other values
+    ValueExpr
     """
 
     # data type: StepRef
@@ -68,22 +68,22 @@ class ValueExpr(BaseModel):
     oneof_schema_6_validator: Coalesce | None = None
     # data type: List[ValueExpr]
     oneof_schema_7_validator: list[ValueExpr] | None = Field(
-        default=None, description="Array of expressions"
+        default=None, description="Array with expressions as elements"
     )
     # data type: Dict[str, ValueExpr]
     oneof_schema_8_validator: dict[str, ValueExpr] | None = Field(
-        default=None, description="Object with expression values"
+        default=None, description="Object with expressions as values"
     )
-    # data type: PrimitiveValue
-    oneof_schema_9_validator: PrimitiveValue | None = None
+    # data type: Literal
+    oneof_schema_9_validator: Literal | None = None
     actual_instance: (
         Coalesce
         | dict[str, ValueExpr]
         | InputRef
         | list[ValueExpr]
+        | Literal
         | LiteralExpr
         | ModelIf
-        | PrimitiveValue
         | StepRef
         | VariableRef
         | None
@@ -93,9 +93,9 @@ class ValueExpr(BaseModel):
         "Dict[str, ValueExpr]",
         "InputRef",
         "List[ValueExpr]",
+        "Literal",
         "LiteralExpr",
         "ModelIf",
-        "PrimitiveValue",
         "StepRef",
         "VariableRef",
     }
@@ -171,23 +171,21 @@ class ValueExpr(BaseModel):
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # validate data type: PrimitiveValue
-        if not isinstance(v, PrimitiveValue):
-            error_messages.append(
-                f"Error! Input type `{type(v)}` is not `PrimitiveValue`"
-            )
+        # validate data type: Literal
+        if not isinstance(v, Literal):
+            error_messages.append(f"Error! Input type `{type(v)}` is not `Literal`")
         else:
             match += 1
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when setting `actual_instance` in ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], LiteralExpr, ModelIf, PrimitiveValue, StepRef, VariableRef. Details: "
+                "Multiple matches found when setting `actual_instance` in ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], Literal, LiteralExpr, ModelIf, StepRef, VariableRef. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when setting `actual_instance` in ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], LiteralExpr, ModelIf, PrimitiveValue, StepRef, VariableRef. Details: "
+                "No match found when setting `actual_instance` in ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], Literal, LiteralExpr, ModelIf, StepRef, VariableRef. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -258,9 +256,9 @@ class ValueExpr(BaseModel):
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into PrimitiveValue
+        # deserialize data into Literal
         try:
-            instance.actual_instance = PrimitiveValue.from_json(json_str)
+            instance.actual_instance = Literal.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
@@ -268,13 +266,13 @@ class ValueExpr(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when deserializing the JSON string into ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], LiteralExpr, ModelIf, PrimitiveValue, StepRef, VariableRef. Details: "
+                "Multiple matches found when deserializing the JSON string into ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], Literal, LiteralExpr, ModelIf, StepRef, VariableRef. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when deserializing the JSON string into ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], LiteralExpr, ModelIf, PrimitiveValue, StepRef, VariableRef. Details: "
+                "No match found when deserializing the JSON string into ValueExpr with oneOf schemas: Coalesce, Dict[str, ValueExpr], InputRef, List[ValueExpr], Literal, LiteralExpr, ModelIf, StepRef, VariableRef. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -300,9 +298,9 @@ class ValueExpr(BaseModel):
         | dict[str, ValueExpr]
         | InputRef
         | list[ValueExpr]
+        | Literal
         | LiteralExpr
         | ModelIf
-        | PrimitiveValue
         | StepRef
         | VariableRef
         | None

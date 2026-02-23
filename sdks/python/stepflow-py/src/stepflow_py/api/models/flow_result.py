@@ -38,7 +38,7 @@ FLOWRESULT_ONE_OF_SCHEMAS = ["FlowResultFailed", "FlowResultSuccess"]
 
 class FlowResult(BaseModel):
     """
-    The results of a step execution.
+    FlowResult
     """
 
     # data type: FlowResultSuccess

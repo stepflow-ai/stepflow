@@ -25,7 +25,7 @@ from typing import Self
 
 class BlobType(str, Enum):
     """
-    Type of blob stored in the blob store.
+    Type of blob stored in the blob store.  Cases: * `flow`: A workflow/flow definition * `data`: Generic data blob * `binary`: Raw binary data (base64-encoded in JSON transport)
     """
 
     """

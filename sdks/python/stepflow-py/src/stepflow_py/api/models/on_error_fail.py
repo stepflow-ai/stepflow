@@ -23,7 +23,7 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, StrictStr
+from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
 
 
 class OnErrorFail(BaseModel):
@@ -33,6 +33,13 @@ class OnErrorFail(BaseModel):
 
     action: StrictStr
     __properties: ClassVar[list[str]] = ["action"]
+
+    @field_validator("action")
+    def action_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(["fail"]):
+            raise ValueError("must be one of enum values ('fail')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -82,5 +89,7 @@ class OnErrorFail(BaseModel):
         if not isinstance(obj, dict):
             return cls.model_validate(obj)
 
-        _obj = cls.model_validate({"action": obj.get("action")})
+        _obj = cls.model_validate(
+            {"action": obj.get("action") if obj.get("action") is not None else "fail"}
+        )
         return _obj

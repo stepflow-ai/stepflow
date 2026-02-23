@@ -18,36 +18,21 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Annotated, Any, ClassVar, Dict, List, Literal
+from enum import StrEnum
+from typing import Annotated, Any, Literal, TypeAlias
 
-from msgspec import Meta, Struct, field
+from msgspec import UNSET, Meta, Struct, UnsetType, field
 
-JsonRpc = Annotated[
-    Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
-]
-
-
-RequestId = Annotated[
-    str | int,
+Component: TypeAlias = Annotated[
+    str,
     Meta(
-        description='The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.'
+        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
+        examples=['/builtin/eval', '/mcpfs/list_files', '/python/udf'],
     ),
 ]
 
 
-class Method(Enum):
-    initialize = 'initialize'
-    initialized = 'initialized'
-    components_list = 'components/list'
-    components_info = 'components/info'
-    components_execute = 'components/execute'
-    components_infer_schema = 'components/infer_schema'
-    runs_submit = 'runs/submit'
-    runs_get = 'runs/get'
-
-
-Value = Annotated[
+Value: TypeAlias = Annotated[
     Any,
     Meta(
         description='Any JSON value (object, array, string, number, boolean, or null)'
@@ -55,107 +40,10 @@ Value = Annotated[
 ]
 
 
-class MethodRequest(Struct, kw_only=True):
-    id: RequestId
-    method: Annotated[Method, Meta(description='The method being called.')]
-    jsonrpc: JsonRpc | None = '2.0'
-    params: Value | None = None
-
-
-class Error(Struct, kw_only=True):
-    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
-    message: Annotated[
-        str, Meta(description='Concise, single-sentence description of the error.')
-    ]
-    data: Value | None = None
-
-
-class MethodError(Struct, kw_only=True):
-    id: RequestId
-    error: Annotated[
-        Error, Meta(description='An error that occurred during method execution.')
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-class MethodSuccess(Struct, kw_only=True):
-    id: RequestId
-    result: Annotated[
-        Value, Meta(description='The result of a successful method execution.')
-    ]
-    jsonrpc: JsonRpc | None = '2.0'
-
-
-class Notification(Struct, kw_only=True):
-    method: Annotated[Any, Meta(description='The notification method being called.')]
-    jsonrpc: (
-        Annotated[
-            Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
-        ]
-        | None
-    ) = '2.0'
-    params: (
-        Annotated[Any, Meta(description='The parameters for the notification.')] | None
-    ) = None
-
-
-class RuntimeCapabilities(Struct, kw_only=True):
-    blobApiUrl: (
-        Annotated[
-            str | None,
-            Meta(
-                description='Base URL for the Blob HTTP API.\n\nWhen provided, component servers should use direct HTTP requests\n(`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations\ninstead of SSE bidirectional protocol.'
-            ),
-        ]
-        | None
-    ) = None
-    blobThreshold: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Byte size threshold for automatic blobification.\n\nWhen set to a non-zero value, the orchestrator may replace large input fields\nwith `$blob` references. Component servers that report `supports_blob_refs`\nshould resolve these references before processing. Component servers should\nalso blobify output fields exceeding this threshold.\n\nA value of 0 or `None` means automatic blobification is disabled.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-BlobId = Annotated[
+BlobId: TypeAlias = Annotated[
     str,
     Meta(
         description='A SHA-256 hash of the blob content, represented as a hexadecimal string.'
-    ),
-]
-
-
-class InitializeResult(Struct, kw_only=True):
-    serverProtocolVersion: Annotated[
-        int,
-        Meta(
-            description='Version of the protocol being used by the component server.',
-            ge=0,
-        ),
-    ]
-    supportsBlobRefs: (
-        Annotated[
-            bool,
-            Meta(
-                description='Whether this component server supports `$blob` references in inputs/outputs.\n\nWhen `true`, the orchestrator may send `$blob` references in component inputs\nand expects the server to resolve them. The server may also return `$blob`\nreferences in outputs for the orchestrator to resolve.\n\nWhen `false` (default), the orchestrator will not send blob refs and will\nresolve any refs before delivering input to this server.'
-            ),
-        ]
-        | None
-    ) = None
-
-
-class Initialized(Struct, kw_only=True):
-    pass
-
-
-Component = Annotated[
-    str,
-    Meta(
-        description="Identifies a specific plugin and atomic functionality to execute. Use component name for builtins (e.g., 'eval') or path format for plugins (e.g., '/python/udf').",
-        examples=['/builtin/eval', '/mcpfs/list_files', '/python/udf'],
     ),
 ]
 
@@ -191,15 +79,23 @@ class ComponentInferSchemaParams(Struct, kw_only=True):
 
 
 class ComponentInferSchemaResult(Struct, kw_only=True):
-    output_schema: Schema | None = None
+    output_schema: (
+        Annotated[
+            Schema | None,
+            Meta(
+                description='The inferred output schema, or None if the component cannot determine it.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
 
 
-class OverrideType(Enum):
+class OverrideType(StrEnum):
     merge_patch = 'merge_patch'
     json_patch = 'json_patch'
 
 
-class ResultOrder(Enum):
+class ResultOrder(StrEnum):
     by_index = 'by_index'
     by_completion = 'by_completion'
 
@@ -214,7 +110,7 @@ class ItemStatistics(Struct, kw_only=True):
     cancelled: Annotated[int, Meta(description='Number of cancelled items.', ge=0)]
 
 
-class ExecutionStatus(Enum):
+class ExecutionStatus(StrEnum):
     running = 'running'
     completed = 'completed'
     failed = 'failed'
@@ -223,45 +119,115 @@ class ExecutionStatus(Enum):
     recoveryFailed = 'recoveryFailed'
 
 
-class FlowError(Struct, kw_only=True):
-    code: int
-    message: str
-    data: Value | None = None
-
-
 class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
-    outcome: ClassVar[Annotated[Literal['success'], Meta(title='FlowOutcome')]]
     result: Value
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    outcome: ClassVar[Annotated[Literal['failed'], Meta(title='FlowOutcome')]]
-    error: FlowError
+class FlowError(Struct, kw_only=True):
+    code: int
+    message: str
+    data: Value | None | UnsetType = UNSET
 
 
-Message1 = Annotated[
-    MethodRequest | MethodSuccess | MethodError | Notification,
+class RuntimeCapabilities(Struct, kw_only=True):
+    blobApiUrl: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Base URL for the Blob HTTP API.\n\nWhen provided, component servers should use direct HTTP requests\n(`GET {blob_api_url}/{blob_id}`, `POST {blob_api_url}`) for blob operations\ninstead of SSE bidirectional protocol.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    blobThreshold: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Byte size threshold for automatic blobification.\n\nWhen set to a non-zero value, the orchestrator may replace large input fields\nwith `$blob` references. Component servers that report `supports_blob_refs`\nshould resolve these references before processing. Component servers should\nalso blobify output fields exceeding this threshold.\n\nA value of 0 or `None` means automatic blobification is disabled.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class InitializeResult(Struct, kw_only=True):
+    serverProtocolVersion: Annotated[
+        int,
+        Meta(
+            description='Version of the protocol being used by the component server.',
+            ge=0,
+        ),
+    ]
+    supportsBlobRefs: (
+        Annotated[
+            bool,
+            Meta(
+                description='Whether this component server supports `$blob` references in inputs/outputs.\n\nWhen `true`, the orchestrator may send `$blob` references in component inputs\nand expects the server to resolve them. The server may also return `$blob`\nreferences in outputs for the orchestrator to resolve.\n\nWhen `false` (default), the orchestrator will not send blob refs and will\nresolve any refs before delivering input to this server.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class Initialized(Struct, kw_only=True):
+    pass
+
+
+JsonRpc: TypeAlias = Annotated[
+    Literal['2.0'], Meta(description='The version of the JSON-RPC protocol.')
+]
+
+
+RequestId: TypeAlias = Annotated[
+    str | int,
     Meta(
-        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.'
+        description='The identifier for a JSON-RPC request. Can be either a string or an integer.\nThe RequestId is used to match method responses to corresponding requests.\nIt should not be set on notifications.'
     ),
 ]
 
 
-Message = Annotated[
-    MethodRequest | MethodSuccess | MethodError | Notification,
-    Meta(
-        description='The messages supported by the Stepflow protocol. These correspond to JSON-RPC 2.0 messages.',
-        title='Message',
-    ),
-]
+class Method(StrEnum):
+    initialize = 'initialize'
+    initialized = 'initialized'
+    components_list = 'components/list'
+    components_info = 'components/info'
+    components_execute = 'components/execute'
+    components_infer_schema = 'components/infer_schema'
+    runs_submit = 'runs/submit'
+    runs_get = 'runs/get'
 
 
-MethodResponse = Annotated[
-    MethodSuccess | MethodError,
-    Meta(
-        description="Response to a method request. This is an untagged union - success responses have a 'result' field while error responses have an 'error' field."
-    ),
-]
+class MethodSuccess(Struct, kw_only=True):
+    id: RequestId
+    result: Annotated[
+        Any, Meta(description='The result of a successful method execution.')
+    ]
+    jsonrpc: JsonRpc | UnsetType = '2.0'
+
+
+class Error(Struct, kw_only=True):
+    code: Annotated[int, Meta(description='A numeric code indicating the error type.')]
+    message: Annotated[
+        str, Meta(description='Concise, single-sentence description of the error.')
+    ]
+    data: (
+        Annotated[
+            Any,
+            Meta(
+                description='Primitive or structured value that contains additional information about the error.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class Notification(Struct, kw_only=True):
+    method: Annotated[str, Meta(description='The notification method being called.')]
+    jsonrpc: JsonRpc | UnsetType = '2.0'
+    params: (
+        Annotated[Any, Meta(description='The parameters for the notification.')]
+        | UnsetType
+    ) = UNSET
 
 
 class ObservabilityContext(Struct, kw_only=True):
@@ -272,8 +238,8 @@ class ObservabilityContext(Struct, kw_only=True):
                 description='OpenTelemetry trace ID (128-bit, hex encoded).\n\nPresent when tracing is enabled, None otherwise.\nUsed to correlate all operations within a single trace.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     span_id: (
         Annotated[
             str | None,
@@ -281,8 +247,8 @@ class ObservabilityContext(Struct, kw_only=True):
                 description='OpenTelemetry span ID (64-bit, hex encoded).\n\nUsed to establish parent-child span relationships.\nComponent servers should use this as the parent span when creating their spans.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
     run_id: (
         Annotated[
             str | None,
@@ -290,9 +256,17 @@ class ObservabilityContext(Struct, kw_only=True):
                 description='The ID of the workflow run.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and associating operations with specific workflow runs.'
             ),
         ]
-        | None
-    ) = None
-    flow_id: BlobId | None = None
+        | UnsetType
+    ) = UNSET
+    flow_id: (
+        Annotated[
+            BlobId | None,
+            Meta(
+                description='The ID of the flow being executed.\n\nPresent for workflow execution requests, None for initialization/discovery.\nUsed for filtering logs and understanding which workflow is being executed.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
     step_id: (
         Annotated[
             str | None,
@@ -300,8 +274,103 @@ class ObservabilityContext(Struct, kw_only=True):
                 description='The ID of the step being executed.\n\nPresent for step-level execution, None for workflow-level operations.\nUsed for filtering logs and associating operations with specific workflow steps.'
             ),
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
+
+
+class ComponentInfo(Struct, kw_only=True):
+    component: Annotated[Component, Meta(description='The component ID.')]
+    description: (
+        Annotated[
+            str | None, Meta(description='Optional description of the component.')
+        ]
+        | UnsetType
+    ) = UNSET
+    input_schema: (
+        Annotated[
+            Schema | None,
+            Meta(
+                description='The input schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    output_schema: (
+        Annotated[
+            Schema | None,
+            Meta(
+                description='The output schema for the component.\n\nCan be any valid JSON schema (object, primitive, array, etc.).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class ListComponentsResult(Struct, kw_only=True):
+    components: Annotated[
+        list[ComponentInfo], Meta(description='A list of all available components.')
+    ]
+
+
+class StepOverride(Struct, kw_only=True):
+    value: Annotated[
+        Any,
+        Meta(
+            description='The override value to apply, interpreted based on the override type.'
+        ),
+    ]
+    field_type: (
+        Annotated[
+            OverrideType,
+            Meta(
+                description='The type of override to apply. Defaults to "merge_patch" if not specified.'
+            ),
+        ]
+        | UnsetType
+    ) = field(name='$type', default='merge_patch')
+
+
+class GetRunProtocolParams(Struct, kw_only=True):
+    runId: Annotated[str, Meta(description='The run ID to query.')]
+    wait: (
+        Annotated[
+            bool, Meta(description='If true, wait for run completion before returning.')
+        ]
+        | UnsetType
+    ) = False
+    includeResults: (
+        Annotated[
+            bool, Meta(description='If true, include item results in the response.')
+        ]
+        | UnsetType
+    ) = False
+    resultOrder: (
+        Annotated[
+            ResultOrder, Meta(description='Order of results (byIndex or byCompletion).')
+        ]
+        | UnsetType
+    ) = 'by_index'
+    timeoutSecs: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
+                ge=0,
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing.'),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    error: FlowError
 
 
 class InitializeParams(Struct, kw_only=True):
@@ -312,8 +381,45 @@ class InitializeParams(Struct, kw_only=True):
             ge=0,
         ),
     ]
-    observability: ObservabilityContext | None = None
-    capabilities: RuntimeCapabilities | None = None
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(
+                description='Observability context for tracing initialization (trace context only, no flow/run).'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    capabilities: (
+        Annotated[
+            RuntimeCapabilities | None,
+            Meta(description='Runtime capabilities provided to the component server.'),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class MethodRequest(Struct, kw_only=True):
+    id: RequestId
+    method: Annotated[Method, Meta(description='The method being called.')]
+    jsonrpc: JsonRpc | UnsetType = '2.0'
+    params: (
+        Annotated[
+            Any,
+            Meta(
+                description='The parameters for the method call. Set on method requests.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class MethodError(Struct, kw_only=True):
+    id: RequestId
+    error: Annotated[
+        Error, Meta(description='An error that occurred during method execution.')
+    ]
+    jsonrpc: JsonRpc | UnsetType = '2.0'
 
 
 class ComponentExecuteParams(Struct, kw_only=True):
@@ -332,90 +438,35 @@ class ComponentExecuteParams(Struct, kw_only=True):
     ]
 
 
-class ComponentInfo(Struct, kw_only=True):
-    component: Annotated[Component, Meta(description='The component ID.')]
-    description: (
-        Annotated[
-            str | None, Meta(description='Optional description of the component.')
-        ]
-        | None
-    ) = None
-    input_schema: Schema | None = None
-    output_schema: Schema | None = None
-
-
 class ComponentInfoResult(Struct, kw_only=True):
     info: Annotated[ComponentInfo, Meta(description='Information about the component.')]
 
 
-class ListComponentsResult(Struct, kw_only=True):
-    components: Annotated[
-        List[ComponentInfo], Meta(description='A list of all available components.')
+class WorkflowOverrides(Struct, kw_only=True):
+    steps: Annotated[
+        dict[str, StepOverride],
+        Meta(description='Map of step ID to override specification'),
     ]
 
 
-class StepOverride(Struct, kw_only=True):
-    value: Annotated[
-        Any,
-        Meta(
-            description='The override value to apply, interpreted based on the override type.'
-        ),
-    ]
-    field_type: (
-        Annotated[
-            OverrideType,
-            Meta(
-                description='The type of override to apply. Defaults to "merge_patch" if not specified.'
-            ),
-        ]
-        | None
-    ) = field(name='$type', default=None)
+FlowResult: TypeAlias = FlowResultSuccess | FlowResultFailed
 
 
-class GetRunProtocolParams(Struct, kw_only=True):
-    runId: Annotated[str, Meta(description='The run ID to query.')]
-    wait: (
-        Annotated[
-            bool, Meta(description='If true, wait for run completion before returning.')
-        ]
-        | None
-    ) = None
-    includeResults: (
-        Annotated[
-            bool, Meta(description='If true, include item results in the response.')
-        ]
-        | None
-    ) = None
-    resultOrder: (
-        Annotated[
-            ResultOrder, Meta(description='Order of results (byIndex or byCompletion).')
-        ]
-        | None
-    ) = None
-    timeoutSecs: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
-                ge=0,
-            ),
-        ]
-        | None
-    ) = None
-    observability: ObservabilityContext | None = None
-
-
-FlowResult = Annotated[
-    FlowResultSuccess | FlowResultFailed,
-    Meta(description='The results of a step execution.', title='FlowResult'),
+MethodResponse: TypeAlias = Annotated[
+    MethodSuccess | MethodError,
+    Meta(
+        description="Response to a method request. Success responses have a 'result' field while error responses have an 'error' field."
+    ),
 ]
 
 
-class WorkflowOverrides(Struct, kw_only=True):
-    steps: Annotated[
-        Dict[str, StepOverride],
-        Meta(description='Map of step ID to override specification'),
-    ]
+Message: TypeAlias = Annotated[
+    MethodRequest | MethodResponse | Notification,
+    Meta(
+        description='The messages supported by the Stepflow protocol (JSON-RPC 2.0).',
+        title='Message',
+    ),
+]
 
 
 class SubmitRunProtocolParams(Struct, kw_only=True):
@@ -423,22 +474,28 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
         BlobId, Meta(description='The ID of the flow to execute (blob ID).')
     ]
     inputs: Annotated[
-        List[Value], Meta(description='Input values for each item in the run.')
+        list[Value], Meta(description='Input values for each item in the run.')
     ]
     wait: (
         Annotated[
             bool, Meta(description='If true, wait for completion before returning.')
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = False
     maxConcurrency: (
         Annotated[
             int | None,
             Meta(description='Maximum number of concurrent executions.', ge=0),
         ]
-        | None
-    ) = None
-    overrides: WorkflowOverrides | None = None
+        | UnsetType
+    ) = UNSET
+    overrides: (
+        Annotated[
+            WorkflowOverrides | None,
+            Meta(description='Optional workflow overrides to apply.'),
+        ]
+        | UnsetType
+    ) = UNSET
     timeoutSecs: (
         Annotated[
             int | None,
@@ -447,9 +504,15 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
                 ge=0,
             ),
         ]
-        | None
-    ) = None
-    observability: ObservabilityContext | None = None
+        | UnsetType
+    ) = UNSET
+    observability: (
+        Annotated[
+            ObservabilityContext | None,
+            Meta(description='Observability context for tracing.'),
+        ]
+        | UnsetType
+    ) = UNSET
 
 
 class ItemResult(Struct, kw_only=True):
@@ -459,13 +522,18 @@ class ItemResult(Struct, kw_only=True):
     status: Annotated[
         ExecutionStatus, Meta(description='Execution status of this item.')
     ]
-    result: FlowResult | None = None
+    result: (
+        Annotated[
+            FlowResult | None, Meta(description='Result of this item, if completed.')
+        ]
+        | UnsetType
+    ) = UNSET
     completedAt: (
         Annotated[
             str | None, Meta(description='When this item completed (if completed).')
         ]
-        | None
-    ) = None
+        | UnsetType
+    ) = UNSET
 
 
 class RunStatusProtocol(Struct, kw_only=True):
@@ -474,6 +542,6 @@ class RunStatusProtocol(Struct, kw_only=True):
     status: str
     items: ItemStatistics
     createdAt: str
-    flowName: str | None = None
-    completedAt: str | None = None
-    results: List[ItemResult] | None = None
+    flowName: str | None | UnsetType = UNSET
+    completedAt: str | None | UnsetType = UNSET
+    results: list[ItemResult] | UnsetType = UNSET

@@ -31,7 +31,7 @@ pub struct OverrideArgs {
     /// Workflow overrides as a JSON string.
     ///
     /// Specify overrides inline as JSON. Example:
-    /// `--overrides-json '{"step1": {"value": {"input": {"temperature": 0.8}}}}'`
+    /// `--overrides-json '{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}'`
     #[arg(long = "overrides-json", value_name = "JSON",
           conflicts_with_all = ["overrides_file", "overrides_yaml"])]
     pub overrides_json: Option<String>,
@@ -39,7 +39,7 @@ pub struct OverrideArgs {
     /// Workflow overrides as a YAML string.
     ///
     /// Specify overrides inline as YAML. Example:
-    /// `--overrides-yaml 'step1: {value: {input: {temperature: 0.8}}}'`
+    /// `--overrides-yaml 'steps: {step1: {value: {input: {temperature: 0.8}}}}'`
     #[arg(long = "overrides-yaml", value_name = "YAML",
           conflicts_with_all = ["overrides_file", "overrides_json"])]
     pub overrides_yaml: Option<String>,
@@ -161,7 +161,7 @@ mod tests {
     fn test_parse_overrides_json_string() {
         let args = OverrideArgs {
             overrides_json: Some(
-                r#"{"step1": {"value": {"input": {"temperature": 0.8}}}}"#.to_string(),
+                r#"{"steps": {"step1": {"value": {"input": {"temperature": 0.8}}}}}"#.to_string(),
             ),
             ..Default::default()
         };
@@ -174,7 +174,7 @@ mod tests {
     fn test_parse_overrides_yaml_string() {
         let args = OverrideArgs {
             overrides_yaml: Some(
-                "step1:\n  value:\n    input:\n      temperature: 0.8".to_string(),
+                "steps:\n  step1:\n    value:\n      input:\n        temperature: 0.8".to_string(),
             ),
             ..Default::default()
         };

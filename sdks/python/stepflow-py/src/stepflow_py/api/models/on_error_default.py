@@ -23,7 +23,7 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 
 class OnErrorDefault(BaseModel):
@@ -31,9 +31,16 @@ class OnErrorDefault(BaseModel):
     If the step fails, use the `defaultValue` instead. If `defaultValue` is not specified, the step returns null. The default value must be a literal JSON value (not an expression). For dynamic defaults, use `$coalesce` in the consuming expression instead.
     """  # noqa: E501
 
-    action: StrictStr
     default_value: Any | None = Field(default=None, alias="defaultValue")
-    __properties: ClassVar[list[str]] = ["action", "defaultValue"]
+    action: StrictStr
+    __properties: ClassVar[list[str]] = ["defaultValue", "action"]
+
+    @field_validator("action")
+    def action_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(["useDefault"]):
+            raise ValueError("must be one of enum values ('useDefault')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -89,6 +96,11 @@ class OnErrorDefault(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"action": obj.get("action"), "defaultValue": obj.get("defaultValue")}
+            {
+                "defaultValue": obj.get("defaultValue"),
+                "action": obj.get("action")
+                if obj.get("action") is not None
+                else "useDefault",
+            }
         )
         return _obj
