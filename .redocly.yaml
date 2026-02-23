@@ -1,0 +1,11 @@
+# Redocly CLI configuration for OpenAPI schema validation.
+#
+# Known suppressions:
+# - security-defined: No authentication scheme yet (all operations trigger this)
+# - no-server-example.com: Default server is localhost which is correct for local dev
+extends:
+  - recommended
+
+rules:
+  security-defined: off
+  no-server-example.com: off
