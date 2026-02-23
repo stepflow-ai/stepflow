@@ -48,8 +48,7 @@ jobs:
       - name: Install git-cliff
         uses: kenji-miyake/setup-git-cliff@v1
 
-      - name: Install uv (for Python packages)
-        if: inputs.package == 'stepflow-py' || inputs.package == 'stepflow-langflow'
+      - name: Install uv
         uses: astral-sh/setup-uv@v3
 
       - name: Configure git
