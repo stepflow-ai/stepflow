@@ -57,7 +57,6 @@ impl AddDiscriminator {
     fn find_ref(variant: &Value) -> Option<&str> {
         variant.get("$ref").and_then(|r| r.as_str())
     }
-
 }
 
 impl schemars::transform::Transform for AddDiscriminator {

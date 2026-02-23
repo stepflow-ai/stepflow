@@ -88,7 +88,8 @@ pub fn store_blob_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
         .response_with::<400, ErrorResponse, _>(|res| res.description("Invalid request body"));
 
     // Manually set request body to document both content types
-    let json_schema = aide::generate::in_context(|ctx| ctx.schema.subschema_for::<StoreBlobRequest>());
+    let json_schema =
+        aide::generate::in_context(|ctx| ctx.schema.subschema_for::<StoreBlobRequest>());
     op.inner_mut().request_body = Some(aide::openapi::ReferenceOr::Item(
         aide::openapi::RequestBody {
             description: Some("Blob data to store".into()),

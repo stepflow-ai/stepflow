@@ -247,7 +247,9 @@ fn merge_tag_properties(existing: &mut Value, variant: &Value) {
             .as_object_mut()
             .unwrap();
         for (key, value) in variant_props {
-            def_props.entry(key.clone()).or_insert_with(|| value.clone());
+            def_props
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
         }
     }
 
@@ -305,10 +307,7 @@ fn build_discriminator_mappings_recursive(
 
                         for variant in one_of {
                             // Resolve $ref to the definition entry
-                            if let Some(ref_path) = variant
-                                .get("$ref")
-                                .and_then(|r| r.as_str())
-                            {
+                            if let Some(ref_path) = variant.get("$ref").and_then(|r| r.as_str()) {
                                 if let Some(def_key) = ref_path.strip_prefix(ref_prefix) {
                                     if let Some(def_schema) = defs.get(def_key) {
                                         // Read the const value for the discriminator property
@@ -450,7 +449,6 @@ fn transform_refs_external(value: &mut Value, base_url: &str) {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,5 +512,4 @@ mod tests {
             })
         );
     }
-
 }
