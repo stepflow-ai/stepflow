@@ -376,6 +376,16 @@ impl FlowExecutor {
         })
         .await?;
 
+        // Journal: Record the parent→subflow association for recovery deduplication.
+        self.write_journal(JournalEvent::SubflowSubmitted {
+            parent_run_id,
+            item_index: request.item_index,
+            step_index: request.step_index,
+            subflow_key: request.subflow_key,
+            subflow_run_id: run_id,
+        })
+        .await?;
+
         // Create the run record in the state store so results can be retrieved later.
         let mut run_params = CreateRunParams::new_subflow(
             run_id,
