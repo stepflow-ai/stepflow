@@ -67,6 +67,7 @@ run_category "python" "check-python.sh" || true
 run_category "docs" "check-docs.sh" || true
 run_category "licenses" "check-licenses.sh" || true
 run_category "langflow" "check-langflow.sh" || true
+run_category "openapi" "check-openapi.sh" || true
 run_category "integration" "test-integration.sh" || true
 
 # =============================================================================
@@ -101,6 +102,9 @@ else
                 ;;
             "langflow")
                 echo "  ./scripts/check-langflow.sh -v"
+                ;;
+            "openapi")
+                echo "  ./scripts/check-openapi.sh -v"
                 ;;
             "integration")
                 echo "  ./scripts/test-integration.sh -v"

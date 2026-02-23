@@ -50,6 +50,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       langflow: ${{ steps.filter.outputs.langflow }}
       recovery: ${{ steps.filter.outputs.recovery }}
+      openapi: ${{ steps.filter.outputs.openapi }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -72,6 +73,8 @@ jobs:
               - 'sdks/python/**'
             recovery:
               - 'tests/recovery/**'
+            openapi:
+              - 'schemas/openapi.json'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
@@ -116,6 +119,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/docs-checks
+
+  # OpenAPI schema validation
+  openapi-checks:
+    name: OpenAPI Schema Checks
+    needs: changes
+    if: needs.changes.outputs.openapi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/openapi-checks
 
   # Langflow integration checks
   langflow-checks:
@@ -202,7 +215,7 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, langflow-checks, licensure, integration-checks, recovery-tests]
+    needs: [changes, rust-checks, python-checks, docs-checks, openapi-checks, langflow-checks, licensure, integration-checks, recovery-tests]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -219,6 +232,10 @@ jobs:
           fi
           if [[ "${{ needs.docs-checks.result }}" == "failure" || "${{ needs.docs-checks.result }}" == "cancelled" ]]; then
             echo "::error::Documentation checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.openapi-checks.result }}" == "failure" || "${{ needs.openapi-checks.result }}" == "cancelled" ]]; then
+            echo "::error::OpenAPI schema checks failed"
             exit 1
           fi
           if [[ "${{ needs.langflow-checks.result }}" == "failure" || "${{ needs.langflow-checks.result }}" == "cancelled" ]]; then
@@ -249,6 +266,10 @@ jobs:
           fi
           if [[ "${{ needs.changes.outputs.docs }}" == "true" && "${{ needs.docs-checks.result }}" == "skipped" ]]; then
             echo "::error::Documentation changes detected but docs-checks was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.openapi }}" == "true" && "${{ needs.openapi-checks.result }}" == "skipped" ]]; then
+            echo "::error::OpenAPI changes detected but openapi-checks was skipped"
             exit 1
           fi
           if [[ "${{ needs.changes.outputs.langflow }}" == "true" && "${{ needs.langflow-checks.result }}" == "skipped" ]]; then
