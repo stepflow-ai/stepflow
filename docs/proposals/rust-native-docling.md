@@ -9,10 +9,12 @@
 
 This proposal describes two complementary strategies for scaling document processing in Stepflow:
 
-1. **Rust-native migration** — incrementally replacing the Python-based Docling integration with Rust over three phases, from HTTP proxy to native ONNX inference
-2. **Pipeline disaggregation** — decomposing docling's monolithic pipeline into independently scalable Stepflow stages using a new `MapComponent` for parallel fan-out/fan-in
+1. **Rust-native migration** — incrementally replacing the Python-based Docling integration with Rust, starting with a reusable Component Server SDK (Phase 0), then progressing from HTTP proxy through native chunking to ONNX inference
+2. **Pipeline disaggregation** — decomposing docling's monolithic pipeline into independently scalable Stepflow stages using the existing `MapComponent` for per-page fan-out of expensive model inference
 
 Each phase delivers standalone value while structurally enabling the next. The entire approach works **without forking or modifying any docling project code**.
+
+**Prerequisite:** The `docling-step-worker` proposal (see `docling-step-worker.md`) establishes the flow abstraction and validates output parity using the Python SDK with no changes required to any Docling code. This proposal builds the Rust infrastructure and native components that progressively replace what's behind that flow contract.
 
 **Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar (~31s/paper avg, monolithic sequential pipeline)  
 **End state:** Disaggregated Stepflow flow with per-stage parallelism, Rust-native processing for the common path, and docling-serve fallback for complex formats. A single 50-page document that today takes ~37s can be parallelized across layout workers to ~4s + assembly overhead.
@@ -59,15 +61,15 @@ From the Docling technical report, per-component timing on CPU:
 | OCR - EasyOCR | 13s / page | Only scanned pages |
 | PDF backend (docling-parse) | ~100ms / page | Every page |
 
-For born-digital PDFs without tables, processing is ~733ms/page. Our 31s/paper average includes table-heavy arxiv papers. Enterprise DOCX/PDF without complex tables would be significantly faster.
+Tables seem to be the biggest performance issue for PDF documents. For PDFs without tables, processing is ~733ms/page. Our 31s/paper average includes table-heavy arxiv papers. Enterprise DOCX/PDF without complex tables would be significantly faster.
 
 ### Key Discovery: Models Already in ONNX Format
 
-The layout analysis model — the most frequently invoked ML component — **already runs on ONNX Runtime** in docling's own pipeline. From the Docling technical report:
+The layout analysis model which the most frequently invoked ML component, **already runs on ONNX Runtime** in docling's own pipeline. From the Docling technical report:
 
 > *"For inference, our implementation relies on the onnxruntime. The Docling pipeline feeds page images at 72 dpi resolution, which can be processed on a single CPU with sub-second latency."*
 
-TableFormer uses PyTorch natively, but community ONNX exports exist on HuggingFace. This means a Rust-native inference path does not require model conversion work — only loading existing ONNX weights via the `ort` crate.
+TableFormer uses PyTorch natively, but community ONNX exports exist on HuggingFace. This means a Rust-native inference path does not require model conversion work as it only loads existing ONNX weights via the `ort` crate.
 
 ### DoclingDocument Schema
 
@@ -81,9 +83,23 @@ This schema enables generating Rust types via `serde` without any Python depende
 
 ## Design
 
-### Core Abstraction: `DocumentProcessor` Trait
+### Core Abstraction: Rust Component Server SDK
 
-The central design decision is a trait that enables incremental migration. Phase 1 implements only the proxy variant; subsequent phases substitute native implementations behind the same interface.
+A key architectural goal is to have processing logic run on distributed worker pods with a `DocumentProcessor` trait. To lay the groundwork for this, the first part of this proposal is a **Rust Component Server SDK**. This SDK will be a reusable library for building component servers that speak the Stepflow JSON-RPC protocol. This SDK is not docling-specific. Any Rust service that wants to register Stepflow components will benefit from its integration. The docling integration is the first consumer, but the SDK enables componentizing any processing workload, such as embedding generation, format conversion, validation pipelines, etc.
+
+**SDK responsibilities:**
+- JSON-RPC server implementing the Stepflow component protocol
+- Component registration and dispatch
+- Health check endpoint
+- Blob store client for reading/writing intermediate data
+- Configuration and graceful shutdown
+- OpenTelemetry / fastrace integration for per-component spans
+
+This SDK will be built on patterns already established in `stepflow-server` and `stepflow-protocol` crates, extracted into a single, reusable library. 
+
+### DocumentProcessor Trait
+
+Within a docling component server built on the SDK, a `DocumentProcessor` trait enables incremental migration between backends:
 
 ```rust
 #[async_trait]
@@ -110,7 +126,7 @@ pub trait DocumentProcessor: Send + Sync {
 }
 ```
 
-Phase 1 provides `ProxyProcessor` (HTTP → docling-serve). Phase 2 adds `NativeChunker`. Phase 3 adds `OnnxProcessor`. A `HybridProcessor` composes these, routing each operation to the best available backend:
+Phase 1 provides `ProxyProcessor` (HTTP → docling-serve). Phase 2 adds `NativeChunker` as a separate component server. Phase 3 adds `OnnxProcessor`. A `HybridProcessor` composes these, routing each operation to the best available backend:
 
 ```rust
 pub struct HybridProcessor {
@@ -119,6 +135,8 @@ pub struct HybridProcessor {
     onnx: Option<OnnxProcessor>,
 }
 ```
+
+Critically, all of these run as distributed component servers on worker pods — the orchestrator only routes work to them via the flow definition.
 
 ### Crate Structure
 
@@ -174,17 +192,70 @@ routes:
 
 ## Phased Implementation
 
+### Phase 0: Rust Component Server SDK
+
+**Goal:** Extract and publish a reusable Rust SDK for building Stepflow component servers. Any service that implements Stepflow components, not just docling, can uses this SDK.
+
+**Scope:**
+- Extract JSON-RPC server scaffolding from `stepflow-server` into a `stepflow-component-sdk` crate
+- Component registration API: `#[component]` attribute macro or builder pattern for registering handlers
+- Blob store client for reading/writing intermediate data between steps
+- Health check and readiness endpoints
+- OpenTelemetry / fastrace span propagation per component invocation
+- Configuration via environment variables (server address, blob store URL, TLS)
+- Graceful shutdown with in-flight request draining
+
+**Crate structure:**
+
+```
+stepflow-rs/crates/stepflow-component-sdk/
+├── Cargo.toml
+└── src/
+    ├── lib.rs           # Public API
+    ├── server.rs        # JSON-RPC server + component dispatch
+    ├── component.rs     # Component trait + registration
+    ├── blob.rs          # Blob store client
+    ├── config.rs        # Environment-based configuration
+    └── health.rs        # Health/readiness checks
+```
+
+**Usage pattern (what a component server author writes):**
+
+```rust
+use stepflow_component_sdk::{ComponentServer, component, Context, Result};
+
+#[component(name = "/my-service/process")]
+async fn process(ctx: &Context, input: ProcessInput) -> Result<ProcessOutput> {
+    let data = ctx.blob_store().get(&input.source).await?;
+    // ... processing logic ...
+    Ok(ProcessOutput { result })
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    ComponentServer::new()
+        .register(process)
+        .serve("0.0.0.0:8080")
+        .await
+}
+```
+
+This is the foundation that all subsequent phases build on. Phase 1 becomes: use the SDK to build a docling-specific component server, rather than building both the SDK and the docling integration simultaneously.
+
+**Why this is Phase 0, not part of Phase 1:** The SDK is reusable infrastructure with value beyond docling. Separating it ensures the API is designed for general use, not coupled to docling's specific needs. It also unblocks other teams or integrations that want to build Rust component servers in parallel. We are doing it as part of this Docling effort as it provides a concrete use case for us to ensure proper functionality. 
+
 ### Phase 1: Rust Component Server (HTTP Proxy)
 
-**Goal:** Replace the Python `StepflowDoclingServer` + `DoclingServeClient` with a Rust binary that implements the Stepflow JSON-RPC protocol and proxies requests to docling-serve.
+**Goal:** Replace the Python `StepflowDoclingServer` + `DoclingServeClient` with a Rust binary that proxies requests to docling-serve, built on the Phase 0 SDK.
 
 **Scope:**
 - Implement `ProxyProcessor` using `reqwest` to call docling-serve's v1 API
 - Port input normalization logic (URL, base64, bytes, nested Langflow format)
 - Port output formatting for Langflow compatibility
-- Register all 8 component names (4 primary + 4 lfx aliases)
-- Build on `stepflow-server` crate patterns for the JSON-RPC server side
+- Register all 8 component names (4 primary + 4 lfx aliases) via the component SDK
 - Docker multi-stage build producing a minimal container image
+
+**Dependency:** Phase 0 (Rust Component Server SDK)
 
 **Projected operational impact:**
 
@@ -228,7 +299,7 @@ docling-serve (convert) → DoclingDocument JSON → Rust deserialize → Native
 
 **Tokenizer:** HuggingFace `tokenizers` Rust crate. This is the *native* Rust implementation — the Python `tokenizers` library wraps it. Aligns with docling's own HybridChunker which supports HuggingFace tokenizers.
 
-**Optional: PyO3 bridge.** If Python consumers should also benefit from the Rust chunker, we can expose it via PyO3 as a `stepflow_chunking` Python module. This is an enhancement, not a requirement. The primary path is pure Rust consuming DoclingDocument JSON.
+The Rust chunker will be deployed as its own component server using the Phase 0 SDK. It registers a `/chunking/hybrid` component (or equivalent), accepts `DoclingDocument` JSON from blob storage, and returns chunks. No PyO3 or Python interop needed — it's a standalone Rust service that other flows can reference by component name.
 
 **Expected performance (chunking only):**
 
@@ -237,11 +308,11 @@ docling-serve (convert) → DoclingDocument JSON → Rust deserialize → Native
 | Single document | ~50-200ms | ~2-10ms |
 | 100 docs concurrent | GIL-bound, sequential | Truly parallel |
 
-This won't dramatically change per-paper wall clock time (chunking is a fraction of the 31s), but matters at scale in RAG pipelines processing thousands of documents.
+This won't dramatically change per-paper wall clock time (chunking is a fraction of the 31s), but matters at scale in RAG pipelines processing thousands of documents as it is now a parallelisable task.
 
 ### Phase 3: ONNX-Based Native Inference
 
-**Goal:** Replace docling-serve's ML inference with Rust-native ONNX Runtime for the most common processing path (born-digital PDF → structured text), retaining docling-serve as fallback.
+**Goal:** Replace docling-serve's ML inference with Rust-native ONNX Runtime for the most common processing path (born-digital PDF to structured text), retaining docling-serve as fallback.
 
 **Scope — the "80% path" (born-digital PDFs):**
 
@@ -298,6 +369,8 @@ async fn convert(&self, sources, options) -> Result<ConversionResult> {
 Phases 1-3 progressively replace the Python worker and selectively move processing into Rust, but they preserve docling's fundamental architecture: a **monolithic, single-document, sequential pipeline**. Each worker pod runs the complete stack — layout analysis, TableFormer, OCR, assembly — for one document at a time. Scaling means replicating whole pipelines, so every pod carries the full memory footprint even when most documents never need OCR and only 28% of pages contain tables.
 
 Stepflow can do something fundamentally different: **disaggregate the pipeline into independently scalable stages with data-driven routing.** This transforms the cost model from `N pods × full_memory` to `N_layout × layout_memory + N_table × table_memory + N_ocr × ocr_memory`, and unlocks document-internal parallelism that docling's architecture cannot achieve.
+
+**Where the time goes and where fan-out helps:** Docling's pipeline runs in order: PDF parsing → per-page layout analysis → per-page table extraction → document assembly → chunking. Chunking happens *after* conversion and assembly — it operates on the fully assembled `DoclingDocument`, not on raw pages. This means fan-out after chunking offers no benefit. The win is fanning out *during* conversion: layout analysis (633ms/page) and table extraction (1.74s/table) are per-page operations with no cross-page dependencies. These are the expensive model inference stages, and they're embarrassingly parallel. Per-page inference fan-out is the primary goal of disaggregation.
 
 ### Existing Primitive: MapComponent (Parallel Fan-Out/Fan-In)
 
@@ -390,13 +463,14 @@ OCR is the most expensive operation (13s/page) and is only needed for scanned do
 
 The `force_ocr` option overrides this detection. Routing is expressed in the flow definition, not in code.
 
-### Relationship to Phases 1-3
+### Relationship to Phases 0-3
 
 The disaggregated pipeline builds on top of the phased work, not instead of it:
 
-- **Phase 1** (Rust proxy) provides the component server skeleton and docling-serve integration
-- **Phase 2** (native chunking) becomes the final stage in the disaggregated flow
-- **Phase 3** (ONNX inference) provides the native layout analysis and TableFormer components that replace docling-serve calls within the fan-out sub-flows
+- **Phase 0** (Rust Component Server SDK) provides the reusable infrastructure that every subsequent component server is built on
+- **Phase 1** (Rust proxy) is the first component server using the SDK, providing docling-serve integration
+- **Phase 2** (native chunking) is a standalone component server using the SDK, becoming the final stage in the disaggregated flow
+- **Phase 3** (ONNX inference) provides native layout analysis and TableFormer component servers that replace docling-serve calls within the fan-out sub-flows
 - **MapComponent** already exists; remaining work is wiring `max_concurrency` through the executor and validating nested fan-out
 - **Pipeline flow definition** can be authored once `max_concurrency` is wired + Phase 1 is complete, initially using docling-serve for all processing stages, then progressively replacing stages with native implementations as Phases 2 and 3 deliver
 
@@ -466,30 +540,11 @@ The fallback pattern eliminates the need for feature parity. Anything we can't h
 | DOCX/PPTX parsing | No | Fallback to docling-serve |
 | OCR pipeline | No | Fallback to docling-serve |
 
-## Python ↔ Rust Interop (Phase 2, Optional)
+## Chunking as a Component Server
 
-If we want Python consumers to use the Rust chunker, [PyO3](https://pyo3.rs) compiles Rust code to a Python extension module. No HTTP, no subprocess — Python calls Rust directly:
+Rather than bridging Rust chunking into Python via PyO3, the Rust chunker is deployed as its own component server using the Phase 0 SDK. This is cleaner: Python consumers call it the same way they call any Stepflow component (via the flow definition), and the chunker scales independently as a worker pool.
 
-```rust
-use pyo3::prelude::*;
-
-#[pyclass]
-struct HybridChunker { max_tokens: usize }
-
-#[pymethods]
-impl HybridChunker {
-    #[new]
-    fn new(max_tokens: usize) -> Self { Self { max_tokens } }
-
-    fn chunk(&self, document_json: &str) -> PyResult<Vec<Chunk>> {
-        let doc: DoclingDocument = serde_json::from_str(document_json)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
-        Ok(self.chunk_internal(&doc))
-    }
-}
-```
-
-**Data transfer recommendation:** JSON serialization across the boundary. ~1-5ms overhead for a typical document, maximum decoupling, easy to evolve independently. [maturin](https://www.maturin.rs/) handles cross-compilation and wheel packaging.
+Docling's Python `HybridChunker` likely already wraps native tokenization code underneath, so the performance win from a Rust reimplementation comes primarily from GIL-free concurrency when chunking many documents in parallel — not from single-document speedup. The component server model provides this concurrency naturally via multiple worker pods, without requiring any Python-Rust interop complexity.
 
 ## Migration Strategy
 
@@ -528,11 +583,12 @@ This could simplify Phase 3 further: instead of orchestrating three separate ONN
 
 | Work Item | Estimate | Dependencies |
 |-----------|----------|-------------|
-| Phase 1: Rust component server | 2-3 weeks | None |
-| MapComponent: wire max_concurrency + nested validation | 2-3 days | None (parallel with Phase 1) |
-| Phase 2: Native chunking | 2 weeks | Phase 1 |
+| Phase 0: Rust Component Server SDK | 1-2 weeks | None |
+| Phase 1: Rust component server (docling proxy) | 1-2 weeks | Phase 0 |
+| MapComponent: wire max_concurrency + nested validation | 2-3 days | None (parallel with Phase 0/1) |
+| Phase 2: Native chunking component server | 2 weeks | Phase 0 |
 | Pipeline flow definition (docling-serve backed) | 1 week | Phase 1 + MapComponent concurrency |
-| Phase 3: ONNX layout analysis | 3-4 weeks | Phase 1 |
+| Phase 3: ONNX layout analysis | 3-4 weeks | Phase 0 |
 | Phase 3: ONNX TableFormer | 2-3 weeks | Phase 3 layout |
 | Disaggregated native stages | 1-2 weeks | Phase 3 + pipeline flow |
 
