@@ -87,6 +87,11 @@ pub struct FlowExecutor {
     /// Receiver for sub-flow submission requests.
     /// Processed in the execution loop alongside task completions.
     submit_receiver: SubflowReceiver,
+    /// Recovered subflow mappings from journal replay.
+    /// Maps (parent_run_id, item_index, step_index, subflow_key) → subflow_run_id.
+    /// When a parent step re-executes after recovery and submits the "same" subflow,
+    /// the dedup check in `handle_submit_request` returns the existing run_id.
+    recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
 }
 
 impl FlowExecutor {
@@ -103,6 +108,7 @@ impl FlowExecutor {
         metadata_store: Arc<dyn MetadataStore>,
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
+        recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
     ) -> Self {
         let journal = env.execution_journal().clone();
         Self {
@@ -115,6 +121,7 @@ impl FlowExecutor {
             journal,
             submit_sender,
             submit_receiver,
+            recovered_subflows,
         }
     }
 
@@ -335,6 +342,28 @@ impl FlowExecutor {
         let run_id = request.run_id;
         let parent_run_id = request.parent_run_id;
         let input_count = request.inputs.len();
+
+        // Check for recovered subflow: if a pre-crash subflow matches this
+        // (parent_run_id, item_index, step_index, subflow_key), return its run_id.
+        // The parent step's wait_for_completion will pick up the existing subflow.
+        let lookup_key = (
+            parent_run_id,
+            request.item_index,
+            request.step_index,
+            request.subflow_key,
+        );
+        if let Some(recovered_run_id) = self.recovered_subflows.remove(&lookup_key) {
+            log::info!(
+                "Matched recovered subflow: key=({}, {}, {}, {}) -> run_id={}",
+                parent_run_id,
+                request.item_index,
+                request.step_index,
+                request.subflow_key,
+                recovered_run_id
+            );
+            let _ = request.response_tx.send(recovered_run_id);
+            return Ok(());
+        }
 
         // Check for idempotent retry: if run already exists, just acknowledge
         if self.runs.contains_key(&run_id) {
@@ -1687,10 +1716,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
 
@@ -1746,10 +1775,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: main_run_id,
-            run_id: Uuid::now_v7(),
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: Uuid::now_v7(),
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -1899,10 +1928,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -1978,10 +2007,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2069,10 +2098,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2148,10 +2177,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2213,10 +2242,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: root_run_id,
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx,
         };
         items_executor.handle_submit_request(request).await.unwrap();
@@ -2280,10 +2309,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id,
             response_tx: response_tx1,
         };
         items_executor
@@ -2303,10 +2332,10 @@ mod tests {
             overrides: None,
             max_concurrency: None,
             parent_run_id: items_executor.root_run_id(),
-            run_id: subflow_run_id, // Same run_id!
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
+            run_id: subflow_run_id, // Same run_id!
             response_tx: response_tx2,
         };
         items_executor
