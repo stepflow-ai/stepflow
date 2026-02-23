@@ -1,5 +1,6 @@
 schema: https://stepflow.org/schemas/v1/flow.json
 name: subflow_delay
+description: Subflow recovery test workflow
 schemas:
   type: object
   properties:
@@ -12,12 +13,15 @@ schemas:
       type: object
 
 # This workflow tests subflow recovery. It:
-# 1. Stores an inner flow definition as a blob (put_blob)
+# 1. Stores an inner flow definition as a blob (put_blob with $literal)
 # 2. Evaluates the inner flow via /builtin/eval (subflow with 8s delay)
 # 3. Runs a final step that uses the subflow result (3s delay)
 #
 # Total expected time: ~11s (8s inner + 3s final, sequential)
 # Kill window: while inner_delay is running (~0-8s mark)
+#
+# Note: The inner flow is wrapped in $literal to prevent the outer flow
+# validator from interpreting its $step/$input references.
 
 steps:
 - id: store_subflow
@@ -25,17 +29,18 @@ steps:
   input:
     blob_type: flow
     data:
-      name: inner_flow
-      steps:
-      - id: inner_delay
-        component: /test/delay
-        input:
-          seconds: 8
-          step_label: "inner_delay"
-          payload:
-            $input: ""
-      output:
-        $step: inner_delay
+      $literal:
+        name: inner_flow
+        steps:
+        - id: inner_delay
+          component: /test/delay
+          input:
+            seconds: 8
+            step_label: "inner_delay"
+            payload:
+              $input: ""
+        output:
+          $step: inner_delay
 
 - id: run_subflow
   component: /builtin/eval
