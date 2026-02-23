@@ -34,7 +34,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::ValueRef;
@@ -314,6 +314,15 @@ impl JournalEvent {
 /// After `write` returns, the event is guaranteed to survive process crashes
 /// or restarts.
 pub trait ExecutionJournal: Send + Sync {
+    /// Initialize the journal backend (e.g., create tables, set up schema).
+    ///
+    /// Called by the configuration layer after the journal is created and before
+    /// it is used. The default implementation is a no-op, suitable for backends
+    /// that require no initialization (e.g., in-memory or no-op journals).
+    fn initialize_journal(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async { Ok(()) }.boxed()
+    }
+
     /// Write a journal event durably.
     ///
     /// The event is persisted to the journal for the given `root_run_id`.

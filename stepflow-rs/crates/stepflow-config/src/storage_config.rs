@@ -207,41 +207,57 @@ impl StorageConfig {
     ///
     /// When multiple stores have identical configurations, they share a single
     /// backend instance (smart deduplication based on full config equality).
+    /// Each store's `initialize_*` method is called to set up only the tables
+    /// needed for its role.
     pub async fn create_stores(&self) -> Result<Stores> {
         let (metadata_config, blobs_config, journal_config) = self.get_configs();
 
-        // Cache for deduplication: configs with the same values share one instance
+        // Deduplicate: create each unique config only once
         let mut cache: HashMap<StoreConfig, ConcreteStore> = HashMap::new();
-
-        // Helper to get or create a store for a given config
-        async fn get_or_create(
-            cache: &mut HashMap<StoreConfig, ConcreteStore>,
-            config: StoreConfig,
-        ) -> Result<ConcreteStore> {
-            if let Some(existing) = cache.get(&config) {
-                return Ok(existing.clone());
+        for config in [&metadata_config, &blobs_config, &journal_config] {
+            if !cache.contains_key(config) {
+                let store = create_concrete(config).await?;
+                cache.insert(config.clone(), store);
             }
-            let store = create_concrete(&config).await?;
-            cache.insert(config, store.clone());
-            Ok(store)
         }
 
-        // Create stores, reusing instances when configs match
-        let metadata_concrete = get_or_create(&mut cache, metadata_config).await?;
-        let blobs_concrete = get_or_create(&mut cache, blobs_config).await?;
-        let journal_concrete = get_or_create(&mut cache, journal_config).await?;
+        // Look up the concrete stores for each role
+        let metadata_concrete = cache[&metadata_config].clone();
+        let blobs_concrete = cache[&blobs_config].clone();
+        let journal_concrete = cache[&journal_config].clone();
 
         // Convert to trait objects, validating each store supports the required trait
+        let metadata_store = metadata_concrete
+            .as_metadata()
+            .attach_printable("metadata store configuration")?;
+        let blob_store = blobs_concrete
+            .as_blob()
+            .attach_printable("blob store configuration")?;
+        let execution_journal = journal_concrete
+            .as_journal()
+            .attach_printable("journal configuration")?;
+
+        // Initialize each store (creates only the tables needed for its role)
+        metadata_store
+            .initialize_metadata_store()
+            .await
+            .change_context(ConfigError::Configuration)
+            .attach_printable("failed to initialize metadata store")?;
+        blob_store
+            .initialize_blob_store()
+            .await
+            .change_context(ConfigError::Configuration)
+            .attach_printable("failed to initialize blob store")?;
+        execution_journal
+            .initialize_journal()
+            .await
+            .change_context(ConfigError::Configuration)
+            .attach_printable("failed to initialize execution journal")?;
+
         Ok(Stores {
-            metadata_store: metadata_concrete
-                .as_metadata()
-                .attach_printable("metadata store configuration")?,
-            blob_store: blobs_concrete
-                .as_blob()
-                .attach_printable("blob store configuration")?,
-            execution_journal: journal_concrete
-                .as_journal()
-                .attach_printable("journal configuration")?,
+            metadata_store,
+            blob_store,
+            execution_journal,
         })
     }
 }

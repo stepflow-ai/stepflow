@@ -25,7 +25,7 @@
 
 use std::collections::HashSet;
 
-use futures::future::BoxFuture;
+use futures::future::{BoxFuture, FutureExt as _};
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
 use uuid::Uuid;
@@ -45,6 +45,15 @@ use super::state_store::CreateRunParams;
 /// Step-level execution details are handled by [`ExecutionJournal`](crate::ExecutionJournal) and
 /// recovered via journal replay during recovery.
 pub trait MetadataStore: Send + Sync {
+    /// Initialize the metadata store backend (e.g., create tables, set up schema).
+    ///
+    /// Called by the configuration layer after the store is created and before
+    /// it is used. The default implementation is a no-op, suitable for backends
+    /// that require no initialization (e.g., in-memory stores).
+    fn initialize_metadata_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async { Ok(()) }.boxed()
+    }
+
     // =========================================================================
     // Run Management
     // =========================================================================
