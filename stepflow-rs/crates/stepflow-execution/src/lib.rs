@@ -65,5 +65,5 @@ pub use step_runner::{StepMetadata, StepRunResult};
 // Recovery
 pub use recovery::{RecoveryResult, recover_orphaned_runs};
 
-// Checkpointing (re-export from stepflow-plugin for convenience)
-pub use stepflow_plugin::CheckpointInterval;
+// Configuration (re-export from stepflow-plugin for convenience)
+pub use stepflow_plugin::ExecutionConfig;

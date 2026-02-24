@@ -57,12 +57,17 @@ impl BlobApiUrl {
     }
 }
 
-/// Checkpoint interval configuration stored in the environment.
+/// Execution configuration stored in the environment.
 ///
-/// Value of 0 means checkpointing is disabled (default). When non-zero,
-/// the executor creates a checkpoint every N journal entries.
-#[derive(Debug, Clone, Copy)]
-pub struct CheckpointInterval(pub usize);
+/// Consolidates runtime execution options that affect the executor.
+#[derive(Debug, Clone)]
+pub struct ExecutionConfig {
+    /// Number of journal entries between checkpoints.
+    ///
+    /// When non-zero, the executor creates a checkpoint every N journal entries.
+    /// Set to 0 to disable. Default: 0 (builder), 1000 (config file).
+    pub checkpoint_interval: usize,
+}
 
 /// Builder for constructing a StepflowEnvironment.
 ///
@@ -279,10 +284,10 @@ impl StepflowEnvironmentBuilder {
         // Store blob API configuration for workers
         env.insert(BlobApiUrl::new(self.blob_api_url, self.blob_threshold));
 
-        // Store checkpoint interval configuration (0 = disabled)
-        if self.checkpoint_interval > 0 {
-            env.insert(CheckpointInterval(self.checkpoint_interval));
-        }
+        // Store execution configuration
+        env.insert(ExecutionConfig {
+            checkpoint_interval: self.checkpoint_interval,
+        });
 
         // Store orchestrator ID if set (distributed mode)
         if let Some(id) = self.orchestrator_id {

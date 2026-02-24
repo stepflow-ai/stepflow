@@ -776,141 +776,14 @@ mod tests {
     }
 
     // =========================================================================
-    // CheckpointStore Tests
+    // CheckpointStore Compliance Tests
     // =========================================================================
 
     #[tokio::test]
-    async fn test_checkpoint_put_and_get() {
-        use crate::CheckpointStore;
+    async fn in_memory_checkpoint_compliance() {
+        use crate::checkpoint_compliance::CheckpointComplianceTests;
 
-        let store = InMemoryStateStore::new();
-        let run_id = uuid::Uuid::now_v7();
-        let sequence = crate::SequenceNumber::new(5);
-        let data = bytes::Bytes::from_static(b"checkpoint-data");
-
-        // Initially no checkpoint
-        let result = store.get_latest_checkpoint(run_id).await.unwrap();
-        assert!(result.is_none());
-
-        // Put a checkpoint
-        store
-            .put_checkpoint(run_id, sequence, data.clone())
-            .await
-            .unwrap();
-
-        // Get the checkpoint
-        let stored = store
-            .get_latest_checkpoint(run_id)
-            .await
-            .unwrap()
-            .expect("checkpoint should exist");
-        assert_eq!(stored.sequence, sequence);
-        assert_eq!(stored.data, data);
-    }
-
-    #[tokio::test]
-    async fn test_checkpoint_put_replaces_previous() {
-        use crate::CheckpointStore;
-
-        let store = InMemoryStateStore::new();
-        let run_id = uuid::Uuid::now_v7();
-
-        // Put first checkpoint
-        store
-            .put_checkpoint(
-                run_id,
-                crate::SequenceNumber::new(5),
-                bytes::Bytes::from_static(b"first"),
-            )
-            .await
-            .unwrap();
-
-        // Put second checkpoint (replaces first)
-        store
-            .put_checkpoint(
-                run_id,
-                crate::SequenceNumber::new(10),
-                bytes::Bytes::from_static(b"second"),
-            )
-            .await
-            .unwrap();
-
-        // Should get the second checkpoint
-        let stored = store
-            .get_latest_checkpoint(run_id)
-            .await
-            .unwrap()
-            .expect("checkpoint should exist");
-        assert_eq!(stored.sequence, crate::SequenceNumber::new(10));
-        assert_eq!(stored.data, bytes::Bytes::from_static(b"second"));
-    }
-
-    #[tokio::test]
-    async fn test_checkpoint_different_runs_independent() {
-        use crate::CheckpointStore;
-
-        let store = InMemoryStateStore::new();
-        let run1 = uuid::Uuid::now_v7();
-        let run2 = uuid::Uuid::now_v7();
-
-        store
-            .put_checkpoint(
-                run1,
-                crate::SequenceNumber::new(3),
-                bytes::Bytes::from_static(b"run1-data"),
-            )
-            .await
-            .unwrap();
-        store
-            .put_checkpoint(
-                run2,
-                crate::SequenceNumber::new(7),
-                bytes::Bytes::from_static(b"run2-data"),
-            )
-            .await
-            .unwrap();
-
-        let cp1 = store
-            .get_latest_checkpoint(run1)
-            .await
-            .unwrap()
-            .expect("run1 checkpoint");
-        let cp2 = store
-            .get_latest_checkpoint(run2)
-            .await
-            .unwrap()
-            .expect("run2 checkpoint");
-
-        assert_eq!(cp1.sequence, crate::SequenceNumber::new(3));
-        assert_eq!(cp1.data, bytes::Bytes::from_static(b"run1-data"));
-        assert_eq!(cp2.sequence, crate::SequenceNumber::new(7));
-        assert_eq!(cp2.data, bytes::Bytes::from_static(b"run2-data"));
-    }
-
-    #[tokio::test]
-    async fn test_checkpoint_delete() {
-        use crate::CheckpointStore;
-
-        let store = InMemoryStateStore::new();
-        let run_id = uuid::Uuid::now_v7();
-
-        // Put a checkpoint
-        store
-            .put_checkpoint(
-                run_id,
-                crate::SequenceNumber::new(5),
-                bytes::Bytes::from_static(b"data"),
-            )
-            .await
-            .unwrap();
-        assert!(store.get_latest_checkpoint(run_id).await.unwrap().is_some());
-
-        // Delete it
-        store.delete_checkpoints(run_id).await.unwrap();
-        assert!(store.get_latest_checkpoint(run_id).await.unwrap().is_none());
-
-        // Deleting again is a no-op
-        store.delete_checkpoints(run_id).await.unwrap();
+        CheckpointComplianceTests::run_all_isolated(|| async { InMemoryStateStore::new() }).await;
     }
 
     #[tokio::test]

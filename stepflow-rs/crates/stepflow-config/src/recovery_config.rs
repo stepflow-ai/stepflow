@@ -30,8 +30,8 @@ pub const RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK: usize = 10;
 /// If an orchestrator stops heartbeating, the lease expires after this duration.
 pub const RECOVERY_DEFAULT_LEASE_TTL_SECS: u64 = 30;
 
-/// Default: checkpointing is disabled (0 means no checkpoints).
-pub const RECOVERY_DEFAULT_CHECKPOINT_INTERVAL: usize = 0;
+/// Default: checkpoint every 1000 journal entries.
+pub const RECOVERY_DEFAULT_CHECKPOINT_INTERVAL: usize = 1000;
 
 /// Configuration for run recovery and orphan claiming.
 ///
@@ -74,9 +74,9 @@ pub struct RecoveryConfig {
 
     /// Number of journal entries between checkpoints.
     ///
-    /// When non-zero, the executor periodically serializes execution state so
-    /// that recovery only needs to replay events after the checkpoint instead of
-    /// from the beginning. Set to 0 to disable (default).
+    /// The executor periodically serializes execution state so that recovery
+    /// only needs to replay events after the checkpoint instead of from the
+    /// beginning. Set to 0 to disable. Default: 1000.
     pub checkpoint_interval: usize,
 }
 

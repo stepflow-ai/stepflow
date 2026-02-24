@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use stepflow_plugin::{CheckpointInterval, StepflowEnvironment, subflow_channel};
+use stepflow_plugin::{ExecutionConfig, StepflowEnvironment, subflow_channel};
 use stepflow_state::{CheckpointStoreExt as _, CreateRunParams, MetadataStoreExt as _};
 
 use crate::checkpointer::Checkpointer;
@@ -188,8 +188,8 @@ impl FlowExecutorBuilder {
         // Create checkpointer from environment configuration
         let checkpoint_interval = self
             .env
-            .get::<CheckpointInterval>()
-            .map(|ci| ci.0)
+            .get::<ExecutionConfig>()
+            .map(|c| c.checkpoint_interval)
             .unwrap_or(0);
         let checkpoint_store = self.env.checkpoint_store().clone();
         let checkpointer = Checkpointer::new(checkpoint_store, run_id, checkpoint_interval);

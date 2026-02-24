@@ -14,6 +14,7 @@ mod active_executions;
 pub mod blob_compliance;
 pub mod blob_ref_ops;
 mod blob_store;
+pub mod checkpoint_compliance;
 mod checkpoint_store;
 mod completion_notifier;
 mod environment_ext;
