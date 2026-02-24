@@ -267,7 +267,7 @@ jobs:
 
           # Create isolated venv and install the wheel
           echo "Creating isolated test environment..."
-          uv venv /tmp/verify-venv
+          uv venv --python 3.11 /tmp/verify-venv
           source /tmp/verify-venv/bin/activate
           uv pip install "$WHEEL"
 
