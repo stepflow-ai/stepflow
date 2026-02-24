@@ -206,7 +206,7 @@ cargo update -w > /dev/null
 
 # Regenerate OpenAPI schema with new version
 echo -e "${BLUE}Regenerating OpenAPI schema...${NC}"
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server test_openapi_schema_generation --quiet || {
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --no-default-features test_openapi_schema_generation --quiet || {
     echo -e "${RED}Error: Failed to regenerate OpenAPI schema${NC}" >&2
     exit 1
 }
