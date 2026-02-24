@@ -18,6 +18,16 @@
 //!
 //! Checkpoint data is serialized using MessagePack (via `rmp-serde`) for
 //! compact binary representation.
+//!
+//! ## Trust model
+//!
+//! Checkpoints are created and consumed exclusively by the orchestrator itself
+//! (via [`CheckpointData::capture`] and [`CheckpointData::deserialize`]). The
+//! primary risk is data corruption (e.g., storage bit-flips), not adversarial
+//! manipulation. Validation during restoration is therefore defensive rather
+//! than adversarial — we verify structural invariants (index bounds, item
+//! counts) to catch corruption, but do not treat checkpoint contents as
+//! untrusted input.
 
 use std::collections::HashMap;
 
@@ -163,9 +173,10 @@ impl CheckpointData {
 
     /// Deserialize from MessagePack bytes.
     ///
-    /// Returns an error if the checkpoint version doesn't match the current
-    /// version. Callers should treat this as a recoverable error and fall
-    /// back to full journal replay.
+    /// Returns an error if the data is corrupt or the checkpoint version
+    /// doesn't match the current version. Callers should treat this as a
+    /// hard failure — the full journal may not be available after a
+    /// checkpoint has been written.
     pub fn deserialize(data: &[u8]) -> std::result::Result<Self, CheckpointDeserializeError> {
         let checkpoint: Self = rmp_serde::from_slice(data)?;
         if checkpoint.version != CHECKPOINT_VERSION {

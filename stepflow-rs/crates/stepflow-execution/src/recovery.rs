@@ -418,14 +418,15 @@ type CheckpointRestoreResult = (
     HashMap<uuid::Uuid, RunState>,
 );
 
-/// Attempt to restore execution state from a checkpoint.
+/// Restore execution state from a checkpoint.
 ///
 /// Deserializes the checkpoint, validates structural integrity, rebuilds all
 /// RunStates and the subflow dedup map, then replays tail journal events.
 ///
-/// Returns `Some(...)` on success or `None` on any failure (deserialization,
-/// validation, structural mismatch). Failures are logged and the caller should
-/// fall back to full journal replay.
+/// Returns an error if the checkpoint is present but cannot be restored
+/// (deserialization failure, structural mismatch, missing blobs). The caller
+/// should treat this as a hard failure — the full journal may not be available
+/// after a checkpoint has been written.
 async fn restore_from_checkpoint(
     stored_cp: &stepflow_state::StoredCheckpoint,
     run_id: uuid::Uuid,
@@ -433,33 +434,11 @@ async fn restore_from_checkpoint(
     flow: &std::sync::Arc<stepflow_core::workflow::Flow>,
     blob_store: &dyn stepflow_state::BlobStore,
     journal: &dyn ExecutionJournal,
-) -> Option<CheckpointRestoreResult> {
-    match try_restore_from_checkpoint(stored_cp, run_id, root_run_id, flow, blob_store, journal)
-        .await
-    {
-        Ok(result) => Some(result),
-        Err(e) => {
-            log::warn!(
-                "Checkpoint restoration failed for tree {root_run_id}, \
-                 falling back to full replay: {e}"
-            );
-            None
-        }
-    }
-}
-
-/// Inner function for checkpoint restoration that returns `Result` so errors
-/// can be propagated with `?` and caught by the caller.
-async fn try_restore_from_checkpoint(
-    stored_cp: &stepflow_state::StoredCheckpoint,
-    run_id: uuid::Uuid,
-    root_run_id: uuid::Uuid,
-    flow: &std::sync::Arc<stepflow_core::workflow::Flow>,
-    blob_store: &dyn stepflow_state::BlobStore,
-    journal: &dyn ExecutionJournal,
-) -> std::result::Result<CheckpointRestoreResult, String> {
-    let checkpoint_data = CheckpointData::deserialize(&stored_cp.data)
-        .map_err(|e| format!("deserialization failed: {e}"))?;
+) -> Result<CheckpointRestoreResult> {
+    let checkpoint_data = CheckpointData::deserialize(&stored_cp.data).map_err(|e| {
+        error_stack::report!(ExecutionError::CheckpointError)
+            .attach_printable(format!("checkpoint deserialization failed: {e}"))
+    })?;
 
     log::info!(
         "Restoring from checkpoint at sequence {:?} for tree {}",
@@ -472,9 +451,15 @@ async fn try_restore_from_checkpoint(
         .runs
         .iter()
         .find(|rc| rc.run_id == run_id)
-        .ok_or_else(|| "Root run not found in checkpoint".to_string())?;
+        .ok_or_else(|| {
+            error_stack::report!(ExecutionError::CheckpointError)
+                .attach_printable("Root run not found in checkpoint")
+        })?;
 
-    let root_run_state = RunState::from_checkpoint(root_checkpoint, flow.clone())?;
+    let root_run_state = RunState::from_checkpoint(root_checkpoint, flow.clone()).map_err(|e| {
+        error_stack::report!(ExecutionError::CheckpointError)
+            .attach_printable(format!("root run restore failed: {e}"))
+    })?;
 
     // Restore subflow RunStates from checkpoint
     let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
@@ -485,14 +470,17 @@ async fn try_restore_from_checkpoint(
         let sub_flow = blob_store
             .get_flow(&rc.flow_id)
             .await
-            .map_err(|e| format!("failed to load subflow {}: {e}", rc.flow_id))?
+            .change_context(ExecutionError::CheckpointError)?
             .ok_or_else(|| {
-                format!(
-                    "subflow flow not found for run {}, flow_id={}",
+                error_stack::report!(ExecutionError::CheckpointError).attach_printable(format!(
+                    "Subflow flow not found for run {}, flow_id={}",
                     rc.run_id, rc.flow_id
-                )
+                ))
             })?;
-        let sub_state = RunState::from_checkpoint(rc, sub_flow)?;
+        let sub_state = RunState::from_checkpoint(rc, sub_flow).map_err(|e| {
+            error_stack::report!(ExecutionError::CheckpointError)
+                .attach_printable(format!("subflow {} restore failed: {e}", rc.run_id))
+        })?;
         additional.insert(rc.run_id, sub_state);
     }
 
@@ -514,7 +502,7 @@ async fn try_restore_from_checkpoint(
     let tail_events_for_replay = journal
         .read_from(root_run_id, stored_cp.sequence.next(), usize::MAX)
         .await
-        .map_err(|e| format!("failed to read tail events: {e}"))?;
+        .change_context(ExecutionError::CheckpointError)?;
 
     let mut root_state = root_run_state;
     for event in &tail_events_for_replay {
@@ -550,9 +538,13 @@ async fn try_restore_from_checkpoint(
             let sub_flow = blob_store
                 .get_flow(sub_flow_id)
                 .await
-                .map_err(|e| format!("failed to load subflow {sub_flow_id}: {e}"))?
+                .change_context(ExecutionError::CheckpointError)?
                 .ok_or_else(|| {
-                    format!("subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}",)
+                    error_stack::report!(ExecutionError::CheckpointError).attach_printable(
+                        format!(
+                            "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
+                        ),
+                    )
                 })?;
             let mut sub_state = RunState::new_subflow(
                 *sub_run_id,
@@ -638,10 +630,12 @@ async fn recover_execution_tree(
     // =========================================================================
     // Checkpoint-accelerated recovery
     // =========================================================================
-    // Try to load a checkpoint first. If one exists, restore state from it and
-    // only replay journal events after the checkpoint sequence. If checkpoint
-    // restoration fails for any reason (deserialization, version mismatch,
-    // structural mismatch), fall through to full replay from sequence 0.
+    // If a checkpoint exists, restore state from it and only replay journal
+    // events after the checkpoint sequence. Checkpoint restoration failures are
+    // hard errors — once a checkpoint is written, the full journal may no longer
+    // be available for replay.
+    //
+    // If no checkpoint exists, fall back to full replay from sequence 0.
 
     let checkpoint_store = env.checkpoint_store();
     let stored_checkpoint = checkpoint_store
@@ -649,10 +643,9 @@ async fn recover_execution_tree(
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
-    // Attempt checkpoint-accelerated recovery. Any failure (deserialization,
-    // validation, structural mismatch) is treated as checkpoint corruption
-    // and triggers a fallback to full journal replay.
-    let checkpoint_result = if let Some(ref stored_cp) = stored_checkpoint {
+    let (run_state, subflow_map, additional_runs) = if let Some(ref stored_cp) = stored_checkpoint {
+        // Checkpoint exists — restore from it. Errors are propagated as hard
+        // failures because the full journal may have been truncated.
         restore_from_checkpoint(
             stored_cp,
             run_id,
@@ -662,13 +655,7 @@ async fn recover_execution_tree(
             journal.as_ref(),
         )
         .await
-    } else {
-        None
-    };
-
-    // Restore or reconstruct state
-    let (run_state, subflow_map, additional_runs) = if let Some(result) = checkpoint_result {
-        result
+        .change_context(ExecutionError::RecoveryFailed)?
     } else {
         // ---- Full replay path (no checkpoint) ----
         let all_events = journal

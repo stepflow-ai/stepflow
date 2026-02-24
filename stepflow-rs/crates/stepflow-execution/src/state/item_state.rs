@@ -411,8 +411,10 @@ impl ItemState {
     /// waiting_on, waiters, attempts) with values from the checkpoint. The
     /// `waiters` reverse index is recomputed from `waiting_on`.
     ///
-    /// Returns an error if the checkpoint contains out-of-bounds indices,
-    /// allowing callers to fall back to full journal replay.
+    /// Checkpoint data is self-produced (see [`crate::checkpoint`] trust model),
+    /// so validation here is defensive against corruption rather than adversarial
+    /// input. Returns an error if the checkpoint contains out-of-bounds indices
+    /// or mismatched array lengths, indicating data corruption.
     pub fn restore_from_checkpoint(
         &mut self,
         checkpoint: &crate::checkpoint::ItemCheckpoint,

@@ -287,9 +287,10 @@ impl RunState {
     /// each item's execution state from the checkpoint. The `incomplete_count`
     /// is recomputed after restoration.
     ///
-    /// Returns an error if the checkpoint is structurally invalid (e.g., item
-    /// count mismatch or out-of-bounds indices), allowing callers to fall back
-    /// to full journal replay.
+    /// Checkpoint data is self-produced (see [`crate::checkpoint`] trust model),
+    /// so validation is defensive against corruption. Returns an error if the
+    /// checkpoint is structurally invalid (e.g., item count mismatch or
+    /// out-of-bounds indices), indicating data corruption.
     pub fn from_checkpoint(
         checkpoint: &crate::checkpoint::RunCheckpoint,
         flow: Arc<Flow>,
