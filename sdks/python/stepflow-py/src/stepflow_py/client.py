@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -352,7 +353,7 @@ class StepflowClient:
         for var_name, env_var_name in response.env_vars.items():
             env_value = os.environ.get(env_var_name)
             if env_value is not None:
-                env_variables[var_name] = env_value
+                env_variables[var_name] = _parse_env_value(env_value)
 
         if not env_variables and not explicit_variables:
             return None
@@ -419,3 +420,16 @@ def _remove_none_values(obj: Any) -> Any:
     elif isinstance(obj, list):
         return [_remove_none_values(item) for item in obj]
     return obj
+
+
+def _parse_env_value(value: str) -> Any:
+    """Parse an environment variable value, trying JSON first.
+
+    This matches the Rust CLI behavior: if the value is valid JSON
+    (number, boolean, object, array, null), use the parsed value.
+    Otherwise treat it as a plain string.
+    """
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return value

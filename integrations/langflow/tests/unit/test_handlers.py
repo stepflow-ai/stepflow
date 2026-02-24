@@ -292,7 +292,7 @@ class TestHandlerPipeline:
                 return "type" in template_field
 
             async def prepare(self, fields, context):
-                return {k: "changed" for k in fields}
+                return dict.fromkeys(fields, "changed")
 
         parameters = {"x": "val", "y": "val2"}
         template = {"x": {"type": "str"}, "y": "direct_value"}

@@ -93,21 +93,19 @@ impl VariableArgs {
         };
 
         // If env_variables is enabled, check for missing variables in environment
-        if self.env_variables {
-            if let Some(schema) = variable_schema {
-                for var_name in schema.variables() {
-                    if !variables.contains_key(var_name) {
-                        // Prefer env_var annotation, fall back to STEPFLOW_VAR_<NAME>
-                        let env_var_name = schema
-                            .env_var_name(var_name)
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| {
-                                format!("STEPFLOW_VAR_{}", var_name.to_uppercase())
-                            });
-                        if let Ok(env_value) = env::var(&env_var_name) {
-                            let value_ref = Self::parse_env_value(&env_value);
-                            variables.insert(var_name.clone(), value_ref);
-                        }
+        if self.env_variables
+            && let Some(schema) = variable_schema
+        {
+            for var_name in schema.variables() {
+                if !variables.contains_key(var_name) {
+                    // Prefer env_var annotation, fall back to STEPFLOW_VAR_<NAME>
+                    let env_var_name = schema
+                        .env_var_name(var_name)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| format!("STEPFLOW_VAR_{}", var_name.to_uppercase()));
+                    if let Ok(env_value) = env::var(&env_var_name) {
+                        let value_ref = Self::parse_env_value(&env_value);
+                        variables.insert(var_name.clone(), value_ref);
                     }
                 }
             }

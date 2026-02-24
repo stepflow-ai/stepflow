@@ -303,5 +303,3 @@ class TestCoreExecutorPrepareParameters:
         # Handle input with empty value should be skipped
         assert "input_value" not in result
         assert result["regular_param"] == "keep_this"
-
-

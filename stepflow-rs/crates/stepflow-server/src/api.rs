@@ -127,10 +127,7 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
         )
         .api_route(
             "/flows/{flow_id}/variables",
-            get_with(
-                flows::get_flow_variables,
-                flows::get_flow_variables_docs,
-            ),
+            get_with(flows::get_flow_variables, flows::get_flow_variables_docs),
         )
         .finish_api(&mut api);
 
