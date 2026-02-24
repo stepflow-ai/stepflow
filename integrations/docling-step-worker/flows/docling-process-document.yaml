@@ -1,0 +1,25 @@
+name: docling-process-document
+steps:
+  - id: classify
+    component: /docling/classify
+    input:
+      source: { $input: "source" }
+      source_kind: { $input: "source_kind" }
+
+  - id: convert
+    component: /docling/convert
+    input:
+      source: { $input: "source" }
+      source_kind: { $input: "source_kind" }
+      pipeline_config: { $step: "classify", path: "recommended_config" }
+
+  - id: chunk
+    component: /docling/chunk
+    input:
+      document: { $step: "convert", path: "document" }
+      chunk_options: { $input: "chunk_options" }
+
+output:
+  document: { $step: "convert", path: "document" }
+  chunks: { $step: "chunk", path: "chunks" }
+  classification: { $step: "classify" }
