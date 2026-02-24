@@ -61,7 +61,7 @@ class DataFrameConversionInputHandler(InputHandler):
                 continue
 
             try:
-                from lfx.schema.dataframe import DataFrame
+                from langflow.schema.dataframe import DataFrame
 
                 result[key] = DataFrame(data=value)
             except Exception:
@@ -78,9 +78,9 @@ class DataFrameOutputHandler(OutputHandler):
 
     def matches(self, *, value: Any) -> bool:
         try:
-            from lfx.schema.dataframe import DataFrame
+            import pandas as pd
 
-            return isinstance(value, DataFrame)
+            return isinstance(value, pd.DataFrame)
         except ImportError:
             return False
 

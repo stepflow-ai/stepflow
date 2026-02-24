@@ -210,6 +210,77 @@ class TestBaseExecutorApplyInputDefaults:
         assert result == {"temperature": 0.9}  # Original preserved
 
 
+class TestBaseExecutorApplyOutputHandlers:
+    """Tests for _apply_output_handlers in BaseExecutor."""
+
+    @pytest.mark.asyncio
+    async def test_serializes_lfx_dataframe(self, executor):
+        """Test that lfx DataFrames are serialized by the handler chain."""
+        from lfx.schema.dataframe import DataFrame
+
+        df = DataFrame(data=[{"text": "row1", "url": "http://example.com"}])
+        handlers = executor._get_output_handlers()
+        result = await executor._apply_output_handlers(df, handlers)
+
+        assert isinstance(result, dict)
+        assert result["__langflow_type__"] == "DataFrame"
+        assert "json_data" in result
+
+    @pytest.mark.asyncio
+    async def test_serializes_plain_pandas_dataframe(self, executor):
+        """Plain pandas DataFrames must also serialize (issue #673).
+
+        Components compiled from flow JSON blobs may produce plain pandas
+        DataFrames instead of lfx DataFrames.
+        """
+        import pandas as pd
+
+        pdf = pd.DataFrame([{"text": "row1", "url": "http://example.com"}])
+        handlers = executor._get_output_handlers()
+        result = await executor._apply_output_handlers(pdf, handlers)
+
+        assert isinstance(result, dict)
+        assert result["__langflow_type__"] == "DataFrame"
+        assert "json_data" in result
+
+    @pytest.mark.asyncio
+    async def test_serializes_message(self, executor):
+        """Test that Messages are serialized correctly."""
+        from lfx.schema.message import Message
+
+        msg = Message(text="hello")
+        handlers = executor._get_output_handlers()
+        result = await executor._apply_output_handlers(msg, handlers)
+
+        assert isinstance(result, dict)
+        assert result["__langflow_type__"] == "Message"
+        assert result["text"] == "hello"
+
+    @pytest.mark.asyncio
+    async def test_passes_through_primitives(self, executor):
+        """Test that primitive values pass through unchanged."""
+        handlers = executor._get_output_handlers()
+        assert await executor._apply_output_handlers("hello", handlers) == "hello"
+        assert await executor._apply_output_handlers(42, handlers) == 42
+        assert await executor._apply_output_handlers(None, handlers) is None
+
+    @pytest.mark.asyncio
+    async def test_recurses_into_dicts(self, executor):
+        """Test that dicts are recursed into."""
+        handlers = executor._get_output_handlers()
+        result = await executor._apply_output_handlers(
+            {"key": "value", "count": 42}, handlers
+        )
+        assert result == {"key": "value", "count": 42}
+
+    @pytest.mark.asyncio
+    async def test_raises_on_unknown_type(self, executor):
+        """Test that unknown types raise ValueError."""
+        handlers = executor._get_output_handlers()
+        with pytest.raises(ValueError, match="Cannot serialize object of type"):
+            await executor._apply_output_handlers(object(), handlers)
+
+
 class TestBaseExecutorSetupGraphContext:
     """Tests for _setup_graph_context in BaseExecutor."""
 

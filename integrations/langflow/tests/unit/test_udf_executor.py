@@ -502,6 +502,80 @@ class FailingMethodComponent(Component):
         assert method == "method1"
 
 
+class TestCustomCodeExecutorDataFrameOutput:
+    """Test CustomCodeExecutor with components that return DataFrames (issue #673)."""
+
+    @pytest.fixture
+    def executor(self):
+        return CustomCodeExecutor()
+
+    @pytest.fixture
+    def mock_context(self):
+        context = AsyncMock()
+        context.get_blob = AsyncMock()
+        return context
+
+    @pytest.fixture
+    def pandas_dataframe_component_blob(self):
+        """Component that returns a plain pandas DataFrame (not lfx DataFrame).
+
+        This simulates the URLComponent scenario from issue #673 where
+        compiled component code produces a plain pandas DataFrame.
+        """
+        return {
+            "code": '''
+import pandas as pd
+from langflow.custom.custom_component.component import Component
+from langflow.io import Output
+
+class DataFrameComponent(Component):
+    display_name = "DataFrame Test"
+    description = "Returns a plain pandas DataFrame"
+
+    outputs = [
+        Output(display_name="Content", name="content", method="fetch_content")
+    ]
+
+    def fetch_content(self) -> pd.DataFrame:
+        """Return a plain pandas DataFrame (not lfx DataFrame)."""
+        return pd.DataFrame([
+            {"text": "Hello world", "url": "http://example.com", "title": "Test"},
+            {"text": "Second row", "url": "http://example.org", "title": "Test 2"},
+        ])
+''',
+            "component_type": "DataFrameComponent",
+            "template": {},
+            "outputs": [
+                {"name": "content", "method": "fetch_content", "types": ["DataFrame"]}
+            ],
+            "selected_output": "content",
+        }
+
+    @pytest.mark.asyncio
+    async def test_plain_pandas_dataframe_serializes(
+        self,
+        executor: CustomCodeExecutor,
+        mock_context,
+        pandas_dataframe_component_blob,
+    ):
+        """Plain pandas DataFrame from component should serialize (issue #673).
+
+        Before the fix, this would raise:
+        ValueError: Cannot serialize object of type DataFrame.
+        Only BaseModel objects and simple types are supported.
+        """
+        mock_context.get_blob.return_value = pandas_dataframe_component_blob
+
+        input_data = {"blob_id": "test_df_blob", "input": {}}
+        result = await executor.execute(input_data, mock_context)
+
+        assert "result" in result
+        output = result["result"]
+        assert isinstance(output, dict)
+        assert output["__langflow_type__"] == "DataFrame"
+        assert "json_data" in output
+
+
 class TestCustomCodeExecutorIntegration:
     """Integration tests with mock Langflow imports."""
 
