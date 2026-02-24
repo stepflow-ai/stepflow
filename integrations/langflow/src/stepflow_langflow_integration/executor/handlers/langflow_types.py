@@ -114,7 +114,7 @@ def _recover_dataframe(raw_value: dict[str, Any]) -> Any:
         import io
 
         import pandas as pd
-        from langflow.schema.dataframe import DataFrame as LfxDataFrame
+        from langflow.schema.dataframe import DataFrame as LfDataFrame
 
         json_str = raw_value.get("json_data")
         if not json_str or not isinstance(json_str, str):
@@ -133,7 +133,7 @@ def _recover_dataframe(raw_value: dict[str, Any]) -> Any:
             {k: clean_value(v) for k, v in record.items()} for record in records
         ]
 
-        return LfxDataFrame(
+        return LfDataFrame(
             data=data_list,
             text_key=raw_value.get("text_key", "text"),
             default_value=raw_value.get("default_value", ""),
