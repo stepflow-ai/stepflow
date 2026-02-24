@@ -77,6 +77,8 @@ pub enum ExecutionError {
     RecoveryFailed,
     #[error("journal write failed")]
     JournalError,
+    #[error("checkpoint failed")]
+    CheckpointError,
 }
 
 impl ExecutionError {

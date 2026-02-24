@@ -164,6 +164,8 @@ impl StepflowConfig {
             .metadata_store(stores.metadata_store)
             .blob_store(stores.blob_store)
             .execution_journal(stores.execution_journal)
+            .checkpoint_store(stores.checkpoint_store)
+            .checkpoint_interval(self.recovery.checkpoint_interval)
             .lease_manager(lease_manager)
             .working_directory(working_directory)
             .plugin_router(plugin_router)

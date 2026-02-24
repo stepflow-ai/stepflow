@@ -273,6 +273,45 @@ def poll_tracker_for_step(
     return False
 
 
+# ---------------------------------------------------------------------------
+# Checkpoint verification helpers
+# ---------------------------------------------------------------------------
+
+def get_orchestrator_logs(service: str = "orchestrator-1") -> str:
+    """Get the stdout/stderr logs for an orchestrator service."""
+    result = _compose("logs", "--no-log-prefix", service, check=False)
+    return result.stdout + result.stderr
+
+
+def has_checkpoint_created_log(service: str = "orchestrator-1") -> bool:
+    """Check if the orchestrator logged creating a checkpoint during execution."""
+    return "Checkpoint created for run" in get_orchestrator_logs(service)
+
+
+def has_checkpoint_recovery_log(service: str = "orchestrator-1") -> bool:
+    """Check if the orchestrator logged restoring from a checkpoint during recovery."""
+    return "Restoring from checkpoint" in get_orchestrator_logs(service)
+
+
+def assert_checkpoints_used_in_recovery(*services: str):
+    """Assert that at least one orchestrator created AND restored checkpoints.
+
+    This verifies the full checkpoint lifecycle:
+    1. Checkpoints were created during execution (before crash)
+    2. Recovery loaded a checkpoint (after restart/failover)
+    """
+    created = any(has_checkpoint_created_log(s) for s in services)
+    restored = any(has_checkpoint_recovery_log(s) for s in services)
+    assert created, (
+        f"Expected checkpoint creation log in {services}, "
+        "but no 'Checkpoint created' message found"
+    )
+    assert restored, (
+        f"Expected checkpoint recovery log in {services}, "
+        "but no 'Restoring from checkpoint' message found"
+    )
+
+
 def wait_for_worker_health(timeout: float = 30):
     """Wait for the worker container to become healthy after restart."""
     deadline = time.monotonic() + timeout

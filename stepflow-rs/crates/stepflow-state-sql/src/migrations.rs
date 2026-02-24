@@ -57,7 +57,17 @@ pub async fn run_journal_migrations(pool: &SqlitePool) -> Result<(), StateError>
     Ok(())
 }
 
-/// Run all migrations (blob + metadata + journal). Convenience for tests and
+/// Run checkpoint migrations (creates the `checkpoints` table).
+pub async fn run_checkpoint_migrations(pool: &SqlitePool) -> Result<(), StateError> {
+    create_migrations_table(pool).await?;
+    apply_migration(pool, "005_create_checkpoint_table", || {
+        create_checkpoint_table(pool)
+    })
+    .await?;
+    Ok(())
+}
+
+/// Run all migrations (blob + metadata + journal + checkpoint). Convenience for tests and
 /// single-instance deployments where one SQLite database backs all stores.
 pub async fn run_all_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
@@ -81,6 +91,11 @@ pub async fn run_all_migrations(pool: &SqlitePool) -> Result<(), StateError> {
 
     apply_migration(pool, "004_add_orchestrator_id_to_runs", || {
         add_orchestrator_id_column(pool)
+    })
+    .await?;
+
+    apply_migration(pool, "005_create_checkpoint_table", || {
+        create_checkpoint_table(pool)
     })
     .await?;
 
@@ -348,6 +363,28 @@ async fn add_orchestrator_id_column(pool: &SqlitePool) -> Result<(), StateError>
         .execute(pool)
         .await
         .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create the checkpoints table for periodic execution state snapshots.
+///
+/// Checkpoints are keyed by `root_run_id`. Only the latest checkpoint per root
+/// run is needed; the table uses INSERT OR REPLACE semantics to keep just one row.
+async fn create_checkpoint_table(pool: &SqlitePool) -> Result<(), StateError> {
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS checkpoints (
+                root_run_id TEXT NOT NULL PRIMARY KEY,
+                sequence_number INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .change_context(StateError::Initialization)?;
 
     Ok(())
 }

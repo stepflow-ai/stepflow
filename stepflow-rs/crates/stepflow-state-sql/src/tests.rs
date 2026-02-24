@@ -584,6 +584,173 @@ async fn test_journal_only_migration() {
     assert!(table_exists(&pool, "journal_entries").await);
 }
 
+// =========================================================================
+// CheckpointStore Tests
+// =========================================================================
+
+#[tokio::test]
+async fn test_checkpoint_put_and_get() {
+    use stepflow_state::CheckpointStore as _;
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+    store.initialize_checkpoint_store().await.unwrap();
+
+    let run_id = Uuid::now_v7();
+    let sequence = SequenceNumber::new(5);
+    let data = bytes::Bytes::from_static(b"checkpoint-data");
+
+    // Initially no checkpoint
+    let result = store.get_latest_checkpoint(run_id).await.unwrap();
+    assert!(result.is_none());
+
+    // Put a checkpoint
+    store
+        .put_checkpoint(run_id, sequence, data.clone())
+        .await
+        .unwrap();
+
+    // Get the checkpoint
+    let stored = store
+        .get_latest_checkpoint(run_id)
+        .await
+        .unwrap()
+        .expect("checkpoint should exist");
+    assert_eq!(stored.sequence, sequence);
+    assert_eq!(stored.data, data);
+}
+
+#[tokio::test]
+async fn test_checkpoint_put_replaces_previous() {
+    use stepflow_state::CheckpointStore as _;
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+    store.initialize_checkpoint_store().await.unwrap();
+
+    let run_id = Uuid::now_v7();
+
+    // Put first checkpoint
+    store
+        .put_checkpoint(
+            run_id,
+            SequenceNumber::new(5),
+            bytes::Bytes::from_static(b"first"),
+        )
+        .await
+        .unwrap();
+
+    // Put second checkpoint (replaces first due to INSERT OR REPLACE)
+    store
+        .put_checkpoint(
+            run_id,
+            SequenceNumber::new(10),
+            bytes::Bytes::from_static(b"second"),
+        )
+        .await
+        .unwrap();
+
+    // Should get the second checkpoint
+    let stored = store
+        .get_latest_checkpoint(run_id)
+        .await
+        .unwrap()
+        .expect("checkpoint should exist");
+    assert_eq!(stored.sequence, SequenceNumber::new(10));
+    assert_eq!(stored.data, bytes::Bytes::from_static(b"second"));
+}
+
+#[tokio::test]
+async fn test_checkpoint_different_runs_independent() {
+    use stepflow_state::CheckpointStore as _;
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+    store.initialize_checkpoint_store().await.unwrap();
+
+    let run1 = Uuid::now_v7();
+    let run2 = Uuid::now_v7();
+
+    store
+        .put_checkpoint(
+            run1,
+            SequenceNumber::new(3),
+            bytes::Bytes::from_static(b"run1-data"),
+        )
+        .await
+        .unwrap();
+    store
+        .put_checkpoint(
+            run2,
+            SequenceNumber::new(7),
+            bytes::Bytes::from_static(b"run2-data"),
+        )
+        .await
+        .unwrap();
+
+    let cp1 = store
+        .get_latest_checkpoint(run1)
+        .await
+        .unwrap()
+        .expect("run1 checkpoint");
+    let cp2 = store
+        .get_latest_checkpoint(run2)
+        .await
+        .unwrap()
+        .expect("run2 checkpoint");
+
+    assert_eq!(cp1.sequence, SequenceNumber::new(3));
+    assert_eq!(cp1.data, bytes::Bytes::from_static(b"run1-data"));
+    assert_eq!(cp2.sequence, SequenceNumber::new(7));
+    assert_eq!(cp2.data, bytes::Bytes::from_static(b"run2-data"));
+}
+
+#[tokio::test]
+async fn test_checkpoint_delete() {
+    use stepflow_state::CheckpointStore as _;
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+    store.initialize_checkpoint_store().await.unwrap();
+
+    let run_id = Uuid::now_v7();
+
+    // Put a checkpoint
+    store
+        .put_checkpoint(
+            run_id,
+            SequenceNumber::new(5),
+            bytes::Bytes::from_static(b"data"),
+        )
+        .await
+        .unwrap();
+    assert!(store.get_latest_checkpoint(run_id).await.unwrap().is_some());
+
+    // Delete it
+    store.delete_checkpoints(run_id).await.unwrap();
+    assert!(store.get_latest_checkpoint(run_id).await.unwrap().is_none());
+
+    // Deleting again is a no-op
+    store.delete_checkpoints(run_id).await.unwrap();
+}
+
+/// Checkpoint migration should only create the checkpoints table.
+#[tokio::test]
+async fn test_checkpoint_only_migration() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    crate::migrations::run_checkpoint_migrations(&pool)
+        .await
+        .unwrap();
+
+    assert!(table_exists(&pool, "checkpoints").await);
+    assert!(!table_exists(&pool, "blobs").await);
+    assert!(!table_exists(&pool, "runs").await);
+    assert!(!table_exists(&pool, "journal_entries").await);
+}
+
 /// Running migrations incrementally should add tables for new store types.
 #[tokio::test]
 async fn test_incremental_migrations() {

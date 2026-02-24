@@ -373,6 +373,81 @@ impl ItemState {
         self.completed.insert(step_index);
         self.results[step_index] = Some(result);
     }
+
+    // =========================================================================
+    // Checkpoint Methods
+    // =========================================================================
+
+    /// Capture the current item state as a serializable checkpoint.
+    pub fn to_checkpoint(&self) -> crate::checkpoint::ItemCheckpoint {
+        let completed: Vec<usize> = self.completed.iter().collect();
+        let results: Vec<(usize, FlowResult)> = self
+            .results
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| r.as_ref().map(|r| (i, r.clone())))
+            .collect();
+        let needed: Vec<usize> = self.needed.iter().collect();
+        let waiting_on: Vec<(usize, Vec<usize>)> = self
+            .waiting_on
+            .iter()
+            .enumerate()
+            .filter(|(_, bs)| !bs.is_empty())
+            .map(|(i, bs)| (i, bs.iter().collect()))
+            .collect();
+
+        crate::checkpoint::ItemCheckpoint {
+            completed,
+            results,
+            needed,
+            waiting_on,
+            attempts: self.attempts.clone(),
+        }
+    }
+
+    /// Restore item state from a checkpoint.
+    ///
+    /// This overwrites the current execution state (completed, results, needed,
+    /// waiting_on, waiters, attempts) with values from the checkpoint. The
+    /// `waiters` reverse index is recomputed from `waiting_on`.
+    pub fn restore_from_checkpoint(&mut self, checkpoint: &crate::checkpoint::ItemCheckpoint) {
+        // Restore completed
+        self.completed.clear();
+        for &idx in &checkpoint.completed {
+            self.completed.insert(idx);
+        }
+
+        // Restore results
+        for r in &mut self.results {
+            *r = None;
+        }
+        for (idx, result) in &checkpoint.results {
+            self.results[*idx] = Some(result.clone());
+        }
+
+        // Restore needed
+        self.needed.clear();
+        for &idx in &checkpoint.needed {
+            self.needed.insert(idx);
+        }
+
+        // Restore waiting_on and recompute waiters
+        for bs in &mut self.waiting_on {
+            bs.clear();
+        }
+        for bs in &mut self.waiters {
+            bs.clear();
+        }
+        for (step, deps) in &checkpoint.waiting_on {
+            for &dep in deps {
+                self.waiting_on[*step].insert(dep);
+                self.waiters[dep].insert(*step);
+            }
+        }
+
+        // Restore attempts
+        self.attempts = checkpoint.attempts.clone();
+    }
 }
 
 impl StepContext for ItemState {

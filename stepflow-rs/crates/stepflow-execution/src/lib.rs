@@ -27,6 +27,8 @@
 //! - [`DepthFirstScheduler`] - complete items sequentially (time-to-first-result)
 //! - [`BreadthFirstScheduler`] - group by step (throughput, batch invocation)
 
+pub mod checkpoint;
+mod checkpointer;
 mod error;
 mod executor;
 mod flow_executor;
@@ -62,3 +64,6 @@ pub use step_runner::{StepMetadata, StepRunResult};
 
 // Recovery
 pub use recovery::{RecoveryResult, recover_orphaned_runs};
+
+// Checkpointing (re-export from stepflow-plugin for convenience)
+pub use stepflow_plugin::CheckpointInterval;

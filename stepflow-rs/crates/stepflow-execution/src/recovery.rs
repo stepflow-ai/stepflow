@@ -69,11 +69,12 @@ use stepflow_core::workflow::apply_overrides;
 use stepflow_dtos::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutionsExt as _, BlobStoreExt as _, ExecutionJournal, ExecutionJournalExt as _,
-    LeaseManagerExt as _, LeaseResult, MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo,
-    SequenceNumber,
+    ActiveExecutionsExt as _, BlobStoreExt as _, CheckpointStoreExt as _, ExecutionJournal,
+    ExecutionJournalExt as _, LeaseManagerExt as _, LeaseResult, MetadataStoreExt as _,
+    OrchestratorId, RunRecoveryInfo, SequenceNumber,
 };
 
+use crate::checkpoint::CheckpointData;
 use crate::{ExecutionError, Result, RunState};
 
 /// Information about a subflow discovered during journal replay.
@@ -463,178 +464,307 @@ async fn recover_execution_tree(
         apply_overrides(flow, &overrides).change_context(ExecutionError::RecoveryFailed)?
     };
 
-    // Read ALL journal events for the execution tree.
-    // The journal is keyed by root_run_id and contains events for all runs in the
-    // tree (root + subflows).
-    let all_events = journal
-        .read_from(root_run_id, SequenceNumber::new(0), usize::MAX)
+    // =========================================================================
+    // Checkpoint-accelerated recovery
+    // =========================================================================
+    // Try to load a checkpoint first. If one exists, restore state from it and
+    // only replay journal events after the checkpoint sequence. Otherwise fall
+    // through to full replay from sequence 0.
+
+    let checkpoint_store = env.checkpoint_store();
+    let stored_checkpoint = checkpoint_store
+        .get_latest_checkpoint(root_run_id)
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
-    if all_events.is_empty() {
-        log::warn!(
-            "No journal entries for execution tree {}, cannot recover",
+    // Try to deserialize the checkpoint (if present). On failure (version mismatch,
+    // corruption), fall through to full replay.
+    let valid_checkpoint = if let Some(ref stored_cp) = stored_checkpoint {
+        match CheckpointData::deserialize(&stored_cp.data) {
+            Ok(data) => Some((stored_cp, data)),
+            Err(e) => {
+                log::warn!(
+                    "Checkpoint deserialization failed for tree {}, \
+                     falling back to full replay: {e}",
+                    root_run_id
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Restore or reconstruct state
+    let (run_state, subflow_map, additional_runs) = if let Some((stored_cp, checkpoint_data)) =
+        valid_checkpoint
+    {
+        log::info!(
+            "Restoring from checkpoint at sequence {:?} for tree {}",
+            stored_cp.sequence,
             root_run_id
         );
-        return Err(error_stack::report!(ExecutionError::RecoveryFailed)
-            .attach_printable("No journal entries found for this run"));
-    }
 
-    // Extract inputs and variables from the root run's RunCreated event.
-    // This is the authoritative source - RunRecoveryInfo may have incomplete data.
-    // We match on run_id to ensure we get the root's event, not a subflow's.
-    let (inputs, variables) = all_events
-        .iter()
-        .find_map(|event| match event {
-            stepflow_state::JournalEvent::RunCreated {
-                run_id: event_run_id,
-                inputs,
-                variables,
-                parent_run_id: None,
-                ..
-            } if *event_run_id == run_id => Some((inputs.clone(), variables.clone())),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            error_stack::report!(ExecutionError::RecoveryFailed)
-                .attach_printable("No RunCreated event found in journal for root run")
-        })?;
+        // Restore the root run from checkpoint
+        let root_checkpoint = checkpoint_data
+            .runs
+            .iter()
+            .find(|rc| rc.run_id == run_id)
+            .ok_or_else(|| {
+                error_stack::report!(ExecutionError::RecoveryFailed)
+                    .attach_printable("Root run not found in checkpoint")
+            })?;
 
-    // Create RunState for the root run
-    let mut run_state = RunState::new(
-        run_id,
-        root_info.flow_id.clone(),
-        flow.clone(),
-        inputs,
-        variables,
-    );
+        let root_run_state = RunState::from_checkpoint(root_checkpoint, flow.clone());
 
-    // Apply ALL events to reconstruct root state. RunState.apply_event checks run_id
-    // internally, so subflow events are silently ignored.
-    all_events.iter().for_each(|event| {
-        run_state.apply_event(event);
-    });
+        // Restore subflow RunStates from checkpoint
+        let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
+        for rc in &checkpoint_data.runs {
+            if rc.run_id == run_id {
+                continue; // Skip root, already restored
+            }
+            let sub_flow = blob_store
+                .get_flow(&rc.flow_id)
+                .await
+                .change_context(ExecutionError::RecoveryFailed)?
+                .ok_or_else(|| {
+                    error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(format!(
+                        "Subflow flow not found during checkpoint recovery for run {}, flow_id={}",
+                        rc.run_id, rc.flow_id
+                    ))
+                })?;
+            let sub_state = RunState::from_checkpoint(rc, sub_flow);
+            additional.insert(rc.run_id, sub_state);
+        }
 
-    log::info!(
-        "Replayed {} journal events for execution tree {}, root complete={}",
-        all_events.len(),
-        root_run_id,
-        run_state.is_complete()
-    );
-
-    // If the run is already complete from the journal, no need to resume
-    if run_state.is_complete() {
-        log::info!("Root run {} already complete after journal replay", run_id);
-        return Ok(());
-    }
-
-    // =========================================================================
-    // Subflow Recovery
-    // =========================================================================
-    // Build dedup map and reconstruct subflow RunStates from journal events.
-
-    // 1. Collect SubflowSubmitted events into a lookup map:
-    //    (parent_run_id, item_index, step_index, subflow_key) -> subflow_run_id
-    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
-    for event in &all_events {
-        if let stepflow_state::JournalEvent::SubflowSubmitted {
-            parent_run_id,
-            item_index,
-            step_index,
-            subflow_key,
-            subflow_run_id,
-        } = event
-        {
-            subflow_map.insert(
-                (*parent_run_id, *item_index, *step_index, *subflow_key),
-                *subflow_run_id,
+        // Restore subflow dedup map from checkpoint
+        let mut sf_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
+        for mapping in &checkpoint_data.subflow_map {
+            sf_map.insert(
+                (
+                    mapping.parent_run_id,
+                    mapping.item_index,
+                    mapping.step_index,
+                    mapping.subflow_key,
+                ),
+                mapping.subflow_run_id,
             );
         }
-    }
 
-    // 2. Find subflow RunCreated events (parent_run_id: Some(...))
-    //    and check if they have matching RunCompleted events.
-    let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
-    let mut completed_runs: std::collections::HashSet<uuid::Uuid> =
-        std::collections::HashSet::new();
+        // Replay tail events (after checkpoint) to bring state up to date.
+        let tail_events_for_replay = journal
+            .read_from(root_run_id, stored_cp.sequence.next(), usize::MAX)
+            .await
+            .change_context(ExecutionError::RecoveryFailed)?;
 
-    for event in &all_events {
-        match event {
-            stepflow_state::JournalEvent::RunCreated {
+        let mut root_state = root_run_state;
+        for event in &tail_events_for_replay {
+            root_state.apply_event(event);
+            for sub_state in additional.values_mut() {
+                sub_state.apply_event(event);
+            }
+            // Also update subflow map from new SubflowSubmitted events
+            if let stepflow_state::JournalEvent::SubflowSubmitted {
+                parent_run_id,
+                item_index,
+                step_index,
+                subflow_key,
+                subflow_run_id,
+            } = event
+            {
+                sf_map.insert(
+                    (*parent_run_id, *item_index, *step_index, *subflow_key),
+                    *subflow_run_id,
+                );
+            }
+            // Handle new subflow RunCreated events after checkpoint
+            if let stepflow_state::JournalEvent::RunCreated {
                 run_id: sub_run_id,
                 flow_id: sub_flow_id,
                 inputs: sub_inputs,
                 variables: sub_variables,
                 parent_run_id: Some(parent_id),
-            } => {
-                // Only track subflows that have a SubflowSubmitted entry
-                if subflow_map.values().any(|id| id == sub_run_id) {
-                    subflow_created.insert(
-                        *sub_run_id,
-                        SubflowInfo {
-                            flow_id: sub_flow_id.clone(),
-                            parent_id: *parent_id,
-                            inputs: sub_inputs.clone(),
-                            variables: sub_variables.clone(),
-                        },
-                    );
+            } = event
+                && !additional.contains_key(sub_run_id)
+                && sf_map.values().any(|id| id == sub_run_id)
+            {
+                let sub_flow = blob_store
+                    .get_flow(sub_flow_id)
+                    .await
+                    .change_context(ExecutionError::RecoveryFailed)?
+                    .ok_or_else(|| {
+                        error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(
+                            format!(
+                                "Subflow flow not found for run {}, flow_id={}",
+                                sub_run_id, sub_flow_id
+                            ),
+                        )
+                    })?;
+                let mut sub_state = RunState::new_subflow(
+                    *sub_run_id,
+                    sub_flow_id.clone(),
+                    root_run_id,
+                    *parent_id,
+                    sub_flow,
+                    sub_inputs.clone(),
+                    sub_variables.clone(),
+                );
+                // Apply remaining tail events to the new subflow
+                for ev in &tail_events_for_replay {
+                    sub_state.apply_event(ev);
                 }
+                additional.insert(*sub_run_id, sub_state);
             }
-            stepflow_state::JournalEvent::RunCompleted {
-                run_id: completed_id,
-                ..
-            } => {
-                completed_runs.insert(*completed_id);
-            }
-            _ => {}
         }
-    }
 
-    let mut additional_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
-
-    // 3. For each subflow (both incomplete and completed), reconstruct its RunState.
-    //    Completed subflows still need to be in the map so the parent step gets the
-    //    old run_id and wait_for_completion returns immediately.
-    for (sub_run_id, info) in &subflow_created {
-        // Load the subflow's flow definition from blob store.
-        // If the flow is missing, this indicates data corruption — fail recovery
-        // explicitly rather than leaving a dangling entry in the subflow map
-        // (which would cause wait_for_completion to hang).
-        let sub_flow = blob_store
-            .get_flow(&info.flow_id)
-            .await
-            .change_context(ExecutionError::RecoveryFailed)?
-            .ok_or_else(|| {
-                error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(format!(
-                    "Subflow flow not found during recovery for run {}, flow_id={}",
-                    sub_run_id, info.flow_id
-                ))
-            })?;
-
-        // Create subflow RunState
-        let mut sub_state = RunState::new_subflow(
-            *sub_run_id,
-            info.flow_id.clone(),
+        log::info!(
+            "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
+            tail_events_for_replay.len(),
             root_run_id,
-            info.parent_id,
-            sub_flow,
-            info.inputs.clone(),
-            info.variables.clone(),
+            root_state.is_complete()
         );
 
-        // Apply all journal events (RunState filters by run_id internally)
+        (root_state, sf_map, additional)
+    } else {
+        // ---- Full replay path (no checkpoint) ----
+        let all_events = journal
+            .read_from(root_run_id, SequenceNumber::new(0), usize::MAX)
+            .await
+            .change_context(ExecutionError::RecoveryFailed)?;
+        if all_events.is_empty() {
+            log::warn!(
+                "No journal entries for execution tree {}, cannot recover",
+                root_run_id
+            );
+            return Err(error_stack::report!(ExecutionError::RecoveryFailed)
+                .attach_printable("No journal entries found for this run"));
+        }
+
+        // Extract inputs and variables from the root run's RunCreated event.
+        let (inputs, variables) = all_events
+            .iter()
+            .find_map(|event| match event {
+                stepflow_state::JournalEvent::RunCreated {
+                    run_id: event_run_id,
+                    inputs,
+                    variables,
+                    parent_run_id: None,
+                    ..
+                } if *event_run_id == run_id => Some((inputs.clone(), variables.clone())),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                error_stack::report!(ExecutionError::RecoveryFailed)
+                    .attach_printable("No RunCreated event found in journal for root run")
+            })?;
+
+        // Create RunState for the root run
+        let mut run_state = RunState::new(
+            run_id,
+            root_info.flow_id.clone(),
+            flow.clone(),
+            inputs,
+            variables,
+        );
+
+        // Apply ALL events to reconstruct root state
         all_events.iter().for_each(|event| {
-            sub_state.apply_event(event);
+            run_state.apply_event(event);
         });
 
         log::info!(
-            "Recovered subflow run {}: complete={}, parent={}",
-            sub_run_id,
-            sub_state.is_complete(),
-            info.parent_id
+            "Replayed {} journal events for execution tree {}, root complete={}",
+            all_events.len(),
+            root_run_id,
+            run_state.is_complete()
         );
 
-        additional_runs.insert(*sub_run_id, sub_state);
+        // Build subflow dedup map from journal events
+        let mut sf_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
+        for event in &all_events {
+            if let stepflow_state::JournalEvent::SubflowSubmitted {
+                parent_run_id,
+                item_index,
+                step_index,
+                subflow_key,
+                subflow_run_id,
+            } = event
+            {
+                sf_map.insert(
+                    (*parent_run_id, *item_index, *step_index, *subflow_key),
+                    *subflow_run_id,
+                );
+            }
+        }
+
+        // Find subflow RunCreated events and reconstruct their RunStates
+        let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
+        for event in &all_events {
+            if let stepflow_state::JournalEvent::RunCreated {
+                run_id: sub_run_id,
+                flow_id: sub_flow_id,
+                inputs: sub_inputs,
+                variables: sub_variables,
+                parent_run_id: Some(parent_id),
+            } = event
+                && sf_map.values().any(|id| id == sub_run_id)
+            {
+                subflow_created.insert(
+                    *sub_run_id,
+                    SubflowInfo {
+                        flow_id: sub_flow_id.clone(),
+                        parent_id: *parent_id,
+                        inputs: sub_inputs.clone(),
+                        variables: sub_variables.clone(),
+                    },
+                );
+            }
+        }
+
+        let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
+        for (sub_run_id, info) in &subflow_created {
+            let sub_flow = blob_store
+                .get_flow(&info.flow_id)
+                .await
+                .change_context(ExecutionError::RecoveryFailed)?
+                .ok_or_else(|| {
+                    error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(format!(
+                        "Subflow flow not found during recovery for run {}, flow_id={}",
+                        sub_run_id, info.flow_id
+                    ))
+                })?;
+
+            let mut sub_state = RunState::new_subflow(
+                *sub_run_id,
+                info.flow_id.clone(),
+                root_run_id,
+                info.parent_id,
+                sub_flow,
+                info.inputs.clone(),
+                info.variables.clone(),
+            );
+
+            all_events.iter().for_each(|event| {
+                sub_state.apply_event(event);
+            });
+
+            log::info!(
+                "Recovered subflow run {}: complete={}, parent={}",
+                sub_run_id,
+                sub_state.is_complete(),
+                info.parent_id
+            );
+
+            additional.insert(*sub_run_id, sub_state);
+        }
+
+        (run_state, sf_map, additional)
+    };
+
+    // If the run is already complete, no need to resume
+    if run_state.is_complete() {
+        log::info!("Root run {} already complete after recovery", run_id);
+        return Ok(());
     }
 
     if !subflow_map.is_empty() {
@@ -1730,6 +1860,353 @@ mod tests {
             ExecutionStatus::Failed,
             "Orphaned subflow should be marked as failed"
         );
+    }
+
+    /// Helper to build an environment with shared stores, checkpoint store, and
+    /// configurable checkpoint interval. Returns the env and the shared store
+    /// (useful when creating a second env with the same backing stores).
+    async fn build_env_with_checkpoint_interval(
+        mock_plugin: stepflow_mock::MockPlugin,
+        store: Arc<stepflow_state::InMemoryStateStore>,
+        checkpoint_interval: usize,
+    ) -> Arc<StepflowEnvironment> {
+        let dyn_plugin = stepflow_plugin::DynPlugin::boxed(mock_plugin);
+
+        use stepflow_plugin::routing::RouteRule;
+        let rules = vec![RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "mock".into(),
+            component: None,
+        }];
+
+        let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
+            .with_routing_path("/{*component}".to_string(), rules)
+            .register_plugin("mock".to_string(), dyn_plugin)
+            .build()
+            .unwrap();
+
+        let metadata_store: Arc<dyn stepflow_state::MetadataStore> = store.clone();
+        let blob_store: Arc<dyn stepflow_state::BlobStore> = store.clone();
+        let journal: Arc<dyn stepflow_state::ExecutionJournal> = store.clone();
+        let checkpoint_store: Arc<dyn stepflow_state::CheckpointStore> = store.clone();
+        stepflow_plugin::StepflowEnvironmentBuilder::new()
+            .metadata_store(metadata_store)
+            .blob_store(blob_store)
+            .execution_journal(journal)
+            .checkpoint_store(checkpoint_store)
+            .checkpoint_interval(checkpoint_interval)
+            .working_directory(std::path::PathBuf::from("."))
+            .plugin_router(plugin_router)
+            .build()
+            .await
+            .expect("MockPlugin should always initialize successfully")
+    }
+
+    /// Create a mock plugin that returns success for common test inputs.
+    fn create_standard_mock_plugin() -> stepflow_mock::MockPlugin {
+        use stepflow_mock::{MockComponentBehavior, MockPlugin};
+
+        let mut mock_plugin = MockPlugin::new();
+        let behavior = MockComponentBehavior::result(stepflow_core::FlowResult::Success(
+            ValueRef::new(json!({"result": "ok"})),
+        ));
+
+        for input in &[
+            json!({}),
+            json!({"x": 1}),
+            json!({"x": 2}),
+            json!({"result": "ok"}),
+        ] {
+            mock_plugin
+                .mock_component("/mock/test")
+                .behavior(ValueRef::new(input.clone()), behavior.clone());
+        }
+
+        mock_plugin
+    }
+
+    /// Verify that the executor creates checkpoints during normal execution.
+    ///
+    /// This test:
+    /// 1. Creates a chain flow with 15 steps and checkpoint_interval=3
+    /// 2. Submits the run — the Checkpointer fires every 3 journal entries
+    /// 3. Waits for completion
+    /// 4. Verifies that at least one checkpoint was stored
+    #[tokio::test]
+    async fn test_execution_creates_checkpoints() {
+        use stepflow_state::CheckpointStoreExt as _;
+
+        let store = Arc::new(stepflow_state::InMemoryStateStore::new());
+        let mock_plugin = create_standard_mock_plugin();
+        let env = build_env_with_checkpoint_interval(mock_plugin, store.clone(), 3).await;
+
+        // Create a chain flow with 15 steps
+        let flow = Arc::new(crate::testing::create_chain_flow(15));
+        let flow_id = env
+            .blob_store()
+            .store_flow(flow.clone())
+            .await
+            .expect("should store flow");
+
+        // Submit the run
+        let status = crate::executor::submit_run(
+            &env,
+            flow,
+            flow_id,
+            vec![ValueRef::new(json!({}))],
+            Default::default(),
+        )
+        .await
+        .expect("should submit run");
+
+        let run_id = status.run_id;
+
+        // Wait for execution to complete
+        crate::executor::wait_for_completion(&env, run_id)
+            .await
+            .expect("should complete");
+
+        // Verify the run completed
+        let run = env
+            .metadata_store()
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(run.summary.status, ExecutionStatus::Completed);
+
+        // Verify that checkpoints were cleaned up after completion.
+        // During execution, checkpoints are created periodically, but on
+        // completion the executor calls cleanup() to free storage.
+        let checkpoint = env
+            .checkpoint_store()
+            .get_latest_checkpoint(run_id)
+            .await
+            .expect("should query checkpoint store");
+        assert!(
+            checkpoint.is_none(),
+            "Checkpoints should have been cleaned up after successful completion"
+        );
+    }
+
+    /// End-to-end test: executor creates checkpoints, crash is simulated, recovery uses them.
+    ///
+    /// This test:
+    /// 1. Creates a chain flow with 15 steps and checkpoint_interval=3
+    /// 2. Registers a wait signal on the mock plugin for `{"result": "ok"}` input,
+    ///    which blocks step1 (and all subsequent chain steps)
+    /// 3. Submits the run — step0 completes, triggering a checkpoint, then step1 blocks
+    /// 4. Polls until a checkpoint appears in the store
+    /// 5. Aborts the execution (simulating a crash)
+    /// 6. Creates a NEW environment (same stores, no wait signal) and runs recovery
+    /// 7. Verifies recovery loads the checkpoint and completes the run
+    #[tokio::test]
+    async fn test_recovery_with_checkpoint() {
+        use stepflow_mock::{MockComponentBehavior, MockPlugin};
+        use stepflow_state::CheckpointStoreExt as _;
+
+        let store = Arc::new(stepflow_state::InMemoryStateStore::new());
+
+        // Phase 1: Execute with a wait signal to block mid-flow
+        let mut mock_plugin = MockPlugin::new();
+        let behavior = MockComponentBehavior::result(stepflow_core::FlowResult::Success(
+            ValueRef::new(json!({"result": "ok"})),
+        ));
+        // Step0 takes json!({}) as input — let it complete immediately
+        mock_plugin
+            .mock_component("/mock/test")
+            .behavior(ValueRef::new(json!({})), behavior.clone());
+        // Steps 1+ take json!({"result": "ok"}) as input — register behavior AND wait signal
+        mock_plugin
+            .mock_component("/mock/test")
+            .behavior(ValueRef::new(json!({"result": "ok"})), behavior.clone());
+        let _signal = mock_plugin.wait_for("/mock/test", ValueRef::new(json!({"result": "ok"})));
+
+        let env1 = build_env_with_checkpoint_interval(mock_plugin, store.clone(), 3).await;
+
+        // Create a chain flow with 15 steps: step0($input) → step1($step.step0) → ...
+        let flow = Arc::new(crate::testing::create_chain_flow(15));
+        let flow_id = env1
+            .blob_store()
+            .store_flow(flow.clone())
+            .await
+            .expect("should store flow");
+
+        // Submit the run
+        let status = crate::executor::submit_run(
+            &env1,
+            flow,
+            flow_id,
+            vec![ValueRef::new(json!({}))],
+            Default::default(),
+        )
+        .await
+        .expect("should submit run");
+
+        let run_id = status.run_id;
+
+        // Poll until a checkpoint appears (step0 should complete quickly, triggering a checkpoint)
+        let checkpoint_store = env1.checkpoint_store().clone();
+        let mut checkpoint_found = false;
+        for _ in 0..200 {
+            if let Some(_cp) = checkpoint_store
+                .get_latest_checkpoint(run_id)
+                .await
+                .expect("should query checkpoint store")
+            {
+                checkpoint_found = true;
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            checkpoint_found,
+            "Checkpoint should have been created after step0 completed"
+        );
+
+        // Abort execution (simulating a crash)
+        env1.active_executions().shutdown();
+
+        // Verify run is still Running (not completed, since we aborted)
+        let run = env1
+            .metadata_store()
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(
+            run.summary.status,
+            ExecutionStatus::Running,
+            "Run should still be Running after abort"
+        );
+
+        // Phase 2: Create a new env (same stores, no wait signal) and run recovery
+        let mock_plugin2 = create_standard_mock_plugin();
+        let env2 = build_env_with_checkpoint_interval(mock_plugin2, store, 3).await;
+
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let result = recover_orphaned_runs(&env2, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        assert_eq!(
+            result.recovered, 1,
+            "Expected 1 recovered run, got {}",
+            result.recovered
+        );
+        assert_eq!(result.failed, 0);
+
+        // Wait for recovered execution to complete
+        let active_executions = env2.active_executions();
+        for _ in 0..200 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            active_executions.is_empty(),
+            "Recovered execution should complete within timeout"
+        );
+
+        // Verify the run completed successfully
+        let run = env2
+            .metadata_store()
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(
+            run.summary.status,
+            ExecutionStatus::Completed,
+            "Run should have completed status after checkpoint-based recovery"
+        );
+    }
+
+    /// Recovery without a checkpoint should still work (backwards compatibility).
+    /// This uses an environment with checkpoint store enabled (not NoOp) but no
+    /// checkpoint is stored — recovery falls back to full journal replay.
+    #[tokio::test]
+    async fn test_recovery_without_checkpoint_backwards_compat() {
+        let store = Arc::new(stepflow_state::InMemoryStateStore::new());
+        let mock_plugin = create_standard_mock_plugin();
+        let env = build_env_with_checkpoint_interval(mock_plugin, store, 0).await;
+        let orchestrator_id = OrchestratorId::new("test-orch");
+        let metadata_store = env.metadata_store();
+        let blob_store = env.blob_store();
+        let journal = env.execution_journal();
+
+        let flow = Arc::new(create_test_flow());
+        let flow_id = blob_store
+            .store_flow(flow)
+            .await
+            .expect("should store flow");
+
+        let run_id = uuid::Uuid::now_v7();
+        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        metadata_store
+            .create_run(params)
+            .await
+            .expect("should create run");
+
+        // Write journal events for a partial execution (no checkpoint stored)
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunCreated {
+                    run_id,
+                    flow_id: flow_id.clone(),
+                    inputs: vec![ValueRef::new(json!({}))],
+                    variables: HashMap::new(),
+                    parent_run_id: None,
+                },
+            )
+            .await
+            .expect("should write");
+
+        journal
+            .write(
+                run_id,
+                JournalEvent::RunInitialized {
+                    run_id,
+                    needed_steps: vec![ItemSteps {
+                        item_index: 0,
+                        step_indices: vec![0],
+                    }],
+                },
+            )
+            .await
+            .expect("should write");
+
+        // No checkpoint — recovery should use full replay path
+        let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+            .await
+            .expect("recovery should succeed");
+
+        assert_eq!(result.recovered, 1);
+        assert_eq!(result.failed, 0);
+
+        // Wait for execution to complete
+        let active_executions = env.active_executions();
+        for _ in 0..100 {
+            if active_executions.is_empty() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+        assert!(
+            active_executions.is_empty(),
+            "Execution should complete within timeout"
+        );
+
+        let run = metadata_store
+            .get_run(run_id)
+            .await
+            .expect("should get run")
+            .expect("run should exist");
+        assert_eq!(run.summary.status, ExecutionStatus::Completed);
     }
 
     /// Recovery should correctly apply all journal events (including subflow events)

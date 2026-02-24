@@ -16,9 +16,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use stepflow_plugin::{StepflowEnvironment, subflow_channel};
-use stepflow_state::{CreateRunParams, MetadataStoreExt as _};
+use stepflow_plugin::{CheckpointInterval, StepflowEnvironment, subflow_channel};
+use stepflow_state::{CheckpointStoreExt as _, CreateRunParams, MetadataStoreExt as _};
 
+use crate::checkpointer::Checkpointer;
 use crate::flow_executor::FlowExecutor;
 use crate::run_state::RunState;
 use crate::scheduler::Scheduler;
@@ -184,6 +185,15 @@ impl FlowExecutorBuilder {
         // Merge in any recovered subflow RunStates
         runs.extend(self.additional_runs);
 
+        // Create checkpointer from environment configuration
+        let checkpoint_interval = self
+            .env
+            .get::<CheckpointInterval>()
+            .map(|ci| ci.0)
+            .unwrap_or(0);
+        let checkpoint_store = self.env.checkpoint_store().clone();
+        let checkpointer = Checkpointer::new(checkpoint_store, run_id, checkpoint_interval);
+
         Ok(FlowExecutor::new_from_builder(
             self.env,
             run_id,
@@ -194,6 +204,7 @@ impl FlowExecutorBuilder {
             submit_sender,
             submit_receiver,
             self.recovered_subflows,
+            checkpointer,
         ))
     }
 }

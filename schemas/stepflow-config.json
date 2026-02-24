@@ -49,7 +49,8 @@
         "checkIntervalSecs": 30,
         "maxStartupRecovery": 100,
         "maxClaimsPerCheck": 10,
-        "leaseTtlSecs": 30
+        "leaseTtlSecs": 30,
+        "checkpointInterval": 0
       }
     },
     "blobApi": {
@@ -672,6 +673,13 @@
           "format": "uint64",
           "minimum": 0,
           "default": 30
+        },
+        "checkpointInterval": {
+          "description": "Number of journal entries between checkpoints.\n\nWhen non-zero, the executor periodically serializes execution state so\nthat recovery only needs to replay events after the checkpoint instead of\nfrom the beginning. Set to 0 to disable (default).",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0,
+          "default": 0
         }
       }
     },
