@@ -88,6 +88,8 @@ jobs:
       # Install protoc for etcd-client compilation (needed by stepflow-server)
       - name: Install protoc
         uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cross-compilation tools
         if: matrix.cross
