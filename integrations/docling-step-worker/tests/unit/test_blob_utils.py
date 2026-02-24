@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import base64
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -84,6 +85,20 @@ class TestGetDocumentBytes:
 
         result = await get_document_bytes("https://example.com/doc.pdf", "url")
         assert result == b"downloaded pdf"
+
+    @pytest.mark.asyncio
+    async def test_from_base64(self):
+        original = b"fake pdf content"
+        encoded = base64.b64encode(original).decode("ascii")
+        result = await get_document_bytes(encoded, "base64")
+        assert result == original
+
+    @pytest.mark.asyncio
+    async def test_from_base64_binary_roundtrip(self):
+        original = bytes(range(256))
+        encoded = base64.b64encode(original).decode("ascii")
+        result = await get_document_bytes(encoded, "base64")
+        assert result == original
 
     @pytest.mark.asyncio
     async def test_unknown_source_kind(self):

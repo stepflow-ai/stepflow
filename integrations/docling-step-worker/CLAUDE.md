@@ -2,7 +2,7 @@
 
 ## About
 
-This package wraps docling's `DocumentConverter` library directly as Stepflow components, eliminating the need for the docling-serve HTTP sidecar. Three components are registered: `/docling/classify`, `/docling/convert`, `/docling/chunk`.
+This package wraps docling's `DocumentConverter` library directly as Stepflow components, eliminating the need for the docling-serve HTTP sidecar. Three components are registered: `/classify`, `/convert`, `/chunk`. The `/docling/` prefix is added by the routing config, not the worker itself.
 
 ## Development
 
@@ -34,7 +34,25 @@ DOCLING_INTEGRATION_TESTS=1 uv run pytest tests
 
 # With coverage
 uv run pytest tests --cov=docling_step_worker --cov-report=term-missing
+
+# End-to-end tests (requires docling models; builds stepflow via cargo)
+uv run poe test-e2e
 ```
+
+### End-to-End Tests
+
+The `tests/e2e/` directory contains flow-level tests that run the full classify → convert → chunk pipeline against the real stepflow orchestrator using `stepflow test`.
+
+**Prerequisites:**
+- `uv sync --group dev` (installs all deps including HTTP server extras)
+- Rust toolchain (cargo) — the poe task builds and runs stepflow from `../../stepflow-rs`
+- Docling models downloaded (first run triggers download)
+
+**How it works:** Each `.yaml` file in `tests/e2e/` is a self-contained flow with a `test:` section that defines plugin config (starts `docling-step-worker-server` as a subprocess), routes, and test cases. The test case embeds a small base64-encoded PDF so no external files or blob uploads are needed.
+
+**Note:** E2e tests are intentionally excluded from `poe check` due to startup time (~2 min for model loading). Run them explicitly with `uv run poe test-e2e`.
+
+**Note:** The `docling-step-worker-server` entry point runs an HTTP server and requires the `stepflow-py[http]` extra (fastapi, uvicorn, sse-starlette). This is included automatically via the package dependency — no separate install step needed.
 
 ### Linting & Formatting
 

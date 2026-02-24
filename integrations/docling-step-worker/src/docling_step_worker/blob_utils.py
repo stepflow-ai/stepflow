@@ -20,6 +20,7 @@ and constructing docling source objects for in-memory processing.
 
 from __future__ import annotations
 
+import base64
 import logging
 from io import BytesIO
 from typing import Any
@@ -61,6 +62,8 @@ async def get_document_bytes(
             resp = await client.get(source)
             resp.raise_for_status()
             return resp.content
+    elif source_kind == "base64":
+        return base64.b64decode(source)
     else:
         raise BlobStoreError(f"Unknown source_kind: {source_kind}")
 

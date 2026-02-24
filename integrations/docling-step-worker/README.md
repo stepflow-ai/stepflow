@@ -76,6 +76,24 @@ docker build -f docker/Dockerfile -t docling-step-worker .
 docker run -p 8080:8080 docling-step-worker
 ```
 
+## Testing
+
+```bash
+cd integrations/docling-step-worker
+uv sync --group dev
+
+# Unit tests
+uv run pytest tests/unit
+
+# Integration tests (requires docling models)
+DOCLING_INTEGRATION_TESTS=1 uv run pytest tests
+
+# End-to-end tests (requires Rust toolchain + docling models)
+uv run poe test-e2e
+```
+
+The e2e tests use `stepflow test` to run the full classify → convert → chunk pipeline against the real orchestrator. The poe task builds stepflow from `../../stepflow-rs` via `cargo run`, so a Rust toolchain is the only external prerequisite. See `tests/e2e/` for the test definitions.
+
 ## Development
 
 See [CLAUDE.md](CLAUDE.md) for development setup, testing, and architecture details.

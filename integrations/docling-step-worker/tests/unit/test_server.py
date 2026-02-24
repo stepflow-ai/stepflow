@@ -33,9 +33,9 @@ class TestServerRegistration:
         components = server.server.get_components()
         component_names = set(components.keys())
 
-        assert "/docling/classify" in component_names
-        assert "/docling/convert" in component_names
-        assert "/docling/chunk" in component_names
+        assert "/classify" in component_names
+        assert "/convert" in component_names
+        assert "/chunk" in component_names
 
     @patch("docling_step_worker.server.DocumentConverter")
     def test_converters_empty_before_use(self, mock_converter_cls):
@@ -105,10 +105,10 @@ class TestComponentCallable:
         mock_classify.return_value = {"recommended_config": "default", "page_count": 1}
         server = DoclingStepWorkerServer()
 
-        result = server.server.get_component("/docling/classify")
+        result = server.server.get_component("/classify")
         assert result is not None
         component, params = result
-        assert component.name == "/docling/classify"
+        assert component.name == "/classify"
 
     @patch("docling_step_worker.server.DocumentConverter")
     @patch("docling_step_worker.server.convert_document")
@@ -117,10 +117,10 @@ class TestComponentCallable:
         mock_convert.return_value = {"status": "success", "document": {}}
         server = DoclingStepWorkerServer()
 
-        result = server.server.get_component("/docling/convert")
+        result = server.server.get_component("/convert")
         assert result is not None
         component, params = result
-        assert component.name == "/docling/convert"
+        assert component.name == "/convert"
 
     @patch("docling_step_worker.server.DocumentConverter")
     @patch("docling_step_worker.server.chunk_document")
@@ -129,7 +129,7 @@ class TestComponentCallable:
         mock_chunk.return_value = {"chunks": [], "chunk_count": 0}
         server = DoclingStepWorkerServer()
 
-        result = server.server.get_component("/docling/chunk")
+        result = server.server.get_component("/chunk")
         assert result is not None
         component, params = result
-        assert component.name == "/docling/chunk"
+        assert component.name == "/chunk"

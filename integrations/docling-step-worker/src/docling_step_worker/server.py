@@ -82,19 +82,19 @@ class DoclingStepWorkerServer:
     def _register_components(self) -> None:
         """Register all docling components."""
 
-        @self.server.component(name="/docling/classify")
+        @self.server.component(name="/classify")
         async def classify(input_data: Any, context: StepflowContext) -> Any:
             """Probe a document to determine optimal pipeline configuration."""
             return await classify_document(input_data, context)
 
-        @self.server.component(name="/docling/convert")
+        @self.server.component(name="/convert")
         async def convert(input_data: Any, context: StepflowContext) -> Any:
             """Convert a document using docling's DocumentConverter directly."""
             config_name = input_data.get("pipeline_config", "default")
             converter = self._get_converter(config_name)
             return await convert_document(input_data, context, converter)
 
-        @self.server.component(name="/docling/chunk")
+        @self.server.component(name="/chunk")
         async def chunk(input_data: Any, context: StepflowContext) -> Any:
             """Chunk a DoclingDocument using docling's HybridChunker."""
             return await chunk_document(input_data, context)

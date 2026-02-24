@@ -38,7 +38,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "stepflow-py>=0.8.0",
+    "stepflow-py[http]>=0.8.0",
     "docling>=2.70.0",
     "docling-core>=2.60.0",
     "click>=8.0",
@@ -133,6 +133,10 @@ sequence = ["fmt-fix", "lint-fix", "dep-check"]
 [tool.poe.tasks.typecheck]
 help = "Alias for type-check"
 ref = "type-check"
+
+[tool.poe.tasks.test-e2e]
+help = "Run e2e tests via stepflow test (requires docling models)"
+cmd = "cargo run --manifest-path ../../stepflow-rs/Cargo.toml -p stepflow-cli -- test tests/e2e/"
 
 [tool.poe.tasks.check]
 help = "Runs all checks and tests"

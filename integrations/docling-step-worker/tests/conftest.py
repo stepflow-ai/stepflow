@@ -77,7 +77,7 @@ def sample_pdf_with_tables_bytes():
 def sample_docling_document_dict():
     """A DoclingDocument dict matching docling's export_to_dict() format.
 
-    This is the interchange format between /docling/convert and /docling/chunk.
+    This is the interchange format between /convert and /chunk.
     """
     return {
         "schema_name": "DoclingDocument",

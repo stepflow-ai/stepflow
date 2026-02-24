@@ -1,4 +1,46 @@
+schema: https://stepflow.org/schemas/v1/flow.json
 name: docling-process-document
+description: Classify, convert, and chunk a document using Docling
+
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      required:
+        - source
+        - source_kind
+      properties:
+        source:
+          type: string
+          description: "Document source: blob ref, URL, or base64-encoded content"
+        source_kind:
+          type: string
+          enum: [blob, url, base64]
+          description: How to interpret the source field
+        chunk_options:
+          type: object
+          description: Optional chunking configuration
+          properties:
+            max_tokens:
+              type: integer
+              description: Maximum tokens per chunk
+            tokenizer:
+              type: string
+              description: Tokenizer to use for chunk sizing
+    output:
+      type: object
+      properties:
+        document:
+          type: object
+          description: Converted DoclingDocument (blob ref or dict)
+        chunks:
+          type: array
+          description: Document chunks produced by HybridChunker
+        classification:
+          type: object
+          description: Classification result with document type and recommended config
+
 steps:
   - id: classify
     component: /docling/classify
