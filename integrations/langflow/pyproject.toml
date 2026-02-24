@@ -1,6 +1,6 @@
 [project]
 name = "stepflow-langflow-integration"
-version = "0.1.0"
+version = "0.2.0"
 description = "Langflow integration for Stepflow - convert and execute Langflow workflows"
 readme = "README.md"
 license = {text = "Apache-2.0"}
