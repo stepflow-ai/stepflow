@@ -31,6 +31,7 @@ use stepflow_state::{
 };
 use uuid::Uuid;
 
+use crate::checkpointer::Checkpointer;
 use crate::run_state::RunState;
 use crate::scheduler::Scheduler;
 use crate::state::ItemsState;
@@ -92,6 +93,8 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+    /// Periodic checkpoint creator for execution state.
+    checkpointer: Checkpointer,
 }
 
 impl FlowExecutor {
@@ -109,6 +112,7 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
         Self {
@@ -122,6 +126,7 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
+            checkpointer,
         }
     }
 
@@ -188,12 +193,14 @@ impl FlowExecutor {
         self.runs.get(&self.root_run_id).expect("root run exists")
     }
 
-    /// Write a journal entry durably.
-    async fn write_journal(&self, event: JournalEvent) -> Result<()> {
-        self.journal
+    /// Write a journal entry durably and record it for checkpointing.
+    async fn write_journal(&mut self, event: JournalEvent) -> Result<()> {
+        let sequence = self
+            .journal
             .write(self.root_run_id, event)
             .await
             .change_context(ExecutionError::JournalError)?;
+        self.checkpointer.record_entry(sequence);
         Ok(())
     }
 
@@ -235,6 +242,9 @@ impl FlowExecutor {
                 // Wait for any in-flight tasks to complete before returning
                 while let Some(task_result) = in_flight.next().await {
                     self.complete_task(task_result).await?;
+                    self.checkpointer
+                        .maybe_checkpoint(&self.runs, &self.recovered_subflows)
+                        .await?;
                 }
                 return Ok(());
             }
@@ -318,6 +328,7 @@ impl FlowExecutor {
                 // Handle task completion
                 Some(task_result) = in_flight.next() => {
                     self.complete_task(task_result).await?;
+                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows).await?;
                     if let Some(r) = &mut remaining {
                         *r = r.saturating_sub(1);
                     }
@@ -636,6 +647,9 @@ impl FlowExecutor {
             item_count,
             final_status
         );
+
+        // Clean up checkpoints now that the run is complete.
+        self.checkpointer.cleanup().await;
 
         Ok(())
     }

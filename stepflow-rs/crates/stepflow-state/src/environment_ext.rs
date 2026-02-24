@@ -18,7 +18,8 @@ use std::sync::Arc;
 use stepflow_core::StepflowEnvironment;
 
 use crate::{
-    ActiveExecutions, BlobStore, ExecutionJournal, LeaseManager, MetadataStore, OrchestratorId,
+    ActiveExecutions, BlobStore, CheckpointStore, ExecutionJournal, LeaseManager, MetadataStore,
+    OrchestratorId,
 };
 
 /// Extension trait providing MetadataStore access for StepflowEnvironment.
@@ -162,6 +163,33 @@ impl OrchestratorIdExt for StepflowEnvironment {
     }
 }
 
+/// Extension trait providing CheckpointStore access for StepflowEnvironment.
+///
+/// # Example
+///
+/// ```ignore
+/// use stepflow_state::CheckpointStoreExt;
+///
+/// async fn save_checkpoint(env: &StepflowEnvironment, run_id: Uuid, seq: SequenceNumber, data: Bytes) {
+///     env.checkpoint_store().put_checkpoint(run_id, seq, data).await.unwrap();
+/// }
+/// ```
+pub trait CheckpointStoreExt {
+    /// Get a reference to the checkpoint store.
+    ///
+    /// # Panics
+    ///
+    /// Panics if checkpoint store was not set during environment construction.
+    fn checkpoint_store(&self) -> &Arc<dyn CheckpointStore>;
+}
+
+impl CheckpointStoreExt for StepflowEnvironment {
+    fn checkpoint_store(&self) -> &Arc<dyn CheckpointStore> {
+        self.get::<Arc<dyn CheckpointStore>>()
+            .expect("CheckpointStore not set in environment")
+    }
+}
+
 /// Extension trait providing ActiveExecutions access for StepflowEnvironment.
 ///
 /// This trait allows crates that need to track running executions to import this
@@ -275,5 +303,24 @@ mod tests {
     fn test_active_executions_ext_panics_if_not_set() {
         let env = StepflowEnvironment::new();
         let _ = env.active_executions();
+    }
+
+    #[test]
+    fn test_checkpoint_store_ext() {
+        use crate::NoOpCheckpointStore;
+
+        let mut env = StepflowEnvironment::new();
+        let store: Arc<dyn CheckpointStore> = Arc::new(NoOpCheckpointStore);
+        env.insert(store);
+
+        let retrieved = env.checkpoint_store();
+        assert!(Arc::strong_count(retrieved) >= 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "CheckpointStore not set")]
+    fn test_checkpoint_store_ext_panics_if_not_set() {
+        let env = StepflowEnvironment::new();
+        let _ = env.checkpoint_store();
     }
 }

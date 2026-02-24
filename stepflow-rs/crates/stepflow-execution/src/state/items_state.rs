@@ -356,6 +356,13 @@ impl ItemsState {
         self.item_mut(item_index)
             .apply_completed(step_index, result);
     }
+
+    /// Recompute the incomplete_count from current item states.
+    ///
+    /// Used after restoring from a checkpoint to ensure the counter is correct.
+    pub(crate) fn recompute_incomplete_count(&mut self) {
+        self.incomplete_count = self.items.iter().filter(|item| !item.is_complete()).count();
+    }
 }
 
 #[cfg(test)]

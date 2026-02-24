@@ -34,6 +34,7 @@ recovery:
   enabled: true
   checkIntervalSecs: 3
   leaseTtlSecs: 6
+  checkpointInterval: 3
 
 blobApi:
   enabled: false

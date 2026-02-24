@@ -16,6 +16,7 @@ workspace = true
 doctest = false
 
 [dependencies]
+bytes.workspace = true
 chrono.workspace = true
 error-stack.workspace = true
 futures.workspace = true

@@ -182,9 +182,9 @@ uv run python generate.py --check
 
 ### Module Organization
 
-- Prefer `foo.rs` files over `foo/mod.rs` for module organization
-- When creating a module directory, create a corresponding `.rs` file in the parent directory
-- Example: Instead of `workflow/mod.rs`, create `workflow.rs` at the same level as `workflow/` directory
+- Use `foo.rs` files, not `foo/mod.rs` — enforced by `clippy::mod_module_files` (deny)
+- When a module has submodules, create `foo.rs` alongside a `foo/` directory
+- Example: `src/recovery.rs` + `src/recovery/tree.rs`, NOT `src/recovery/mod.rs`
 
 ### Documentation
 

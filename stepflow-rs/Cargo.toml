@@ -90,6 +90,7 @@ schemars = { version = "1", features = [
     "url2",
     "uuid1",
 ] }
+rmp-serde = "1"
 reqwest = { version = "0.12", features = [
     "json",
     "rustls-tls",
@@ -162,6 +163,7 @@ future_incompatible = "deny"
 [workspace.lints.clippy]
 print_stderr = "deny"
 print_stdout = "deny"
+mod_module_files = "deny"
 undocumented_unsafe_blocks = "deny"
 unused_trait_names = "deny"
 
