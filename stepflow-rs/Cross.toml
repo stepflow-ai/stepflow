@@ -1,0 +1,11 @@
+# Cross-compilation configuration for the `cross` tool.
+# Install protobuf compiler needed by etcd-client's build script.
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = ["apt-get update && apt-get install -y protobuf-compiler"]
+
+[target.x86_64-unknown-linux-musl]
+pre-build = ["apt-get update && apt-get install -y protobuf-compiler"]
+
+[target.aarch64-unknown-linux-musl]
+pre-build = ["apt-get update && apt-get install -y protobuf-compiler"]
