@@ -88,6 +88,8 @@ data:
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
             regex: stepflow-load-balancer.*
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
           - source_labels: [__meta_kubernetes_pod_ip]
             target_label: __address__
             replacement: $1:9090

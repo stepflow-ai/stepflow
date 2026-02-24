@@ -62,7 +62,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_lb_requests_total[5m]))",
+              "expr": "sum(rate(stepflow_lb_requests_total{app=~\"$lb_instance\"}[5m]))",
               "legendFormat": "Request Rate",
               "refId": "A"
             }
@@ -93,7 +93,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_lb_active_connections)",
+              "expr": "sum(stepflow_lb_active_connections{app=~\"$lb_instance\"})",
               "legendFormat": "Active Connections",
               "refId": "A"
             }
@@ -127,7 +127,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "stepflow_lb_backend_pool_size",
+              "expr": "stepflow_lb_backend_pool_size{app=~\"$lb_instance\"}",
               "legendFormat": "Healthy Backends",
               "refId": "A"
             }
@@ -165,7 +165,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket{app=~\"$lb_instance\"}[5m])) by (le))",
               "legendFormat": "p50 Latency",
               "refId": "A"
             }
@@ -206,7 +206,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_lb_requests_total[5m])) by (backend)",
+              "expr": "sum(rate(stepflow_lb_requests_total{app=~\"$lb_instance\"}[5m])) by (backend)",
               "legendFormat": "{{backend}}",
               "refId": "A"
             }
@@ -247,19 +247,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket{app=~\"$lb_instance\"}[5m])) by (le))",
               "legendFormat": "p50",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(stepflow_lb_request_duration_ms_bucket[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_lb_request_duration_ms_bucket{app=~\"$lb_instance\"}[5m])) by (le))",
               "legendFormat": "p95",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.99, sum(rate(stepflow_lb_request_duration_ms_bucket[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(stepflow_lb_request_duration_ms_bucket{app=~\"$lb_instance\"}[5m])) by (le))",
               "legendFormat": "p99",
               "refId": "C"
             }
@@ -295,7 +295,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "stepflow_lb_backend_health",
+              "expr": "stepflow_lb_backend_health{app=~\"$lb_instance\"}",
               "legendFormat": "{{backend}} ({{instance_id}})",
               "refId": "A"
             }
@@ -336,7 +336,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_lb_requests_total[5m])) by (status)",
+              "expr": "sum(rate(stepflow_lb_requests_total{app=~\"$lb_instance\"}[5m])) by (status)",
               "legendFormat": "Status {{status}}",
               "refId": "A"
             }
@@ -347,7 +347,27 @@ data:
       ],
       "schemaVersion": 39,
       "tags": ["stepflow", "load-balancer", "infrastructure"],
-      "templating": {"list": []},
+      "templating": {
+        "list": [
+          {
+            "current": {"selected": true, "text": "All", "value": "$__all"},
+            "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "definition": "label_values(stepflow_lb_requests_total, app)",
+            "hide": 0,
+            "includeAll": true,
+            "label": "Load Balancer",
+            "multi": false,
+            "name": "lb_instance",
+            "options": [],
+            "query": {"qryType": 1, "query": "label_values(stepflow_lb_requests_total, app)"},
+            "refresh": 2,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 1,
+            "type": "query"
+          }
+        ]
+      },
       "time": {"from": "now-1h", "to": "now"},
       "timepicker": {},
       "timezone": "",
