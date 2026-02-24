@@ -20,16 +20,9 @@ use std::collections::HashMap;
 use error_stack::ResultExt as _;
 use stepflow_state::ExecutionJournal;
 
+use super::types::RecoveredState;
 use crate::checkpoint::CheckpointData;
 use crate::{ExecutionError, Result, RunState};
-
-/// The result of a successful checkpoint restoration: root RunState, subflow dedup
-/// map, and additional (subflow) RunStates.
-pub(super) type CheckpointRestoreResult = (
-    RunState,
-    HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-    HashMap<uuid::Uuid, RunState>,
-);
 
 /// Restore execution state from a checkpoint.
 ///
@@ -47,7 +40,7 @@ pub(super) async fn restore_from_checkpoint(
     flow: &std::sync::Arc<stepflow_core::workflow::Flow>,
     blob_store: &dyn stepflow_state::BlobStore,
     journal: &dyn ExecutionJournal,
-) -> Result<CheckpointRestoreResult> {
+) -> Result<RecoveredState> {
     let checkpoint_data = CheckpointData::deserialize(&stored_cp.data).map_err(|e| {
         error_stack::report!(ExecutionError::CheckpointError)
             .attach_printable(format!("checkpoint deserialization failed: {e}"))
@@ -75,7 +68,7 @@ pub(super) async fn restore_from_checkpoint(
     })?;
 
     // Restore subflow RunStates from checkpoint
-    let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
+    let mut subflow_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
     for rc in &checkpoint_data.runs {
         if rc.run_id == run_id {
             continue; // Skip root, already restored
@@ -94,13 +87,13 @@ pub(super) async fn restore_from_checkpoint(
             error_stack::report!(ExecutionError::CheckpointError)
                 .attach_printable(format!("subflow {} restore failed: {e}", rc.run_id))
         })?;
-        additional.insert(rc.run_id, sub_state);
+        subflow_runs.insert(rc.run_id, sub_state);
     }
 
     // Restore subflow dedup map from checkpoint
-    let mut sf_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
+    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
     for mapping in &checkpoint_data.subflow_map {
-        sf_map.insert(
+        subflow_map.insert(
             (
                 mapping.parent_run_id,
                 mapping.item_index,
@@ -117,10 +110,10 @@ pub(super) async fn restore_from_checkpoint(
         .await
         .change_context(ExecutionError::CheckpointError)?;
 
-    let mut root_state = root_run_state;
+    let mut run_state = root_run_state;
     for event in &tail_events_for_replay {
-        root_state.apply_event(event);
-        for sub_state in additional.values_mut() {
+        run_state.apply_event(event);
+        for sub_state in subflow_runs.values_mut() {
             sub_state.apply_event(event);
         }
         // Also update subflow map from new SubflowSubmitted events
@@ -132,7 +125,7 @@ pub(super) async fn restore_from_checkpoint(
             subflow_run_id,
         } = event
         {
-            sf_map.insert(
+            subflow_map.insert(
                 (*parent_run_id, *item_index, *step_index, *subflow_key),
                 *subflow_run_id,
             );
@@ -145,8 +138,8 @@ pub(super) async fn restore_from_checkpoint(
             variables: sub_variables,
             parent_run_id: Some(parent_id),
         } = event
-            && !additional.contains_key(sub_run_id)
-            && sf_map.values().any(|id| id == sub_run_id)
+            && !subflow_runs.contains_key(sub_run_id)
+            && subflow_map.values().any(|id| id == sub_run_id)
         {
             let sub_flow = blob_store
                 .get_flow(sub_flow_id)
@@ -170,7 +163,7 @@ pub(super) async fn restore_from_checkpoint(
             for ev in &tail_events_for_replay {
                 sub_state.apply_event(ev);
             }
-            additional.insert(*sub_run_id, sub_state);
+            subflow_runs.insert(*sub_run_id, sub_state);
         }
     }
 
@@ -178,8 +171,12 @@ pub(super) async fn restore_from_checkpoint(
         "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
         tail_events_for_replay.len(),
         root_run_id,
-        root_state.is_complete()
+        run_state.is_complete()
     );
 
-    Ok((root_state, sf_map, additional))
+    Ok(RecoveredState {
+        run_state,
+        subflow_map,
+        subflow_runs,
+    })
 }

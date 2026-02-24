@@ -60,7 +60,9 @@
 //! ```
 
 mod checkpoint_restore;
+mod journal_restore;
 mod tree;
+mod types;
 
 #[cfg(test)]
 mod tests;

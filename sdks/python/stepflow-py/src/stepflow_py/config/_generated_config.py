@@ -176,12 +176,12 @@ class RecoveryConfig(Struct, kw_only=True):
         Annotated[
             int,
             Meta(
-                description='Number of journal entries between checkpoints.\n\nWhen non-zero, the executor periodically serializes execution state so\nthat recovery only needs to replay events after the checkpoint instead of\nfrom the beginning. Set to 0 to disable (default).',
+                description='Number of journal entries between checkpoints.\n\nThe executor periodically serializes execution state so that recovery\nonly needs to replay events after the checkpoint instead of from the\nbeginning. Set to 0 to disable. Default: 1000.',
                 ge=0,
             ),
         ]
         | UnsetType
-    ) = 0
+    ) = 1000
 
 
 class BlobApiConfig(Struct, kw_only=True):
@@ -582,7 +582,7 @@ class StepflowConfig(Struct, kw_only=True):
                 'maxStartupRecovery': 100,
                 'maxClaimsPerCheck': 10,
                 'leaseTtlSecs': 30,
-                'checkpointInterval': 0,
+                'checkpointInterval': 1000,
             },
             type=RecoveryConfig,
         )

@@ -188,9 +188,8 @@ impl FlowExecutorBuilder {
         // Create checkpointer from environment configuration
         let checkpoint_interval = self
             .env
-            .get::<ExecutionConfig>()
-            .map(|c| c.checkpoint_interval)
-            .unwrap_or(0);
+            .get_expected::<ExecutionConfig>()
+            .checkpoint_interval;
         let checkpoint_store = self.env.checkpoint_store().clone();
         let checkpointer = Checkpointer::new(checkpoint_store, run_id, checkpoint_interval);
 

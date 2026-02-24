@@ -126,11 +126,7 @@ impl CheckpointComplianceTests {
         let run_id = Uuid::now_v7();
 
         store
-            .put_checkpoint(
-                run_id,
-                SequenceNumber::new(5),
-                Bytes::from_static(b"first"),
-            )
+            .put_checkpoint(run_id, SequenceNumber::new(5), Bytes::from_static(b"first"))
             .await
             .unwrap();
 
@@ -196,11 +192,7 @@ impl CheckpointComplianceTests {
         let run_id = Uuid::now_v7();
 
         store
-            .put_checkpoint(
-                run_id,
-                SequenceNumber::new(5),
-                Bytes::from_static(b"data"),
-            )
+            .put_checkpoint(run_id, SequenceNumber::new(5), Bytes::from_static(b"data"))
             .await
             .unwrap();
         assert!(store.get_latest_checkpoint(run_id).await.unwrap().is_some());

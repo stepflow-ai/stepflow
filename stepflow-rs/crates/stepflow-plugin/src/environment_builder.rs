@@ -24,6 +24,7 @@ use stepflow_state::{
     OrchestratorId,
 };
 
+use crate::execution_config::ExecutionConfig;
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
@@ -55,18 +56,6 @@ impl BlobApiUrl {
     pub fn blob_threshold(&self) -> usize {
         self.blob_threshold
     }
-}
-
-/// Execution configuration stored in the environment.
-///
-/// Consolidates runtime execution options that affect the executor.
-#[derive(Debug, Clone)]
-pub struct ExecutionConfig {
-    /// Number of journal entries between checkpoints.
-    ///
-    /// When non-zero, the executor creates a checkpoint every N journal entries.
-    /// Set to 0 to disable. Default: 0 (builder), 1000 (config file).
-    pub checkpoint_interval: usize,
 }
 
 /// Builder for constructing a StepflowEnvironment.

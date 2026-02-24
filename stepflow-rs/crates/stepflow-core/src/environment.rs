@@ -85,6 +85,18 @@ impl StepflowEnvironment {
             .and_then(|boxed| boxed.downcast_ref())
     }
 
+    /// Get a reference to a resource by type.
+    ///
+    /// Panics if no resource of that type has been inserted.
+    pub fn get_expected<T: 'static>(&self) -> &T {
+        self.get().unwrap_or_else(|| {
+            panic!(
+                "Missing expected value of type {}",
+                std::any::type_name::<T>()
+            )
+        })
+    }
+
     /// Check if a resource of the given type exists.
     pub fn contains<T: 'static>(&self) -> bool {
         self.resources.contains_key(&TypeId::of::<T>())
