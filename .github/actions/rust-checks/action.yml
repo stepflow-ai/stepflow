@@ -62,6 +62,8 @@ runs:
     # Install protoc for etcd-client compilation (needed by --all-features)
     - name: Install protoc
       uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ github.token }}
 
     # Install Graphviz for visualize command tests
     - name: Install Graphviz

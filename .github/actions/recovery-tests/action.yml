@@ -37,6 +37,8 @@ runs:
     # Install protoc for etcd-client compilation (needed by stepflow-server)
     - name: Install protoc
       uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ github.token }}
 
     - name: Install uv
       uses: astral-sh/setup-uv@v5
