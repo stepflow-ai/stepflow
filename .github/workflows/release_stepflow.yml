@@ -85,6 +85,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Install protoc for etcd-client compilation (needed by stepflow-server)
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+
       - name: Install cross-compilation tools
         if: matrix.cross
         run: |
