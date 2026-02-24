@@ -208,11 +208,60 @@ class _HttpServerContext:
                     observability=observability,
                     blob_api_url=self.server.blob_api_url,
                 )
-                # Streaming: tokens are reset inside the generator
-                # (a finally here would fire before the generator runs).
+
+                # On-demand SSE: start execution in background and race
+                # between completion and the first bidirectional request.
+                async def execute_and_shutdown_queue():
+                    try:
+                        result = await self.server.handle_message(request, context)
+                        assert result is not None
+                        return result
+                    finally:
+                        await outgoing_queue.put(None)
+
+                execution_task = asyncio.create_task(execute_and_shutdown_queue())
+                first_msg_task = asyncio.create_task(outgoing_queue.get())
+
+                done, _ = await asyncio.wait(
+                    {execution_task, first_msg_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if execution_task in done:
+                    # Component finished without bidirectional calls.
+                    first_msg_task.cancel()
+                    try:
+                        result = execution_task.result()
+                        return JSONResponse(
+                            content=msgspec.to_builtins(result),
+                            media_type="application/json",
+                        )
+                    finally:
+                        blob_store.reset(blob_tokens)
+
+                # first_msg_task completed first
+                first_message = first_msg_task.result()
+                if first_message is None:
+                    # Queue shutdown — execution finished without
+                    # bidirectional calls (tight race).
+                    try:
+                        result = await execution_task
+                        return JSONResponse(
+                            content=msgspec.to_builtins(result),
+                            media_type="application/json",
+                        )
+                    finally:
+                        blob_store.reset(blob_tokens)
+
+                # Bidirectional request detected — upgrade to SSE.
+                # Blob tokens are reset inside the generator.
                 return StreamingResponse(
-                    self.execute_with_streaming_context(
-                        request, context, outgoing_queue, blob_tokens
+                    self._stream_remaining_sse(
+                        execution_task,
+                        first_message,
+                        outgoing_queue,
+                        request.id,
+                        blob_tokens,
                     ),
                     media_type="text/event-stream",
                     headers={"Stepflow-Instance-Id": self.instance_id},
@@ -243,26 +292,26 @@ class _HttpServerContext:
                 error_message=f"Internal error: {str(e)}",
             )
 
-    async def execute_with_streaming_context(
+    async def _stream_remaining_sse(
         self,
-        request: MethodRequest,
-        context: StepflowContext,
+        execution_task: asyncio.Task[Any],
+        first_message: Any,
         outgoing_queue: asyncio.Queue[MethodRequest | None],
+        request_id: RequestId,
         blob_tokens: Any = None,
     ) -> AsyncGenerator[str]:
-        """Execute request with streaming context via SSE."""
+        """Stream SSE events after the first bidirectional message triggered SSE.
 
-        async def execute_and_shutdown_queue():
-            try:
-                result = await self.server.handle_message(request, context)
-                assert result is not None
-                return result
-            finally:
-                await outgoing_queue.put(None)
-
-        execution_task = asyncio.create_task(execute_and_shutdown_queue())
-
+        Called when on-demand SSE detected a real bidirectional request.
+        Yields the first message, then continues draining the queue until
+        execution completes.
+        """
         try:
+            # Yield the first bidirectional message that triggered SSE
+            sse_data = msgspec.json.encode(first_message).decode("utf-8")
+            yield f"data: {sse_data}\n\n"
+
+            # Continue streaming remaining messages
             while True:
                 message = await outgoing_queue.get()
                 if message is None:
@@ -270,6 +319,7 @@ class _HttpServerContext:
                 sse_data = msgspec.json.encode(message).decode("utf-8")
                 yield f"data: {sse_data}\n\n"
 
+            # Execution is done, yield final result
             assert execution_task.done()
             result = await execution_task
             sse_data = msgspec.json.encode(result).decode("utf-8")
@@ -278,7 +328,7 @@ class _HttpServerContext:
             if not execution_task.done():
                 execution_task.cancel()
             yield self.create_sse_error_event(
-                request_id=request.id,
+                request_id=request_id,
                 error_code=-32603,
                 error_message=f"Request execution failed: {str(e)}",
             )

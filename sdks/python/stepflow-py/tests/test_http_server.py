@@ -305,6 +305,26 @@ def core_server():
             blob_id=blob_id,
         )
 
+    # Component that uses context properties only (no bidirectional/blob calls)
+    class ContextPropsInput(msgspec.Struct):
+        message: str
+
+    class ContextPropsOutput(msgspec.Struct):
+        message: str
+        run_id: str | None
+        attempt: int
+
+    @server.component
+    async def context_props_component(
+        input: ContextPropsInput, context: StepflowContext
+    ) -> ContextPropsOutput:
+        """A component that accepts context but only reads properties."""
+        return ContextPropsOutput(
+            message=input.message,
+            run_id=context.run_id,
+            attempt=context.attempt,
+        )
+
     # Define message types for bidirectional SSE test
     class BidirectionalInput(msgspec.Struct):
         value: int
@@ -531,6 +551,7 @@ async def test_components_list(test_server):
     expected_components = [
         "/simple_component",
         "/context_component",
+        "/context_props_component",
         "/bidirectional_component",
         "/udf",
     ]
@@ -659,45 +680,63 @@ async def test_http_blob_api(test_server):
     """Test context component with HTTP blob API.
 
     This test verifies that components using StepflowContext can store blobs
-    via the HTTP Blob API during execution. The blob operations happen over
-    HTTP (not SSE), so we only receive the final result via SSE.
+    via the HTTP Blob API during execution. Since blob operations use HTTP
+    (not SSE bidirectional calls), on-demand SSE returns a direct JSON response.
     """
-
-    async with test_server.stream_request(
+    response = await test_server.send_request(
         Method.components_execute,
         component="/context_component",
         input_data={"data": "test blob data"},
-    ) as response:
-        # Should return streaming response
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
+    )
 
-        # Create SSE event helper
-        sse_events = test_server.sse_events(response)
+    # On-demand SSE: no bidirectional calls were made, so response is JSON
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
 
-        # With HTTP blob API, the component makes HTTP calls directly,
-        # so we only receive the final response via SSE (no intermediate blobs/put)
-        final_response = await sse_events.next()
-        assert final_response is not None, "Should receive final component response"
-        assert final_response["jsonrpc"] == "2.0"
-        assert final_response["id"] == "components_execute-test"
-        assert "result" in final_response
-        assert (
-            final_response["result"]["output"]["result"]
-            == "Processed with context: test blob data"
-        )
-        # Blob ID should be a SHA-256 hash (64 hex chars)
-        blob_id = final_response["result"]["output"]["blob_id"]
-        assert len(blob_id) == 64, "Blob ID should be SHA-256 hash"
-        assert all(c in "0123456789abcdef" for c in blob_id), "Blob ID should be hex"
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_execute-test"
+    assert "result" in result
+    assert (
+        result["result"]["output"]["result"] == "Processed with context: test blob data"
+    )
+    # Blob ID should be a SHA-256 hash (64 hex chars)
+    blob_id = result["result"]["output"]["blob_id"]
+    assert len(blob_id) == 64, "Blob ID should be SHA-256 hash"
+    assert all(c in "0123456789abcdef" for c in blob_id), "Blob ID should be hex"
 
-        # Verify the blob was stored in our mock storage
-        assert blob_id in _test_blob_storage
-        assert _test_blob_storage[blob_id]["data"] == "test blob data"
+    # Verify the blob was stored in our mock storage
+    assert blob_id in _test_blob_storage
+    assert _test_blob_storage[blob_id]["data"] == "test blob data"
 
-        # Verify the stream is closed (no more events)
-        next_event = await sse_events.next()
-        assert next_event is None, "Should not receive any more events"
+
+@pytest.mark.asyncio
+async def test_context_component_json_response(test_server):
+    """Test that a context component without bidirectional calls returns JSON.
+
+    On-demand SSE: components that accept StepflowContext but only read
+    properties (run_id, attempt, etc.) should get a direct JSON response
+    instead of an SSE stream.
+    """
+    response = await test_server.send_request(
+        Method.components_execute,
+        component="/context_props_component",
+        input_data={"message": "hello"},
+    )
+
+    # Should return direct JSON, not SSE
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+
+    result = response.json()
+    assert result["jsonrpc"] == "2.0"
+    assert result["id"] == "components_execute-test"
+    assert "result" in result
+
+    output = result["result"]["output"]
+    assert output["message"] == "hello"
+    assert output["run_id"] == "test-run-id"
+    assert output["attempt"] == 1
 
 
 @pytest.mark.asyncio
