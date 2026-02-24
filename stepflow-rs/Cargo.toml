@@ -163,6 +163,7 @@ future_incompatible = "deny"
 [workspace.lints.clippy]
 print_stderr = "deny"
 print_stdout = "deny"
+mod_module_files = "deny"
 undocumented_unsafe_blocks = "deny"
 unused_trait_names = "deny"
 
