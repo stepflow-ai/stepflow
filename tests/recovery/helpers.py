@@ -299,9 +299,13 @@ def assert_checkpoints_used_in_recovery(*services: str):
     This verifies the full checkpoint lifecycle:
     1. Checkpoints were created during execution (before crash)
     2. Recovery loaded a checkpoint (after restart/failover)
+
+    Fetches logs once per service to avoid redundant docker-compose calls.
     """
-    created = any(has_checkpoint_created_log(s) for s in services)
-    restored = any(has_checkpoint_recovery_log(s) for s in services)
+    # Fetch logs once per service to avoid redundant docker-compose calls
+    all_logs = {s: get_orchestrator_logs(s) for s in services}
+    created = any("Checkpoint created for run" in logs for logs in all_logs.values())
+    restored = any("Restoring from checkpoint" in logs for logs in all_logs.values())
     assert created, (
         f"Expected checkpoint creation log in {services}, "
         "but no 'Checkpoint created' message found"

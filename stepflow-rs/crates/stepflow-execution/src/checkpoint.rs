@@ -371,7 +371,8 @@ mod tests {
         let bytes = checkpoint_data.serialize().expect("serialize");
         let restored_data = CheckpointData::deserialize(&bytes).expect("deserialize");
 
-        let restored = RunState::from_checkpoint(&restored_data.runs[0], flow);
+        let restored =
+            RunState::from_checkpoint(&restored_data.runs[0], flow).expect("checkpoint restore");
 
         // Compare key properties
         assert_eq!(restored.run_id(), state.run_id());

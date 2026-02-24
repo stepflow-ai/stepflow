@@ -14,6 +14,7 @@ use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use stepflow_core::status::ExecutionStatus;
 
 use bytes::Bytes;
@@ -80,6 +81,8 @@ pub struct InMemoryStateStore {
     journals: DashMap<Uuid, JournalState>,
     /// Map from root_run_id to latest checkpoint.
     checkpoints: DashMap<Uuid, StoredCheckpoint>,
+    /// Total number of checkpoint put operations (for testing).
+    checkpoint_put_count: AtomicUsize,
 }
 
 impl InMemoryStateStore {
@@ -91,7 +94,16 @@ impl InMemoryStateStore {
             completion_notifier: RunCompletionNotifier::new(),
             journals: DashMap::new(),
             checkpoints: DashMap::new(),
+            checkpoint_put_count: AtomicUsize::new(0),
         }
+    }
+
+    /// Get the total number of checkpoint put operations.
+    ///
+    /// Useful for testing to verify that checkpoints were actually created
+    /// during execution (before cleanup removes them).
+    pub fn checkpoint_put_count(&self) -> usize {
+        self.checkpoint_put_count.load(Ordering::Relaxed)
     }
 
     /// Remove all state for a specific execution.
@@ -580,6 +592,7 @@ impl CheckpointStore for InMemoryStateStore {
         async move {
             self.checkpoints
                 .insert(root_run_id, StoredCheckpoint { sequence, data });
+            self.checkpoint_put_count.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
         .boxed()

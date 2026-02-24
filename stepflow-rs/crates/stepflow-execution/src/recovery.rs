@@ -410,6 +410,177 @@ async fn claim_for_recovery(
     Ok(recovery_infos)
 }
 
+/// The result of a successful checkpoint restoration: root RunState, subflow dedup
+/// map, and additional (subflow) RunStates.
+type CheckpointRestoreResult = (
+    RunState,
+    HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
+    HashMap<uuid::Uuid, RunState>,
+);
+
+/// Attempt to restore execution state from a checkpoint.
+///
+/// Deserializes the checkpoint, validates structural integrity, rebuilds all
+/// RunStates and the subflow dedup map, then replays tail journal events.
+///
+/// Returns `Some(...)` on success or `None` on any failure (deserialization,
+/// validation, structural mismatch). Failures are logged and the caller should
+/// fall back to full journal replay.
+async fn restore_from_checkpoint(
+    stored_cp: &stepflow_state::StoredCheckpoint,
+    run_id: uuid::Uuid,
+    root_run_id: uuid::Uuid,
+    flow: &std::sync::Arc<stepflow_core::workflow::Flow>,
+    blob_store: &dyn stepflow_state::BlobStore,
+    journal: &dyn ExecutionJournal,
+) -> Option<CheckpointRestoreResult> {
+    match try_restore_from_checkpoint(stored_cp, run_id, root_run_id, flow, blob_store, journal)
+        .await
+    {
+        Ok(result) => Some(result),
+        Err(e) => {
+            log::warn!(
+                "Checkpoint restoration failed for tree {root_run_id}, \
+                 falling back to full replay: {e}"
+            );
+            None
+        }
+    }
+}
+
+/// Inner function for checkpoint restoration that returns `Result` so errors
+/// can be propagated with `?` and caught by the caller.
+async fn try_restore_from_checkpoint(
+    stored_cp: &stepflow_state::StoredCheckpoint,
+    run_id: uuid::Uuid,
+    root_run_id: uuid::Uuid,
+    flow: &std::sync::Arc<stepflow_core::workflow::Flow>,
+    blob_store: &dyn stepflow_state::BlobStore,
+    journal: &dyn ExecutionJournal,
+) -> std::result::Result<CheckpointRestoreResult, String> {
+    let checkpoint_data = CheckpointData::deserialize(&stored_cp.data)
+        .map_err(|e| format!("deserialization failed: {e}"))?;
+
+    log::info!(
+        "Restoring from checkpoint at sequence {:?} for tree {}",
+        stored_cp.sequence,
+        root_run_id
+    );
+
+    // Restore the root run from checkpoint
+    let root_checkpoint = checkpoint_data
+        .runs
+        .iter()
+        .find(|rc| rc.run_id == run_id)
+        .ok_or_else(|| "Root run not found in checkpoint".to_string())?;
+
+    let root_run_state = RunState::from_checkpoint(root_checkpoint, flow.clone())?;
+
+    // Restore subflow RunStates from checkpoint
+    let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
+    for rc in &checkpoint_data.runs {
+        if rc.run_id == run_id {
+            continue; // Skip root, already restored
+        }
+        let sub_flow = blob_store
+            .get_flow(&rc.flow_id)
+            .await
+            .map_err(|e| format!("failed to load subflow {}: {e}", rc.flow_id))?
+            .ok_or_else(|| {
+                format!(
+                    "subflow flow not found for run {}, flow_id={}",
+                    rc.run_id, rc.flow_id
+                )
+            })?;
+        let sub_state = RunState::from_checkpoint(rc, sub_flow)?;
+        additional.insert(rc.run_id, sub_state);
+    }
+
+    // Restore subflow dedup map from checkpoint
+    let mut sf_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
+    for mapping in &checkpoint_data.subflow_map {
+        sf_map.insert(
+            (
+                mapping.parent_run_id,
+                mapping.item_index,
+                mapping.step_index,
+                mapping.subflow_key,
+            ),
+            mapping.subflow_run_id,
+        );
+    }
+
+    // Replay tail events (after checkpoint) to bring state up to date.
+    let tail_events_for_replay = journal
+        .read_from(root_run_id, stored_cp.sequence.next(), usize::MAX)
+        .await
+        .map_err(|e| format!("failed to read tail events: {e}"))?;
+
+    let mut root_state = root_run_state;
+    for event in &tail_events_for_replay {
+        root_state.apply_event(event);
+        for sub_state in additional.values_mut() {
+            sub_state.apply_event(event);
+        }
+        // Also update subflow map from new SubflowSubmitted events
+        if let stepflow_state::JournalEvent::SubflowSubmitted {
+            parent_run_id,
+            item_index,
+            step_index,
+            subflow_key,
+            subflow_run_id,
+        } = event
+        {
+            sf_map.insert(
+                (*parent_run_id, *item_index, *step_index, *subflow_key),
+                *subflow_run_id,
+            );
+        }
+        // Handle new subflow RunCreated events after checkpoint
+        if let stepflow_state::JournalEvent::RunCreated {
+            run_id: sub_run_id,
+            flow_id: sub_flow_id,
+            inputs: sub_inputs,
+            variables: sub_variables,
+            parent_run_id: Some(parent_id),
+        } = event
+            && !additional.contains_key(sub_run_id)
+            && sf_map.values().any(|id| id == sub_run_id)
+        {
+            let sub_flow = blob_store
+                .get_flow(sub_flow_id)
+                .await
+                .map_err(|e| format!("failed to load subflow {sub_flow_id}: {e}"))?
+                .ok_or_else(|| {
+                    format!("subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}",)
+                })?;
+            let mut sub_state = RunState::new_subflow(
+                *sub_run_id,
+                sub_flow_id.clone(),
+                root_run_id,
+                *parent_id,
+                sub_flow,
+                sub_inputs.clone(),
+                sub_variables.clone(),
+            );
+            // Apply remaining tail events to the new subflow
+            for ev in &tail_events_for_replay {
+                sub_state.apply_event(ev);
+            }
+            additional.insert(*sub_run_id, sub_state);
+        }
+    }
+
+    log::info!(
+        "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
+        tail_events_for_replay.len(),
+        root_run_id,
+        root_state.is_complete()
+    );
+
+    Ok((root_state, sf_map, additional))
+}
+
 /// Recover an execution tree by replaying its journal and resuming the root run.
 ///
 /// This loads the full journal for the execution tree (keyed by `root_run_id`),
@@ -468,8 +639,9 @@ async fn recover_execution_tree(
     // Checkpoint-accelerated recovery
     // =========================================================================
     // Try to load a checkpoint first. If one exists, restore state from it and
-    // only replay journal events after the checkpoint sequence. Otherwise fall
-    // through to full replay from sequence 0.
+    // only replay journal events after the checkpoint sequence. If checkpoint
+    // restoration fails for any reason (deserialization, version mismatch,
+    // structural mismatch), fall through to full replay from sequence 0.
 
     let checkpoint_store = env.checkpoint_store();
     let stored_checkpoint = checkpoint_store
@@ -477,154 +649,26 @@ async fn recover_execution_tree(
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
-    // Try to deserialize the checkpoint (if present). On failure (version mismatch,
-    // corruption), fall through to full replay.
-    let valid_checkpoint = if let Some(ref stored_cp) = stored_checkpoint {
-        match CheckpointData::deserialize(&stored_cp.data) {
-            Ok(data) => Some((stored_cp, data)),
-            Err(e) => {
-                log::warn!(
-                    "Checkpoint deserialization failed for tree {}, \
-                     falling back to full replay: {e}",
-                    root_run_id
-                );
-                None
-            }
-        }
+    // Attempt checkpoint-accelerated recovery. Any failure (deserialization,
+    // validation, structural mismatch) is treated as checkpoint corruption
+    // and triggers a fallback to full journal replay.
+    let checkpoint_result = if let Some(ref stored_cp) = stored_checkpoint {
+        restore_from_checkpoint(
+            stored_cp,
+            run_id,
+            root_run_id,
+            &flow,
+            blob_store.as_ref(),
+            journal.as_ref(),
+        )
+        .await
     } else {
         None
     };
 
     // Restore or reconstruct state
-    let (run_state, subflow_map, additional_runs) = if let Some((stored_cp, checkpoint_data)) =
-        valid_checkpoint
-    {
-        log::info!(
-            "Restoring from checkpoint at sequence {:?} for tree {}",
-            stored_cp.sequence,
-            root_run_id
-        );
-
-        // Restore the root run from checkpoint
-        let root_checkpoint = checkpoint_data
-            .runs
-            .iter()
-            .find(|rc| rc.run_id == run_id)
-            .ok_or_else(|| {
-                error_stack::report!(ExecutionError::RecoveryFailed)
-                    .attach_printable("Root run not found in checkpoint")
-            })?;
-
-        let root_run_state = RunState::from_checkpoint(root_checkpoint, flow.clone());
-
-        // Restore subflow RunStates from checkpoint
-        let mut additional: HashMap<uuid::Uuid, RunState> = HashMap::new();
-        for rc in &checkpoint_data.runs {
-            if rc.run_id == run_id {
-                continue; // Skip root, already restored
-            }
-            let sub_flow = blob_store
-                .get_flow(&rc.flow_id)
-                .await
-                .change_context(ExecutionError::RecoveryFailed)?
-                .ok_or_else(|| {
-                    error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(format!(
-                        "Subflow flow not found during checkpoint recovery for run {}, flow_id={}",
-                        rc.run_id, rc.flow_id
-                    ))
-                })?;
-            let sub_state = RunState::from_checkpoint(rc, sub_flow);
-            additional.insert(rc.run_id, sub_state);
-        }
-
-        // Restore subflow dedup map from checkpoint
-        let mut sf_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
-        for mapping in &checkpoint_data.subflow_map {
-            sf_map.insert(
-                (
-                    mapping.parent_run_id,
-                    mapping.item_index,
-                    mapping.step_index,
-                    mapping.subflow_key,
-                ),
-                mapping.subflow_run_id,
-            );
-        }
-
-        // Replay tail events (after checkpoint) to bring state up to date.
-        let tail_events_for_replay = journal
-            .read_from(root_run_id, stored_cp.sequence.next(), usize::MAX)
-            .await
-            .change_context(ExecutionError::RecoveryFailed)?;
-
-        let mut root_state = root_run_state;
-        for event in &tail_events_for_replay {
-            root_state.apply_event(event);
-            for sub_state in additional.values_mut() {
-                sub_state.apply_event(event);
-            }
-            // Also update subflow map from new SubflowSubmitted events
-            if let stepflow_state::JournalEvent::SubflowSubmitted {
-                parent_run_id,
-                item_index,
-                step_index,
-                subflow_key,
-                subflow_run_id,
-            } = event
-            {
-                sf_map.insert(
-                    (*parent_run_id, *item_index, *step_index, *subflow_key),
-                    *subflow_run_id,
-                );
-            }
-            // Handle new subflow RunCreated events after checkpoint
-            if let stepflow_state::JournalEvent::RunCreated {
-                run_id: sub_run_id,
-                flow_id: sub_flow_id,
-                inputs: sub_inputs,
-                variables: sub_variables,
-                parent_run_id: Some(parent_id),
-            } = event
-                && !additional.contains_key(sub_run_id)
-                && sf_map.values().any(|id| id == sub_run_id)
-            {
-                let sub_flow = blob_store
-                    .get_flow(sub_flow_id)
-                    .await
-                    .change_context(ExecutionError::RecoveryFailed)?
-                    .ok_or_else(|| {
-                        error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(
-                            format!(
-                                "Subflow flow not found for run {}, flow_id={}",
-                                sub_run_id, sub_flow_id
-                            ),
-                        )
-                    })?;
-                let mut sub_state = RunState::new_subflow(
-                    *sub_run_id,
-                    sub_flow_id.clone(),
-                    root_run_id,
-                    *parent_id,
-                    sub_flow,
-                    sub_inputs.clone(),
-                    sub_variables.clone(),
-                );
-                // Apply remaining tail events to the new subflow
-                for ev in &tail_events_for_replay {
-                    sub_state.apply_event(ev);
-                }
-                additional.insert(*sub_run_id, sub_state);
-            }
-        }
-
-        log::info!(
-            "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
-            tail_events_for_replay.len(),
-            root_run_id,
-            root_state.is_complete()
-        );
-
-        (root_state, sf_map, additional)
+    let (run_state, subflow_map, additional_runs) = if let Some(result) = checkpoint_result {
+        result
     } else {
         // ---- Full replay path (no checkpoint) ----
         let all_events = journal
@@ -1976,6 +2020,14 @@ mod tests {
             .expect("should get run")
             .expect("run should exist");
         assert_eq!(run.summary.status, ExecutionStatus::Completed);
+
+        // Verify that checkpoints were actually created during execution.
+        // The InMemoryStateStore tracks total put_checkpoint calls.
+        let put_count = store.checkpoint_put_count();
+        assert!(
+            put_count > 0,
+            "Expected at least one checkpoint to be created during execution, got 0"
+        );
 
         // Verify that checkpoints were cleaned up after completion.
         // During execution, checkpoints are created periodically, but on

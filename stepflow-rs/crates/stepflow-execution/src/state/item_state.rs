@@ -410,14 +410,57 @@ impl ItemState {
     /// This overwrites the current execution state (completed, results, needed,
     /// waiting_on, waiters, attempts) with values from the checkpoint. The
     /// `waiters` reverse index is recomputed from `waiting_on`.
-    pub fn restore_from_checkpoint(&mut self, checkpoint: &crate::checkpoint::ItemCheckpoint) {
-        // Restore completed
+    ///
+    /// Returns an error if the checkpoint contains out-of-bounds indices,
+    /// allowing callers to fall back to full journal replay.
+    pub fn restore_from_checkpoint(
+        &mut self,
+        checkpoint: &crate::checkpoint::ItemCheckpoint,
+    ) -> std::result::Result<(), String> {
+        let num_steps = self.num_steps();
+
+        // Validate attempts length matches the flow
+        if checkpoint.attempts.len() != num_steps {
+            return Err(format!(
+                "checkpoint attempts length {} != num_steps {}",
+                checkpoint.attempts.len(),
+                num_steps
+            ));
+        }
+
+        // Validate all indices are in bounds before applying anything
+        for &idx in &checkpoint.completed {
+            if idx >= num_steps {
+                return Err(format!("completed index {idx} >= num_steps {num_steps}"));
+            }
+        }
+        for &(idx, _) in &checkpoint.results {
+            if idx >= num_steps {
+                return Err(format!("result index {idx} >= num_steps {num_steps}"));
+            }
+        }
+        for &idx in &checkpoint.needed {
+            if idx >= num_steps {
+                return Err(format!("needed index {idx} >= num_steps {num_steps}"));
+            }
+        }
+        for (step, deps) in &checkpoint.waiting_on {
+            if *step >= num_steps {
+                return Err(format!("waiting_on step {step} >= num_steps {num_steps}"));
+            }
+            for &dep in deps {
+                if dep >= num_steps {
+                    return Err(format!("waiting_on dep {dep} >= num_steps {num_steps}"));
+                }
+            }
+        }
+
+        // All indices validated — apply the checkpoint
         self.completed.clear();
         for &idx in &checkpoint.completed {
             self.completed.insert(idx);
         }
 
-        // Restore results
         for r in &mut self.results {
             *r = None;
         }
@@ -425,13 +468,11 @@ impl ItemState {
             self.results[*idx] = Some(result.clone());
         }
 
-        // Restore needed
         self.needed.clear();
         for &idx in &checkpoint.needed {
             self.needed.insert(idx);
         }
 
-        // Restore waiting_on and recompute waiters
         for bs in &mut self.waiting_on {
             bs.clear();
         }
@@ -445,8 +486,8 @@ impl ItemState {
             }
         }
 
-        // Restore attempts
         self.attempts = checkpoint.attempts.clone();
+        Ok(())
     }
 }
 

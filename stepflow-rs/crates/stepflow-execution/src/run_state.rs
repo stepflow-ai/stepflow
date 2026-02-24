@@ -286,7 +286,14 @@ impl RunState {
     /// Creates a fresh RunState with the given flow, then overwrites
     /// each item's execution state from the checkpoint. The `incomplete_count`
     /// is recomputed after restoration.
-    pub fn from_checkpoint(checkpoint: &crate::checkpoint::RunCheckpoint, flow: Arc<Flow>) -> Self {
+    ///
+    /// Returns an error if the checkpoint is structurally invalid (e.g., item
+    /// count mismatch or out-of-bounds indices), allowing callers to fall back
+    /// to full journal replay.
+    pub fn from_checkpoint(
+        checkpoint: &crate::checkpoint::RunCheckpoint,
+        flow: Arc<Flow>,
+    ) -> std::result::Result<Self, String> {
         let mut state = if let Some(parent_id) = checkpoint.parent_run_id {
             Self::new_subflow(
                 checkpoint.run_id,
@@ -307,18 +314,29 @@ impl RunState {
             )
         };
 
+        // Validate item count matches before restoring
+        if checkpoint.items.len() != state.items_state.item_count() as usize {
+            return Err(format!(
+                "checkpoint items count {} != run items count {} for run {}",
+                checkpoint.items.len(),
+                state.items_state.item_count(),
+                checkpoint.run_id
+            ));
+        }
+
         // Restore each item's state from the checkpoint
         for (i, item_checkpoint) in checkpoint.items.iter().enumerate() {
             state
                 .items_state
                 .item_mut(i as u32)
-                .restore_from_checkpoint(item_checkpoint);
+                .restore_from_checkpoint(item_checkpoint)
+                .map_err(|e| format!("run {} item {i}: {e}", checkpoint.run_id))?;
         }
 
         // Recompute incomplete_count after restoration
         state.items_state.recompute_incomplete_count();
 
-        state
+        Ok(state)
     }
 
     // =========================================================================
