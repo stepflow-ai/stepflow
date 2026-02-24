@@ -190,6 +190,7 @@ class TestExecutor:
         variables: dict[str, Any] | None = None,
         tweaks: dict[str, dict[str, Any]] | None = None,
         timeout: float = 60.0,
+        populate_variables_from_env: bool = False,
     ) -> dict[str, Any]:
         """Execute complete flow lifecycle: convert → store/validate → execute.
 
@@ -198,6 +199,7 @@ class TestExecutor:
             input_data: Input data for workflow execution
             variables: Variables to pass to the execution
             tweaks: Optional Stepflow-level tweaks to apply
+            populate_variables_from_env: If True, populate variables from env vars
 
         Returns:
             Execution result dict
@@ -241,7 +243,12 @@ class TestExecutor:
         # Step 3: Execute workflow with overrides (if provided)
         overrides = convert_tweaks_to_overrides(tweaks) if tweaks else None
         result_data = await self._execute_workflow(
-            flow_id, input_data, variables, overrides, timeout
+            flow_id,
+            input_data,
+            variables,
+            overrides,
+            timeout,
+            populate_variables_from_env,
         )
 
         return result_data
@@ -253,6 +260,7 @@ class TestExecutor:
         variables: dict | None = None,
         overrides: dict | None = None,
         timeout: float = 60.0,
+        populate_variables_from_env: bool = False,
     ) -> dict:
         """Execute workflow with optional overrides using StepflowClient."""
         from stepflow_py.api.models import ExecutionStatus
@@ -265,6 +273,7 @@ class TestExecutor:
             variables=variables,
             overrides=overrides,
             timeout=timeout,
+            populate_variables_from_env=populate_variables_from_env,
         )
 
         if response.status != ExecutionStatus.COMPLETED:
@@ -339,17 +348,16 @@ async def test_basic_prompting(test_executor):
 
 @pytest.mark.asyncio(loop_scope="module")
 async def test_basic_prompting_api_key_from_env(test_executor):
-    """Test basic prompting: custom Prompt + LanguageModelComponent with OpenAI API."""
+    """Test: API key populated from env via env_var annotation."""
     result = await test_executor.execute_flow(
         flow_name="basic_prompting",
         input_data={"message": "Write a haiku about testing"},
         timeout=60.0,
-        variables={
-            # By not providing the OPENAI_API_KEY as a variable we
-            # are verifying that the UDF executor correctly loads it from the
-            # environment.
-            # "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "")
-        },
+        # By not providing OPENAI_API_KEY as an explicit variable and enabling
+        # populate_variables_from_env, we verify that the client reads the
+        # env_var annotation from the flow's variable schema and populates
+        # the variable from the environment.
+        populate_variables_from_env=True,
     )
 
     # Should return a Langflow Message with text content
