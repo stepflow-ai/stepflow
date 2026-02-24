@@ -20,6 +20,7 @@ Message, Data, and DataFrame types, including round-trip tests.
 
 import json
 
+import pandas as pd
 import pytest
 from lfx.schema.data import Data
 from lfx.schema.dataframe import DataFrame
@@ -135,9 +136,14 @@ class TestDataFrameOutputHandlerMatches:
     def setup_method(self):
         self.handler = DataFrameOutputHandler()
 
-    def test_matches_dataframe(self):
+    def test_matches_lfx_dataframe(self):
         df = DataFrame(data=[{"text": "row1"}])
         assert self.handler.matches(value=df) is True
+
+    def test_matches_plain_pandas_dataframe(self):
+        """Plain pandas DataFrames should also match (issue #673)."""
+        pdf = pd.DataFrame([{"text": "row1"}])
+        assert self.handler.matches(value=pdf) is True
 
     def test_does_not_match_message(self):
         assert self.handler.matches(value=Message(text="hi")) is False
@@ -202,6 +208,22 @@ class TestDataFrameOutputHandlerProcess:
         result = await self.handler.process(df)
 
         parsed = json.loads(result["json_data"])
+        assert len(parsed["data"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_serialize_plain_pandas_dataframe(self):
+        """Plain pandas DataFrames should serialize correctly (issue #673)."""
+        pdf = pd.DataFrame([{"text": "row1", "url": "http://example.com"}])
+        result = await self.handler.process(pdf)
+
+        assert result["__langflow_type__"] == "DataFrame"
+        assert "json_data" in result
+        # Plain pandas DataFrames don't have text_key/default_value attrs
+        assert result["text_key"] == "text"
+        assert result["default_value"] == ""
+
+        parsed = json.loads(result["json_data"])
+        assert "columns" in parsed
         assert len(parsed["data"]) == 1
 
 
@@ -586,6 +608,37 @@ class TestDataFrameRoundTrip:
 
         serialized = await self.output_handler.process(original)
         assert serialized["text_key"] == "content"
+
+        fields = {"df": (serialized, {})}
+        result = await self.input_handler.prepare(fields, None)
+
+        restored = result["df"]
+        assert restored.__class__.__name__ == "DataFrame"
+
+
+class TestPandasDataFrameRoundTrip:
+    """Round-trip tests for plain pandas DataFrames (issue #673).
+
+    Components compiled from flow JSON blobs may produce plain pandas
+    DataFrames instead of lfx DataFrames, depending on the Langflow
+    version that exported the flow.
+    """
+
+    def setup_method(self):
+        self.output_handler = DataFrameOutputHandler()
+        self.input_handler = LangflowTypeInputHandler()
+
+    @pytest.mark.asyncio
+    async def test_pandas_dataframe_round_trip(self):
+        original = pd.DataFrame(
+            [
+                {"text": "row1", "count": 10},
+                {"text": "row2", "count": 20},
+            ]
+        )
+
+        serialized = await self.output_handler.process(original)
+        assert serialized["__langflow_type__"] == "DataFrame"
 
         fields = {"df": (serialized, {})}
         result = await self.input_handler.prepare(fields, None)

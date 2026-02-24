@@ -348,7 +348,8 @@ def run(
 
         if local:
             click.echo("🚀 Starting local orchestrator...")
-            result = asyncio.run(_run_local(flow_dict, inputs, timeout))
+            plugin_env = _collect_flow_env_vars(input_file)
+            result = asyncio.run(_run_local(flow_dict, inputs, timeout, plugin_env))
         else:
             assert url is not None
             click.echo(f"🚀 Submitting to {url}...")
@@ -365,10 +366,50 @@ def run(
         sys.exit(1)
 
 
+def _collect_flow_env_vars(input_file: Path) -> dict[str, str]:
+    """Extract env vars referenced by a Langflow flow and resolve from environment.
+
+    Scans the original Langflow JSON for template fields with ``load_from_db: true``
+    and collects the env var names from their ``value`` fields.  Returns a dict of
+    env-var-name → value for every referenced variable that is set in the current
+    process environment (after loading ``.env`` from the flow's directory).
+    """
+    import os
+
+    # Load .env from the flow's directory if available
+    flow_dir = input_file.resolve().parent
+    env_path = flow_dir / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+
+    # Parse the Langflow JSON and find load_from_db env var references
+    with open(input_file, encoding="utf-8") as f:
+        langflow_json = json.load(f)
+
+    env_var_names: set[str] = set()
+    for node in langflow_json.get("data", {}).get("nodes", []):
+        template = node.get("data", {}).get("node", {}).get("template", {})
+        for field in template.values():
+            if not isinstance(field, dict):
+                continue
+            if field.get("load_from_db") and field.get("value"):
+                env_var_names.add(field["value"])
+
+    # Resolve env vars that are actually set
+    plugin_env: dict[str, str] = {}
+    for name in sorted(env_var_names):
+        val = os.environ.get(name)
+        if val:
+            plugin_env[name] = val
+
+    return plugin_env
+
+
 async def _run_local(
     flow_dict: dict,
     inputs: list,
     timeout: int,
+    plugin_env: dict[str, str] | None = None,
 ) -> dict:
     """Run a flow using a local StepflowOrchestrator."""
     from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
@@ -377,20 +418,24 @@ async def _run_local(
     current_file = Path(__file__).resolve()
     integration_dir = current_file.parent.parent.parent.parent
 
+    langflow_plugin: dict = {
+        "type": "stepflow",
+        "command": "uv",
+        "args": [
+            "--project",
+            str(integration_dir),
+            "run",
+            "stepflow-langflow-server",
+        ],
+    }
+    if plugin_env:
+        langflow_plugin["env"] = plugin_env
+
     config = OrchestratorConfig(
         config={
             "plugins": {
                 "builtin": {"type": "builtin"},
-                "langflow": {
-                    "type": "stepflow",
-                    "command": "uv",
-                    "args": [
-                        "--project",
-                        str(integration_dir),
-                        "run",
-                        "stepflow-langflow-server",
-                    ],
-                },
+                "langflow": langflow_plugin,
             },
             "routes": {
                 "/langflow/{*component}": [{"plugin": "langflow"}],
@@ -489,7 +534,7 @@ def _display_run_result(result: dict) -> None:
     else:
         click.echo(json.dumps(result, indent=2))
 
-    if status == "Completed":
+    if status.lower() == "completed":
         click.echo("\n🎉 Done!")
     else:
         click.echo(f"\n❌ Run ended with status: {status}", err=True)
