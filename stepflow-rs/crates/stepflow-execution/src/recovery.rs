@@ -540,11 +540,9 @@ async fn restore_from_checkpoint(
                 .await
                 .change_context(ExecutionError::CheckpointError)?
                 .ok_or_else(|| {
-                    error_stack::report!(ExecutionError::CheckpointError).attach_printable(
-                        format!(
-                            "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
-                        ),
-                    )
+                    error_stack::report!(ExecutionError::CheckpointError).attach_printable(format!(
+                        "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
+                    ))
                 })?;
             let mut sub_state = RunState::new_subflow(
                 *sub_run_id,
