@@ -23,6 +23,7 @@ from pydantic import Field, StrictFloat, StrictInt, StrictStr, validate_call
 from stepflow_py.api.api_client import ApiClient, RequestSerialized
 from stepflow_py.api.api_response import ApiResponse
 from stepflow_py.api.models.flow_response import FlowResponse
+from stepflow_py.api.models.flow_variables_response import FlowVariablesResponse
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
 from stepflow_py.api.models.store_flow_response import StoreFlowResponse
 from stepflow_py.api.rest import RESTResponseType
@@ -516,6 +517,250 @@ class FlowApi:
         return self.api_client.param_serialize(
             method="GET",
             resource_path="/flows/{flow_id}",
+            path_params=_path_params,
+            query_params=_query_params,
+            header_params=_header_params,
+            body=_body_params,
+            post_params=_form_params,
+            files=_files,
+            auth_settings=_auth_settings,
+            collection_formats=_collection_formats,
+            _host=_host,
+            _request_auth=_request_auth,
+        )
+
+    @validate_call
+    async def get_flow_variables(
+        self,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> FlowVariablesResponse:
+        """Get variable schema for a flow
+
+        Retrieve the variable schema for a flow, including environment variable mappings. This is a lightweight alternative to fetching the entire flow when you only need variable information.
+
+        :param flow_id: The flow's content-based hash ID (required)
+        :type flow_id: str
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_flow_variables_serialize(
+            flow_id=flow_id,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "FlowVariablesResponse",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        ).data
+
+    @validate_call
+    async def get_flow_variables_with_http_info(
+        self,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> ApiResponse[FlowVariablesResponse]:
+        """Get variable schema for a flow
+
+        Retrieve the variable schema for a flow, including environment variable mappings. This is a lightweight alternative to fetching the entire flow when you only need variable information.
+
+        :param flow_id: The flow's content-based hash ID (required)
+        :type flow_id: str
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_flow_variables_serialize(
+            flow_id=flow_id,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "FlowVariablesResponse",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        )
+
+    @validate_call
+    async def get_flow_variables_without_preload_content(
+        self,
+        flow_id: Annotated[
+            StrictStr, Field(description="The flow's content-based hash ID")
+        ],
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> RESTResponseType:
+        """Get variable schema for a flow
+
+        Retrieve the variable schema for a flow, including environment variable mappings. This is a lightweight alternative to fetching the entire flow when you only need variable information.
+
+        :param flow_id: The flow's content-based hash ID (required)
+        :type flow_id: str
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_flow_variables_serialize(
+            flow_id=flow_id,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "FlowVariablesResponse",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        return response_data.response
+
+    def _get_flow_variables_serialize(
+        self,
+        flow_id,
+        _request_auth,
+        _content_type,
+        _headers,
+        _host_index,
+    ) -> RequestSerialized:
+        _host = None
+
+        _collection_formats: dict[str, str] = {}
+
+        _path_params: dict[str, str] = {}
+        _query_params: list[tuple[str, str]] = []
+        _header_params: dict[str, str | None] = _headers or {}
+        _form_params: list[tuple[str, str]] = []
+        _files: dict[
+            str, str | bytes | list[str] | list[bytes] | list[tuple[str, bytes]]
+        ] = {}
+        _body_params: bytes | None = None
+
+        # process the path parameters
+        if flow_id is not None:
+            _path_params["flow_id"] = flow_id
+        # process the query parameters
+        # process the header parameters
+        # process the form parameters
+        # process the body parameter
+
+        # set the HTTP header `Accept`
+        if "Accept" not in _header_params:
+            _header_params["Accept"] = self.api_client.select_header_accept(
+                ["application/json"]
+            )
+
+        # authentication setting
+        _auth_settings: list[str] = []
+
+        return self.api_client.param_serialize(
+            method="GET",
+            resource_path="/flows/{flow_id}/variables",
             path_params=_path_params,
             query_params=_query_params,
             header_params=_header_params,

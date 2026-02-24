@@ -125,6 +125,13 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
             get_with(flows::get_flow, flows::get_flow_docs)
                 .delete_with(flows::delete_flow, flows::delete_flow_docs),
         )
+        .api_route(
+            "/flows/{flow_id}/variables",
+            get_with(
+                flows::get_flow_variables,
+                flows::get_flow_variables_docs,
+            ),
+        )
         .finish_api(&mut api);
 
     (router, api)

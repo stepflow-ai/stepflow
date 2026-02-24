@@ -337,34 +337,22 @@ class StepflowClient:
     ) -> dict[str, Any] | None:
         """Fetch flow variable schema and populate from environment.
 
-        Reads ``env_var`` annotations from the flow's variable schema
-        properties and resolves matching environment variables. Explicit
-        variables take priority over environment values.
+        Uses the ``GET /flows/{id}/variables`` endpoint to retrieve
+        ``env_var`` annotations without fetching the entire flow.
+        Explicit variables take priority over environment values.
 
         Returns the merged variables dict, or None if no variables were found.
         """
-        flow_response = await self._flow_api.get_flow(flow_id)
-        schemas = flow_response.flow.schemas
-        if schemas is None:
-            return explicit_variables
+        response = await self._flow_api.get_flow_variables(flow_id)
 
-        var_schema = schemas.variables
-        if not var_schema or not isinstance(var_schema, dict):
-            return explicit_variables
-
-        properties = var_schema.get("properties", {})
-        if not properties:
+        if not response.env_vars:
             return explicit_variables
 
         env_variables: dict[str, Any] = {}
-        for var_name, var_props in properties.items():
-            if not isinstance(var_props, dict):
-                continue
-            env_var_name = var_props.get("env_var")
-            if env_var_name:
-                env_value = os.environ.get(env_var_name)
-                if env_value is not None:
-                    env_variables[var_name] = env_value
+        for var_name, env_var_name in response.env_vars.items():
+            env_value = os.environ.get(env_var_name)
+            if env_value is not None:
+                env_variables[var_name] = env_value
 
         if not env_variables and not explicit_variables:
             return None

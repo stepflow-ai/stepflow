@@ -16,9 +16,10 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use stepflow_analysis::{Diagnostics, validate};
-use stepflow_core::{BlobId, BlobType, workflow::Flow};
+use stepflow_core::{BlobId, BlobType, schema::SchemaRef, workflow::Flow};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::BlobStoreExt as _;
 
@@ -174,6 +175,80 @@ pub async fn get_flow(
         all_examples: flow.get_all_examples(),
         flow,
         flow_id,
+    }))
+}
+
+/// Response containing variable schema and environment variable mappings for a flow.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowVariablesResponse {
+    /// The flow ID
+    pub flow_id: BlobId,
+    /// The raw variable JSON Schema (null if the flow has no variables)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<SchemaRef>,
+    /// Mapping from variable name to the environment variable that populates it.
+    /// Only includes variables that have an `env_var` annotation.
+    pub env_vars: HashMap<String, String>,
+}
+
+pub fn get_flow_variables_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getFlowVariables")
+        .summary("Get variable schema for a flow")
+        .description(
+            "Retrieve the variable schema for a flow, including environment variable \
+             mappings. This is a lightweight alternative to fetching the entire flow \
+             when you only need variable information.",
+        )
+        .tag("Flow")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Flow not found"))
+}
+
+/// Get variable schema for a flow
+pub async fn get_flow_variables(
+    State(executor): State<Arc<StepflowEnvironment>>,
+    Path(FlowPath { flow_id }): Path<FlowPath>,
+) -> Result<Json<FlowVariablesResponse>, ErrorResponse> {
+    let blob_store = executor.blob_store();
+
+    let raw = blob_store
+        .get_blob(&flow_id)
+        .await
+        .map_err(|_| ErrorResponse {
+            code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            message: "Failed to retrieve flow".to_string(),
+            stack: vec![],
+        })?
+        .ok_or_else(|| ErrorResponse {
+            code: axum::http::StatusCode::NOT_FOUND,
+            message: "Flow not found".to_string(),
+            stack: vec![],
+        })?;
+
+    if raw.blob_type != BlobType::Flow {
+        return Err(ErrorResponse {
+            code: axum::http::StatusCode::BAD_REQUEST,
+            message: "Blob is not a flow".to_string(),
+            stack: vec![],
+        });
+    }
+
+    let flow: Flow = serde_json::from_slice(&raw.content).map_err(|_| ErrorResponse {
+        code: axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        message: "Failed to deserialize flow".to_string(),
+        stack: vec![],
+    })?;
+
+    let variable_schema = flow.variables();
+    let schema = flow.variable_schema().cloned();
+    let env_vars = variable_schema
+        .map(|vs| vs.env_var_map().clone())
+        .unwrap_or_default();
+
+    Ok(Json(FlowVariablesResponse {
+        flow_id,
+        schema,
+        env_vars,
     }))
 }
 

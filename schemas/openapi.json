@@ -869,6 +869,51 @@
           }
         }
       }
+    },
+    "/flows/{flow_id}/variables": {
+      "get": {
+        "tags": [
+          "Flow"
+        ],
+        "summary": "Get variable schema for a flow",
+        "description": "Retrieve the variable schema for a flow, including environment variable mappings. This is a lightweight alternative to fetching the entire flow when you only need variable information.",
+        "operationId": "getFlowVariables",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "flow_id",
+            "description": "The flow's content-based hash ID",
+            "required": true,
+            "schema": {
+              "description": "The flow's content-based hash ID",
+              "$ref": "#/components/schemas/BlobId"
+            },
+            "style": "simple"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response containing variable schema and environment variable mappings for a flow.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowVariablesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Flow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1174,18 +1219,10 @@
         "type": "object",
         "additionalProperties": true
       },
-      "FlowResponse": {
-        "description": "Response containing a flow definition and its ID",
+      "FlowVariablesResponse": {
+        "description": "Response containing variable schema and environment variable mappings for a flow.",
         "type": "object",
         "properties": {
-          "flow": {
-            "description": "The flow definition",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Flow"
-              }
-            ]
-          },
           "flowId": {
             "description": "The flow ID",
             "allOf": [
@@ -1194,18 +1231,28 @@
               }
             ]
           },
-          "allExamples": {
-            "description": "All available examples (includes both examples and test cases)",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleInput"
+          "schema": {
+            "description": "The raw variable JSON Schema (null if the flow has no variables)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "envVars": {
+            "description": "Mapping from variable name to the environment variable that populates it.\nOnly includes variables that have an `env_var` annotation.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
             }
           }
         },
         "required": [
-          "flow",
           "flowId",
-          "allExamples"
+          "envVars"
         ]
       },
       "ExecutionStatus": {
@@ -1673,59 +1720,48 @@
           "message"
         ]
       },
-      "Diagnostic": {
-        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
+      "FlowResponse": {
+        "description": "Response containing a flow definition and its ID",
         "type": "object",
         "properties": {
-          "kind": {
-            "description": "The diagnostic kind name (camelCase)",
-            "type": "string"
-          },
-          "code": {
-            "description": "Numeric error code",
-            "type": "integer",
-            "format": "uint16",
-            "minimum": 0,
-            "maximum": 65535
-          },
-          "level": {
-            "description": "The severity level",
+          "flow": {
+            "description": "The flow definition",
             "allOf": [
               {
-                "$ref": "#/components/schemas/DiagnosticLevel"
+                "$ref": "#/components/schemas/Flow"
               }
             ]
           },
-          "formatted": {
-            "description": "Human-readable formatted message",
-            "type": "string"
-          },
-          "data": {
-            "description": "Structured data with camelCase keys (null if no data)"
-          },
-          "path": {
-            "description": "JSON path to the field with the issue",
+          "flowId": {
+            "description": "The flow ID",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Path"
+                "$ref": "#/components/schemas/BlobId"
               }
             ]
           },
-          "experimental": {
-            "description": "Whether this diagnostic is experimental (may have false positives)",
-            "type": "boolean"
+          "allExamples": {
+            "description": "All available examples (includes both examples and test cases)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            }
           }
         },
         "required": [
-          "kind",
-          "code",
-          "level",
-          "formatted"
+          "flow",
+          "flowId",
+          "allExamples"
         ]
       },
-      "Path": {
-        "description": "Path to a location in the workflow definition, serialized as a string",
-        "type": "string"
+      "DiagnosticLevel": {
+        "description": "Diagnostic level indicating severity and impact\n\nCases:\n* `fatal`: Fatal: Prevents analysis from proceeding\n* `error`: Error: Will definitely fail during execution\n* `warning`: Warning: Likely to cause problems during execution",
+        "type": "string",
+        "enum": [
+          "fatal",
+          "error",
+          "warning"
+        ]
       },
       "RunDetails": {
         "description": "Detailed flow run information including item details.\n\nFor completed runs, `item_details` contains per-item information including\ninputs and step statuses. For active runs, `item_details` may be `None`\n(query the owning orchestrator for live status).",
@@ -2393,14 +2429,9 @@
           "input"
         ]
       },
-      "DiagnosticLevel": {
-        "description": "Diagnostic level indicating severity and impact\n\nCases:\n* `fatal`: Fatal: Prevents analysis from proceeding\n* `error`: Error: Will definitely fail during execution\n* `warning`: Warning: Likely to cause problems during execution",
-        "type": "string",
-        "enum": [
-          "fatal",
-          "error",
-          "warning"
-        ]
+      "Path": {
+        "description": "Path to a location in the workflow definition, serialized as a string",
+        "type": "string"
       },
       "ListStepRunsResponse": {
         "description": "Response for listing step runs",
@@ -2543,6 +2574,56 @@
           "numFatal",
           "numError",
           "numWarning"
+        ]
+      },
+      "Diagnostic": {
+        "description": "A diagnostic with error code, message, path, and metadata.\n\nCreated via the `diagnostic!` macro with optional builder methods:\n\n```ignore\ndiagnostic!(DiagnosticKind::DuplicateStepId, \"Duplicate step ID '{step_id}'\", { step_id })\n    .at(path)\n    .experimental()\n```\n\n## JSON Format\n\n```json\n{\n  \"kind\": \"duplicateStepId\",\n  \"code\": 3000,\n  \"level\": \"fatal\",\n  \"formatted\": \"Duplicate step ID 'foo'\",\n  \"data\": { \"stepId\": \"foo\" },\n  \"path\": \"$.steps[0]\",\n  \"experimental\": false\n}\n```",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "The diagnostic kind name (camelCase)",
+            "type": "string"
+          },
+          "code": {
+            "description": "Numeric error code",
+            "type": "integer",
+            "format": "uint16",
+            "minimum": 0,
+            "maximum": 65535
+          },
+          "level": {
+            "description": "The severity level",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DiagnosticLevel"
+              }
+            ]
+          },
+          "formatted": {
+            "description": "Human-readable formatted message",
+            "type": "string"
+          },
+          "data": {
+            "description": "Structured data with camelCase keys (null if no data)"
+          },
+          "path": {
+            "description": "JSON path to the field with the issue",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Path"
+              }
+            ]
+          },
+          "experimental": {
+            "description": "Whether this diagnostic is experimental (may have false positives)",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "code",
+          "level",
+          "formatted"
         ]
       }
     }
