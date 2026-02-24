@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -225,6 +226,7 @@ class StepflowClient:
         max_concurrency: int | None = None,
         timeout: float = 300.0,
         wait_timeout: int | None = None,
+        populate_variables_from_env: bool = False,
     ) -> CreateRunResponse:
         """Execute a flow and wait for the result.
 
@@ -242,10 +244,16 @@ class StepflowClient:
                 If the workflow takes longer, the server returns the current
                 status rather than an error. Set this higher than ``timeout``
                 is not useful since the HTTP connection will close first.
+            populate_variables_from_env: If True, fetch the flow's variable
+                schema and populate variables from environment variables using
+                ``env_var`` annotations. Explicit variables take priority.
 
         Returns:
             CreateRunResponse with status and results
         """
+        if populate_variables_from_env:
+            variables = await self._merge_env_variables(flow_id, variables)
+
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
@@ -278,6 +286,7 @@ class StepflowClient:
         overrides: dict[str, Any] | None = None,
         max_concurrency: int | None = None,
         timeout: float = 30.0,
+        populate_variables_from_env: bool = False,
     ) -> CreateRunResponse:
         """Submit a flow for execution without waiting for the result.
 
@@ -292,10 +301,16 @@ class StepflowClient:
             overrides: Step overrides (per step_id)
             max_concurrency: Max parallel executions for batch mode
             timeout: Request timeout in seconds
+            populate_variables_from_env: If True, fetch the flow's variable
+                schema and populate variables from environment variables using
+                ``env_var`` annotations. Explicit variables take priority.
 
         Returns:
             CreateRunResponse with run_id and status (typically Running)
         """
+        if populate_variables_from_env:
+            variables = await self._merge_env_variables(flow_id, variables)
+
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
@@ -314,6 +329,51 @@ class StepflowClient:
 
         request = CreateRunRequest(**request_kwargs)
         return await self._run_api.create_run(request, _request_timeout=timeout)
+
+    async def _merge_env_variables(
+        self,
+        flow_id: str,
+        explicit_variables: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Fetch flow variable schema and populate from environment.
+
+        Reads ``env_var`` annotations from the flow's variable schema
+        properties and resolves matching environment variables. Explicit
+        variables take priority over environment values.
+
+        Returns the merged variables dict, or None if no variables were found.
+        """
+        flow_response = await self._flow_api.get_flow(flow_id)
+        schemas = flow_response.flow.schemas
+        if schemas is None:
+            return explicit_variables
+
+        var_schema = schemas.variables
+        if not var_schema or not isinstance(var_schema, dict):
+            return explicit_variables
+
+        properties = var_schema.get("properties", {})
+        if not properties:
+            return explicit_variables
+
+        env_variables: dict[str, Any] = {}
+        for var_name, var_props in properties.items():
+            if not isinstance(var_props, dict):
+                continue
+            env_var_name = var_props.get("env_var")
+            if env_var_name:
+                env_value = os.environ.get(env_var_name)
+                if env_value is not None:
+                    env_variables[var_name] = env_value
+
+        if not env_variables and not explicit_variables:
+            return None
+
+        # Merge: explicit variables take priority
+        merged = {**env_variables}
+        if explicit_variables:
+            merged.update(explicit_variables)
+        return merged if merged else None
 
     async def get_run(
         self,

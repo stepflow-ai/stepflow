@@ -84,7 +84,7 @@ stepflow run --flow=workflow.yaml --inputs=inputs.jsonl --max-concurrent=5
 * `--variables-yaml <YAML>` — The variables as a YAML string
 * `--env-variables` — Enable environment variable fallback for missing variables.
 
-   When enabled, missing variables will be looked up from environment variables using the pattern `STEPFLOW_VAR_<VARIABLE_NAME>`.
+   When enabled, missing variables will be looked up from environment variables. If the variable schema has an `env_var` annotation, that environment variable name is used. Otherwise, falls back to the pattern `STEPFLOW_VAR_<VARIABLE_NAME>`.
 * `--overrides <FILE>` — Path to a file containing workflow overrides (JSON or YAML format).
 
    Overrides allow you to modify step properties at runtime without changing the original workflow file. Format is inferred from file extension.

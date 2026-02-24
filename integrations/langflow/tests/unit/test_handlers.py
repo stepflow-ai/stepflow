@@ -21,11 +21,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stepflow_langflow_integration.exceptions import ExecutionError
 from stepflow_langflow_integration.executor.base_executor import BaseExecutor
 from stepflow_langflow_integration.executor.handlers import (
     DataFrameConversionInputHandler,
-    EnvVarInputHandler,
     InputHandler,
     StringCoercionInputHandler,
 )
@@ -43,86 +41,6 @@ class ConcreteTestExecutor(BaseExecutor):
         component_info: dict[str, Any],
     ) -> tuple[Any, str]:
         return component_info.get("instance"), component_info.get("name", "test")
-
-
-# ---------------------------------------------------------------------------
-# EnvVarInputHandler
-# ---------------------------------------------------------------------------
-
-
-class TestEnvVarInputHandler:
-    def test_matches_load_from_db_true(self):
-        handler = EnvVarInputHandler()
-        assert (
-            handler.matches(
-                template_field={"load_from_db": True, "value": "MY_VAR"}, value=""
-            )
-            is True
-        )
-
-    def test_no_match_without_load_from_db(self):
-        handler = EnvVarInputHandler()
-        assert (
-            handler.matches(
-                template_field={"type": "str", "value": "hello"}, value="hello"
-            )
-            is False
-        )
-
-    def test_no_match_load_from_db_false(self):
-        handler = EnvVarInputHandler()
-        assert (
-            handler.matches(template_field={"load_from_db": False}, value="") is False
-        )
-
-    @pytest.mark.asyncio
-    async def test_resolves_env_var(self, monkeypatch):
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
-        handler = EnvVarInputHandler()
-        fields = {
-            "api_key": (
-                "",  # empty value
-                {"load_from_db": True, "value": "OPENAI_API_KEY"},
-            ),
-        }
-        result = await handler.prepare(fields, None)
-        assert result == {"api_key": "sk-test-123"}
-
-    @pytest.mark.asyncio
-    async def test_skips_truthy_value(self, monkeypatch):
-        monkeypatch.setenv("OPENAI_API_KEY", "env-value")
-        handler = EnvVarInputHandler()
-        fields = {
-            "api_key": (
-                "already-set",
-                {"load_from_db": True, "value": "OPENAI_API_KEY"},
-            ),
-        }
-        result = await handler.prepare(fields, None)
-        assert result == {}  # no changes
-
-    @pytest.mark.asyncio
-    async def test_raises_on_missing_env_var(self, monkeypatch):
-        monkeypatch.delenv("MISSING_VAR", raising=False)
-        handler = EnvVarInputHandler()
-        fields = {
-            "api_key": ("", {"load_from_db": True, "value": "MISSING_VAR"}),
-        }
-        with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            await handler.prepare(fields, None)
-
-    @pytest.mark.asyncio
-    async def test_multiple_env_vars(self, monkeypatch):
-        monkeypatch.setenv("KEY1", "val1")
-        monkeypatch.setenv("KEY2", "val2")
-        handler = EnvVarInputHandler()
-        fields = {
-            "k1": ("", {"load_from_db": True, "value": "KEY1"}),
-            "k2": ("", {"load_from_db": True, "value": "KEY2"}),
-            "k3": ("existing", {"load_from_db": True, "value": "KEY3"}),
-        }
-        result = await handler.prepare(fields, None)
-        assert result == {"k1": "val1", "k2": "val2"}
 
 
 # ---------------------------------------------------------------------------

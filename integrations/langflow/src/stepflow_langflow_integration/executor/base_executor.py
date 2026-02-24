@@ -27,7 +27,6 @@ from .handlers import (
     BaseModelInputHandler,
     BaseModelOutputHandler,
     DataFrameOutputHandler,
-    EnvVarInputHandler,
     InputHandler,
     LangflowTypeInputHandler,
     LangflowTypeOutputHandler,
@@ -73,12 +72,11 @@ class BaseExecutor(ABC):
     def _get_input_handlers(self) -> list[InputHandler]:
         """Return the input handlers to apply during parameter preparation.
 
-        Base implementation returns handlers for env var resolution and
-        type deserialization. Subclasses may override to add additional
-        handlers (e.g., StringCoercion, DataFrameConversion).
+        Base implementation returns handlers for type deserialization.
+        Subclasses may override to add additional handlers (e.g.,
+        StringCoercion, DataFrameConversion).
         """
         return [
-            EnvVarInputHandler(),
             LangflowTypeInputHandler(),
             BaseModelInputHandler(),
             ToolWrapperInputHandler(),

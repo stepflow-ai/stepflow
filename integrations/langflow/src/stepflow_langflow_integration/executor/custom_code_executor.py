@@ -29,7 +29,6 @@ from .base_executor import BaseExecutor
 from .handlers import (
     BaseModelInputHandler,
     DataFrameConversionInputHandler,
-    EnvVarInputHandler,
     InputHandler,
     LangflowTypeInputHandler,
     StringCoercionInputHandler,
@@ -57,7 +56,6 @@ class CustomCodeExecutor(BaseExecutor):
         conversion needed for Langflow type transformations.
         """
         return [
-            EnvVarInputHandler(),
             LangflowTypeInputHandler(),
             BaseModelInputHandler(),
             ToolWrapperInputHandler(),

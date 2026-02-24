@@ -12,6 +12,7 @@
 
 use crate::{Result, error::MainError, validation_display::display_diagnostics};
 use error_stack::ResultExt as _;
+use std::collections::HashMap;
 use std::sync::Arc;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Flow, ValueRef, WorkflowOverrides};
@@ -84,6 +85,7 @@ pub async fn submit(
     inputs: Vec<ValueRef>,
     overrides: &WorkflowOverrides,
     max_concurrency: Option<usize>,
+    variables: HashMap<String, ValueRef>,
 ) -> Result<Vec<FlowResult>> {
     let client = reqwest::Client::new();
 
@@ -140,7 +142,7 @@ pub async fn submit(
         flow_id,
         input: inputs,
         overrides: overrides.clone(),
-        variables: std::collections::HashMap::new(), // TODO: Add variables support to CLI submit
+        variables,
         max_concurrency,
         wait: true,
         timeout_secs: None,
