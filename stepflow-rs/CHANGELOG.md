@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.10.0"></a> [Stepflow 0.10.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.10.0) - 2026-02-24
+### Bug Fixes
+
+- Update pingora to address advisories ([#595](https://github.com/stepflow-ai/stepflow/pull/595))
+- 581 k8s cleanup 2 ([#613](https://github.com/stepflow-ai/stepflow/pull/613))
+- Use cargo update -w in release script ([#662](https://github.com/stepflow-ai/stepflow/pull/662))
+- Disable etcd feature for schema generation in release ([#664](https://github.com/stepflow-ai/stepflow/pull/664))
+
+### Documentation
+
+- Add changelog reference to stepflow-orchestrator ([#570](https://github.com/stepflow-ai/stepflow/pull/570))
+
+### Features
+
+- Split StateStore and add recovery architecture ([#585](https://github.com/stepflow-ai/stepflow/pull/585))
+- Release leases during graceful shutdown ([#593](https://github.com/stepflow-ai/stepflow/pull/593))
+- Add Blob HTTP API for scalable blob storage ([#600](https://github.com/stepflow-ai/stepflow/pull/600))
+- Add EtcdLeaseManager for distributed orchestration ([#606](https://github.com/stepflow-ai/stepflow/pull/606))
+- Add filesystem-based BlobStore ([#610](https://github.com/stepflow-ai/stepflow/pull/610))
+- Blob references, binary blobs, and automatic blobification ([#612](https://github.com/stepflow-ai/stepflow/pull/612))
+- Support direct binary transfer for Blob Service ([#621](https://github.com/stepflow-ai/stepflow/pull/621))
+- Replace the StoredBlob JSON wrapper with a trailing-metadata ([#629](https://github.com/stepflow-ai/stepflow/pull/629))
+- Make runs API async by default with optional wait ([#630](https://github.com/stepflow-ai/stepflow/pull/630))
+- Recovery tests for orchestrator and worker crashes ([#635](https://github.com/stepflow-ai/stepflow/pull/635))
+- Add recovery integration tests to CI ([#641](https://github.com/stepflow-ai/stepflow/pull/641))
+- Remove Enc/Dec round-trip in blob store, move to all binary int… ([#633](https://github.com/stepflow-ai/stepflow/pull/633))
+- Add TasksStarted journal event, simplify journal trait ([#645](https://github.com/stepflow-ai/stepflow/pull/645))
+- Add Blob observability via blobStore wrapper ([#653](https://github.com/stepflow-ai/stepflow/pull/653))
+- Replace utoipa with aide + schemars for OpenAPI and JSON Schema ([#652](https://github.com/stepflow-ai/stepflow/pull/652))
+- Subflow recovery ([#651](https://github.com/stepflow-ai/stepflow/pull/651)) ([#658](https://github.com/stepflow-ai/stepflow/pull/658))
+- Add OpenAPI schema validation to CI ([#663](https://github.com/stepflow-ai/stepflow/pull/663))
+- Add trait-based selective migration for store initialization ([#655](https://github.com/stepflow-ai/stepflow/pull/655))
+
+### Miscellaneous Tasks
+
+- Updates and tweaks for getting latest openrag ingestion flow working on k8s example architecture ([#577](https://github.com/stepflow-ai/stepflow/pull/577))
+
+### Refactoring
+
+- Consolidate ExecutionContext into RunContext ([#571](https://github.com/stepflow-ai/stepflow/pull/571))
+- Simplify BlobStore trait and make not-found explicit ([#594](https://github.com/stepflow-ai/stepflow/pull/594))
+- Refine LeaseManager trait and add orchestrator tracking ([#604](https://github.com/stepflow-ai/stepflow/pull/604))
+
 ## <a id="0.9.0"></a> [Stepflow 0.9.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.9.0) - 2026-01-28
 
 This release contains significant enhancements to:
