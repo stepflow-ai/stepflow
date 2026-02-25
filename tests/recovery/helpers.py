@@ -258,21 +258,6 @@ def clear_tracker():
     )
 
 
-def poll_tracker_for_step(
-    step_label: str,
-    run_id: str | None = None,
-    timeout: float = 30,
-) -> bool:
-    """Poll tracker until a given step_label appears, or timeout."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        records = read_tracker_records()
-        if count_step_executions(records, step_label, run_id=run_id) > 0:
-            return True
-        time.sleep(1)
-    return False
-
-
 # ---------------------------------------------------------------------------
 # Checkpoint verification helpers
 # ---------------------------------------------------------------------------
@@ -328,3 +313,61 @@ def wait_for_worker_health(timeout: float = 30):
             pass
         time.sleep(1)
     raise TimeoutError(f"Worker not healthy within {timeout}s")
+
+
+# ---------------------------------------------------------------------------
+# Delay-control helpers
+# ---------------------------------------------------------------------------
+
+WORKER_URL = "http://localhost:8080"
+
+
+def poll_for_delay(
+    step_id: str,
+    run_id: str | None = None,
+    timeout: float = 30,
+) -> dict:
+    """Poll the worker's delay-control API until the given step is delayed.
+
+    Returns the response dict (``{"delayed": True, "elapsed_ms": N}``).
+    Raises ``TimeoutError`` if the delay does not appear within *timeout*
+    seconds.
+    """
+    params: dict[str, str] = {"step_id": step_id}
+    if run_id is not None:
+        params["run_id"] = run_id
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(f"{WORKER_URL}/delay", params=params, timeout=2)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("delayed"):
+                    return data
+        except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+            pass
+        time.sleep(0.5)
+    raise TimeoutError(f"Delay for step_id={step_id!r} did not appear within {timeout}s")
+
+
+def release_delay(
+    step_id: str,
+    run_id: str | None = None,
+) -> bool:
+    """Release a pending delay via the worker's delay-control API.
+
+    Returns ``True`` if the delay was found and released (HTTP 200),
+    ``False`` if no matching delay was found (HTTP 404).
+    """
+    params: dict[str, str] = {"step_id": step_id}
+    if run_id is not None:
+        params["run_id"] = run_id
+
+    resp = httpx.post(f"{WORKER_URL}/delay", params=params, timeout=5)
+    if resp.status_code == 200:
+        return True
+    if resp.status_code == 404:
+        return False
+    resp.raise_for_status()
+    return False  # unreachable, but keeps mypy happy

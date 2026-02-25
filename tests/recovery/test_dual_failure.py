@@ -17,6 +17,9 @@
 After restart, each orchestrator should recover runs without duplication.
 The etcd lease manager ensures no split-brain (each run is claimed by
 exactly one orchestrator).
+
+Tests use the delay-control API to hold delays and crash at a
+deterministic point, eliminating timing assumptions.
 """
 
 from __future__ import annotations
@@ -33,8 +36,9 @@ from helpers import (
     docker_kill,
     docker_start,
     get_step_tracker_records,
-    poll_tracker_for_step,
+    poll_for_delay,
     read_tracker_records,
+    release_delay,
     store_flow,
     submit_run,
     wait_for_health,
@@ -59,31 +63,28 @@ async def test_dual_failure_recovery(compose_env):
     run_a_id = await submit_run(ORCH1_URL, seq_flow_id, {"data": {"run": "A"}})
     run_b_id = await submit_run(ORCH2_URL, par_flow_id, {"data": {"run": "B"}})
 
-    # 3. Wait for execution to begin on both
-    assert poll_tracker_for_step("step1", timeout=15), "step1 (run A) did not start"
-    assert poll_tracker_for_step("parallel_a", timeout=15), "parallel_a (run B) did not start"
+    # 3. Wait for step1 (run A) and parallel_a (run B) to be held, release
+    #    them so they complete and get journaled before the crash
+    poll_for_delay("step1", timeout=15)
+    poll_for_delay("parallel_a", timeout=15)
+    release_delay("step1")
+    release_delay("parallel_a")
 
-    # 4. Verify both flows are still in-progress before killing.
-    #    step3 depends on step2 (5s+5s after step1), aggregate depends on
-    #    parallel_d (7s) — neither can have completed this early.
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "step3") == 0, (
-        "step3 should not have executed before kill — sequential flow should still be in-progress"
-    )
-    assert count_step_executions(pre_kill_records, "aggregate") == 0, (
-        "aggregate should not have executed before kill — parallel flow should still be in-progress"
-    )
+    # 4. Wait for the next steps to be held — confirms the first steps completed
+    poll_for_delay("step2", timeout=15)
+    poll_for_delay("parallel_d", timeout=15)
 
-    # 5. Kill BOTH orchestrators
+    # 5. Kill BOTH orchestrators while steps are deterministically held
     docker_kill("orchestrator-1", "orchestrator-2")
 
-    # 6. Wait for etcd leases to expire
-    await asyncio.sleep(10)
-
-    # 7. Restart both
+    # 6. Restart both
     docker_start("orchestrator-1", "orchestrator-2")
     wait_for_health(ORCH1_URL, timeout=30)
     wait_for_health(ORCH2_URL, timeout=30)
+
+    # 7. Release all held delays so recovery can proceed
+    for label in ["step2", "parallel_b", "parallel_c", "parallel_d"]:
+        release_delay(label)
 
     # 8. Wait for both runs to complete (either orchestrator may claim either run)
     result_a = await wait_for_run_on_either(run_a_id, timeout=90)

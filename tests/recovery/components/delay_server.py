@@ -14,8 +14,17 @@
 
 """Delay component for recovery integration tests.
 
-Each invocation sleeps for a configurable duration, writes a tracker record
-to a JSONL file, and returns the input payload along with execution metadata.
+Each invocation blocks for a configurable duration (or until explicitly released
+via the delay-control HTTP API), writes a tracker record to a JSONL file, and
+returns the input payload along with execution metadata.
+
+Delay-control API
+-----------------
+- ``GET  /delay?run_id=...&step_id=...`` — check whether a delay is pending
+- ``POST /delay?run_id=...&step_id=...`` — release a pending delay
+
+Both query parameters are optional.  When *run_id* is omitted the lookup
+matches any run (useful for subflows whose run ID is not known to the test).
 """
 
 import asyncio
@@ -26,8 +35,12 @@ import time
 from datetime import datetime, timezone
 
 import msgspec
+import uvicorn
+from fastapi import FastAPI, Query
+from fastapi.responses import JSONResponse
 
 from stepflow_py.worker import StepflowContext, StepflowServer
+from stepflow_py.worker.http_server import create_test_app
 
 TRACKER_FILE = os.environ.get("TRACKER_FILE", "/tracker/executions.jsonl")
 
@@ -36,6 +49,36 @@ TRACKER_FILE = os.environ.get("TRACKER_FILE", "/tracker/executions.jsonl")
 signal.signal(signal.SIGUSR1, lambda *_: os._exit(1))
 
 server = StepflowServer()
+
+# ---------------------------------------------------------------------------
+# Delay registry — tracks in-flight delays so tests can query and release them
+# ---------------------------------------------------------------------------
+
+# Maps (run_id, step_label) -> {"event": asyncio.Event, "started_at": float}
+_pending_delays: dict[tuple[str, str], dict] = {}
+
+
+def _find_delay(
+    run_id: str | None,
+    step_id: str | None,
+) -> tuple[tuple[str, str], dict] | None:
+    """Find a pending delay matching the given filters.
+
+    Returns ``(key, entry)`` or ``None``.
+    """
+    for key, entry in _pending_delays.items():
+        k_run_id, k_step_label = key
+        if run_id is not None and k_run_id != run_id:
+            continue
+        if step_id is not None and k_step_label != step_id:
+            continue
+        return key, entry
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Delay component
+# ---------------------------------------------------------------------------
 
 
 class DelayInput(msgspec.Struct):
@@ -80,12 +123,45 @@ def _count_tracker_records(run_id: str, step_label: str) -> int:
 @server.component
 async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
     start = time.monotonic()
+    run_id = context.run_id or ""
+    key = (run_id, input.step_label)
 
-    # Sleep in small increments to allow clean shutdown
-    remaining = input.seconds
-    while remaining > 0:
-        await asyncio.sleep(min(0.5, remaining))
-        remaining -= 0.5
+    # Register a pending delay so tests can discover and release it.
+    event = asyncio.Event()
+    my_entry = {"event": event, "started_at": start}
+
+    # If there's an existing delay for this key (e.g., from a pre-crash
+    # orchestrator's dispatch that is still blocked), release it so it exits
+    # quickly and doesn't interfere with this execution.
+    old = _pending_delays.get(key)
+    if old is not None:
+        old["event"].set()
+        old["superseded"] = True
+
+    _pending_delays[key] = my_entry
+
+    try:
+        # Block until explicitly released or the configured timeout elapses.
+        try:
+            await asyncio.wait_for(event.wait(), timeout=input.seconds)
+        except asyncio.TimeoutError:
+            pass  # Normal fallback — behaves like the original fixed sleep
+    finally:
+        # Only remove our own entry — a newer execution may have replaced it.
+        if _pending_delays.get(key) is my_entry:
+            del _pending_delays[key]
+
+    # If this execution was superseded by a newer one (post-recovery
+    # re-dispatch), skip the tracker write to avoid confusing test assertions.
+    if my_entry.get("superseded"):
+        return DelayOutput(
+            payload=input.payload,
+            step_label=input.step_label,
+            executed_at=datetime.now(timezone.utc).isoformat(),
+            duration=time.monotonic() - start,
+            attempt=context.attempt,
+            tracker_attempt=0,
+        )
 
     duration = time.monotonic() - start
     executed_at = datetime.now(timezone.utc).isoformat()
@@ -93,7 +169,6 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
     if input.should_fail:
         raise RuntimeError(f"Intentional failure for step {input.step_label}")
 
-    run_id = context.run_id or ""
     tracker_attempt = _count_tracker_records(run_id, input.step_label) + 1
 
     # Write tracker record
@@ -122,5 +197,59 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
     )
 
 
+# ---------------------------------------------------------------------------
+# HTTP application — Stepflow protocol routes + delay-control API
+# ---------------------------------------------------------------------------
+
+
+def _build_app() -> FastAPI:
+    """Build the FastAPI app with Stepflow routes and delay-control endpoints."""
+    app = create_test_app(server)
+
+    @app.get("/delay")
+    async def get_delay(
+        run_id: str | None = Query(None),
+        step_id: str | None = Query(None),
+    ):
+        """Check whether a matching delay is currently pending."""
+        match = _find_delay(run_id, step_id)
+        if match is None:
+            return JSONResponse({"delayed": False})
+        _key, entry = match
+        elapsed_ms = int((time.monotonic() - entry["started_at"]) * 1000)
+        return JSONResponse({"delayed": True, "elapsed_ms": elapsed_ms})
+
+    @app.post("/delay")
+    async def post_delay(
+        run_id: str | None = Query(None),
+        step_id: str | None = Query(None),
+    ):
+        """Release a pending delay, allowing the step to complete."""
+        match = _find_delay(run_id, step_id)
+        if match is None:
+            return JSONResponse(
+                {"error": "no matching delay found"},
+                status_code=404,
+            )
+        _key, entry = match
+        entry["event"].set()
+        return JSONResponse({"released": True})
+
+    return app
+
+
+async def _main():
+    app = _build_app()
+    server.set_initialized(True)
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=8080,
+        log_level="warning",
+    )
+    uv_server = uvicorn.Server(config)
+    await uv_server.serve()
+
+
 if __name__ == "__main__":
-    asyncio.run(server.run(host="0.0.0.0", port=8080))
+    asyncio.run(_main())

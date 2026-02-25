@@ -69,7 +69,7 @@ pub const DEFAULT_BLOB_THRESHOLD: usize = 1_048_576;
 impl BlobApiConfig {
     /// Get the effective blob threshold (0 means disabled).
     ///
-    /// Returns the configured threshold, or [`DEFAULT_BLOB_THRESHOLD`] (1 MB) if not set.
+    /// Returns the configured threshold, or `DEFAULT_BLOB_THRESHOLD` (1 MB) if not set.
     /// Set `blob_threshold: 0` in config to explicitly disable.
     pub fn effective_blob_threshold(&self) -> usize {
         self.blob_threshold.unwrap_or(DEFAULT_BLOB_THRESHOLD)

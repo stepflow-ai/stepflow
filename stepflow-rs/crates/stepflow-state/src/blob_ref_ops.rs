@@ -81,7 +81,7 @@ pub async fn blobify_inputs(
 ///
 /// All blob refs at the current level are fetched in parallel, then substituted.
 /// If the resolved data contains further blob refs, another parallel round is
-/// performed (up to [`MAX_RESOLVE_DEPTH`] rounds).
+/// performed (up to `MAX_RESOLVE_DEPTH` rounds).
 pub async fn resolve_blob_refs(
     value: Value,
     blob_store: &dyn BlobStore,

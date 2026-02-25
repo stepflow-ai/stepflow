@@ -89,7 +89,7 @@ pub struct ItemCheckpoint {
     pub results: Vec<(usize, FlowResult)>,
     /// Indices of needed steps.
     pub needed: Vec<usize>,
-    /// (step_index, [dependency_indices]) for steps with non-empty waiting_on.
+    /// (step_index, dependency_indices) for steps with non-empty waiting_on.
     pub waiting_on: Vec<(usize, Vec<usize>)>,
     /// Per-step attempt counts (full Vec, indexed by step).
     pub attempts: Vec<u32>,

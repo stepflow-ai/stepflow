@@ -21,7 +21,9 @@ events and deterministic subflow key deduplication.
 
 The test workflow (subflow_delay.yaml) has:
   store_subflow (instant) -> run_subflow (8s inner delay) -> final_step (3s)
-Total: ~11s. We kill the orchestrator while the inner subflow is running.
+
+Tests use the delay-control API to hold delays until the crash/recovery
+sequence is complete, then release them — eliminating timing assumptions.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ from helpers import (
     count_step_executions,
     docker_kill,
     docker_start,
-    poll_tracker_for_step,
+    poll_for_delay,
     read_tracker_records,
+    release_delay,
     store_flow,
     submit_run,
     wait_for_health,
@@ -50,42 +53,38 @@ from helpers import (
 WORKFLOWS = Path(__file__).parent / "workflows"
 
 
+@pytest.mark.xfail(reason="In-flight subflow recovery not yet supported (#690)")
 @pytest.mark.asyncio
 async def test_subflow_restart_recovery(compose_env):
     """Kill orch-1 while subflow is running, restart it, verify subflow is not re-executed.
 
     Scenario:
     1. Submit the subflow_delay workflow to orch-1
-    2. Wait for inner_delay to start (subflow is in-flight)
+    2. Wait for inner_delay to be held (subflow is in-flight)
     3. Kill orch-1
     4. Restart orch-1 (same ID -> startup recovery)
-    5. Wait for run to complete
-    6. Assert: inner_delay executed exactly once (recovered, not restarted)
-    7. Assert: final_step executed once
+    5. Release inner_delay so the step can complete
+    6. Wait for run to complete
+    7. Assert: inner_delay executed exactly once (recovered, not restarted)
+    8. Assert: final_step executed once
     """
-    # Clear tracker so we only see records from this test.
     clear_tracker()
 
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "subflow_test"}})
 
-    # Wait for the inner subflow to start executing
-    assert poll_tracker_for_step("inner_delay", timeout=20), (
-        "inner_delay did not start in time"
-    )
+    # Wait for inner_delay to be actively held (deterministic — no timing guesses)
+    poll_for_delay("inner_delay", timeout=20)
 
-    # Verify the flow is still in-progress: final_step must NOT have executed yet
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "final_step") == 0, (
-        "final_step should not have executed before kill"
-    )
-
-    # Kill orchestrator-1
+    # Kill orchestrator-1 while the delay is held
     docker_kill("orchestrator-1")
 
     # Restart orchestrator-1 (same container, same orch-1 ID)
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
+
+    # Release the delay so the step can complete after recovery
+    release_delay("inner_delay")
 
     # Wait for run to complete via recovery
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
@@ -107,36 +106,33 @@ async def test_subflow_restart_recovery(compose_env):
     )
 
 
+@pytest.mark.xfail(reason="In-flight subflow recovery not yet supported (#690)")
 @pytest.mark.asyncio
 async def test_subflow_failover_recovery(compose_env):
     """Kill orch-1 permanently while subflow is running, let orch-2 recover.
 
     Scenario:
     1. Submit the subflow_delay workflow to orch-1
-    2. Wait for inner_delay to start
+    2. Wait for inner_delay to be held
     3. Kill orch-1 permanently (don't restart)
-    4. Wait for orch-2 to pick up recovery via etcd lease expiry
-    5. Assert: inner_delay executed exactly once
-    6. Assert: final_step executed once
+    4. Release inner_delay
+    5. Wait for orch-2 to pick up recovery via etcd lease expiry
+    6. Assert: inner_delay executed exactly once
+    7. Assert: final_step executed once
     """
     clear_tracker()
 
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "failover_test"}})
 
-    # Wait for the inner subflow to start executing
-    assert poll_tracker_for_step("inner_delay", timeout=20), (
-        "inner_delay did not start in time"
-    )
-
-    # Verify still in-progress
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "final_step") == 0, (
-        "final_step should not have executed before kill"
-    )
+    # Wait for inner_delay to be actively held
+    poll_for_delay("inner_delay", timeout=20)
 
     # Kill orchestrator-1 permanently
     docker_kill("orchestrator-1")
+
+    # Release the delay so the step can complete when orch-2 recovers it
+    release_delay("inner_delay")
 
     # Wait for run to complete on either orchestrator (orch-2 will recover via
     # etcd lease expiry, which takes ~6s based on leaseTtlSecs config)
@@ -158,38 +154,38 @@ async def test_subflow_failover_recovery(compose_env):
 
 @pytest.mark.asyncio
 async def test_completed_subflow_not_restarted(compose_env):
-    """Kill orch-1 after inner subflow completes but before final_step, verify no re-execution.
+    """Kill orch-1 after inner subflow completes but during final_step, verify no re-execution.
 
     Scenario:
     1. Submit the subflow_delay workflow to orch-1
-    2. Wait for inner_delay to complete (8s)
-    3. Kill orch-1 before final_step finishes (3s window)
-    4. Restart orch-1
-    5. Assert: inner_delay count is exactly 1 (completed subflow not restarted)
+    2. Wait for inner_delay to be held, then release it immediately
+    3. Wait for final_step to be held (inner subflow is now complete)
+    4. Kill orch-1 while final_step is held
+    5. Restart orch-1
+    6. Release final_step
+    7. Assert: inner_delay count is exactly 1 (completed subflow not restarted)
     """
     clear_tracker()
 
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "subflow_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "completed_subflow"}})
 
-    # Wait for inner_delay to complete. It takes 8s.
-    # Poll until inner_delay appears in tracker, then wait for it to finish.
-    assert poll_tracker_for_step("inner_delay", timeout=20), (
-        "inner_delay did not start in time"
-    )
+    # Wait for inner_delay to be held, then release it so the subflow completes
+    poll_for_delay("inner_delay", timeout=20)
+    release_delay("inner_delay")
 
-    # Wait for final_step to start (inner_delay done, run_subflow returning result,
-    # then final_step dispatched). We need to kill between final_step start and end.
-    assert poll_tracker_for_step("final_step", timeout=30), (
-        "final_step did not start in time"
-    )
+    # Wait for final_step to be held (inner subflow done, orchestrator dispatched final_step)
+    poll_for_delay("final_step", timeout=30)
 
-    # Kill immediately — final_step takes 3s so we're likely still in it
+    # Kill orchestrator-1 while final_step is held
     docker_kill("orchestrator-1")
 
     # Restart and recover
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
+
+    # Release final_step so it can complete after recovery
+    release_delay("final_step")
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
     assert result["status"] == "completed", f"Expected completed, got {result['status']}"

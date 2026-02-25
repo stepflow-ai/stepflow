@@ -63,7 +63,7 @@ run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" car
 
 run_check "Compilation" cargo check --all-targets --all-features || true
 
-run_check "Documentation" cargo doc --all --no-deps || true
+RUSTDOCFLAGS="-D warnings" run_check "Documentation" cargo doc --all --no-deps || true
 
 # =============================================================================
 # RESULTS SUMMARY
