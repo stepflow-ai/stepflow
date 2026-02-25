@@ -73,7 +73,14 @@ def build_export_document(
     if image_export_mode is None:
         image_export_mode = DEFAULT_IMAGE_EXPORT_MODE
 
-    image_mode = ImageRefMode(image_export_mode)
+    try:
+        image_mode = ImageRefMode(image_export_mode)
+    except ValueError:
+        logger.warning(
+            "Invalid image_export_mode %r, falling back to embedded",
+            image_export_mode,
+        )
+        image_mode = ImageRefMode.EMBEDDED
     export_errors: list[dict[str, str]] = []
 
     result: dict[str, Any] = {"filename": filename}

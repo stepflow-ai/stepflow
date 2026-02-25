@@ -105,6 +105,15 @@ class TestBuildExportDocument:
         assert "unknown_fmt_content" not in result
         assert result["_export_errors"] == []
 
+    def test_invalid_image_export_mode_falls_back_to_embedded(self):
+        doc = _make_mock_doc()
+        result = build_export_document(
+            doc, "test.pdf", to_formats=["markdown"], image_export_mode="bogus"
+        )
+
+        assert result["md_content"] == "# Title\n\nBody text"
+        assert result["_export_errors"] == []
+
     def test_export_failure_produces_none_and_error_item(self):
         doc = _make_mock_doc()
         doc.export_to_html.side_effect = RuntimeError("render failed")
