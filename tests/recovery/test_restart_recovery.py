@@ -20,6 +20,9 @@ journaled before the crash must not be re-executed. Steps that were
 in-flight (dispatched to the worker but result not yet received by the
 orchestrator) may be re-executed — this is correct at-least-once
 semantics.
+
+Tests use the delay-control API to hold delays and crash at a
+deterministic point, eliminating timing assumptions.
 """
 
 from __future__ import annotations
@@ -36,8 +39,9 @@ from helpers import (
     docker_kill,
     docker_start,
     get_step_tracker_records,
-    poll_tracker_for_step,
+    poll_for_delay,
     read_tracker_records,
+    release_delay,
     store_flow,
     submit_run,
     wait_for_health,
@@ -49,33 +53,32 @@ WORKFLOWS = Path(__file__).parent / "workflows"
 
 @pytest.mark.asyncio
 async def test_restart_recovery_sequential(compose_env):
-    """Kill orch-1 after step1, restart it, verify recovery completes the run."""
+    """Kill orch-1 while step2 is held, restart it, verify recovery completes the run."""
     # 1. Upload workflow and submit run (non-blocking)
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": 42}})
 
-    # 2. Wait for step1 to complete (~5s delay + margin)
-    assert poll_tracker_for_step("step1", timeout=15), "step1 did not complete in time"
+    # 2. Wait for step1 to be held, then release it so it completes
+    poll_for_delay("step1", timeout=15)
+    release_delay("step1")
 
-    # 3. Verify the flow is still in-progress: step3 must NOT have executed yet.
-    #    Sequential: step1(5s) -> step2(5s) -> step3(5s). After step1 finishes
-    #    (≥5s), step2 is starting, step3 can't have started.
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "step3") == 0, (
-        "step3 should not have executed before kill — flow should still be in-progress"
-    )
+    # 3. Wait for step2 to be held (step1 is now complete, step2 is in-flight)
+    poll_for_delay("step2", timeout=15)
 
-    # 4. Kill orchestrator-1 (SIGKILL — simulates crash)
+    # 4. Kill orchestrator-1 while step2 is deterministically held
     docker_kill("orchestrator-1")
 
     # 5. Restart orchestrator-1 (same container, same orch-1 ID)
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 6. Wait for run to complete via recovery
+    # 6. Release step2 so recovery can proceed
+    release_delay("step2")
+
+    # 7. Wait for run to complete via recovery
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
 
-    # 7. Assertions
+    # 8. Assertions
     assert result["status"] == "completed", f"Expected completed, got {result['status']}"
 
     records = read_tracker_records()
@@ -124,19 +127,21 @@ async def test_restart_recovery_parallel(compose_env):
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "parallel_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "parallel_test"}})
 
-    # parallel_a completes in ~3s, others take longer
-    assert poll_tracker_for_step("parallel_a", timeout=15), "parallel_a did not complete in time"
+    # Wait for parallel_a to be held, release it so it completes first
+    poll_for_delay("parallel_a", timeout=15)
+    release_delay("parallel_a")
 
-    # Verify flow is still in-progress: aggregate depends on all parallel steps,
-    # and parallel_d takes 7s, so aggregate can't have run after only ~3s.
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "aggregate") == 0, (
-        "aggregate should not have executed before kill — flow should still be in-progress"
-    )
+    # Wait for parallel_d (longest) to be held — all parallel steps are now in-flight
+    poll_for_delay("parallel_d", timeout=15)
 
+    # Kill orchestrator-1 while parallel steps are deterministically held
     docker_kill("orchestrator-1")
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
+
+    # Release all remaining held parallel steps so recovery can proceed
+    for label in ["parallel_b", "parallel_c", "parallel_d"]:
+        release_delay(label)
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
     assert result["status"] == "completed"

@@ -18,6 +18,9 @@ The surviving orchestrator should detect the orphaned run via etcd lease
 expiry, claim it, replay the journal, and resume execution. Steps whose
 completion was durably journaled before the crash must not be
 re-executed. In-flight steps may be re-executed (at-least-once).
+
+Tests use the delay-control API to hold delays and crash at a
+deterministic point, eliminating timing assumptions.
 """
 
 from __future__ import annotations
@@ -36,8 +39,9 @@ from helpers import (
     get_step_tracker_records,
     has_checkpoint_created_log,
     has_checkpoint_recovery_log,
-    poll_tracker_for_step,
+    poll_for_delay,
     read_tracker_records,
+    release_delay,
     store_flow,
     submit_run,
     wait_for_run,
@@ -53,24 +57,20 @@ async def test_failover_recovery_sequential(compose_env):
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": 99}})
 
-    # 2. Wait for step1 to complete
-    assert poll_tracker_for_step("step1", timeout=15), "step1 did not complete in time"
+    # 2. Wait for step1 to be held, release it so it completes
+    poll_for_delay("step1", timeout=15)
+    release_delay("step1")
 
-    # 3. Verify flow is still in-progress: step3 must NOT have executed yet.
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "step3") == 0, (
-        "step3 should not have executed before kill — flow should still be in-progress"
-    )
+    # 3. Wait for step2 to be held — step1 is now durably complete
+    poll_for_delay("step2", timeout=15)
 
-    # 4. Kill orchestrator-1 (stays dead)
+    # 4. Kill orchestrator-1 (stays dead) while step2 is deterministically held
     docker_kill("orchestrator-1")
 
-    # 5. Wait for lease TTL expiry (6s) + orphan detection (~3s polling)
-    #    etcd push-based watch_orphans should detect almost immediately after
-    #    the lease expires, but give extra margin.
-    await asyncio.sleep(10)
+    # 5. Release step2 so orch-2 can proceed after claiming the orphan
+    release_delay("step2")
 
-    # 6. Orch-2 should claim the orphan and finish the run
+    # 6. Orch-2 should claim the orphan after lease expiry and finish the run
     result = await wait_for_run(ORCH2_URL, run_id, timeout=60)
 
     # 7. Assertions
@@ -115,17 +115,19 @@ async def test_failover_recovery_parallel(compose_env):
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "parallel_delay.yaml"))
     run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "failover_parallel"}})
 
-    # parallel_a (3s) should complete before we kill
-    assert poll_tracker_for_step("parallel_a", timeout=15), "parallel_a did not complete in time"
+    # Wait for parallel_a to be held, release it so it completes
+    poll_for_delay("parallel_a", timeout=15)
+    release_delay("parallel_a")
 
-    # Verify flow is still in-progress: aggregate can't have run yet
-    pre_kill_records = read_tracker_records()
-    assert count_step_executions(pre_kill_records, "aggregate") == 0, (
-        "aggregate should not have executed before kill — flow should still be in-progress"
-    )
+    # Wait for parallel_d (longest) to be held — all parallel steps are in-flight
+    poll_for_delay("parallel_d", timeout=15)
 
+    # Kill orchestrator-1 (stays dead)
     docker_kill("orchestrator-1")
-    await asyncio.sleep(10)
+
+    # Release remaining parallel steps so orch-2 can proceed after failover
+    for label in ["parallel_b", "parallel_c", "parallel_d"]:
+        release_delay(label)
 
     result = await wait_for_run(ORCH2_URL, run_id, timeout=90)
     assert result["status"] == "completed"
