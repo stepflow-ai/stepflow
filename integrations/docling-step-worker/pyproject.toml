@@ -188,6 +188,12 @@ disallow_untyped_decorators = false
 no_implicit_optional = false
 strict_equality = false
 
+# Third-party libraries without type stubs
+[[tool.mypy.overrides]]
+module = ["pypdfium2", "pypdfium2.*", "nest_asyncio", "nest_asyncio.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
 # Ignore errors in tests for now
 [[tool.mypy.overrides]]
 module = "tests.*"

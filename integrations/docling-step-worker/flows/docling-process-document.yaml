@@ -18,6 +18,15 @@ schemas:
           type: string
           enum: [blob, url, base64]
           description: How to interpret the source field
+        to_formats:
+          type: array
+          items:
+            type: string
+          description: "Export formats: markdown, html, text, json, doctags (default: [markdown])"
+        image_export_mode:
+          type: string
+          enum: [embedded, placeholder, referenced]
+          description: Image reference mode for markdown/html exports (default: embedded)
         chunk_options:
           type: object
           description: Optional chunking configuration
@@ -33,7 +42,7 @@ schemas:
       properties:
         document:
           type: object
-          description: Converted DoclingDocument (blob ref or dict)
+          description: ExportDocumentResponse with rendered content fields (md_content, html_content, etc.)
         chunks:
           type: array
           description: Document chunks produced by HybridChunker
@@ -54,11 +63,13 @@ steps:
       source: { $input: "source" }
       source_kind: { $input: "source_kind" }
       pipeline_config: { $step: "classify", path: "recommended_config" }
+      to_formats: { $input: "to_formats" }
+      image_export_mode: { $input: "image_export_mode" }
 
   - id: chunk
     component: /docling/chunk
     input:
-      document: { $step: "convert", path: "document" }
+      document: { $step: "convert", path: "document_dict" }
       chunk_options: { $input: "chunk_options" }
 
 output:

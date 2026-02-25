@@ -260,6 +260,132 @@ class TestChunkingParity:
             assert orig.text == recon.text, "Chunk text mismatch after round-trip"
 
 
+class TestResponseFormat:
+    """Test that build_convert_response produces docling-serve response shape.
+
+    These tests use real converter output to validate the full response
+    format matches docling-serve's ConvertDocumentResponse.
+    """
+
+    def test_response_has_document_with_format_fields(
+        self, test_pdf_bytes, docling_converter
+    ):
+        """All 5 formats produce the correct content fields."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.response_builder import build_convert_response
+
+        stream = DocumentStream(name="2408.09869v5.pdf", stream=BytesIO(test_pdf_bytes))
+        result = docling_converter.convert(source=stream)
+
+        response = build_convert_response(
+            result.document,
+            filename="2408.09869v5.pdf",
+            elapsed_seconds=1.0,
+            to_formats=["markdown", "html", "text", "json", "doctags"],
+        )
+
+        assert response["status"] == "success"
+        assert response["document"]["filename"] == "2408.09869v5.pdf"
+        assert isinstance(response["document"]["md_content"], str)
+        assert isinstance(response["document"]["html_content"], str)
+        assert isinstance(response["document"]["text_content"], str)
+        assert isinstance(response["document"]["json_content"], dict)
+        assert isinstance(response["document"]["doctags_content"], str)
+        assert isinstance(response["errors"], list)
+        assert isinstance(response["timings"], dict)
+        assert isinstance(response["processing_time"], float)
+
+    def test_default_to_formats_is_markdown_only(
+        self, test_pdf_bytes, docling_converter
+    ):
+        """Default formats produce only md_content."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.response_builder import build_convert_response
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = docling_converter.convert(source=stream)
+
+        response = build_convert_response(
+            result.document, filename="test.pdf", elapsed_seconds=0.5
+        )
+
+        assert "md_content" in response["document"]
+        assert "html_content" not in response["document"]
+        assert "json_content" not in response["document"]
+
+    def test_md_content_contains_expected_text(self, test_pdf_bytes, docling_converter):
+        """Markdown content includes known text from the document."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.response_builder import build_convert_response
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = docling_converter.convert(source=stream)
+
+        response = build_convert_response(
+            result.document,
+            filename="test.pdf",
+            elapsed_seconds=0.5,
+            to_formats=["markdown"],
+        )
+
+        assert "Docling" in response["document"]["md_content"]
+
+    def test_json_content_is_valid_docling_document(
+        self, test_pdf_bytes, docling_converter
+    ):
+        """json_content round-trips through DoclingDocument.model_validate()."""
+        from docling.datamodel.base_models import DocumentStream
+        from docling_core.types import DoclingDocument
+
+        from docling_step_worker.response_builder import build_convert_response
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = docling_converter.convert(source=stream)
+
+        response = build_convert_response(
+            result.document,
+            filename="test.pdf",
+            elapsed_seconds=0.5,
+            to_formats=["json"],
+        )
+
+        json_content = response["document"]["json_content"]
+        reconstituted = DoclingDocument.model_validate(json_content)
+        assert reconstituted.name is not None
+
+    def test_document_dict_always_present(self, test_pdf_bytes, docling_converter):
+        """document_dict is present in _run_conversion output."""
+        from docling_step_worker.convert import _run_conversion
+
+        result = _run_conversion(
+            docling_converter,
+            test_pdf_bytes,
+            "test.pdf",
+            to_formats=["markdown"],
+        )
+
+        assert "document_dict" in result
+        assert isinstance(result["document_dict"], dict)
+        assert result["document_dict"].get("schema_name") == "DoclingDocument"
+
+    def test_processing_time_is_float_seconds(self, test_pdf_bytes, docling_converter):
+        """processing_time is a float representing seconds."""
+        from docling_step_worker.convert import _run_conversion
+
+        result = _run_conversion(
+            docling_converter,
+            test_pdf_bytes,
+            "test.pdf",
+            to_formats=["markdown"],
+        )
+
+        assert isinstance(result["processing_time"], float)
+        assert result["processing_time"] > 0
+
+
 class TestFullPipelineParity:
     """Test the full classify -> convert -> chunk pipeline."""
 
