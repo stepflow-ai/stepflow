@@ -114,32 +114,53 @@ pub(super) async fn restore_from_journal(
         }
     }
 
-    // Find subflow RunCreated events and reconstruct their RunStates
+    // Find subflow RunCreated events and collect RunCompleted events.
     let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
+    let mut completed_runs: std::collections::HashSet<uuid::Uuid> =
+        std::collections::HashSet::new();
     for event in &all_events {
-        if let stepflow_state::JournalEvent::RunCreated {
-            run_id: sub_run_id,
-            flow_id: sub_flow_id,
-            inputs: sub_inputs,
-            variables: sub_variables,
-            parent_run_id: Some(parent_id),
-        } = event
-            && subflow_map.values().any(|id| id == sub_run_id)
-        {
-            subflow_created.insert(
-                *sub_run_id,
-                SubflowInfo {
-                    flow_id: sub_flow_id.clone(),
-                    parent_id: *parent_id,
-                    inputs: sub_inputs.clone(),
-                    variables: sub_variables.clone(),
-                },
-            );
+        match event {
+            stepflow_state::JournalEvent::RunCreated {
+                run_id: sub_run_id,
+                flow_id: sub_flow_id,
+                inputs: sub_inputs,
+                variables: sub_variables,
+                parent_run_id: Some(parent_id),
+            } if subflow_map.values().any(|id| id == sub_run_id) => {
+                subflow_created.insert(
+                    *sub_run_id,
+                    SubflowInfo {
+                        flow_id: sub_flow_id.clone(),
+                        parent_id: *parent_id,
+                        inputs: sub_inputs.clone(),
+                        variables: sub_variables.clone(),
+                    },
+                );
+            }
+            stepflow_state::JournalEvent::RunCompleted {
+                run_id: completed_id,
+                ..
+            } => {
+                completed_runs.insert(*completed_id);
+            }
+            _ => {}
         }
     }
 
+    // For each *incomplete* subflow, reconstruct its RunState.
+    // Completed subflows don't need RunState — their results are already in the
+    // metadata store. The subflow_map (dedup map) still contains entries for
+    // completed subflows so recovered_subflows.remove() returns the old run_id,
+    // and wait_for_completion resolves immediately from the metadata store.
     let mut subflow_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
     for (sub_run_id, info) in &subflow_created {
+        if completed_runs.contains(sub_run_id) {
+            log::info!(
+                "Skipping completed subflow {} during recovery (results in metadata store)",
+                sub_run_id
+            );
+            continue;
+        }
         let sub_flow = blob_store
             .get_flow(&info.flow_id)
             .await

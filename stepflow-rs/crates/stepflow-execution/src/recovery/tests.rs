@@ -1609,3 +1609,177 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
         "Root run should complete despite subflow events in journal"
     );
 }
+
+#[tokio::test]
+async fn test_recovery_skips_completed_subflow_runstate() {
+    // Test that recovery succeeds when the journal contains a completed subflow
+    // (RunCompleted event). The completed subflow's RunState should not be
+    // reconstructed — its results are in the metadata store.
+    use stepflow_core::workflow::FlowBuilder;
+
+    let env = create_test_env().await;
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let metadata_store = env.metadata_store();
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    // Create a 1-step flow
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![StepBuilder::new("step0")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()])
+            .output(ValueExpr::Step {
+                step: "step0".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    let root_run_id = uuid::Uuid::now_v7();
+    let completed_subflow_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+
+    // Create root run record
+    let params =
+        CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create run");
+
+    // Also create the completed subflow's run record + results in metadata store
+    let mut subflow_params = CreateRunParams::new_subflow(
+        completed_subflow_id,
+        flow_id.clone(),
+        vec![ValueRef::new(json!({}))],
+        root_run_id,
+        root_run_id,
+    );
+    subflow_params.workflow_name = Some("subflow".to_string());
+    metadata_store
+        .create_run(subflow_params)
+        .await
+        .expect("should create subflow run");
+    metadata_store
+        .record_item_result(
+            completed_subflow_id,
+            0,
+            stepflow_core::FlowResult::Success(ValueRef::new(json!({"sub": "done"}))),
+            Vec::new(),
+        )
+        .await
+        .expect("should record subflow result");
+    metadata_store
+        .update_run_status(completed_subflow_id, ExecutionStatus::Completed)
+        .await
+        .expect("should update subflow status");
+
+    // Write root events
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: root_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Write completed subflow events (including RunCompleted)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::SubflowSubmitted {
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+                subflow_run_id: completed_subflow_id,
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: completed_subflow_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: Some(root_run_id),
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCompleted {
+                run_id: completed_subflow_id,
+                status: ExecutionStatus::Completed,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Crash here — root step0 never ran. Recovery should skip the completed
+    // subflow's RunState (no flow blob needed for it) and resume the root.
+
+    let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+
+    assert_eq!(result.recovered, 1);
+
+    // Wait for execution to complete
+    let active_executions = env.active_executions();
+    for _ in 0..100 {
+        if active_executions.is_empty() {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        active_executions.is_empty(),
+        "Execution should complete within timeout"
+    );
+
+    // Root should have completed
+    let run = metadata_store
+        .get_run(root_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        run.summary.status,
+        ExecutionStatus::Completed,
+        "Root run should complete after recovery with completed subflow in journal"
+    );
+}
