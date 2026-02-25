@@ -1626,12 +1626,14 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     // Create a 1-step flow
     let flow = Arc::new(
         FlowBuilder::test_flow()
-            .steps(vec![StepBuilder::new("step0")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build()])
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
             .output(ValueExpr::Step {
                 step: "step0".to_string(),
                 path: Default::default(),
@@ -1649,8 +1651,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     let subflow_key = uuid::Uuid::now_v7();
 
     // Create root run record
-    let params =
-        CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
     metadata_store
         .create_run(params)
         .await
