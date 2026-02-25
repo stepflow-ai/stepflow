@@ -245,6 +245,13 @@ pub async fn get_flow_variables(
         .map(|vs| vs.env_var_map().clone())
         .unwrap_or_default();
 
+    log::info!(
+        "GET /flows/{}/variables: {} env_var annotations: {:?}",
+        flow_id,
+        env_vars.len(),
+        env_vars.keys().collect::<Vec<_>>()
+    );
+
     Ok(Json(FlowVariablesResponse {
         flow_id,
         schema,

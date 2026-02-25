@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
     from stepflow_py.api.models.run_details import RunDetails
     from stepflow_py.api.models.store_flow_response import StoreFlowResponse
     from stepflow_py.config import StepflowConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StepflowClient:
@@ -347,13 +350,41 @@ class StepflowClient:
         response = await self._flow_api.get_flow_variables(flow_id)
 
         if not response.env_vars:
+            logger.info(
+                "No env_var annotations found for flow %s", flow_id
+            )
             return explicit_variables
+
+        logger.info(
+            "Flow %s env_var annotations: %s",
+            flow_id,
+            list(response.env_vars.items()),
+        )
 
         env_variables: dict[str, Any] = {}
         for var_name, env_var_name in response.env_vars.items():
             env_value = os.environ.get(env_var_name)
             if env_value is not None:
                 env_variables[var_name] = _parse_env_value(env_value)
+                logger.info(
+                    "Populated variable %r from env %r",
+                    var_name,
+                    env_var_name,
+                )
+            else:
+                logger.debug(
+                    "Env var %r not set for variable %r",
+                    env_var_name,
+                    var_name,
+                )
+
+        logger.info(
+            "Merged variables for flow %s: %s (from env: %s, explicit: %s)",
+            flow_id,
+            list(env_variables.keys()),
+            len(env_variables),
+            len(explicit_variables) if explicit_variables else 0,
+        )
 
         if not env_variables and not explicit_variables:
             return None

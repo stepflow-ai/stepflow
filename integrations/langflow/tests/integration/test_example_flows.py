@@ -319,6 +319,27 @@ def load_flow_fixture(flow_name: str) -> dict[str, Any]:
         return json.load(f)
 
 
+# Verify env_var annotations survive store → fetch roundtrip
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_flow_variables_roundtrip(converter, stepflow_client):
+    """Verify env_var annotations are returned by get_flow_variables."""
+    langflow_data = load_flow_fixture("basic_prompting")
+    flow = converter.convert(langflow_data)
+
+    store_response = await stepflow_client.store_flow(flow)
+    assert store_response.stored, f"Failed to store flow: {store_response.diagnostics}"
+    flow_id = store_response.flow_id
+
+    response = await stepflow_client._flow_api.get_flow_variables(flow_id)
+
+    assert "OPENAI_API_KEY" in response.env_vars, (
+        f"Expected OPENAI_API_KEY in env_vars, got: {response.env_vars}"
+    )
+    assert response.env_vars["OPENAI_API_KEY"] == "OPENAI_API_KEY"
+
+
 # API-dependent flows
 
 

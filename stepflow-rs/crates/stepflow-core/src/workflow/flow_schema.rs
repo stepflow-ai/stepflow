@@ -140,53 +140,50 @@ impl<'de> serde::Deserialize<'de> for FlowSchema {
             .as_object()
             .ok_or_else(|| D::Error::custom("FlowSchema must be an object"))?;
 
-        // Extract $defs
-        let defs: HashMap<String, SchemaRef> = if let Some(defs_val) = obj.get("$defs") {
-            if defs_val.is_null() {
-                HashMap::new()
+        // Extract $defs (also accept "defs" without the $ prefix for flat format)
+        let defs: HashMap<String, SchemaRef> =
+            if let Some(defs_val) = obj.get("$defs").or_else(|| obj.get("defs")) {
+                if defs_val.is_null() {
+                    HashMap::new()
+                } else {
+                    serde_json::from_value(defs_val.clone()).map_err(D::Error::custom)?
+                }
             } else {
-                serde_json::from_value(defs_val.clone()).map_err(D::Error::custom)?
-            }
-        } else {
-            HashMap::new()
-        };
+                HashMap::new()
+            };
 
-        // Extract properties
+        // Extract properties — supports two formats:
+        // 1. JSON Schema format: {"type": "object", "properties": {"variables": ...}}
+        // 2. Flat format from Python SDK: {"variables": ..., "steps": ...}
         let properties = obj.get("properties").and_then(|p| p.as_object());
 
-        let input: Option<SchemaRef> = if let Some(props) = properties {
-            props
-                .get("input")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()
-                .map_err(D::Error::custom)?
-        } else {
-            None
+        // Helper: look up a field in properties first, then fall back to top-level obj
+        let get_field = |name: &str| -> Option<&serde_json::Value> {
+            properties
+                .and_then(|p| p.get(name))
+                .or_else(|| obj.get(name))
         };
 
-        let output: Option<SchemaRef> = if let Some(props) = properties {
-            props
-                .get("output")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()
-                .map_err(D::Error::custom)?
-        } else {
-            None
-        };
+        let input: Option<SchemaRef> = get_field("input")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()
+            .map_err(D::Error::custom)?;
 
-        let variables: Option<SchemaRef> = if let Some(props) = properties {
-            props
-                .get("variables")
-                .map(|v| serde_json::from_value(v.clone()))
-                .transpose()
-                .map_err(D::Error::custom)?
-        } else {
-            None
-        };
+        let output: Option<SchemaRef> = get_field("output")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()
+            .map_err(D::Error::custom)?;
 
-        // Extract steps from properties.steps.properties
-        let steps: IndexMap<String, SchemaRef> = if let Some(props) = properties {
-            if let Some(steps_obj) = props.get("steps").and_then(|s| s.as_object()) {
+        let variables: Option<SchemaRef> = get_field("variables")
+            .map(|v| serde_json::from_value(v.clone()))
+            .transpose()
+            .map_err(D::Error::custom)?;
+
+        // Extract steps — in JSON Schema format: properties.steps.properties.{step_id}
+        // In flat format: steps.{step_id} (each value is a schema directly)
+        let steps: IndexMap<String, SchemaRef> = if let Some(steps_val) = get_field("steps") {
+            if let Some(steps_obj) = steps_val.as_object() {
+                // Check if this is the JSON Schema wrapper with nested properties
                 if let Some(step_properties) =
                     steps_obj.get("properties").and_then(|p| p.as_object())
                 {
@@ -198,7 +195,14 @@ impl<'de> serde::Deserialize<'de> for FlowSchema {
                     }
                     steps_map
                 } else {
-                    IndexMap::new()
+                    // Flat format: each key is a step_id with a schema value
+                    let mut steps_map = IndexMap::new();
+                    for (step_id, step_schema) in steps_obj {
+                        let schema: SchemaRef = serde_json::from_value(step_schema.clone())
+                            .map_err(D::Error::custom)?;
+                        steps_map.insert(step_id.clone(), schema);
+                    }
+                    steps_map
                 }
             } else {
                 IndexMap::new()
@@ -225,5 +229,96 @@ impl FlowSchema {
             && self.output.is_none()
             && self.variables.is_none()
             && self.steps.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workflow::variable_schema::VariableSchema;
+    use serde_json::json;
+
+    #[test]
+    fn test_deserialize_json_schema_format() {
+        // The Rust serializer produces this JSON Schema format
+        let json = json!({
+            "type": "object",
+            "properties": {
+                "variables": {
+                    "type": "object",
+                    "properties": {
+                        "API_KEY": {
+                            "type": "string",
+                            "env_var": "MY_API_KEY"
+                        }
+                    }
+                }
+            }
+        });
+
+        let schema: FlowSchema = serde_json::from_value(json).unwrap();
+        assert!(schema.variables.is_some());
+
+        let var_schema = VariableSchema::from(schema.variables.unwrap());
+        assert_eq!(var_schema.env_var_name("API_KEY"), Some("MY_API_KEY"));
+    }
+
+    #[test]
+    fn test_deserialize_flat_format() {
+        // The Python SDK sends this flat format
+        let json = json!({
+            "defs": {},
+            "variables": {
+                "type": "object",
+                "properties": {
+                    "OPENAI_API_KEY": {
+                        "type": ["string", "null"],
+                        "default": null,
+                        "env_var": "OPENAI_API_KEY"
+                    }
+                }
+            },
+            "steps": {}
+        });
+
+        let schema: FlowSchema = serde_json::from_value(json).unwrap();
+        assert!(schema.variables.is_some());
+
+        let var_schema = VariableSchema::from(schema.variables.unwrap());
+        assert_eq!(
+            var_schema.env_var_name("OPENAI_API_KEY"),
+            Some("OPENAI_API_KEY")
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_preserves_env_var() {
+        // Deserialize from flat format (Python SDK), serialize, deserialize again
+        let flat_json = json!({
+            "defs": {},
+            "variables": {
+                "type": "object",
+                "properties": {
+                    "API_KEY": {
+                        "type": "string",
+                        "env_var": "MY_API_KEY",
+                        "is_secret": true
+                    }
+                }
+            },
+            "steps": {}
+        });
+
+        let schema: FlowSchema = serde_json::from_value(flat_json).unwrap();
+
+        // Serialize back (produces JSON Schema format)
+        let serialized = serde_json::to_value(&schema).unwrap();
+
+        // Deserialize again
+        let schema2: FlowSchema = serde_json::from_value(serialized).unwrap();
+        assert!(schema2.variables.is_some());
+
+        let var_schema = VariableSchema::from(schema2.variables.unwrap());
+        assert_eq!(var_schema.env_var_name("API_KEY"), Some("MY_API_KEY"));
     }
 }
