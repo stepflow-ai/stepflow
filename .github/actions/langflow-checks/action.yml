@@ -28,15 +28,16 @@ runs:
       run: uv python install ${{ inputs.python-version }}
       working-directory: integrations/langflow
 
+    # Use dtolnay/rust-toolchain (not setup-rust-toolchain) because we
+    # configure Swatinem/rust-cache separately with workspaces.
     - name: Setup Rust toolchain (for stepflow binary)
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Configure Rust cache
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: stepflow-rs
+        workspaces: |
+          ./stepflow-rs
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
