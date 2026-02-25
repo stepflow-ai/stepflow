@@ -128,7 +128,17 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
 
     # Register a pending delay so tests can discover and release it.
     event = asyncio.Event()
-    _pending_delays[key] = {"event": event, "started_at": start}
+    my_entry = {"event": event, "started_at": start}
+
+    # If there's an existing delay for this key (e.g., from a pre-crash
+    # orchestrator's dispatch that is still blocked), release it so it exits
+    # quickly and doesn't interfere with this execution.
+    old = _pending_delays.get(key)
+    if old is not None:
+        old["event"].set()
+        old["superseded"] = True
+
+    _pending_delays[key] = my_entry
 
     try:
         # Block until explicitly released or the configured timeout elapses.
@@ -137,7 +147,21 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
         except asyncio.TimeoutError:
             pass  # Normal fallback — behaves like the original fixed sleep
     finally:
-        _pending_delays.pop(key, None)
+        # Only remove our own entry — a newer execution may have replaced it.
+        if _pending_delays.get(key) is my_entry:
+            del _pending_delays[key]
+
+    # If this execution was superseded by a newer one (post-recovery
+    # re-dispatch), skip the tracker write to avoid confusing test assertions.
+    if my_entry.get("superseded"):
+        return DelayOutput(
+            payload=input.payload,
+            step_label=input.step_label,
+            executed_at=datetime.now(timezone.utc).isoformat(),
+            duration=time.monotonic() - start,
+            attempt=context.attempt,
+            tracker_attempt=0,
+        )
 
     duration = time.monotonic() - start
     executed_at = datetime.now(timezone.utc).isoformat()

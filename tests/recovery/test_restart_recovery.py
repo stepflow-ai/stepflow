@@ -72,7 +72,10 @@ async def test_restart_recovery_sequential(compose_env):
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 6. Release step2 so recovery can proceed
+    # 6. Wait for step2's delay to appear (the recovery re-dispatch may
+    #    supersede the pre-crash entry, or the old one may have timed out),
+    #    then release it.
+    poll_for_delay("step2", timeout=30)
     release_delay("step2")
 
     # 7. Wait for run to complete via recovery
@@ -139,8 +142,9 @@ async def test_restart_recovery_parallel(compose_env):
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # Release all remaining held parallel steps so recovery can proceed
+    # Wait for recovery to re-dispatch, then release held parallel steps
     for label in ["parallel_b", "parallel_c", "parallel_d"]:
+        poll_for_delay(label, timeout=30)
         release_delay(label)
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
