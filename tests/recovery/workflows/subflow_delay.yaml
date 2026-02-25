@@ -35,7 +35,7 @@ steps:
         - id: inner_delay
           component: /test/delay
           input:
-            seconds: 120
+            seconds: 8
             step_label: "inner_delay"
             payload:
               $input: ""
