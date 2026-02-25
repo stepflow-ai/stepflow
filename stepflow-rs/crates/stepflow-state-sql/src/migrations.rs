@@ -53,8 +53,18 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
     create_migrations_table(pool).await?;
 
     run_migration(pool, "001_create_metadata_tables", create_metadata_tables).await?;
-    run_migration(pool, "003_add_step_statuses_to_run_items", add_step_statuses_column).await?;
-    run_migration(pool, "004_add_orchestrator_id_to_runs", add_orchestrator_id_column).await?;
+    run_migration(
+        pool,
+        "003_add_step_statuses_to_run_items",
+        add_step_statuses_column,
+    )
+    .await?;
+    run_migration(
+        pool,
+        "004_add_orchestrator_id_to_runs",
+        add_orchestrator_id_column,
+    )
+    .await?;
 
     Ok(())
 }
