@@ -26,6 +26,7 @@ import logging
 import time
 from typing import Any
 
+from docling.datamodel.document import ConversionStatus
 from docling.document_converter import DocumentConverter
 from stepflow_py.worker import StepflowContext
 
@@ -34,12 +35,20 @@ from docling_step_worker.blob_utils import (
     get_document_bytes,
     put_document_blob,
 )
+from docling_step_worker.response_builder import (
+    _make_error_item,
+    build_convert_response,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def _run_conversion(
-    converter: DocumentConverter, data: bytes, filename: str
+    converter: DocumentConverter,
+    data: bytes,
+    filename: str,
+    to_formats: list[str] | None = None,
+    image_export_mode: str | None = None,
 ) -> dict[str, Any]:
     """Run synchronous docling conversion.
 
@@ -47,29 +56,31 @@ def _run_conversion(
         converter: Pre-configured DocumentConverter instance
         data: Raw document bytes
         filename: Filename for the document stream
+        to_formats: Export formats for response rendering
+        image_export_mode: Image reference mode for markdown/html
 
     Returns:
-        Dict with document, status, page_count, table_count, processing_time_ms
+        Dict with document (ExportDocumentResponse shape), document_dict,
+        status, processing_time, errors, timings
     """
     stream = bytes_to_document_stream(data, filename)
     start = time.monotonic()
     result = converter.convert(source=stream)
-    elapsed_ms = int((time.monotonic() - start) * 1000)
+    elapsed_seconds = time.monotonic() - start
 
     doc = result.document
     doc_dict = doc.export_to_dict()
 
-    # Count pages and tables from the DoclingDocument
-    page_count = len(doc_dict.get("pages", {}))
-    table_count = len(doc_dict.get("tables", []))
+    response = build_convert_response(
+        doc,
+        filename,
+        elapsed_seconds,
+        to_formats=to_formats,
+        image_export_mode=image_export_mode,
+    )
+    response["document_dict"] = doc_dict
 
-    return {
-        "document": doc_dict,
-        "status": "success",
-        "page_count": page_count,
-        "table_count": table_count,
-        "processing_time_ms": elapsed_ms,
-    }
+    return response
 
 
 async def convert_document(
@@ -87,17 +98,22 @@ async def convert_document(
     Input:
         source: blob reference or URL
         source_kind: "blob" or "url"
+        to_formats: list of export formats (default: ["markdown"])
+        image_export_mode: image reference mode (default: "embedded")
 
     Output:
-        document: dict (DoclingDocument via export_to_dict())
-        status: "success" or "error"
-        page_count: int
-        table_count: int
-        processing_time_ms: int
+        document: dict (ExportDocumentResponse shape with *_content fields)
+        document_dict: dict (DoclingDocument via export_to_dict())
+        status: "success" or "failure"
+        errors: list of ErrorItem dicts
+        processing_time: float (seconds)
+        timings: dict
     """
     source = input_data.get("source", "")
     source_kind = input_data.get("source_kind", "blob")
     filename = input_data.get("filename", "document.pdf")
+    to_formats = input_data.get("to_formats")
+    image_export_mode = input_data.get("image_export_mode")
 
     try:
         doc_bytes = await get_document_bytes(source, source_kind)
@@ -105,35 +121,40 @@ async def convert_document(
         logger.error("Failed to retrieve document for conversion: %s", e)
         return {
             "document": None,
-            "status": "error",
-            "error": f"Failed to retrieve document: {e}",
-            "page_count": 0,
-            "table_count": 0,
-            "processing_time_ms": 0,
+            "document_dict": None,
+            "status": ConversionStatus.FAILURE.value,
+            "errors": [_make_error_item(f"Failed to retrieve document: {e}")],
+            "processing_time": 0.0,
+            "timings": {},
         }
 
     try:
         # Run sync conversion in thread to avoid blocking event loop
         result = await asyncio.to_thread(
-            _run_conversion, converter, doc_bytes, filename
+            _run_conversion,
+            converter,
+            doc_bytes,
+            filename,
+            to_formats,
+            image_export_mode,
         )
     except Exception as e:
         logger.error("Document conversion failed: %s", e)
         return {
             "document": None,
-            "status": "error",
-            "error": f"Conversion failed: {e}",
-            "page_count": 0,
-            "table_count": 0,
-            "processing_time_ms": 0,
+            "document_dict": None,
+            "status": ConversionStatus.FAILURE.value,
+            "errors": [_make_error_item(f"Conversion failed: {e}")],
+            "processing_time": 0.0,
+            "timings": {},
         }
 
-    # Store document in blob store for downstream consumption
+    # Store document_dict in blob store for downstream consumption
     try:
-        blob_ref = await put_document_blob(result["document"])
+        blob_ref = await put_document_blob(result["document_dict"])
         result["document_blob_ref"] = blob_ref
     except Exception as e:
         logger.warning("Failed to store document blob: %s", e)
-        # Non-fatal — document dict is still in the result
+        # Non-fatal — document_dict is still in the result
 
     return result

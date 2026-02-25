@@ -40,11 +40,12 @@ steps:
       source: { $input: "source" }
       source_kind: { $input: "source_kind" }
       pipeline_config: { $step: "classify", path: "recommended_config" }
+      to_formats: ["markdown", "json", "text"]
 
   - id: chunk
     component: /docling/chunk
     input:
-      document: { $step: "convert", path: "document" }
+      document: { $step: "convert", path: "document_dict" }
 
 output:
   document: { $step: "convert", path: "document" }
@@ -79,6 +80,8 @@ test:
       output:
         outcome: success
         result:
+          document:
+            filename: "document.pdf"
           classification:
             format: "pdf"
             has_text_layer: true

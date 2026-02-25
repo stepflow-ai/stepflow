@@ -78,6 +78,7 @@ uv run poe check        # All checks + tests
 - `src/docling_step_worker/server.py` — Main server, component registration
 - `src/docling_step_worker/classify.py` — Document probing via pypdfium2
 - `src/docling_step_worker/convert.py` — DocumentConverter wrapper
+- `src/docling_step_worker/response_builder.py` — Renders ConversionResult into docling-serve response shape
 - `src/docling_step_worker/chunk.py` — HybridChunker wrapper
 - `src/docling_step_worker/config.py` — Named pipeline configurations
 - `src/docling_step_worker/blob_utils.py` — Blob store helpers
