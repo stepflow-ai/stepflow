@@ -31,6 +31,7 @@ import pytest
 
 from helpers import (
     ORCH1_URL,
+    assert_checkpoints_used_in_recovery,
     count_step_executions,
     docker_kill,
     docker_start,
@@ -111,6 +112,10 @@ async def test_restart_recovery_sequential(compose_env):
         assert step2_records[-1]["attempt"] >= 2, (
             "step2 re-execution after recovery should show attempt >= 2"
         )
+
+    # Checkpoint verification: orch-1 should have created checkpoints during
+    # execution and restored from one during recovery.
+    assert_checkpoints_used_in_recovery("orchestrator-1")
 
 
 @pytest.mark.asyncio

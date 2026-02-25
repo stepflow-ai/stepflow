@@ -19,10 +19,12 @@ use std::time::Duration;
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutions, BlobStore, ExecutionJournal, InMemoryStateStore, LeaseManager, MetadataStore,
-    NoOpJournal, NoOpLeaseManager, OrchestratorId,
+    ActiveExecutions, BlobStore, CheckpointStore, ExecutionJournal, InMemoryStateStore,
+    LeaseManager, MetadataStore, NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
+    OrchestratorId,
 };
 
+use crate::execution_config::ExecutionConfig;
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
@@ -77,12 +79,14 @@ pub struct StepflowEnvironmentBuilder {
     metadata_store: Option<Arc<dyn MetadataStore>>,
     blob_store: Option<Arc<dyn BlobStore>>,
     execution_journal: Option<Arc<dyn ExecutionJournal>>,
+    checkpoint_store: Option<Arc<dyn CheckpointStore>>,
     lease_manager: Option<Arc<dyn LeaseManager>>,
     working_directory: Option<PathBuf>,
     plugin_router: Option<PluginRouter>,
     blob_api_url: Option<String>,
     blob_threshold: usize,
     orchestrator_id: Option<OrchestratorId>,
+    checkpoint_interval: usize,
 }
 
 impl Default for StepflowEnvironmentBuilder {
@@ -98,12 +102,14 @@ impl StepflowEnvironmentBuilder {
             metadata_store: None,
             blob_store: None,
             execution_journal: None,
+            checkpoint_store: None,
             lease_manager: None,
             working_directory: None,
             plugin_router: None,
             blob_api_url: None,
             blob_threshold: 0,
             orchestrator_id: None,
+            checkpoint_interval: 0,
         }
     }
 
@@ -131,6 +137,16 @@ impl StepflowEnvironmentBuilder {
     /// you can pass the same object as both.
     pub fn execution_journal(mut self, journal: Arc<dyn ExecutionJournal>) -> Self {
         self.execution_journal = Some(journal);
+        self
+    }
+
+    /// Set the checkpoint store for periodic state snapshots.
+    ///
+    /// If not set, a `NoOpCheckpointStore` is used (checkpoints are discarded).
+    /// For implementations where the metadata store also implements CheckpointStore
+    /// (like InMemoryStateStore or SqliteStateStore), you can pass the same object.
+    pub fn checkpoint_store(mut self, store: Arc<dyn CheckpointStore>) -> Self {
+        self.checkpoint_store = Some(store);
         self
     }
 
@@ -190,6 +206,15 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the checkpoint interval for periodic state snapshots.
+    ///
+    /// When set to a non-zero value, the executor will create a checkpoint
+    /// every N journal entries. Set to 0 to disable (default).
+    pub fn checkpoint_interval(mut self, interval: usize) -> Self {
+        self.checkpoint_interval = interval;
+        self
+    }
+
     /// Build the environment, initializing all plugins.
     ///
     /// This is async because plugin initialization may require async operations
@@ -225,16 +250,33 @@ impl StepflowEnvironmentBuilder {
             .lease_manager
             .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))));
 
+        // Use provided checkpoint store or default to no-op (checkpoints discarded)
+        let checkpoint_store: Arc<dyn CheckpointStore> = self
+            .checkpoint_store
+            .unwrap_or_else(|| Arc::new(NoOpCheckpointStore));
+
+        // Initialize the checkpoint store backend (e.g., create tables)
+        checkpoint_store
+            .initialize_checkpoint_store()
+            .await
+            .change_context(PluginError::Initializing)?;
+
         let mut env = StepflowEnvironment::new();
         env.insert(metadata_store);
         env.insert(blob_store);
         env.insert(journal);
+        env.insert(checkpoint_store);
         env.insert(lease_manager);
         env.insert(working_directory);
         env.insert(plugin_router);
 
         // Store blob API configuration for workers
         env.insert(BlobApiUrl::new(self.blob_api_url, self.blob_threshold));
+
+        // Store execution configuration
+        env.insert(ExecutionConfig {
+            checkpoint_interval: self.checkpoint_interval,
+        });
 
         // Store orchestrator ID if set (distributed mode)
         if let Some(id) = self.orchestrator_id {
@@ -272,7 +314,8 @@ impl StepflowEnvironmentBuilder {
         Self::new()
             .metadata_store(store.clone())
             .blob_store(store.clone())
-            .execution_journal(store)
+            .execution_journal(store.clone())
+            .checkpoint_store(store)
             .working_directory(PathBuf::from("."))
             .plugin_router(plugin_router)
             .build()

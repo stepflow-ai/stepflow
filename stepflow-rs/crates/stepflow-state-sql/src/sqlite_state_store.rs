@@ -21,8 +21,8 @@ use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
 };
 use stepflow_state::{
-    BlobStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob, RootJournalInfo,
-    RunCompletionNotifier, SequenceNumber, StateError,
+    BlobStore, CheckpointStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob,
+    RootJournalInfo, RunCompletionNotifier, SequenceNumber, StateError, StoredCheckpoint,
 };
 use uuid::Uuid;
 
@@ -1092,6 +1092,91 @@ impl ExecutionJournal for SqliteStateStore {
             }
 
             Ok(infos)
+        }
+        .boxed()
+    }
+}
+
+impl CheckpointStore for SqliteStateStore {
+    fn initialize_checkpoint_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        async move { migrations::run_checkpoint_migrations(&pool).await }.boxed()
+    }
+
+    fn put_checkpoint(
+        &self,
+        root_run_id: Uuid,
+        sequence: SequenceNumber,
+        data: bytes::Bytes,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = r#"
+                INSERT OR REPLACE INTO checkpoints (root_run_id, sequence_number, data)
+                VALUES (?, ?, ?)
+            "#;
+
+            sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .bind(sequence.value() as i64)
+                .bind(data.as_ref())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_latest_checkpoint(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StoredCheckpoint>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = r#"
+                SELECT sequence_number, data
+                FROM checkpoints
+                WHERE root_run_id = ?
+            "#;
+
+            let row = sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(row.map(|r| {
+                let sequence = SequenceNumber::new(r.get::<i64, _>("sequence_number") as u64);
+                let data: Vec<u8> = r.get("data");
+                StoredCheckpoint {
+                    sequence,
+                    data: data.into(),
+                }
+            }))
+        }
+        .boxed()
+    }
+
+    fn delete_checkpoints(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let sql = "DELETE FROM checkpoints WHERE root_run_id = ?";
+
+            sqlx::query(sql)
+                .bind(root_run_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
         }
         .boxed()
     }

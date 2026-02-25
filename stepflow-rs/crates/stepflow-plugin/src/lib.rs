@@ -14,6 +14,7 @@ mod context;
 mod environment_builder;
 mod environment_ext;
 mod error;
+mod execution_config;
 mod plugin;
 pub mod routing;
 mod subflow;
@@ -22,6 +23,7 @@ pub use context::RunContext;
 pub use environment_builder::{BlobApiUrl, StepflowEnvironmentBuilder};
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
+pub use execution_config::ExecutionConfig;
 pub use plugin::{DynPlugin, Plugin, PluginConfig};
 pub use subflow::{
     SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,

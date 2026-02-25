@@ -1,4 +1,4 @@
-# Proposal: Docling Step Worker — Native Library Integration
+# Proposal: Docling Step Worker — Drop-in Replacement for docling-serve
 
 **Status:** Draft  
 **Authors:** Nate McCall  
@@ -8,319 +8,392 @@
 
 ## Summary
 
-Mirror docling's document processing pipeline as a Stepflow flow, using docling's Python library directly rather than proxying through docling-serve. The immediate goal is **output parity** — a caller should be able to submit a document to this Stepflow flow and get back the same `DoclingDocument` and chunks they would get from docling-serve. This establishes the flow as the control plane for document processing, creating the stable abstraction boundary behind which every subsequent improvement (pipeline disaggregation, conditional routing, Rust-native components) is a component swap rather than a rearchitecture.
+Build a drop-in replacement for the docling-serve sidecar that exposes **the same REST API** while calling docling's `DocumentConverter` library directly in-process. The existing `integrations/docling/` package (Langflow integration) and any other callers of docling-serve's HTTP API continue to work unchanged — they just point `DOCLING_SERVE_URL` at the step worker instead of the sidecar.
 
-The key constraint: **zero duplication of docling internals.** All image manipulation, PDF parsing, model inference, and assembly logic uses docling's existing classes directly. If something can't be cleanly extracted as a separate component without reimplementing docling logic, it stays inside docling's `DocumentConverter`. Deeper disaggregation is deferred to later phases.
+**Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar → `DocumentConverter`  
+**Target state:** Python `StepflowDoclingServer` → HTTP → `docling-step-worker` → `StepflowClient` → Stepflow flow → `DocumentConverter` directly (no sidecar)
 
-**Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar  
-**Target state:** Python `docling_step_worker` calling `DocumentConverter` directly, orchestrated by a Stepflow flow with conditional branching
+The key constraint: **callers cannot tell the difference.** The step worker accepts the same request format, returns the same response format, and supports the same options as docling-serve. Internally, all processing — sync and async — is orchestrated through Stepflow, providing distributed execution state, blob-store-backed results, and horizontal scaling that docling-serve has never achieved. This also solves docling-serve's known architectural flaw where async task state is pinned to a single process.
 
 ## Motivation
 
-### Primary Goal: Establish the Flow Abstraction
+### Primary Goal: Eliminate the Sidecar While Preserving the Contract
 
-The central motivation is to **express docling's document processing pipeline as a Stepflow flow.** Today, document processing is a black box — a request goes into docling-serve and a result comes back. By modeling the same pipeline as a flow with discrete steps (classify, convert, chunk), we gain a stable contract that decouples *what happens* from *how it's implemented*.
+Today, every docling-worker pod runs two processes: the Stepflow component server (Python) and a docling-serve sidecar (Python + FastAPI + Uvicorn). The component server is a thin HTTP proxy — it receives Stepflow JSON-RPC requests, reformats them, and forwards to the sidecar on localhost:5001. This is wasteful:
 
-This is the foundation for everything that follows. The Rust-native proposal (`rust-native-docling.md`) describes pipeline disaggregation, page-level fan-out, and native ONNX inference — all of which assume an orchestration layer that can route work to different component implementations. This proposal builds that layer.
+- **Double the Python runtime overhead.** Two separate processes, two sets of dependencies, two memory footprints.
+- **HTTP serialization for in-process data.** Documents are serialized to HTTP, sent over localhost, deserialized, processed, serialized again, sent back. All within the same pod.
+- **Sidecar lifecycle complexity.** Health checks, startup ordering, crash recovery — all for a localhost HTTP hop.
 
-Critically, the first version should produce **identical output to docling-serve.** That's the correctness proof. If a caller can swap a docling-serve API call for a Stepflow flow invocation and get the same `DoclingDocument` and chunks back, the abstraction is validated and we can begin improving what's behind it.
+The step worker eliminates this by loading `DocumentConverter` directly and presenting the same HTTP interface that docling-serve provides. The existing Langflow integration (`integrations/docling/`) doesn't change — its `DoclingServeClient` already speaks the docling-serve v1 API. We just retarget `DOCLING_SERVE_URL`.
 
-### Secondary Benefits
+### Secondary Goal: Establish the Stepflow Flow Abstraction
 
-Beyond establishing the flow abstraction, this work delivers immediate operational improvements:
+Behind the HTTP facade, document processing is orchestrated as a Stepflow flow with discrete steps (convert, chunk). This creates the control plane that later improvements plug into: conditional routing, per-step observability, pipeline disaggregation, and eventually Rust-native components. But **the flow is an internal implementation detail** — external callers interact with the docling-serve REST API, not Stepflow directly.
 
-- **No sidecar.** Eliminating the docling-serve sidecar removes HTTP serialization overhead, simplifies the pod topology, and reduces per-pod memory by ~500MB.
-- **Conditional pipeline selection.** The classify step enables routing documents to different `DocumentConverter` configurations: skip OCR for born-digital PDFs, use `TableFormerMode.ACCURATE` for financial reports, skip table extraction for text-only documents. This isn't possible with a one-size-fits-all docling-serve configuration.
-- **Per-step observability.** Classification, conversion, and chunking are separate Stepflow steps with individual fastrace spans, timing, and failure tracking. This data directly informs later optimization decisions — we'll see exactly where time is spent before deciding which stages to disaggregate.
-- **Document-level fan-out.** Batch processing naturally distributes across worker pods via the existing `/map` component, with Stepflow managing concurrency limits and partial failure.
+### What Stays Unchanged
+
+- **`integrations/docling/`** — The Langflow integration package, its `DoclingServeClient`, and all Langflow component names (`DoclingInlineComponent`, `DoclingRemoteComponent`, `ChunkDoclingDocument`, `ExportDoclingDocument`). These are not modified. They continue to speak docling-serve's HTTP API.
+- **External caller contracts** — Any system hitting `POST /v1/convert/source`, `POST /v1/convert/file`, the async variants, or the chunking endpoints continues to work identically.
+- **Request options surface** — `do_ocr`, `force_ocr`, `ocr_engine`, `table_mode`, `pdf_backend`, `to_formats`, `from_formats`, `image_export_mode`, `page_range`, `document_timeout`, `abort_on_error`, etc. All accepted and honored.
 
 ### Incremental Improvement Path
 
-This proposal is explicitly designed as the first step in a progression:
+1. **This proposal:** Drop-in replacement. Same API, no sidecar. Validates that direct `DocumentConverter` integration produces identical output.
+2. **Next:** Add classification step behind the facade. Use observability data to identify bottlenecks. Introduce conditional routing for pipeline optimization.
+3. **Later:** Disaggregate the convert step — fan out layout analysis across pages using Stepflow's `/map` component.
+4. **Eventually:** Swap in Rust-native components (chunking, ONNX inference) behind the same facade.
 
-1. **This proposal:** Mirror docling's pipeline as a Stepflow flow. Output parity with docling-serve. Validates the flow abstraction.
-2. **Next:** Use observability data to identify bottlenecks. Introduce conditional routing based on classification. Tune pipeline options per document type.
-3. **Later:** Disaggregate the convert step — fan out layout analysis and table extraction across pages using `/map`. The flow definition evolves but its external interface stays the same.
-4. **Eventually:** Swap in Rust-native components (chunking, ONNX inference) behind the same flow contract.
-
-Each step is a component-level change, not a rearchitecture. The flow definition is the stable contract that makes this possible.
+Each step is a change behind the HTTP facade. External callers never see it.
 
 ## Design
 
 ### Architecture
 
 ```
-docling_step_worker pod (single container)
-├── StepflowServer (Python SDK)
-│   ├── /docling/classify     — lightweight document probing
-│   ├── /docling/convert      — wraps DocumentConverter.convert() directly
-│   └── /docling/chunk        — wraps HybridChunker
-├── docling library (loaded in-process)
-│   ├── StandardPdfPipeline / ThreadedStandardPdfPipeline
-│   ├── Layout model (ONNX Runtime, loaded once at startup)
-│   ├── TableFormer (loaded once at startup)
-│   ├── OCR engine (loaded on demand)
-│   └── docling-parse PDF backend
-└── Model artifacts (~500MB, cached via PVC or pre-downloaded)
+External callers                          Existing Langflow integration
+(curl, Java clients, Open WebUI)         (integrations/docling/)
+         │                                        │
+         │  POST /v1/convert/source               │  DoclingServeClient
+         │  POST /v1/convert/file                  │  (unchanged, just repoint URL)
+         │  POST /v1/convert/source/async          │
+         │  POST /v1/convert/chunked/...           │
+         └──────────────┬─────────────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────────────┐
+         │   docling-step-worker            │
+         │   FastAPI HTTP facade            │
+         │                                  │
+         │   Same endpoints as docling-serve│
+         │   Same request/response models   │
+         │   Same options surface           │
+         └──────────────┬───────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────────────┐
+         │   StepflowClient                 │
+         │   (Python SDK)                   │
+         │                                  │
+         │   Sync:  client.run(flow_id, ..) │
+         │   Async: client.submit(flow_id..)│
+         │   Poll:  client.get_run(run_id)  │
+         └──────────────┬───────────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────────────┐
+         │   Stepflow Server                │
+         │   (Rust orchestrator)            │
+         │                                  │
+         │   Persistent execution state     │
+         │   Distributed across pods        │
+         │   Blob store for results         │
+         └──────────────┬───────────────────┘
+                        │  routes to
+                        ▼
+         ┌──────────────────────────────────┐
+         │   /docling/convert component     │
+         │   /docling/chunk component       │
+         │   (registered on step worker)    │
+         │                                  │
+         │   DocumentConverter              │
+         │   (docling library, in-process)  │
+         │                                  │
+         │   LRU cache of converter         │
+         │   instances keyed by options     │
+         │   hash (same as docling-serve)   │
+         │                                  │
+         │   ThreadedStandardPdfPipeline    │
+         │   Layout model (ONNX, loaded once│
+         │   TableFormer (loaded once)      │
+         │   OCR engine (on demand)         │
+         │   docling-parse PDF backend      │
+         └──────────────────────────────────┘
 ```
 
-No sidecar. No HTTP proxy. The docling library runs in the same process as the Stepflow worker.
+No sidecar. No HTTP proxy to localhost. The docling library runs in the same process as the Stepflow component server. All processing — sync and async — is orchestrated through Stepflow, giving us distributed execution state, blob-store-backed results, and horizontal scaling that docling-serve has never achieved.
 
-### Components
+### HTTP API — docling-serve v1 Compatibility
 
-#### `/docling/classify`
+The step worker exposes the same endpoints as docling-serve v1. The request and response models must be byte-compatible.
 
-Lightweight document probing to determine optimal pipeline configuration. Does not run the full conversion pipeline.
+#### Endpoints
 
-**Input:**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v1/convert/source` | POST | Sync convert from URL or base64 source |
+| `/v1/convert/file` | POST | Sync convert from multipart file upload |
+| `/v1/convert/source/async` | POST | Async convert, returns task_id |
+| `/v1/convert/file/async` | POST | Async convert from file, returns task_id |
+| `/v1/status/poll/{task_id}` | GET | Poll async task status |
+| `/v1/status/ws/{task_id}` | WS | WebSocket status updates (stretch goal) |
+| `/v1/convert/chunked/{chunker_type}/source` | POST | Convert + chunk from source |
+| `/v1/convert/chunked/{chunker_type}/file` | POST | Convert + chunk from file |
+| `/v1/clear/converters` | POST | Clear converter cache |
+| `/health` | GET | Health check |
+
+#### Request Model — `ConvertDocumentsRequest`
+
+Matches docling-serve exactly:
+
 ```json
 {
-  "source": "blob:sha256:abc123",
-  "source_kind": "blob"
-}
-```
-
-**Output:**
-```json
-{
-  "page_count": 47,
-  "has_text_layer": true,
-  "estimated_tables": 12,
-  "format": "pdf",
-  "recommended_config": "born_digital_with_tables"
-}
-```
-
-**Implementation approach:** Use `docling-parse` or `pypdfium2` directly (both are standalone libraries already used by docling) to extract basic document metadata. For table estimation, a fast heuristic approach — checking for ruling lines or cell-like structures in the text layer — avoids running the full layout model. The classification can start simple (just page count + has-text-layer) and add sophistication over time.
-
-This is the one component that contains logic not already in docling, but it's intentionally minimal — a few dozen lines of heuristic checks, not model inference.
-
-#### `/docling/convert`
-
-Core conversion component wrapping `DocumentConverter` directly.
-
-**Input:**
-```json
-{
-  "source": "blob:sha256:abc123",
-  "source_kind": "blob",
-  "pipeline_options": {
-    "do_ocr": false,
+  "options": {
+    "from_formats": ["pdf", "docx", "pptx", "html", "image"],
+    "to_formats": ["md", "json", "html", "text", "doctags"],
+    "image_export_mode": "placeholder",
+    "do_ocr": true,
+    "force_ocr": false,
+    "ocr_engine": "easyocr",
+    "ocr_lang": ["en"],
+    "pdf_backend": "dlparse_v2",
+    "table_mode": "fast",
+    "abort_on_error": false,
     "do_table_structure": true,
-    "table_mode": "accurate",
-    "generate_page_images": false
-  }
+    "include_images": true,
+    "images_scale": 2.0,
+    "page_range": null,
+    "document_timeout": null,
+    "pipeline": null
+  },
+  "http_sources": [{"url": "https://arxiv.org/pdf/2501.17887"}],
+  "file_sources": [{"base64_string": "...", "filename": "doc.pdf"}]
 }
 ```
 
-**Output:**
+All options are optional. Missing options use the same defaults as docling-serve.
+
+#### Response Model — `ConvertDocumentResponse`
+
+Matches docling-serve exactly:
+
 ```json
 {
-  "document": { ... },
+  "document": {
+    "md_content": "# Title\n\nBody text...",
+    "html_content": "<h1>Title</h1><p>Body text...</p>",
+    "text_content": "Title\nBody text...",
+    "json_content": { ... },
+    "doctags_content": "...",
+  },
+  "errors": [],
   "status": "success",
-  "page_count": 47,
-  "table_count": 12,
-  "processing_time_ms": 28400
-}
-```
-
-The `document` field contains the serialized `DoclingDocument` (via `export_to_dict()`), which is docling's native interchange format.
-
-**Implementation approach:** Create a `DocumentConverter` instance at worker startup with default options. On each invocation, construct `PdfPipelineOptions` from the input, override the converter's format options for this call, and invoke `converter.convert()`. All pipeline internals — page preprocessing, layout analysis, table extraction, OCR, assembly, reading order — run inside docling's own `ThreadedStandardPdfPipeline` exactly as they would in docling-serve.
-
-The source document is retrieved from blob storage, written to a temporary file (docling expects filesystem paths or URLs), and cleaned up after conversion.
-
-**Key design decisions:**
-
-- **Pipeline instance reuse.** `DocumentConverter` caches initialized pipeline instances keyed by options hash. For a small set of distinct configurations (born-digital, born-digital-with-tables, scanned), the models are loaded once and reused across invocations.
-- **Threaded pipeline.** Use `ThreadedStandardPdfPipeline` (not the sequential `StandardPdfPipeline`) to get docling's built-in intra-document parallelism — layout and table extraction run in separate threads with bounded queues.
-- **No format transformation.** Output is docling's native `DoclingDocument` dict, not the Langflow-compatible wrapper used by the current integration. Downstream components consume the docling format directly. Langflow compatibility, if still needed, can be a thin formatting step in the flow.
-
-#### `/docling/chunk`
-
-Chunking component wrapping docling's `HybridChunker`.
-
-**Input:**
-```json
-{
-  "document": { ... },
-  "chunk_options": {
-    "tokenizer": "sentence-transformers/all-MiniLM-L6-v2",
-    "max_tokens": 512,
-    "merge_peers": true
+  "processing_time": 28.4,
+  "timings": {
+    "total": 28.4,
+    "pdf_parse": 2.1,
+    "layout_analysis": 18.3,
+    "table_structure": 6.2,
+    "assembly": 1.8
   }
 }
 ```
 
-**Output:**
-```json
-{
-  "chunks": [
-    {
-      "text": "...",
-      "metadata": {
-        "headings": ["Section 1", "Background"],
-        "page": 3,
-        "doc_items": [...]
-      }
-    }
-  ],
-  "chunk_count": 156
-}
+The `document` contains rendered content in each requested `to_format`. The `json_content` field is the full `DoclingDocument` dict (via `export_to_dict()`).
+
+### Converter Caching — LRU by Options Hash
+
+docling-serve maintains an LRU cache of `DocumentConverter` instances keyed by the hash of the conversion options. We replicate this exactly:
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=CACHE_SIZE_OPTIONS)
+def _get_converter(options_hash: int) -> DocumentConverter:
+    """Get or create a DocumentConverter for the given options.
+    
+    DocumentConverter.convert() does NOT accept per-request pipeline options.
+    Options are fixed at construction time via format_options. So we maintain
+    an LRU cache of converter instances, one per distinct options combination.
+    This matches docling-serve's caching strategy exactly.
+    """
+    ...
 ```
 
-**Implementation approach:** Reconstitute the `DoclingDocument` from the dict (using `DoclingDocument.model_validate()`), then apply `HybridChunker`. This is essentially the existing `ChunkDoclingDocument` component from the current integration, adapted to consume the native docling format instead of the Langflow wrapper.
+When a request arrives with specific options (`do_ocr=True, table_mode="accurate"`), we:
+1. Build `PdfPipelineOptions` from the request options
+2. Hash the options to get a cache key
+3. Look up or create a `DocumentConverter` with those options
+4. Call `converter.convert(source=stream)`
 
-### Flow Definition
+For the common case where callers use default options, the same converter instance is reused for every request. The LRU evicts least-recently-used converters when the cache is full (configurable via `CACHE_SIZE_OPTIONS`, matching docling-serve's `DOCLING_SERVE_CACHE_SIZE_OPTIONS` env var).
 
-The per-document processing flow:
+### Response Preparation
+
+After `DocumentConverter.convert()` returns a `ConversionResult`, we need to render the `DoclingDocument` into each requested output format. This mirrors what docling-serve's `response_preparation.py` does:
+
+```python
+def prepare_response(result: ConversionResult, options: ConvertDocumentsOptions) -> ConvertDocumentResponse:
+    doc = result.document  # DoclingDocument
+    
+    response_doc = {}
+    for fmt in options.to_formats:
+        if fmt == "md":
+            response_doc["md_content"] = doc.export_to_markdown(image_mode=options.image_export_mode)
+        elif fmt == "html":
+            response_doc["html_content"] = doc.export_to_html(image_mode=options.image_export_mode)
+        elif fmt == "text":
+            response_doc["text_content"] = doc.export_to_text()
+        elif fmt == "json":
+            response_doc["json_content"] = doc.export_to_dict()
+        elif fmt == "doctags":
+            response_doc["doctags_content"] = doc.export_to_document_tokens()
+    
+    return ConvertDocumentResponse(
+        document=response_doc,
+        errors=[],
+        status="success",
+        processing_time=result.timings.total,
+        timings=result.timings,
+    )
+```
+
+This is where `to_formats` matters — the same `DoclingDocument` is rendered into multiple output formats based on what the caller requested.
+
+### Chunking Endpoints
+
+The `/v1/convert/chunked/{chunker_type}/source` and `/file` endpoints perform conversion + chunking in one step. This matches docling-serve's chunking endpoints:
+
+1. Convert the document (same as `/v1/convert/source`)
+2. Apply `HybridChunker` or `HierarchicalChunker` to the resulting `DoclingDocument`
+3. Return chunks in the `ChunkDocumentResponse` format
+
+### Stepflow Orchestration — Fixing docling-serve's Async Architecture
+
+All processing — sync and async — routes through Stepflow via the `StepflowClient` Python SDK. This solves a fundamental architectural flaw in docling-serve: async task state is pinned to the process that received the request, stored in an in-memory dict. It breaks with multiple Uvicorn workers, can't scale horizontally, and doesn't survive pod restarts. Even docling-serve's Redis Queue backend still relies on in-memory task registries (filed as [docling-serve #378](https://github.com/docling-project/docling-serve/issues/378), [#317](https://github.com/docling-project/docling-serve/issues/317)).
+
+Stepflow already has distributed execution state, persistent result storage (blob store), and multi-pod scheduling. We use it for everything.
+
+#### Endpoint → StepflowClient Method Mapping
+
+| docling-serve endpoint | StepflowClient method | Behavior |
+|---|---|---|
+| `POST /v1/convert/source` (sync) | `client.run(flow_id, input)` | Submit + block until complete. Returns `ConvertDocumentResponse` directly. |
+| `POST /v1/convert/file` (sync) | `client.run(flow_id, input)` | Same, after reading multipart upload into input. |
+| `POST /v1/convert/source/async` | `client.submit(flow_id, input)` | Fire-and-forget. Returns `{"task_id": run_id}` immediately (HTTP 202). |
+| `POST /v1/convert/file/async` | `client.submit(flow_id, input)` | Same, after reading multipart upload into input. |
+| `GET /v1/status/poll/{task_id}` | `client.get_run(run_id)` | Query execution status from any pod. Optionally long-poll with `wait=True`. |
+| `POST /v1/convert/chunked/{type}/source` | `client.run(chunk_flow_id, input)` | Submit convert+chunk flow, block until complete. |
+| `POST /v1/convert/chunked/{type}/file` | `client.run(chunk_flow_id, input)` | Same, after reading multipart upload. |
+
+The `task_id` returned by async endpoints IS the Stepflow `run_id`. No separate task registry needed.
+
+#### What Stepflow Provides (That docling-serve Doesn't)
+
+- **Distributed state.** Any pod can serve `GET /v1/status/poll/{task_id}` because execution state lives in the Stepflow server, not in-process memory.
+- **Horizontal scaling.** Multiple step worker pods can process requests concurrently. Stepflow routes component executions to available workers.
+- **Result persistence.** Conversion results are stored in the blob store. They survive pod restarts and can be retrieved after the fact.
+- **Long-polling.** `client.get_run(run_id, wait=True)` blocks server-side until the execution completes, avoiding busy-poll loops.
+
+#### Flow Definitions
+
+Two flows are registered at startup — one for conversion, one for conversion + chunking:
+
+**Convert flow** (used by `/v1/convert/source`, `/v1/convert/file`, and their async variants):
 
 ```yaml
-name: docling-process-document
+name: docling-convert
 steps:
-  classify:
-    component: /docling/classify
-    input:
-      source: $input.source
-      source_kind: $input.source_kind
-
   convert:
     component: /docling/convert
     input:
       source: $input.source
       source_kind: $input.source_kind
-      pipeline_options:
-        do_ocr:
-          $if:
-            condition: $step.classify.recommended_config == "scanned"
-            then: true
-            else: false
-        do_table_structure:
-          $if:
-            condition: $step.classify.recommended_config == "born_digital_no_tables"
-            then: false
-            else: true
-        table_mode:
-          $if:
-            condition: $step.classify.estimated_tables > 0
-            then: "accurate"
-            else: "fast"
+      options: $input.options
+
+output:
+  document: $step.convert.document
+  status: $step.convert.status
+  processing_time: $step.convert.processing_time
+  timings: $step.convert.timings
+```
+
+**Convert + chunk flow** (used by `/v1/convert/chunked/{type}/source` and `/file`):
+
+```yaml
+name: docling-convert-and-chunk
+steps:
+  convert:
+    component: /docling/convert
+    input:
+      source: $input.source
+      source_kind: $input.source_kind
+      options: $input.options
 
   chunk:
     component: /docling/chunk
     input:
       document: $step.convert.document
+      chunker_type: $input.chunker_type
       chunk_options: $input.chunk_options
 
 output:
   document: $step.convert.document
   chunks: $step.chunk.chunks
-  classification: $step.classify
+  status: $step.convert.status
+  processing_time: $step.convert.processing_time
 ```
 
-For batch processing, an outer flow wraps this in `/map`:
-
-```yaml
-name: docling-batch-process
-steps:
-  process_all:
-    component: /map
-    input:
-      workflow: <per-document flow above>
-      items: $input.documents
-      max_concurrency: $input.max_concurrency
-
-output:
-  results: $step.process_all.results
-```
+Note: no classify step in Phase 1. docling-serve doesn't do classification — it accepts whatever options the caller provides. Classification is a Phase 2 optimization that the flow can introduce transparently behind the same facade.
 
 ### Worker Lifecycle
 
 **Startup:**
 1. Download model artifacts if not cached: `StandardPdfPipeline.download_models_hf()`
-2. Create `DocumentConverter` with default `PdfPipelineOptions` — this initializes the layout model and TableFormer once
-3. Register components with `StepflowServer`
-4. Start the HTTP server for Stepflow JSON-RPC communication
+2. Connect `StepflowClient` to the Stepflow server
+3. Register `docling-convert` and `docling-convert-and-chunk` flows via `client.store_flow()`
+4. Register `/docling/convert` and `/docling/chunk` components with the Stepflow component server
+5. Initialize FastAPI app with docling-serve v1 endpoints
+6. Start Uvicorn HTTP server
 
-**Per-request:**
-1. Stepflow routes a component execution to this worker
-2. The component function runs, using the pre-loaded models
-3. For `/docling/convert`, the `ThreadedStandardPdfPipeline` handles intra-document parallelism internally
-4. Result is returned via JSON-RPC
+**Per-request (sync, e.g. `POST /v1/convert/source`):**
+1. Parse request into `ConvertDocumentsRequest`
+2. Build flow input (source, options)
+3. Call `client.run(flow_id, input)` — blocks until Stepflow execution completes
+4. Stepflow routes `/docling/convert` component execution to a worker pod
+5. Worker: get/create `DocumentConverter` from LRU cache, wrap source as `DocumentStream`, call `converter.convert()`
+6. Worker: render `DoclingDocument` into requested output formats, return result
+7. `client.run()` returns with result — HTTP facade returns `ConvertDocumentResponse`
+
+**Per-request (async, e.g. `POST /v1/convert/source/async`):**
+1. Parse request into `ConvertDocumentsRequest`
+2. Build flow input (source, options)
+3. Call `client.submit(flow_id, input)` — returns immediately with `run_id`
+4. Return `{"task_id": run_id}` (HTTP 202)
+5. Stepflow executes the flow in the background on any available worker pod
+6. Caller polls `GET /v1/status/poll/{task_id}` → `client.get_run(run_id)` from any pod
 
 **Shutdown:**
-1. Graceful drain of in-flight requests
-2. Model memory freed with process exit
-
-### Data Flow
-
-Documents and intermediate results flow through Stepflow's blob store:
-
-```
-Client uploads document
-  → blob store (binary, content-addressed)
-    → /docling/classify reads from blob store
-    → /docling/convert reads from blob store, writes DoclingDocument to blob store
-      → /docling/chunk reads DoclingDocument from blob store
-        → Final result returned to client
-```
-
-Binary blobs (PDF files) use `put_blob_binary`/`get_blob_binary` for zero-overhead storage. Structured data (DoclingDocument, chunks) use `put_blob`/`get_blob` with JSON serialization.
-
-## Relationship to Existing Work
-
-### Current Integration (`integrations/docling/`)
-
-The existing `StepflowDoclingServer` registers components matching Langflow class names (`DoclingInlineComponent`, `DoclingRemoteComponent`, `ChunkDoclingDocument`, `ExportDoclingDocument`) and proxies to docling-serve via HTTP.
-
-This proposal **replaces** the proxy architecture but **reuses** the patterns:
-- Same `StepflowServer` + `@server.component()` registration model
-- Same blob store integration for document data
-- Similar component naming (though simplified, since we don't need Langflow class name compatibility)
-
-The existing integration can continue to serve Langflow-routed requests while the step worker handles native Stepflow flows. Both can coexist during migration.
-
-### Rust-Native Docling Proposal (`rust-native-docling.md`)
-
-The Rust-native proposal describes three phases of incremental migration plus pipeline disaggregation. This proposal is **complementary and preparatory**:
-
-- The flow definitions created here become the orchestration layer that later phases plug into
-- The `/docling/convert` component is the natural place to swap in deeper integrations: first page-level fan-out (using `/map`), then Rust-native chunking, then ONNX inference
-- The `/docling/classify` component generates the routing decisions that the disaggregated pipeline needs
-- Per-step observability data collected here directly informs Phase 3 scope decisions (which stages are worth disaggregating based on actual latency profiles)
-
-### MapComponent
-
-The existing `/map` component (in `stepflow-builtins/src/map.rs`) provides document-level fan-out for batch processing. It already supports `max_concurrency` in its interface (though wiring to the executor is pending — tracked as a prerequisite in the Rust-native proposal). For the batch flow, `/map` distributes documents across worker pods, each running the full per-document flow.
-
-Page-level fan-out within a single document (the disaggregation described in the Rust-native proposal) is a future enhancement that builds on this foundation.
+1. Graceful drain of in-flight component executions
+2. Close `StepflowClient` connection
+3. Model memory freed with process exit
 
 ## Deployment
 
 ### Container Image
 
-Single container based on the existing docling worker image, but without the docling-serve sidecar:
+Single container, no sidecar:
 
 ```dockerfile
 FROM python:3.12-slim
 
-# Install docling with all dependencies
-RUN pip install docling[ocr] stepflow-py
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
 
 # Pre-download model artifacts
 RUN python -c "from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline; \
     StandardPdfPipeline.download_models_hf(force=True)"
 
-COPY docling_step_worker/ /app/
-
-ENTRYPOINT ["python", "-m", "docling_step_worker"]
+COPY src/ /app/src/
+ENTRYPOINT ["docling-step-worker-server"]
 ```
 
-Model artifacts (~500MB) are baked into the image to avoid download-on-first-use latency. Alternatively, a PVC-backed cache can be shared across pods.
-
 ### Resource Profile
-
-Per-pod resource requirements (approximate):
 
 | Resource | Current (proxy + sidecar) | Step Worker |
 |----------|--------------------------|-------------|
@@ -329,50 +402,104 @@ Per-pod resource requirements (approximate):
 | Startup | ~15s (sidecar model loading) | ~10s (direct model loading) |
 | Disk | ~500MB models (per pod or PVC) | Same |
 
-Memory savings come from eliminating the separate Python runtime and HTTP server for docling-serve. The models themselves dominate memory usage and are unchanged.
+### Migration Path
 
-### Routing Configuration
+1. Deploy step worker pods alongside existing docling-serve pods
+2. Run parity tests: send same requests to both, compare responses
+3. Update `DOCLING_SERVE_URL` in the Langflow integration to point to step worker
+4. Verify Langflow flows produce identical results
+5. Remove docling-serve sidecar from pod spec
+6. Scale down old pods
 
-```yaml
-plugins:
-  docling_step:
-    type: stepflow
-    transport: http
-    url: "http://docling-step-worker.stepflow.svc.cluster.local:8080"
+The migration is a URL change. No code changes in the Langflow integration.
 
-routes:
-  "/docling/{*component}":
-    - plugin: docling_step
-```
-
-## Scope and Non-Goals
+## Scope
 
 ### In Scope
 
-- Three components: `/docling/classify`, `/docling/convert`, `/docling/chunk`
-- Per-document flow definition with conditional pipeline selection
-- Batch flow using `/map` for document-level fan-out
-- Direct `DocumentConverter` integration (no docling-serve dependency)
-- Binary blob support for document data
-- Basic document classification (page count, has text layer, table estimation)
+- HTTP facade implementing docling-serve v1 API (all endpoints listed above)
+- Direct `DocumentConverter` integration (no sidecar)
+- LRU converter cache matching docling-serve's caching strategy
+- Response preparation rendering DoclingDocument to all `to_formats`
+- Stepflow-orchestrated sync and async conversion (all requests go through `StepflowClient`)
+- Distributed async task state via Stepflow execution tracking (no in-memory task registry)
+- Chunking endpoints (hybrid and hierarchical)
+- Health check endpoint
+- `DocumentStream` for in-memory document passing (no temp files)
 
-### Not In Scope (Deferred to Later Phases)
+### Not In Scope (Deferred)
 
-- **Page-level disaggregation.** No fan-out within a single document's conversion. Docling's `ThreadedStandardPdfPipeline` handles intra-document parallelism.
-- **Rust-native components.** All processing uses docling's Python library. No ONNX Runtime direct calls, no Rust chunking.
-- **Custom model loading.** Uses docling's standard model artifact management. No custom model registry or hot-swapping.
-- **Langflow compatibility wrappers.** The output format is docling-native (`DoclingDocument`). Langflow integration, if needed, is a separate formatting step.
-- **Multi-tenant fairness controls.** Per-tenant queuing or priority scheduling at the component level. Stepflow's existing scheduling handles pod-level distribution.
-- **OCR engine selection per-document.** Classification can recommend OCR on/off, but engine selection (EasyOCR vs RapidOCR vs Tesseract) is a worker-level configuration, not per-request.
+- **Document classification.** No `/docling/classify` step in Phase 1. Callers provide options explicitly, same as docling-serve.
+- **Page-level disaggregation.** `ThreadedStandardPdfPipeline` handles intra-document parallelism.
+- **Rust-native components.** All processing uses docling's Python library.
+- **Langflow integration changes.** `integrations/docling/` is not modified.
+- **WebSocket status endpoint.** `/v1/status/ws/{task_id}` is a stretch goal. Polling via `/v1/status/poll/{task_id}` is sufficient for Phase 1.
+- **Presigned URL targets.** docling-serve v1 supports writing output to presigned URLs. Deferred.
+
+## Known docling-serve Issues Addressed
+
+Beyond eliminating the sidecar, routing through Stepflow addresses several documented architectural limitations in docling-serve. This section catalogues what we fix, what we partially mitigate, and what later phases unlock.
+
+### Fixed in Phase 1
+
+**1. In-memory task state prevents horizontal scaling ([#378](https://github.com/docling-project/docling-serve/issues/378), [#317](https://github.com/docling-project/docling-serve/issues/317))**
+
+docling-serve's orchestrator stores async task state in an in-memory dict (`self.tasks: dict[str, Task] = {}`). Issue #317 demonstrates the result: the same `task_id` intermittently returns 200 or 404 depending on which Uvicorn worker handles the request. Issue #378 reports that even the Redis Queue backend inherits the base orchestrator's in-memory task tracking, so the problem persists.
+
+The practical consequence: users are told to set `UVICORN_WORKERS=1` and not scale horizontally ([#317](https://github.com/docling-project/docling-serve/issues/317)).
+
+**How Stepflow fixes it:** All execution state lives in the Stepflow server, not in-process memory. `client.submit()` returns a `run_id`; `client.get_run(run_id)` queries the Stepflow server, which any pod can serve. Results are persisted in the blob store and survive pod restarts. See the [Stepflow Orchestration](#stepflow-orchestration--fixing-docling-serves-async-architecture) section above.
+
+**2. No horizontal scaling path ([#10](https://github.com/docling-project/docling-serve/issues/10), [#257](https://github.com/docling-project/docling-serve/issues/257), [Discussion #1890](https://github.com/docling-project/docling/discussions/1890))**
+
+Issue #10 notes that docling-serve uses vanilla FastAPI with no dynamic batching or autoscaling. Issue #257 reports a user unable to process 500-1000 pages in under 2 minutes despite tuning. Discussion #1890 explains the root cause: each instance runs an in-process orchestrator with a pool of worker threads, and each Uvicorn worker process is an isolated orchestrator with no shared queue or state. Users are advised to use sticky sessions.
+
+**How Stepflow fixes it:** Multiple step worker pods register with the same Stepflow server. Stepflow routes component executions to available workers with shared state. No sticky sessions needed. Document-level fan-out via `/map` distributes batches across all available pods.
+
+**3. Sync timeout handling ([#317](https://github.com/docling-project/docling-serve/issues/317))**
+
+Issue #317 reports that `DOCLING_SERVE_MAX_SYNC_WAIT=600` has no effect beyond ~250 seconds, suggesting a hard-coded limit in the ASGI/Uvicorn stack. Users processing large PDFs on CPU hit this regularly, and are forced to switch to async mode — which brings them back to the in-memory task state problem from #1.
+
+**How Stepflow fixes it:** Sync endpoints use `client.run(flow_id, input, wait_timeout=N)`. Per the `StepflowClient.run()` docstring: "If the workflow takes longer [than wait_timeout], the server returns the current status rather than an error." The timeout is managed by the Stepflow server, not layered through ASGI polling. We control timeouts at two clean levels: the HTTP client timeout and the Stepflow server-side `wait_timeout`, independently configurable.
+
+### Partially Mitigated in Phase 1
+
+**4. Orphaned work on client disconnect ([#401](https://github.com/docling-project/docling-serve/issues/401))**
+
+Issue #401 reports that when a sync client times out or disconnects, docling-serve continues processing the document to completion. Large conversion requests effectively block the service for new requests.
+
+**What Phase 1 changes:** In our architecture, the sync endpoint calls `client.run()`, which submits the work to Stepflow. If the HTTP client disconnects from our FastAPI facade, the Stepflow execution continues — so the compute work (GPU/CPU) is still consumed. However, the HTTP facade itself is not blocked; it's an async call awaiting `client.run()`, not a thread running `DocumentConverter.convert()` directly. The Stepflow execution completes and the result is persisted in the blob store even if no one polls for it.
+
+**What Phase 1 does not fix:** Stepflow does not currently have a run cancellation API. We cannot abort an in-flight `DocumentConverter.convert()` call. The compute resources remain occupied.
+
+**What later phases unlock:** With pipeline disaggregation (page-level fan-out via `/map`), cancellation becomes feasible at step boundaries — stop dispatching new pages while allowing in-flight pages to complete. This would require adding a cancel API to Stepflow, which is a natural extension of the existing `submit()`/`get_run()` contract.
+
+### Addressed by Later Phases (Rust / Pipeline Disaggregation)
+
+**5. GIL-bound intra-document parallelism ([Discussion #1890](https://github.com/docling-project/docling/discussions/1890), [#419](https://github.com/docling-project/docling-serve/issues/419))**
+
+Discussion #1890 explains that docling-serve's workers use Python threads, and the GIL limits parallelism for CPU-bound work. Issue #419 reports that setting VLM pipeline `concurrency=10` achieves only ~2x speedup instead of the expected 10x, with the bottleneck appearing to be that only 4 pages are processed in parallel at any time.
+
+Phase 1 does not change intra-document parallelism — `DocumentConverter.convert()` still uses `ThreadedStandardPdfPipeline` within a single Python process. The Phase 1 improvement is inter-document: multiple pods processing different documents concurrently via Stepflow.
+
+Later phases break the single-document pipeline into per-page Stepflow steps. Layout analysis, table extraction, and OCR become separate component executions that Stepflow fans out via `/map`, distributing across pods and sidestepping the GIL entirely. Rust-native ONNX inference (from `rust-native-docling.md`) moves the most expensive compute out of Python altogether.
+
+**6. All-or-nothing batch failure ([#404](https://github.com/docling-project/docling-serve/issues/404))**
+
+Issue #404 reports that a single error during processing (e.g., a missing relationship key in an OpenXML document) marks the entire task as failed. Users cannot obtain partially successful results.
+
+Phase 1 does not change single-document error behavior — that's internal to `DocumentConverter.convert()`. However, for batch processing via Stepflow's `/map` component, each document is an independent flow execution. The `MapOutput` type tracks per-item results with `successful` and `failed` counts (`results: Vec<FlowResult>, successful: u32, failed: u32` — see `stepflow-builtins/src/map.rs`). 49 documents can succeed while 1 fails, and the caller gets all 49 results plus the error.
+
+With later pipeline disaggregation, the same pattern applies within a single document: per-page processing via `/map` means a failure on page 23 doesn't prevent pages 1-22 from completing.
 
 ## Open Questions
 
-1. **Classification depth.** How sophisticated should `/docling/classify` be initially? A minimal version (page count + text layer presence) is trivial. Table estimation without running layout analysis requires heuristics against the PDF text layer structure. The component can start simple and gain sophistication based on observed routing accuracy.
+1. ~~**Async task management.**~~ Resolved: All processing (sync and async) routes through `StepflowClient`. Async endpoints use `client.submit()` which returns a Stepflow `run_id` as the `task_id`. Status polling uses `client.get_run(run_id)` which queries the Stepflow server — execution state is persistent and distributed, not pinned to a process. This solves docling-serve's known architectural flaw ([#378](https://github.com/docling-project/docling-serve/issues/378), [#317](https://github.com/docling-project/docling-serve/issues/317)) where in-memory task registries break horizontal scaling. No in-memory task store, no Redis dependency, no single-process pinning.
 
-2. **Pipeline options passthrough.** Should `/docling/convert` accept arbitrary `PdfPipelineOptions` fields, or only a curated subset? Full passthrough maximizes flexibility but exposes docling's internal configuration surface. A curated subset is more maintainable but may miss edge cases.
+2. **DoclingDocument serialization size.** The full `json_content` can be large for image-heavy PDFs. docling-serve returns it inline. Should we consider a streaming or pagination approach for very large documents?
 
-3. **DoclingDocument serialization size.** The full `DoclingDocument` dict can be large for document-heavy PDFs (with embedded images, etc.). Should we strip image data before passing to blob store, or let the blob store handle it? This affects the `/docling/chunk` input size.
+3. **Options parity testing.** How do we systematically verify that every docling-serve option is correctly mapped to `PdfPipelineOptions`? A comprehensive test matrix against a running docling-serve instance would be ideal.
 
-4. **Existing integration migration.** What's the migration path for flows currently using the Langflow-compatible component names? A compatibility shim that maps old component names to the new ones, or a clean break requiring flow updates?
+4. ~~**Temp file management.**~~ Resolved: `DocumentConverter` accepts `DocumentStream` (in-memory `BytesIO` wrapper). No temp files needed.
 
-5. **Temp file management.** `DocumentConverter` expects filesystem paths. For documents arriving via blob store, we write to a temp file. Should this use a tmpfs mount for speed, or is disk I/O negligible compared to model inference time?
+5. ~~**Pipeline options passthrough.**~~ Resolved: We use docling-serve's approach — LRU cache of `DocumentConverter` instances keyed by options hash. Per-request options create/reuse converter instances. No named configs.

@@ -31,6 +31,7 @@ use stepflow_state::{
 };
 use uuid::Uuid;
 
+use crate::checkpointer::Checkpointer;
 use crate::run_state::RunState;
 use crate::scheduler::Scheduler;
 use crate::state::ItemsState;
@@ -92,6 +93,8 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+    /// Periodic checkpoint creator for execution state.
+    checkpointer: Checkpointer,
 }
 
 impl FlowExecutor {
@@ -109,6 +112,7 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
         Self {
@@ -122,6 +126,7 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
+            checkpointer,
         }
     }
 
@@ -188,12 +193,14 @@ impl FlowExecutor {
         self.runs.get(&self.root_run_id).expect("root run exists")
     }
 
-    /// Write a journal entry durably.
-    async fn write_journal(&self, event: JournalEvent) -> Result<()> {
-        self.journal
+    /// Write a journal entry durably and record it for checkpointing.
+    async fn write_journal(&mut self, event: JournalEvent) -> Result<()> {
+        let sequence = self
+            .journal
             .write(self.root_run_id, event)
             .await
             .change_context(ExecutionError::JournalError)?;
+        self.checkpointer.record_entry(sequence);
         Ok(())
     }
 
@@ -235,6 +242,9 @@ impl FlowExecutor {
                 // Wait for any in-flight tasks to complete before returning
                 while let Some(task_result) = in_flight.next().await {
                     self.complete_task(task_result).await?;
+                    self.checkpointer
+                        .maybe_checkpoint(&self.runs, &self.recovered_subflows)
+                        .await?;
                 }
                 return Ok(());
             }
@@ -318,6 +328,7 @@ impl FlowExecutor {
                 // Handle task completion
                 Some(task_result) = in_flight.next() => {
                     self.complete_task(task_result).await?;
+                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows).await?;
                     if let Some(r) = &mut remaining {
                         *r = r.saturating_sub(1);
                     }
@@ -335,17 +346,18 @@ impl FlowExecutor {
     /// Creates a new `RunState` for the subflow, initializes its items,
     /// and sends the response with the run ID and completion channel.
     ///
-    /// If a run with the same `run_id` already exists, this is treated as an
-    /// idempotent retry: the existing run's completion channel is returned
-    /// without creating a duplicate.
     async fn handle_submit_request(&mut self, request: SubflowRequest) -> Result<()> {
         let run_id = request.run_id;
         let parent_run_id = request.parent_run_id;
         let input_count = request.inputs.len();
 
-        // Check for recovered subflow: if a pre-crash subflow matches this
+        // Dedup check for recovered subflows: if a pre-crash subflow matches this
         // (parent_run_id, item_index, step_index, subflow_key), return its run_id.
-        // The parent step's wait_for_completion will pick up the existing subflow.
+        // The parent step's wait_for_completion will pick up the existing subflow
+        // (completed subflows resolve immediately from the metadata store).
+        //
+        // This is the only dedup mechanism needed — run_ids are fresh Uuid::now_v7()
+        // values per submit() call, so duplicate run_ids cannot arrive through the channel.
         let lookup_key = (
             parent_run_id,
             request.item_index,
@@ -362,16 +374,6 @@ impl FlowExecutor {
                 recovered_run_id
             );
             let _ = request.response_tx.send(recovered_run_id);
-            return Ok(());
-        }
-
-        // Check for idempotent retry: if run already exists, just acknowledge
-        if self.runs.contains_key(&run_id) {
-            log::debug!(
-                "Idempotent retry detected for run_id={}, acknowledging existing run",
-                run_id
-            );
-            let _ = request.response_tx.send(run_id);
             return Ok(());
         }
 
@@ -483,6 +485,14 @@ impl FlowExecutor {
                         e
                     );
                 }
+
+                // Journal + evict: subflow completed immediately with no items.
+                self.write_journal(JournalEvent::RunCompleted {
+                    run_id,
+                    status: stepflow_core::status::ExecutionStatus::Completed,
+                })
+                .await?;
+                self.runs.remove(&run_id);
             } else {
                 // Subflow with items but 0 steps: record item results (state store notifies on completion)
                 log::debug!(
@@ -506,7 +516,25 @@ impl FlowExecutor {
                         );
                     }
                 }
-                // State store's record_item_result will notify waiters when status becomes terminal
+
+                // Update status and journal + evict: subflow completed with items but 0 steps.
+                if let Err(e) = self
+                    .metadata_store
+                    .update_run_status(run_id, stepflow_core::status::ExecutionStatus::Completed)
+                    .await
+                {
+                    log::error!(
+                        "Failed to update zero-step subflow status for run {}: {:?}",
+                        run_id,
+                        e
+                    );
+                }
+                self.write_journal(JournalEvent::RunCompleted {
+                    run_id,
+                    status: stepflow_core::status::ExecutionStatus::Completed,
+                })
+                .await?;
+                self.runs.remove(&run_id);
             }
         }
 
@@ -636,6 +664,9 @@ impl FlowExecutor {
             item_count,
             final_status
         );
+
+        // Clean up checkpoints now that the run is complete.
+        self.checkpointer.cleanup().await;
 
         Ok(())
     }
@@ -806,6 +837,24 @@ impl FlowExecutor {
                         e
                     );
                 }
+
+                // Journal: Record subflow completion for recovery.
+                // This allows recovery to skip reconstructing RunState for
+                // completed subflows (their results are in the metadata store).
+                self.write_journal(JournalEvent::RunCompleted {
+                    run_id,
+                    status: final_status,
+                })
+                .await?;
+
+                // Evict completed subflow from in-memory state.
+                // Results are persisted to the metadata store; RunState is redundant.
+                self.runs.remove(&run_id);
+                log::debug!(
+                    "Evicted completed subflow run_id={}, remaining_runs={}",
+                    run_id,
+                    self.runs.len()
+                );
             }
             // Root runs are handled in execute_to_completion
         }
@@ -1732,13 +1781,13 @@ mod tests {
         let response_run_id = response_rx.await.expect("should receive response");
         assert_eq!(response_run_id, subflow_run_id);
 
-        // Verify a new run was created
-        assert!(items_executor.runs.contains_key(&subflow_run_id));
+        // The subflow has 0 steps, so it completes immediately and is evicted
+        // from in-memory state. Results are persisted to the metadata store.
+        assert!(
+            !items_executor.runs.contains_key(&subflow_run_id),
+            "Completed subflow should be evicted from runs"
+        );
         assert_ne!(subflow_run_id, items_executor.root_run_id());
-
-        // Verify the subflow's RunState exists and has the right item count
-        let subflow_state = items_executor.run_state(subflow_run_id).unwrap();
-        assert_eq!(subflow_state.item_count(), 1);
     }
 
     #[tokio::test]
@@ -1965,10 +2014,12 @@ mod tests {
             run_details.summary.status
         );
 
-        // Verify the subflow state shows 0 items
-        let subflow_state = items_executor.run_state(subflow_run_id).unwrap();
-        assert_eq!(subflow_state.item_count(), 0);
-        assert!(subflow_state.is_complete());
+        // The empty subflow completed immediately and was evicted from in-memory state.
+        // Results are persisted to the metadata store.
+        assert!(
+            items_executor.run_state(subflow_run_id).is_none(),
+            "Completed empty subflow should be evicted from runs"
+        );
     }
 
     #[tokio::test]
@@ -2278,81 +2329,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_subflow_idempotent_retry() {
-        // Test that submitting the same run_id twice returns the existing run's
-        // run_id without creating a duplicate.
+    async fn test_completed_subflow_evicted_from_runs() {
+        // Test that when a subflow with steps completes, it is evicted from the
+        // executor's in-memory runs map. Results remain in the metadata store.
         use stepflow_plugin::SubflowRequest;
 
         let flow = Arc::new(create_linear_flow(1));
         let flow_id = BlobId::from_flow(&flow).unwrap();
 
         let executor = MockExecutorBuilder::new().build().await;
-
+        let state_store = executor.metadata_store().clone();
         let run_state = create_run_state(
             flow.clone(),
             flow_id.clone(),
             ValueRef::new(json!({"x": 1})),
         );
+        let main_run_id = run_state.run_id();
+
         let mut items_executor = FlowExecutorBuilder::new(executor, run_state)
             .build()
             .await
             .unwrap();
 
-        // Generate a run_id that we'll use for both submissions
-        let subflow_run_id = Uuid::now_v7();
-
-        // First submission
-        let (response_tx1, response_rx1) = tokio::sync::oneshot::channel();
-        let request1 = SubflowRequest {
+        // Submit a subflow with steps BEFORE starting execution
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+        let request = SubflowRequest {
             flow: flow.clone(),
             flow_id: flow_id.clone(),
-            inputs: vec![ValueRef::new(json!({"y": 1}))],
+            inputs: vec![ValueRef::new(json!({"x": 2}))],
             variables: std::collections::HashMap::new(),
             overrides: None,
             max_concurrency: None,
-            parent_run_id: items_executor.root_run_id(),
+            parent_run_id: main_run_id,
             item_index: 0,
             step_index: 0,
             subflow_key: Uuid::now_v7(),
-            run_id: subflow_run_id,
-            response_tx: response_tx1,
+            run_id: Uuid::now_v7(),
+            response_tx,
         };
-        items_executor
-            .handle_submit_request(request1)
+        items_executor.handle_submit_request(request).await.unwrap();
+        let subflow_run_id = response_rx.await.expect("should receive response");
+
+        // Before execution: both root and subflow are in runs
+        assert_eq!(items_executor.runs.len(), 2);
+
+        // Execute to completion
+        items_executor.execute_to_completion().await.unwrap();
+
+        // After execution: only root remains in runs, subflow was evicted
+        assert_eq!(
+            items_executor.runs.len(),
+            1,
+            "Only root run should remain in runs after subflow completes"
+        );
+        assert!(
+            items_executor.runs.contains_key(&main_run_id),
+            "Root run should still be in runs"
+        );
+        assert!(
+            !items_executor.runs.contains_key(&subflow_run_id),
+            "Completed subflow should be evicted from runs"
+        );
+
+        // Results are still available from the metadata store
+        let subflow_results = state_store
+            .get_item_results(subflow_run_id, ResultOrder::ByIndex)
             .await
             .unwrap();
-        let response_run_id1 = response_rx1.await.expect("should receive first response");
-        assert_eq!(response_run_id1, subflow_run_id);
-
-        // Second submission with same run_id (idempotent retry)
-        let (response_tx2, response_rx2) = tokio::sync::oneshot::channel();
-        let request2 = SubflowRequest {
-            flow: flow.clone(),
-            flow_id: flow_id.clone(),
-            inputs: vec![ValueRef::new(json!({"y": 1}))],
-            variables: std::collections::HashMap::new(),
-            overrides: None,
-            max_concurrency: None,
-            parent_run_id: items_executor.root_run_id(),
-            item_index: 0,
-            step_index: 0,
-            subflow_key: Uuid::now_v7(),
-            run_id: subflow_run_id, // Same run_id!
-            response_tx: response_tx2,
-        };
-        items_executor
-            .handle_submit_request(request2)
-            .await
-            .unwrap();
-        let response_run_id2 = response_rx2.await.expect("should receive second response");
-
-        // Should return the same run_id
-        assert_eq!(response_run_id2, subflow_run_id);
-
-        // Both submissions return the same run_id (idempotent)
-        assert_eq!(response_run_id1, response_run_id2);
-
-        // Verify only one run exists in executor's internal state
-        assert_eq!(items_executor.runs.len(), 2); // root + 1 subflow, not root + 2 subflows
+        assert_eq!(subflow_results.len(), 1);
+        assert!(
+            matches!(&subflow_results[0].result, Some(FlowResult::Success(_))),
+            "Subflow result should be in metadata store, got: {:?}",
+            subflow_results[0].result
+        );
     }
 }

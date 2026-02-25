@@ -30,9 +30,12 @@ import pytest
 from helpers import (
     ORCH1_URL,
     ORCH2_URL,
+    assert_checkpoints_used_in_recovery,
     count_step_executions,
     docker_kill,
     get_step_tracker_records,
+    has_checkpoint_created_log,
+    has_checkpoint_recovery_log,
     poll_tracker_for_step,
     read_tracker_records,
     store_flow,
@@ -95,6 +98,15 @@ async def test_failover_recovery_sequential(compose_env):
     step3_records = get_step_tracker_records(records, "step3", run_id)
     assert step3_records[-1]["attempt"] == 1, "step3 should be attempt 1 (fresh dispatch)"
     assert step3_records[-1]["tracker_attempt"] == 1, "step3 should have a single execution"
+
+    # Checkpoint verification: orch-1 created checkpoints before crash,
+    # orch-2 restored from a checkpoint during failover recovery.
+    assert has_checkpoint_created_log("orchestrator-1"), (
+        "orch-1 should have created checkpoints before crash"
+    )
+    assert has_checkpoint_recovery_log("orchestrator-2"), (
+        "orch-2 should have restored from checkpoint during failover recovery"
+    )
 
 
 @pytest.mark.asyncio

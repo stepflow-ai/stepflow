@@ -14,6 +14,8 @@ mod active_executions;
 pub mod blob_compliance;
 pub mod blob_ref_ops;
 mod blob_store;
+pub mod checkpoint_compliance;
+mod checkpoint_store;
 mod completion_notifier;
 mod environment_ext;
 mod error;
@@ -33,10 +35,11 @@ mod state_store;
 
 pub use active_executions::ActiveExecutions;
 pub use blob_store::{BlobStore, RawBlob};
+pub use checkpoint_store::{CheckpointStore, NoOpCheckpointStore, StoredCheckpoint};
 pub use completion_notifier::RunCompletionNotifier;
 pub use environment_ext::{
-    ActiveExecutionsExt, BlobStoreExt, ExecutionJournalExt, LeaseManagerExt, MetadataStoreExt,
-    OrchestratorIdExt,
+    ActiveExecutionsExt, BlobStoreExt, CheckpointStoreExt, ExecutionJournalExt, LeaseManagerExt,
+    MetadataStoreExt, OrchestratorIdExt,
 };
 pub use error::{Result, StateError};
 pub use execution_journal::{

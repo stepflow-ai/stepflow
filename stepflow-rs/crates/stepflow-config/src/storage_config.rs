@@ -16,7 +16,7 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_state::{
-    BlobStore, ExecutionJournal, FilesystemBlobStore, FilesystemBlobStoreConfig,
+    BlobStore, CheckpointStore, ExecutionJournal, FilesystemBlobStore, FilesystemBlobStoreConfig,
     InMemoryStateStore, InstrumentedBlobStore, MetadataStore,
 };
 use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
@@ -73,6 +73,20 @@ impl ConcreteStore {
                 ),
         }
     }
+
+    /// Try to use this store as a CheckpointStore.
+    ///
+    /// Returns an error if this store type doesn't support checkpointing.
+    fn as_checkpoint(&self) -> Result<Arc<dyn CheckpointStore>> {
+        match self {
+            ConcreteStore::InMemory(s) => Ok(s.clone()),
+            ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
+                .attach_printable(
+                    "Filesystem store only supports blob storage, not checkpoint storage",
+                ),
+        }
+    }
 }
 
 /// Create a ConcreteStore from a StoreConfig.
@@ -102,6 +116,7 @@ pub struct Stores {
     pub metadata_store: Arc<dyn MetadataStore>,
     pub blob_store: Arc<dyn BlobStore>,
     pub execution_journal: Arc<dyn ExecutionJournal>,
+    pub checkpoint_store: Arc<dyn CheckpointStore>,
 }
 
 /// Configuration for a single storage backend.
@@ -244,6 +259,10 @@ impl StorageConfig {
         let execution_journal = journal_concrete
             .as_journal()
             .attach_printable("journal configuration")?;
+        // Checkpoint store uses the same backend as the journal
+        let checkpoint_store = journal_concrete
+            .as_checkpoint()
+            .attach_printable("checkpoint store configuration")?;
 
         // Initialize each store (creates only the tables needed for its role)
         metadata_store
@@ -261,11 +280,17 @@ impl StorageConfig {
             .await
             .change_context(ConfigError::Configuration)
             .attach_printable("failed to initialize execution journal")?;
+        checkpoint_store
+            .initialize_checkpoint_store()
+            .await
+            .change_context(ConfigError::Configuration)
+            .attach_printable("failed to initialize checkpoint store")?;
 
         Ok(Stores {
             metadata_store,
             blob_store,
             execution_journal,
+            checkpoint_store,
         })
     }
 }

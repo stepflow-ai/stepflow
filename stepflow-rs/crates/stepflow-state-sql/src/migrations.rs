@@ -60,35 +60,25 @@ pub async fn run_journal_migrations(pool: &SqlitePool) -> Result<(), StateError>
     Ok(())
 }
 
-/// Run all migrations (blob + metadata + journal). Convenience for tests and
+/// Run checkpoint migrations (creates the `checkpoints` table).
+pub async fn run_checkpoint_migrations(pool: &SqlitePool) -> Result<(), StateError> {
+    create_migrations_table(pool).await?;
+    if let Some(mut conn) = begin_migration(pool, "005_create_checkpoint_table").await? {
+        create_checkpoint_table(&mut conn).await?;
+        complete_migration(&mut conn, "005_create_checkpoint_table").await?;
+    }
+    Ok(())
+}
+
+/// Run all migrations (blob + metadata + journal + checkpoint). Convenience for tests and
 /// single-instance deployments where one SQLite database backs all stores.
 pub async fn run_all_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
 
-    if let Some(mut conn) = begin_migration(pool, "001_create_blob_tables").await? {
-        create_blob_tables(&mut conn).await?;
-        complete_migration(&mut conn, "001_create_blob_tables").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "001_create_metadata_tables").await? {
-        create_metadata_tables(&mut conn).await?;
-        complete_migration(&mut conn, "001_create_metadata_tables").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "002_create_journal_tables").await? {
-        create_journal_tables(&mut conn).await?;
-        complete_migration(&mut conn, "002_create_journal_tables").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "003_add_step_statuses_to_run_items").await? {
-        add_step_statuses_column(&mut conn).await?;
-        complete_migration(&mut conn, "003_add_step_statuses_to_run_items").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "004_add_orchestrator_id_to_runs").await? {
-        add_orchestrator_id_column(&mut conn).await?;
-        complete_migration(&mut conn, "004_add_orchestrator_id_to_runs").await?;
-    }
+    run_blob_migrations(pool).await?;
+    run_metadata_migrations(pool).await?;
+    run_journal_migrations(pool).await?;
+    run_checkpoint_migrations(pool).await?;
 
     Ok(())
 }
@@ -370,6 +360,28 @@ async fn add_orchestrator_id_column(conn: &mut SqliteConnection) -> Result<(), S
         .execute(&mut *conn)
         .await
         .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create the checkpoints table for periodic execution state snapshots.
+///
+/// Checkpoints are keyed by `root_run_id`. Only the latest checkpoint per root
+/// run is needed; the table uses INSERT OR REPLACE semantics to keep just one row.
+async fn create_checkpoint_table(conn: &mut SqliteConnection) -> Result<(), StateError> {
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS checkpoints (
+                root_run_id TEXT NOT NULL PRIMARY KEY,
+                sequence_number INTEGER NOT NULL,
+                data BLOB NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        "#,
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
 
     Ok(())
 }

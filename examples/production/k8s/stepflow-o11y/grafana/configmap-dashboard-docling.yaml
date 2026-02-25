@@ -187,6 +187,67 @@ data:
           "type": "stat"
         },
         {
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6},
+          "id": 20,
+          "panels": [],
+          "title": "Load Balancer",
+          "type": "row"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {"type": "linear"},
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+          "id": 21,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(rate(stepflow_lb_requests_total{app=\"stepflow-load-balancer-docling\"}[5m])) by (backend)",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "title": "LB Request Distribution",
+          "type": "timeseries"
+        },
+        {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "fieldConfig": {
             "defaults": {
@@ -221,7 +282,163 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+          "id": 22,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "legendFormat": "p95",
+              "refId": "B"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.99, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "legendFormat": "p99",
+              "refId": "C"
+            }
+          ],
+          "title": "LB Latency Percentiles",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [
+                {"options": {"0": {"color": "red", "index": 1, "text": "Unhealthy"}, "1": {"color": "green", "index": 0, "text": "Healthy"}}, "type": "value"}
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+          "id": 23,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "horizontal",
+            "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+            "textMode": "value_and_name"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "stepflow_lb_backend_health{app=\"stepflow-load-balancer-docling\"}",
+              "legendFormat": "{{backend}} ({{instance_id}})",
+              "refId": "A"
+            }
+          ],
+          "title": "Docling Backend Health",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {"type": "linear"},
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+          "id": 24,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(stepflow_lb_active_connections{app=\"stepflow-load-balancer-docling\"}) by (backend)",
+              "legendFormat": "{{backend}}",
+              "refId": "A"
+            }
+          ],
+          "title": "Active Connections per Backend",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {"type": "linear"},
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [{"color": "green", "value": null}]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 23},
           "id": 5,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -286,7 +503,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 23},
           "id": 6,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -339,7 +556,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 31},
           "id": 7,
           "options": {
             "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -404,7 +621,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 31},
           "id": 8,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -430,11 +647,11 @@ data:
         },
         {
           "datasource": {"type": "datasource", "uid": "-- Mixed --"},
-          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 22},
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 39},
           "id": 9,
           "options": {
             "mode": "markdown",
-            "content": "## Docling Traces\n\nView distributed traces for document processing:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=docling-serve)\n- Traces show the full processing pipeline: API → Worker → Document Processing stages\n\n**Tip**: Click on trace IDs in logs to view complete processing timelines including file parsing, conversion, and serialization."
+            "content": "## Docling Traces\n\nView distributed traces for document processing:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=docling-serve)\n- Traces show the full processing pipeline: API \u2192 Worker \u2192 Document Processing stages\n\n**Tip**: Click on trace IDs in logs to view complete processing timelines including file parsing, conversion, and serialization."
           },
           "pluginVersion": "10.3.3",
           "targets": [],
@@ -443,7 +660,7 @@ data:
         },
         {
           "datasource": {"type": "loki", "uid": "loki"},
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 26},
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 43},
           "id": 10,
           "options": {
             "showTime": true,

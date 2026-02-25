@@ -482,6 +482,12 @@ impl Cli {
                 // Parse overrides without applying them (late binding)
                 let overrides = execution_args.override_args.parse_overrides()?;
 
+                // Parse variables from CLI args, using flow schema for env_var lookups
+                let variable_schema = flow.variables();
+                let variables = execution_args
+                    .variable_args
+                    .parse_variables(variable_schema.as_ref())?;
+
                 let flow = Arc::new(flow);
 
                 // Validate workflow and configuration before execution
@@ -515,7 +521,12 @@ impl Cli {
                 let params = stepflow_core::SubmitRunParams {
                     max_concurrency,
                     overrides: overrides.unwrap_or_default(),
-                    ..Default::default()
+                    variables: if variables.is_empty() {
+                        log::info!("No variables provided");
+                        None
+                    } else {
+                        Some(variables)
+                    },
                 };
                 let run_status = stepflow_execution::submit_run(
                     &executor,
@@ -603,6 +614,12 @@ impl Cli {
                 // Parse overrides for submission
                 let overrides = execution_args.override_args.parse_overrides()?;
 
+                // Parse variables from CLI args, using flow schema for env_var lookups
+                let variable_schema = flow.variables();
+                let variables = execution_args
+                    .variable_args
+                    .parse_variables(variable_schema.as_ref())?;
+
                 // Load inputs using unified API
                 let inputs = input_args.load_inputs(true)?;
                 let is_batch = input_args.is_batch();
@@ -628,6 +645,7 @@ impl Cli {
                     inputs,
                     overrides.as_ref().unwrap_or(&WorkflowOverrides::new()),
                     max_concurrent,
+                    variables,
                 )
                 .await?;
 

@@ -584,6 +584,41 @@ async fn test_journal_only_migration() {
     assert!(table_exists(&pool, "journal_entries").await);
 }
 
+// =========================================================================
+// CheckpointStore Compliance Tests
+// =========================================================================
+
+#[tokio::test]
+async fn sqlite_checkpoint_compliance() {
+    use stepflow_state::checkpoint_compliance::CheckpointComplianceTests;
+
+    CheckpointComplianceTests::run_all_isolated(|| async {
+        SqliteStateStore::in_memory().await.unwrap()
+    })
+    .await;
+}
+
+/// Checkpoint migration should only create the checkpoints table.
+#[tokio::test]
+async fn test_checkpoint_only_migration() {
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+
+    crate::migrations::run_checkpoint_migrations(&pool)
+        .await
+        .unwrap();
+
+    assert!(table_exists(&pool, "checkpoints").await);
+    assert!(!table_exists(&pool, "blobs").await);
+    assert!(!table_exists(&pool, "runs").await);
+    assert!(!table_exists(&pool, "journal_entries").await);
+}
+
 /// Running migrations incrementally should add tables for new store types.
 #[tokio::test]
 async fn test_incremental_migrations() {

@@ -14,11 +14,15 @@ use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use stepflow_core::status::ExecutionStatus;
 
+use bytes::Bytes;
+
 use crate::{
-    BlobStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob, RootJournalInfo,
-    RunCompletionNotifier, SequenceNumber, state_store::CreateRunParams,
+    BlobStore, CheckpointStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob,
+    RootJournalInfo, RunCompletionNotifier, SequenceNumber, StoredCheckpoint,
+    state_store::CreateRunParams,
 };
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
 use stepflow_dtos::{
@@ -75,6 +79,10 @@ pub struct InMemoryStateStore {
     /// Map from root_run_id to journal state.
     /// All events for an execution tree (parent + subflows) share the same journal.
     journals: DashMap<Uuid, JournalState>,
+    /// Map from root_run_id to latest checkpoint.
+    checkpoints: DashMap<Uuid, StoredCheckpoint>,
+    /// Total number of checkpoint put operations (for testing).
+    checkpoint_put_count: AtomicUsize,
 }
 
 impl InMemoryStateStore {
@@ -85,7 +93,17 @@ impl InMemoryStateStore {
             runs: DashMap::new(),
             completion_notifier: RunCompletionNotifier::new(),
             journals: DashMap::new(),
+            checkpoints: DashMap::new(),
+            checkpoint_put_count: AtomicUsize::new(0),
         }
+    }
+
+    /// Get the total number of checkpoint put operations.
+    ///
+    /// Useful for testing to verify that checkpoints were actually created
+    /// during execution (before cleanup removes them).
+    pub fn checkpoint_put_count(&self) -> usize {
+        self.checkpoint_put_count.load(Ordering::Relaxed)
     }
 
     /// Remove all state for a specific execution.
@@ -564,6 +582,47 @@ impl MetadataStore for InMemoryStateStore {
     }
 }
 
+impl CheckpointStore for InMemoryStateStore {
+    fn put_checkpoint(
+        &self,
+        root_run_id: Uuid,
+        sequence: SequenceNumber,
+        data: Bytes,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        async move {
+            self.checkpoints
+                .insert(root_run_id, StoredCheckpoint { sequence, data });
+            self.checkpoint_put_count.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_latest_checkpoint(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StoredCheckpoint>, crate::StateError>> {
+        async move {
+            Ok(self
+                .checkpoints
+                .get(&root_run_id)
+                .map(|entry| entry.value().clone()))
+        }
+        .boxed()
+    }
+
+    fn delete_checkpoints(
+        &self,
+        root_run_id: Uuid,
+    ) -> BoxFuture<'_, error_stack::Result<(), crate::StateError>> {
+        async move {
+            self.checkpoints.remove(&root_run_id);
+            Ok(())
+        }
+        .boxed()
+    }
+}
+
 impl ExecutionJournal for InMemoryStateStore {
     fn write(
         &self,
@@ -714,6 +773,17 @@ mod tests {
         // Invalid characters
         let invalid_chars = BlobId::new("g".repeat(64));
         assert!(invalid_chars.is_err());
+    }
+
+    // =========================================================================
+    // CheckpointStore Compliance Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn in_memory_checkpoint_compliance() {
+        use crate::checkpoint_compliance::CheckpointComplianceTests;
+
+        CheckpointComplianceTests::run_all_isolated(|| async { InMemoryStateStore::new() }).await;
     }
 
     #[tokio::test]

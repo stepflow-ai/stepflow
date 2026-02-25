@@ -180,6 +180,7 @@ fn execution_error_status_code(err: &stepflow_execution::ExecutionError) -> Stat
         ExecutionError::ResolveStepInput(_) => StatusCode::INTERNAL_SERVER_ERROR,
         ExecutionError::ResolveStepOutput(_) => StatusCode::INTERNAL_SERVER_ERROR,
         ExecutionError::ResolveWorkflowOutput => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::CheckpointError => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

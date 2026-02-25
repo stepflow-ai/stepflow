@@ -30,6 +30,9 @@ pub const RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK: usize = 10;
 /// If an orchestrator stops heartbeating, the lease expires after this duration.
 pub const RECOVERY_DEFAULT_LEASE_TTL_SECS: u64 = 30;
 
+/// Default: checkpoint every 1000 journal entries.
+pub const RECOVERY_DEFAULT_CHECKPOINT_INTERVAL: usize = 1000;
+
 /// Configuration for run recovery and orphan claiming.
 ///
 /// Controls how the orchestrator handles interrupted runs on startup
@@ -68,6 +71,13 @@ pub struct RecoveryConfig {
     /// If an orchestrator stops sending heartbeats, its lease expires after this
     /// duration and its runs become eligible for recovery. Default: 30 seconds.
     pub lease_ttl_secs: u64,
+
+    /// Number of journal entries between checkpoints.
+    ///
+    /// The executor periodically serializes execution state so that recovery
+    /// only needs to replay events after the checkpoint instead of from the
+    /// beginning. Set to 0 to disable. Default: 1000.
+    pub checkpoint_interval: usize,
 }
 
 impl Default for RecoveryConfig {
@@ -78,6 +88,7 @@ impl Default for RecoveryConfig {
             max_startup_recovery: RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY,
             max_claims_per_check: RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK,
             lease_ttl_secs: RECOVERY_DEFAULT_LEASE_TTL_SECS,
+            checkpoint_interval: RECOVERY_DEFAULT_CHECKPOINT_INTERVAL,
         }
     }
 }

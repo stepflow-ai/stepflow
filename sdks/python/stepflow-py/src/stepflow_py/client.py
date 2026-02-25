@@ -16,6 +16,9 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -33,6 +36,8 @@ if TYPE_CHECKING:
     from stepflow_py.api.models.run_details import RunDetails
     from stepflow_py.api.models.store_flow_response import StoreFlowResponse
     from stepflow_py.config import StepflowConfig
+
+logger = logging.getLogger(__name__)
 
 
 class StepflowClient:
@@ -225,6 +230,7 @@ class StepflowClient:
         max_concurrency: int | None = None,
         timeout: float = 300.0,
         wait_timeout: int | None = None,
+        populate_variables_from_env: bool = False,
     ) -> CreateRunResponse:
         """Execute a flow and wait for the result.
 
@@ -242,10 +248,16 @@ class StepflowClient:
                 If the workflow takes longer, the server returns the current
                 status rather than an error. Set this higher than ``timeout``
                 is not useful since the HTTP connection will close first.
+            populate_variables_from_env: If True, fetch the flow's variable
+                schema and populate variables from environment variables using
+                ``env_var`` annotations. Explicit variables take priority.
 
         Returns:
             CreateRunResponse with status and results
         """
+        if populate_variables_from_env:
+            variables = await self._merge_env_variables(flow_id, variables)
+
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
@@ -278,6 +290,7 @@ class StepflowClient:
         overrides: dict[str, Any] | None = None,
         max_concurrency: int | None = None,
         timeout: float = 30.0,
+        populate_variables_from_env: bool = False,
     ) -> CreateRunResponse:
         """Submit a flow for execution without waiting for the result.
 
@@ -292,10 +305,16 @@ class StepflowClient:
             overrides: Step overrides (per step_id)
             max_concurrency: Max parallel executions for batch mode
             timeout: Request timeout in seconds
+            populate_variables_from_env: If True, fetch the flow's variable
+                schema and populate variables from environment variables using
+                ``env_var`` annotations. Explicit variables take priority.
 
         Returns:
             CreateRunResponse with run_id and status (typically Running)
         """
+        if populate_variables_from_env:
+            variables = await self._merge_env_variables(flow_id, variables)
+
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
@@ -314,6 +333,65 @@ class StepflowClient:
 
         request = CreateRunRequest(**request_kwargs)
         return await self._run_api.create_run(request, _request_timeout=timeout)
+
+    async def _merge_env_variables(
+        self,
+        flow_id: str,
+        explicit_variables: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Fetch flow variable schema and populate from environment.
+
+        Uses the ``GET /flows/{id}/variables`` endpoint to retrieve
+        ``env_var`` annotations without fetching the entire flow.
+        Explicit variables take priority over environment values.
+
+        Returns the merged variables dict, or None if no variables were found.
+        """
+        response = await self._flow_api.get_flow_variables(flow_id)
+
+        if not response.env_vars:
+            logger.info("No env_var annotations found for flow %s", flow_id)
+            return explicit_variables
+
+        logger.info(
+            "Flow %s env_var annotations: %s",
+            flow_id,
+            list(response.env_vars.items()),
+        )
+
+        env_variables: dict[str, Any] = {}
+        for var_name, env_var_name in response.env_vars.items():
+            env_value = os.environ.get(env_var_name)
+            if env_value is not None:
+                env_variables[var_name] = _parse_env_value(env_value)
+                logger.info(
+                    "Populated variable %r from env %r",
+                    var_name,
+                    env_var_name,
+                )
+            else:
+                logger.debug(
+                    "Env var %r not set for variable %r",
+                    env_var_name,
+                    var_name,
+                )
+
+        logger.info(
+            "Merged variables for flow %s: %s (from env: %s, explicit: %s)",
+            flow_id,
+            list(env_variables.keys()),
+            len(env_variables),
+            len(explicit_variables) if explicit_variables else 0,
+        )
+
+        if not env_variables and not explicit_variables:
+            return None
+
+        # Merge: explicit variables take priority
+        merged = {**env_variables}
+        if explicit_variables:
+            merged.update(explicit_variables)
+        return merged if merged else None
 
     async def get_run(
         self,
@@ -371,3 +449,16 @@ def _remove_none_values(obj: Any) -> Any:
     elif isinstance(obj, list):
         return [_remove_none_values(item) for item in obj]
     return obj
+
+
+def _parse_env_value(value: str) -> Any:
+    """Parse an environment variable value, trying JSON first.
+
+    This matches the Rust CLI behavior: if the value is valid JSON
+    (number, boolean, object, array, null), use the parsed value.
+    Otherwise treat it as a plain string.
+    """
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return value

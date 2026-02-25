@@ -261,6 +261,86 @@ impl RunState {
     }
 
     // =========================================================================
+    // Checkpoint Methods
+    // =========================================================================
+
+    /// Capture the current run state as a serializable checkpoint.
+    pub fn to_checkpoint(&self) -> crate::checkpoint::RunCheckpoint {
+        let items: Vec<crate::checkpoint::ItemCheckpoint> = (0..self.items_state.item_count())
+            .map(|i| self.items_state.item(i).to_checkpoint())
+            .collect();
+
+        crate::checkpoint::RunCheckpoint {
+            run_id: self.run_id,
+            flow_id: self.flow_id.clone(),
+            root_run_id: self.root_run_id,
+            parent_run_id: self.parent_run_id,
+            inputs: self.inputs(),
+            variables: self.variables().clone(),
+            items,
+        }
+    }
+
+    /// Restore a RunState from a checkpoint.
+    ///
+    /// Creates a fresh RunState with the given flow, then overwrites
+    /// each item's execution state from the checkpoint. The `incomplete_count`
+    /// is recomputed after restoration.
+    ///
+    /// Checkpoint data is self-produced (see [`crate::checkpoint`] trust model),
+    /// so validation is defensive against corruption. Returns an error if the
+    /// checkpoint is structurally invalid (e.g., item count mismatch or
+    /// out-of-bounds indices), indicating data corruption.
+    pub fn from_checkpoint(
+        checkpoint: &crate::checkpoint::RunCheckpoint,
+        flow: Arc<Flow>,
+    ) -> std::result::Result<Self, String> {
+        let mut state = if let Some(parent_id) = checkpoint.parent_run_id {
+            Self::new_subflow(
+                checkpoint.run_id,
+                checkpoint.flow_id.clone(),
+                checkpoint.root_run_id,
+                parent_id,
+                flow,
+                checkpoint.inputs.clone(),
+                checkpoint.variables.clone(),
+            )
+        } else {
+            Self::new(
+                checkpoint.run_id,
+                checkpoint.flow_id.clone(),
+                flow,
+                checkpoint.inputs.clone(),
+                checkpoint.variables.clone(),
+            )
+        };
+
+        // Validate item count matches before restoring
+        if checkpoint.items.len() != state.items_state.item_count() as usize {
+            return Err(format!(
+                "checkpoint items count {} != run items count {} for run {}",
+                checkpoint.items.len(),
+                state.items_state.item_count(),
+                checkpoint.run_id
+            ));
+        }
+
+        // Restore each item's state from the checkpoint
+        for (i, item_checkpoint) in checkpoint.items.iter().enumerate() {
+            state
+                .items_state
+                .item_mut(i as u32)
+                .restore_from_checkpoint(item_checkpoint)
+                .map_err(|e| format!("run {} item {i}: {e}", checkpoint.run_id))?;
+        }
+
+        // Recompute incomplete_count after restoration
+        state.items_state.recompute_incomplete_count();
+
+        Ok(state)
+    }
+
+    // =========================================================================
     // Recovery Methods
     // =========================================================================
 

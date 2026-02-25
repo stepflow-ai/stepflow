@@ -15,7 +15,6 @@
 from stepflow_py.api.models import (
     ErrorAction,
     Flow,
-    FlowSchema,
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
@@ -48,7 +47,6 @@ __all__ = [
     "WorkflowInput",
     # Flow and workflow types (re-exported from API models)
     "Flow",
-    "FlowSchema",
     "Step",
     "Component",
     # ValueExpr builder for $step, $input, $variable expressions

@@ -25,7 +25,7 @@ use crate::schema::SchemaRef;
 ///
 /// Serializes as a valid JSON Schema with `type: "object"` and flow-specific
 /// properties (`input`, `output`, `variables`, `steps`) under the `properties` key.
-#[derive(Debug, Clone, PartialEq, Default, schemars::JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FlowSchema {
     /// Shared type definitions that can be referenced by other schemas.
     /// References use the format `#/schemas/$defs/TypeName`.
@@ -46,6 +46,26 @@ pub struct FlowSchema {
     /// component metadata, not flow-specific schemas.
     /// Uses IndexMap to preserve insertion order for deterministic serialization.
     pub steps: IndexMap<String, SchemaRef>,
+}
+
+impl schemars::JsonSchema for FlowSchema {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "FlowSchema".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Describe FlowSchema as an opaque JSON Schema object.
+        // The actual structure uses custom serde serialization that wraps fields
+        // in JSON Schema format (type/properties/$defs), which doesn't match
+        // the struct fields. By describing it as a free-form object, the OpenAPI
+        // spec and generated SDKs treat it as dict[str, Any] and pass it through
+        // without needing to understand the internal structure.
+        schemars::json_schema!({
+            "type": "object",
+            "description": "A JSON Schema object describing the flow's type information. Contains input/output schemas, variable schemas, and step output schemas wrapped in standard JSON Schema format with type, properties, and $defs.",
+            "additionalProperties": true
+        })
+    }
 }
 
 impl serde::Serialize for FlowSchema {
@@ -151,8 +171,24 @@ impl<'de> serde::Deserialize<'de> for FlowSchema {
             HashMap::new()
         };
 
-        // Extract properties
+        // FlowSchema serializes as a JSON Schema: {"type": "object", "properties": {...}}
+        // Reject flat format (e.g. {"variables": ...}) — callers must send the correct
+        // JSON Schema structure.
         let properties = obj.get("properties").and_then(|p| p.as_object());
+
+        // Detect common mistake: flat format without "properties" wrapper
+        if properties.is_none() {
+            let flat_keys = ["input", "output", "variables", "steps"];
+            for key in flat_keys {
+                if obj.contains_key(key) {
+                    return Err(D::Error::custom(format!(
+                        "FlowSchema field \"{key}\" must be inside a \"properties\" wrapper. \
+                         Expected JSON Schema format: \
+                         {{\"type\": \"object\", \"properties\": {{\"{key}\": ...}}}}"
+                    )));
+                }
+            }
+        }
 
         let input: Option<SchemaRef> = if let Some(props) = properties {
             props
@@ -225,5 +261,103 @@ impl FlowSchema {
             && self.output.is_none()
             && self.variables.is_none()
             && self.steps.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workflow::variable_schema::VariableSchema;
+    use serde_json::json;
+
+    #[test]
+    fn test_deserialize_json_schema_format() {
+        let json = json!({
+            "type": "object",
+            "properties": {
+                "variables": {
+                    "type": "object",
+                    "properties": {
+                        "API_KEY": {
+                            "type": "string",
+                            "env_var": "MY_API_KEY"
+                        }
+                    }
+                }
+            }
+        });
+
+        let schema: FlowSchema = serde_json::from_value(json).unwrap();
+        assert!(schema.variables.is_some());
+
+        let var_schema = VariableSchema::from(schema.variables.unwrap());
+        assert_eq!(var_schema.env_var_name("API_KEY"), Some("MY_API_KEY"));
+    }
+
+    #[test]
+    fn test_rejects_flat_format() {
+        // Flat format (fields at top level without "properties" wrapper) should
+        // be rejected with a clear error message.
+        let json = json!({
+            "variables": {
+                "type": "object",
+                "properties": {
+                    "OPENAI_API_KEY": {
+                        "type": ["string", "null"],
+                        "env_var": "OPENAI_API_KEY"
+                    }
+                }
+            },
+            "steps": {}
+        });
+
+        let result = serde_json::from_value::<FlowSchema>(json);
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("must be inside a \"properties\" wrapper"),
+            "Expected clear error about properties wrapper, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_preserves_env_var() {
+        let json = json!({
+            "type": "object",
+            "properties": {
+                "variables": {
+                    "type": "object",
+                    "properties": {
+                        "API_KEY": {
+                            "type": "string",
+                            "env_var": "MY_API_KEY",
+                            "is_secret": true
+                        }
+                    }
+                }
+            }
+        });
+
+        let schema: FlowSchema = serde_json::from_value(json).unwrap();
+
+        // Serialize back and deserialize again
+        let serialized = serde_json::to_value(&schema).unwrap();
+        let schema2: FlowSchema = serde_json::from_value(serialized).unwrap();
+        assert!(schema2.variables.is_some());
+
+        let var_schema = VariableSchema::from(schema2.variables.unwrap());
+        assert_eq!(var_schema.env_var_name("API_KEY"), Some("MY_API_KEY"));
+    }
+
+    #[test]
+    fn test_empty_schema_accepted() {
+        // Empty object and null should both work
+        let empty: FlowSchema = serde_json::from_value(json!({})).unwrap();
+        assert!(empty.is_empty());
+
+        let null: FlowSchema = serde_json::from_value(json!(null)).unwrap();
+        assert!(null.is_empty());
+
+        let type_only: FlowSchema = serde_json::from_value(json!({"type": "object"})).unwrap();
+        assert!(type_only.is_empty());
     }
 }

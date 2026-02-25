@@ -22,6 +22,7 @@ error-stack.workspace = true
 futures.workspace = true
 log.workspace = true
 nonempty.workspace = true
+rmp-serde.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stepflow-analysis.workspace = true
