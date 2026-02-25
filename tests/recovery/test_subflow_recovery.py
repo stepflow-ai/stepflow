@@ -53,7 +53,7 @@ from helpers import (
 WORKFLOWS = Path(__file__).parent / "workflows"
 
 
-@pytest.mark.xfail(reason="Subflow recovery with in-flight inner steps not yet supported")
+@pytest.mark.xfail(reason="In-flight subflow recovery not yet supported (#690)")
 @pytest.mark.asyncio
 async def test_subflow_restart_recovery(compose_env):
     """Kill orch-1 while subflow is running, restart it, verify subflow is not re-executed.
@@ -106,7 +106,7 @@ async def test_subflow_restart_recovery(compose_env):
     )
 
 
-@pytest.mark.xfail(reason="Subflow recovery with in-flight inner steps not yet supported")
+@pytest.mark.xfail(reason="In-flight subflow recovery not yet supported (#690)")
 @pytest.mark.asyncio
 async def test_subflow_failover_recovery(compose_env):
     """Kill orch-1 permanently while subflow is running, let orch-2 recover.
