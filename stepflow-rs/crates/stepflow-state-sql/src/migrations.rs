@@ -14,13 +14,33 @@ use error_stack::{Result, ResultExt as _};
 use sqlx::{Row as _, SqliteConnection, SqlitePool};
 use stepflow_state::StateError;
 
+/// Run a migration within a serialized transaction, rolling back on error.
+///
+/// Acquires a write lock via [`begin_migration`], executes `f`, records the
+/// migration via [`complete_migration`], and commits. If `f` fails, the
+/// transaction is explicitly rolled back before the error propagates, so the
+/// connection is returned to the pool in a clean state.
+async fn run_migration(
+    pool: &SqlitePool,
+    name: &str,
+    f: impl AsyncFnOnce(&mut SqliteConnection) -> Result<(), StateError>,
+) -> Result<(), StateError> {
+    if let Some(mut conn) = begin_migration(pool, name).await? {
+        match f(&mut conn).await {
+            Ok(()) => complete_migration(&mut conn, name).await?,
+            Err(e) => {
+                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                return Err(e);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Run blob store migrations (creates the `blobs` table and indexes).
 pub async fn run_blob_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
-    if let Some(mut conn) = begin_migration(pool, "001_create_blob_tables").await? {
-        create_blob_tables(&mut conn).await?;
-        complete_migration(&mut conn, "001_create_blob_tables").await?;
-    }
+    run_migration(pool, "001_create_blob_tables", create_blob_tables).await?;
     Ok(())
 }
 
@@ -32,20 +52,9 @@ pub async fn run_blob_migrations(pool: &SqlitePool) -> Result<(), StateError> {
 pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
 
-    if let Some(mut conn) = begin_migration(pool, "001_create_metadata_tables").await? {
-        create_metadata_tables(&mut conn).await?;
-        complete_migration(&mut conn, "001_create_metadata_tables").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "003_add_step_statuses_to_run_items").await? {
-        add_step_statuses_column(&mut conn).await?;
-        complete_migration(&mut conn, "003_add_step_statuses_to_run_items").await?;
-    }
-
-    if let Some(mut conn) = begin_migration(pool, "004_add_orchestrator_id_to_runs").await? {
-        add_orchestrator_id_column(&mut conn).await?;
-        complete_migration(&mut conn, "004_add_orchestrator_id_to_runs").await?;
-    }
+    run_migration(pool, "001_create_metadata_tables", create_metadata_tables).await?;
+    run_migration(pool, "003_add_step_statuses_to_run_items", add_step_statuses_column).await?;
+    run_migration(pool, "004_add_orchestrator_id_to_runs", add_orchestrator_id_column).await?;
 
     Ok(())
 }
@@ -53,20 +62,14 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
 /// Run journal migrations (creates the `journal_entries` table and indexes).
 pub async fn run_journal_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
-    if let Some(mut conn) = begin_migration(pool, "002_create_journal_tables").await? {
-        create_journal_tables(&mut conn).await?;
-        complete_migration(&mut conn, "002_create_journal_tables").await?;
-    }
+    run_migration(pool, "002_create_journal_tables", create_journal_tables).await?;
     Ok(())
 }
 
 /// Run checkpoint migrations (creates the `checkpoints` table).
 pub async fn run_checkpoint_migrations(pool: &SqlitePool) -> Result<(), StateError> {
     create_migrations_table(pool).await?;
-    if let Some(mut conn) = begin_migration(pool, "005_create_checkpoint_table").await? {
-        create_checkpoint_table(&mut conn).await?;
-        complete_migration(&mut conn, "005_create_checkpoint_table").await?;
-    }
+    run_migration(pool, "005_create_checkpoint_table", create_checkpoint_table).await?;
     Ok(())
 }
 
@@ -102,13 +105,15 @@ async fn create_migrations_table(pool: &SqlitePool) -> Result<(), StateError> {
 
 /// Apply a migration if it hasn't been applied yet.
 ///
-/// Performs an optimistic read-only check first (no lock), then falls back to an
-/// exclusive transaction only when the migration actually needs to run. This keeps
-/// the common case (already migrated) lock-free and minimises write-lock duration.
+/// Performs an optimistic read-only check first (no lock), then, if the migration
+/// needs to run, starts a write transaction using `BEGIN IMMEDIATE` so that a
+/// reserved write lock is held only while applying the migration. This keeps the
+/// common case (already migrated) lock-free and minimises write-lock duration.
 ///
 /// Callers must execute the migration on the returned connection and then call
-/// [`complete_migration`] to record it and commit. If the migration fails, dropping
-/// the connection rolls back the transaction automatically.
+/// [`complete_migration`] to record it and commit. On error, callers should
+/// `ROLLBACK` before dropping the connection — use [`run_migration`] which
+/// handles this automatically.
 async fn begin_migration(
     pool: &SqlitePool,
     name: &str,
@@ -164,7 +169,7 @@ async fn begin_migration(
 
 /// Record that a migration was applied and commit the transaction.
 async fn complete_migration(conn: &mut SqliteConnection, name: &str) -> Result<(), StateError> {
-    sqlx::query("INSERT INTO _stepflow_migrations (name) VALUES (?)")
+    sqlx::query("INSERT OR IGNORE INTO _stepflow_migrations (name) VALUES (?)")
         .bind(name)
         .execute(&mut *conn)
         .await
