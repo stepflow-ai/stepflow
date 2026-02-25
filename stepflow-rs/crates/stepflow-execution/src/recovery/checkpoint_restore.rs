@@ -130,6 +130,16 @@ pub(super) async fn restore_from_checkpoint(
                 *subflow_run_id,
             );
         }
+        // Handle RunCompleted events: evict completed subflows from in-memory state.
+        // Their results are already in the metadata store.
+        if let stepflow_state::JournalEvent::RunCompleted {
+            run_id: completed_id,
+            ..
+        } = event
+            && *completed_id != run_id
+        {
+            subflow_runs.remove(completed_id);
+        }
         // Handle new subflow RunCreated events after checkpoint
         if let stepflow_state::JournalEvent::RunCreated {
             run_id: sub_run_id,
