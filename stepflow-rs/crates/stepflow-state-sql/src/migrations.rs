@@ -140,7 +140,10 @@ async fn begin_migration(
 
     // Migration appears to be needed — acquire a connection and take a write lock
     // so concurrent callers are serialized.
-    let mut conn = pool.acquire().await.change_context(StateError::Initialization)?;
+    let mut conn = pool
+        .acquire()
+        .await
+        .change_context(StateError::Initialization)?;
 
     sqlx::query("BEGIN IMMEDIATE")
         .execute(&mut *conn)
