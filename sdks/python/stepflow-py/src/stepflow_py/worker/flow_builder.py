@@ -24,7 +24,6 @@ import msgspec
 from stepflow_py.api.models import (
     ErrorAction,
     Flow,
-    FlowSchema,
     InputRef,
     LiteralExpr,
     OnErrorDefault,
@@ -215,11 +214,12 @@ class FlowBuilder:
             version=flow.version,
             metadata=flow.metadata,
         )
-        # Extract schemas from the consolidated FlowSchema
+        # Extract schemas from the JSON Schema dict
         if flow.schemas is not None:
-            builder.input_schema = flow.schemas.input
-            builder.output_schema = flow.schemas.output
-            builder.variables_schema = flow.schemas.variables
+            props = flow.schemas.get("properties", {})
+            builder.input_schema = props.get("input")
+            builder.output_schema = props.get("output")
+            builder.variables_schema = props.get("variables")
         builder._output = flow.output
 
         # Recreate steps as dict and step handles
@@ -451,20 +451,23 @@ class FlowBuilder:
         # Wrap output in ValueExpr for Pydantic model
         wrapped_output = _wrap_value_expr(output_to_use)
 
-        # Build FlowSchema if any schemas are set
+        # Build schemas dict in JSON Schema format if any schemas are set
         schemas = None
         if (
             self.input_schema is not None
             or self.output_schema is not None
             or self.variables_schema is not None
         ):
-            schemas = FlowSchema(
-                defs={},
-                steps={},
-                input=self.input_schema,
-                output=self.output_schema,
-                variables=self.variables_schema,
-            )
+            properties: dict[str, Any] = {}
+            if self.input_schema is not None:
+                properties["input"] = self.input_schema
+            if self.output_schema is not None:
+                properties["output"] = self.output_schema
+            if self.variables_schema is not None:
+                properties["variables"] = self.variables_schema
+            schemas: dict[str, Any] = {"type": "object"}
+            if properties:
+                schemas["properties"] = properties
 
         return Flow(
             name=self.name,

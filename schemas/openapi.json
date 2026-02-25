@@ -2068,61 +2068,9 @@
         }
       },
       "FlowSchema": {
-        "description": "Consolidated schema information for a flow.\n\nThis struct contains all schema/type information for the flow in a single location,\nallowing shared `$defs` across all schemas and avoiding duplication.\n\nSerializes as a valid JSON Schema with `type: \"object\"` and flow-specific\nproperties (`input`, `output`, `variables`, `steps`) under the `properties` key.",
+        "description": "A JSON Schema object describing the flow's type information. Contains input/output schemas, variable schemas, and step output schemas wrapped in standard JSON Schema format with type, properties, and $defs.",
         "type": "object",
-        "properties": {
-          "defs": {
-            "description": "Shared type definitions that can be referenced by other schemas.\nReferences use the format `#/schemas/$defs/TypeName`.",
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Schema"
-            }
-          },
-          "input": {
-            "description": "The input schema for the flow.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "output": {
-            "description": "The output schema for the flow.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "variables": {
-            "description": "Schema for workflow variables. This is a JSON Schema object where\nproperties define the available variables and their types.",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "steps": {
-            "description": "Output schemas for each step, keyed by step ID.\nNote: Step input schemas are not included here as they are\ncomponent metadata, not flow-specific schemas.\nUses IndexMap to preserve insertion order for deterministic serialization.",
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Schema"
-            }
-          }
-        },
-        "required": [
-          "defs",
-          "steps"
-        ]
+        "additionalProperties": true
       },
       "Step": {
         "description": "A step in a workflow that executes a component with specific arguments.\n\nNote: Step output schemas are stored in the flow's `types.steps` field,\nnot on individual steps. This allows for shared `$defs` and avoids duplication.",

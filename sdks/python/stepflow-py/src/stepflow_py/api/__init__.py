@@ -58,7 +58,6 @@ from stepflow_py.api.models.flow_response import FlowResponse
 from stepflow_py.api.models.flow_result import FlowResult
 from stepflow_py.api.models.flow_result_failed import FlowResultFailed
 from stepflow_py.api.models.flow_result_success import FlowResultSuccess
-from stepflow_py.api.models.flow_schema import FlowSchema
 from stepflow_py.api.models.flow_variables_response import FlowVariablesResponse
 from stepflow_py.api.models.get_blob_response import GetBlobResponse
 from stepflow_py.api.models.health_response import HealthResponse

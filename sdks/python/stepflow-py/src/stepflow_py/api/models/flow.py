@@ -26,7 +26,6 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 from stepflow_py.api.models.example_input import ExampleInput
-from stepflow_py.api.models.flow_schema import FlowSchema
 from stepflow_py.api.models.step import Step
 from stepflow_py.api.models.test_config import TestConfig
 from stepflow_py.api.models.value_expr import ValueExpr
@@ -44,7 +43,7 @@ class Flow(BaseModel):
     version: StrictStr | None = Field(
         default=None, description="The version of the flow."
     )
-    schemas: FlowSchema | None = Field(
+    schemas: dict[str, Any] | None = Field(
         default=None,
         description="Consolidated schema information for the flow. Contains input/output schemas, step output schemas, and shared `$defs`.",
     )
@@ -113,9 +112,6 @@ class Flow(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of schemas
-        if self.schemas:
-            _dict["schemas"] = self.schemas.to_dict()
         # override the default output from pydantic by calling `to_dict()` of each item in steps (list)
         _items = []
         if self.steps:
@@ -177,9 +173,7 @@ class Flow(BaseModel):
                 "name": obj.get("name"),
                 "description": obj.get("description"),
                 "version": obj.get("version"),
-                "schemas": FlowSchema.from_dict(obj["schemas"])
-                if obj.get("schemas") is not None
-                else None,
+                "schemas": obj.get("schemas"),
                 "steps": [Step.from_dict(_item) for _item in obj["steps"]]
                 if obj.get("steps") is not None
                 else None,

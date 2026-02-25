@@ -306,6 +306,7 @@ def fix_any_type_from_dict(directory: Path) -> None:
     print(f"    Fixed {count} model files")
 
 
+
 def fix_sanitize_for_serialization(directory: Path) -> None:
     """Fix sanitize_for_serialization to handle oneOf wrappers returning non-dicts.
 
