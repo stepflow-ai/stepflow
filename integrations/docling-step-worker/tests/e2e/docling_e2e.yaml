@@ -1,0 +1,85 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+name: docling-e2e-test
+description: End-to-end test for the docling step worker pipeline
+
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      required:
+        - source
+        - source_kind
+      properties:
+        source:
+          type: string
+          description: Base64-encoded PDF content
+        source_kind:
+          type: string
+          enum: [base64]
+    output:
+      type: object
+      properties:
+        document:
+          type: object
+        chunks:
+          type: array
+        classification:
+          type: object
+
+steps:
+  - id: classify
+    component: /docling/classify
+    input:
+      source: { $input: "source" }
+      source_kind: { $input: "source_kind" }
+
+  - id: convert
+    component: /docling/convert
+    input:
+      source: { $input: "source" }
+      source_kind: { $input: "source_kind" }
+      pipeline_config: { $step: "classify", path: "recommended_config" }
+
+  - id: chunk
+    component: /docling/chunk
+    input:
+      document: { $step: "convert", path: "document" }
+
+output:
+  document: { $step: "convert", path: "document" }
+  chunks: { $step: "chunk", path: "chunks" }
+  classification: { $step: "classify" }
+
+test:
+  config:
+    plugins:
+      builtin:
+        type: builtin
+      docling:
+        type: stepflow
+        command: uv
+        args: ["run", "--project", "../..", "docling-step-worker-server"]
+        healthCheck:
+          path: /health
+          timeoutMs: 120000
+          retryDelayMs: 2000
+
+    routes:
+      "/builtin/{component}":
+        - plugin: builtin
+      "/docling/{component}":
+        - plugin: docling
+
+  cases:
+    - name: "Process a simple PDF through classify, convert, and chunk"
+      input:
+        source: "JVBERi0xLjMKJenr8b8KMSAwIG9iago8PAovQ291bnQgMQovS2lkcyBbMyAwIFJdCi9NZWRpYUJveCBbMCAwIDU5NS4yOCA4NDEuODldCi9UeXBlIC9QYWdlcwo+PgplbmRvYmoKMiAwIG9iago8PAovT3BlbkFjdGlvbiBbMyAwIFIgL0ZpdEggbnVsbF0KL1BhZ2VMYXlvdXQgL09uZUNvbHVtbgovUGFnZXMgMSAwIFIKL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDQgMCBSCi9QYXJlbnQgMSAwIFIKL1Jlc291cmNlcyA2IDAgUgovVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovRmlsdGVyIC9GbGF0ZURlY29kZQovTGVuZ3RoIDEzNgo+PgpzdHJlYW0KeJxVjLEOgjAURXe+4o66VFrF6mrURFffDxB4hRJsG3iG37eaOJjc6eSeY3AvSlVZLMWJsLlqaKPKEuRwoQ/aaqUPsMdKWQtqsXoIJzfGBefYjD50uAXhbqrFxwDiWdag4V/eW7UzX5l6PyOvhuQn2ti8nhwELk6QnsGGkXziHGb1C70B9akunwplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwKL0Jhc2VGb250IC9IZWx2ZXRpY2EKL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcKL1N1YnR5cGUgL1R5cGUxCi9UeXBlIC9Gb250Cj4+CmVuZG9iago2IDAgb2JqCjw8Ci9Gb250IDw8L0YxIDUgMCBSPj4KL1Byb2NTZXQgWy9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUldCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9DcmVhdGlvbkRhdGUgKEQ6MjAyNjAyMjQyMTQ0MTVaKQo+PgplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAxMDIgMDAwMDAgbiAKMDAwMDAwMDIwNSAwMDAwMCBuIAowMDAwMDAwMjg1IDAwMDAwIG4gCjAwMDAwMDA0OTMgMDAwMDAgbiAKMDAwMDAwMDU5MCAwMDAwMCBuIAowMDAwMDAwNjc3IDAwMDAwIG4gCnRyYWlsZXIKPDwKL1NpemUgOAovUm9vdCAyIDAgUgovSW5mbyA3IDAgUgovSUQgWzwwNjQ3NUQwNjM5QjhGNDM2OTcyNDQ5MTcyODMzQUM3QT48MDY0NzVEMDYzOUI4RjQzNjk3MjQ0OTE3MjgzM0FDN0E+XQo+PgpzdGFydHhyZWYKNzMyCiUlRU9GCg=="
+        source_kind: "base64"
+      output:
+        outcome: success
+        result:
+          classification:
+            format: "pdf"
+            has_text_layer: true
+            recommended_config: "born_digital"
