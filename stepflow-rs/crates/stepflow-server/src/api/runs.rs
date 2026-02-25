@@ -246,6 +246,12 @@ pub async fn create_run(
     let timeout_secs = req.timeout_secs;
 
     // Execute the run
+    log::info!(
+        "create_run: flow_id={}, {} variables received: {:?}",
+        req.flow_id,
+        req.variables.len(),
+        req.variables.keys().collect::<Vec<_>>()
+    );
     let variables = if req.variables.is_empty() {
         None
     } else {

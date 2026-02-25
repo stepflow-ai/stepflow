@@ -324,10 +324,11 @@ class NodeProcessor:
             self.variables[name] = {
                 "type": [input_type, "null"],
                 "default": None,
+                "env_var": name,
             }
         # Use a literal null as default so that if the variable isn't provided at
-        # runtime, the value resolves to null and the UDF executor can fall back
-        # to reading from environment
+        # runtime, the value resolves to null unless populated from environment
+        # via --env-variables or populate_variables_from_env.
         return Value.variable(name, default=Value.literal(None))
 
     def _extract_runtime_inputs_for_builder(

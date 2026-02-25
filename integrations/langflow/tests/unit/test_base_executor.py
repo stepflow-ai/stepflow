@@ -19,7 +19,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from stepflow_langflow_integration.exceptions import ExecutionError
 from stepflow_langflow_integration.executor.base_executor import BaseExecutor
 
 
@@ -38,106 +37,6 @@ class ConcreteTestExecutor(BaseExecutor):
 def executor():
     """Create a ConcreteTestExecutor instance for testing base functionality."""
     return ConcreteTestExecutor()
-
-
-class TestBaseExecutorEnvVarResolution:
-    """Tests for env var resolution via _handler_pipeline in BaseExecutor."""
-
-    @pytest.mark.asyncio
-    async def test_resolve_env_var_when_load_from_db(self, executor, monkeypatch):
-        """Test that env vars are resolved for load_from_db fields."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-123")
-
-        parameters = {"api_key": ""}
-        template = {
-            "api_key": {
-                "value": "OPENAI_API_KEY",
-                "load_from_db": True,
-            },
-        }
-
-        async with executor._handler_pipeline(parameters, template) as (result, _):
-            assert result["api_key"] == "sk-test-key-123"
-
-    @pytest.mark.asyncio
-    async def test_no_resolution_when_value_provided(self, executor, monkeypatch):
-        """Test that env vars are NOT resolved when value is already set."""
-        monkeypatch.setenv("OPENAI_API_KEY", "env-value")
-
-        parameters = {"api_key": "already-set-value"}
-        template = {
-            "api_key": {
-                "value": "OPENAI_API_KEY",
-                "load_from_db": True,
-            },
-        }
-
-        async with executor._handler_pipeline(parameters, template) as (result, _):
-            # Should keep the existing value
-            assert result["api_key"] == "already-set-value"
-
-    @pytest.mark.asyncio
-    async def test_no_resolution_without_load_from_db(self, executor, monkeypatch):
-        """Test that env vars are NOT resolved without load_from_db flag."""
-        monkeypatch.setenv("SOME_VAR", "env-value")
-
-        parameters = {"param": ""}
-        template = {
-            "param": {
-                "value": "SOME_VAR",
-                # No load_from_db flag
-            },
-        }
-
-        async with executor._handler_pipeline(parameters, template) as (result, _):
-            # Should keep empty value
-            assert result["param"] == ""
-
-    @pytest.mark.asyncio
-    async def test_error_when_env_var_missing(self, executor, monkeypatch):
-        """Test that missing env var raises ExecutionError."""
-        monkeypatch.delenv("MISSING_VAR", raising=False)
-
-        parameters = {"api_key": ""}
-        template = {
-            "api_key": {
-                "value": "MISSING_VAR",
-                "load_from_db": True,
-            },
-        }
-
-        with pytest.raises(ExecutionError, match="Environment variable.*not set"):
-            async with executor._handler_pipeline(parameters, template) as (result, _):
-                pass
-
-    @pytest.mark.asyncio
-    async def test_multiple_env_vars(self, executor, monkeypatch):
-        """Test resolving multiple env vars."""
-        monkeypatch.setenv("API_KEY_1", "key1")
-        monkeypatch.setenv("API_KEY_2", "key2")
-
-        parameters = {"key1": "", "key2": "", "regular": "value"}
-        template = {
-            "key1": {"value": "API_KEY_1", "load_from_db": True},
-            "key2": {"value": "API_KEY_2", "load_from_db": True},
-            "regular": {"value": "default"},
-        }
-
-        async with executor._handler_pipeline(parameters, template) as (result, _):
-            assert result["key1"] == "key1"
-            assert result["key2"] == "key2"
-            assert result["regular"] == "value"  # Unchanged
-
-    @pytest.mark.asyncio
-    async def test_non_dict_template_field_skipped(self, executor):
-        """Test that non-dict template fields are skipped gracefully."""
-        parameters = {"param": ""}
-        template = {
-            "param": "direct_value",  # Not a dict
-        }
-
-        async with executor._handler_pipeline(parameters, template) as (result, _):
-            assert result["param"] == ""  # Unchanged
 
 
 class TestBaseExecutorDetermineExecutionMethod:

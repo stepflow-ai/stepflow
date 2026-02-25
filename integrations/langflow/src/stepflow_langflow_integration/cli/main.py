@@ -20,6 +20,7 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
+from stepflow_py import StepflowClient
 
 from ..converter.stepflow_tweaks import (
     apply_stepflow_tweaks_to_dict,
@@ -346,14 +347,19 @@ def run(
         # Parse flow for HTTP API submission
         flow_dict = yaml.safe_load(stepflow_yaml)
 
+        # Load .env from the flow's directory if available
+        flow_dir = input_file.resolve().parent
+        env_path = flow_dir / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+
         if local:
             click.echo("🚀 Starting local orchestrator...")
-            plugin_env = _collect_flow_env_vars(input_file)
-            result = asyncio.run(_run_local(flow_dict, inputs, timeout, plugin_env))
+            result = asyncio.run(_run_local(flow_dict, inputs, timeout))
         else:
             assert url is not None
             click.echo(f"🚀 Submitting to {url}...")
-            result = _submit_flow_http(url, flow_dict, inputs, timeout)
+            result = asyncio.run(_run_remote(url, flow_dict, inputs, timeout))
 
         # Display results
         _display_run_result(result)
@@ -366,50 +372,38 @@ def run(
         sys.exit(1)
 
 
-def _collect_flow_env_vars(input_file: Path) -> dict[str, str]:
-    """Extract env vars referenced by a Langflow flow and resolve from environment.
+async def _run_with_client(
+    client: StepflowClient,
+    flow_dict: dict,
+    inputs: list,
+    timeout: int,
+) -> dict:
+    """Store a flow and execute it using a StepflowClient.
 
-    Scans the original Langflow JSON for template fields with ``load_from_db: true``
-    and collects the env var names from their ``value`` fields.  Returns a dict of
-    env-var-name → value for every referenced variable that is set in the current
-    process environment (after loading ``.env`` from the flow's directory).
+    Variables are populated from environment using ``env_var`` annotations
+    in the flow's variable schema.
     """
-    import os
+    click.echo("📤 Storing flow...")
+    store_response = await client.store_flow(flow_dict, timeout=float(timeout))
+    flow_id = store_response.flow_id
+    click.echo(f"✅ Flow stored (id: {flow_id[:12]}...)")
 
-    # Load .env from the flow's directory if available
-    flow_dir = input_file.resolve().parent
-    env_path = flow_dir / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-
-    # Parse the Langflow JSON and find load_from_db env var references
-    with open(input_file, encoding="utf-8") as f:
-        langflow_json = json.load(f)
-
-    env_var_names: set[str] = set()
-    for node in langflow_json.get("data", {}).get("nodes", []):
-        template = node.get("data", {}).get("node", {}).get("template", {})
-        for field in template.values():
-            if not isinstance(field, dict):
-                continue
-            if field.get("load_from_db") and field.get("value"):
-                env_var_names.add(field["value"])
-
-    # Resolve env vars that are actually set
-    plugin_env: dict[str, str] = {}
-    for name in sorted(env_var_names):
-        val = os.environ.get(name)
-        if val:
-            plugin_env[name] = val
-
-    return plugin_env
+    item_label = f"{len(inputs)} inputs" if len(inputs) > 1 else "1 input"
+    click.echo(f"🎯 Executing {item_label}...")
+    response = await client.run(
+        flow_id,
+        inputs,
+        timeout=float(timeout + 30),
+        wait_timeout=timeout,
+        populate_variables_from_env=True,
+    )
+    return response.model_dump(by_alias=True, exclude_unset=True)
 
 
 async def _run_local(
     flow_dict: dict,
     inputs: list,
     timeout: int,
-    plugin_env: dict[str, str] | None = None,
 ) -> dict:
     """Run a flow using a local StepflowOrchestrator."""
     from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
@@ -428,8 +422,6 @@ async def _run_local(
             "stepflow-langflow-server",
         ],
     }
-    if plugin_env:
-        langflow_plugin["env"] = plugin_env
 
     config = OrchestratorConfig(
         config={
@@ -447,67 +439,21 @@ async def _run_local(
 
     async with StepflowOrchestrator.start(config) as orchestrator:
         click.echo(f"✅ Orchestrator running at {orchestrator.url}")
-        return _submit_flow_http(orchestrator.url, flow_dict, inputs, timeout)
+        client = StepflowClient.connect(orchestrator.url)
+        async with client:
+            return await _run_with_client(client, flow_dict, inputs, timeout)
 
 
-def _submit_flow_http(
+async def _run_remote(
     base_url: str,
     flow_dict: dict,
     inputs: list,
     timeout: int,
 ) -> dict:
-    """Submit a flow to a Stepflow server via HTTP API and wait for results."""
-    import urllib.error
-    import urllib.request
-
-    # Normalize API URL
-    api_url = base_url.rstrip("/")
-    if not api_url.endswith("/api/v1"):
-        api_url = f"{api_url}/api/v1"
-
-    # Step 1: Store the flow
-    click.echo("📤 Storing flow...")
-    store_body = json.dumps({"flow": flow_dict}).encode("utf-8")
-    req = urllib.request.Request(
-        f"{api_url}/flows",
-        data=store_body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            store_result = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Failed to store flow: {e.code} {body}") from e
-
-    flow_id = store_result["flowId"]
-    click.echo(f"✅ Flow stored (id: {flow_id[:12]}...)")
-
-    # Step 2: Submit for execution
-    item_label = f"{len(inputs)} inputs" if len(inputs) > 1 else "1 input"
-    click.echo(f"🎯 Executing {item_label}...")
-    run_body = json.dumps(
-        {
-            "flowId": flow_id,
-            "input": inputs,
-            "wait": True,
-            "timeoutSecs": timeout,
-        }
-    ).encode("utf-8")
-    req = urllib.request.Request(
-        f"{api_url}/runs",
-        data=run_body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout + 30) as resp:
-            result: dict = json.loads(resp.read())
-            return result
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Execution failed: {e.code} {body}") from e
+    """Submit a flow to a remote Stepflow server and wait for results."""
+    client = StepflowClient.connect(base_url)
+    async with client:
+        return await _run_with_client(client, flow_dict, inputs, timeout)
 
 
 def _display_run_result(result: dict) -> None:

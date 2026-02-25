@@ -23,36 +23,23 @@ import pprint
 import re  # noqa: F401
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
 
-class FlowSchema(BaseModel):
+class FlowVariablesResponse(BaseModel):
     """
-    Consolidated schema information for a flow.  This struct contains all schema/type information for the flow in a single location, allowing shared `$defs` across all schemas and avoiding duplication.  Serializes as a valid JSON Schema with `type: \"object\"` and flow-specific properties (`input`, `output`, `variables`, `steps`) under the `properties` key.
+    Response containing variable schema and environment variable mappings for a flow.
     """  # noqa: E501
 
-    defs: dict[str, dict[str, Any]] = Field(
-        description="Shared type definitions that can be referenced by other schemas. References use the format `#/schemas/$defs/TypeName`."
+    flow_id: StrictStr = Field(description="The flow ID", alias="flowId")
+    var_schema: dict[str, Any] | None = Field(
+        default=None, description="A valid JSON Schema object.", alias="schema"
     )
-    input: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
+    env_vars: dict[str, StrictStr] = Field(
+        description="Mapping from variable name to the environment variable that populates it. Only includes variables that have an `env_var` annotation.",
+        alias="envVars",
     )
-    output: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
-    )
-    variables: dict[str, Any] | None = Field(
-        default=None, description="A valid JSON Schema object."
-    )
-    steps: dict[str, dict[str, Any]] = Field(
-        description="Output schemas for each step, keyed by step ID. Note: Step input schemas are not included here as they are component metadata, not flow-specific schemas. Uses IndexMap to preserve insertion order for deterministic serialization."
-    )
-    __properties: ClassVar[list[str]] = [
-        "defs",
-        "input",
-        "output",
-        "variables",
-        "steps",
-    ]
+    __properties: ClassVar[list[str]] = ["flowId", "schema", "envVars"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -71,7 +58,7 @@ class FlowSchema(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of FlowSchema from a JSON string"""
+        """Create an instance of FlowVariablesResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,7 +82,7 @@ class FlowSchema(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of FlowSchema from a dict"""
+        """Create an instance of FlowVariablesResponse from a dict"""
         if obj is None:
             return None
 
@@ -104,11 +91,9 @@ class FlowSchema(BaseModel):
 
         _obj = cls.model_validate(
             {
-                "defs": obj.get("defs"),
-                "input": obj.get("input"),
-                "output": obj.get("output"),
-                "variables": obj.get("variables"),
-                "steps": obj.get("steps"),
+                "flowId": obj.get("flowId"),
+                "schema": obj.get("schema"),
+                "envVars": obj.get("envVars"),
             }
         )
         return _obj

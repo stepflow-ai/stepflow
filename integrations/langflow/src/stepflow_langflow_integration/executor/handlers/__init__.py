@@ -24,7 +24,6 @@ JSON-compatible formats with type markers.
 from .base import InputHandler, OutputHandler
 from .base_model import BaseModelInputHandler, BaseModelOutputHandler
 from .dataframe import DataFrameConversionInputHandler, DataFrameOutputHandler
-from .env_var import EnvVarInputHandler
 from .langflow_types import LangflowTypeInputHandler, LangflowTypeOutputHandler
 from .string_coercion import StringCoercionInputHandler
 from .tool_wrapper import ToolWrapperInputHandler
@@ -36,7 +35,6 @@ __all__ = [
     "BaseModelOutputHandler",
     "DataFrameConversionInputHandler",
     "DataFrameOutputHandler",
-    "EnvVarInputHandler",
     "LangflowTypeInputHandler",
     "LangflowTypeOutputHandler",
     "StringCoercionInputHandler",

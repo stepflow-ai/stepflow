@@ -54,7 +54,7 @@ def test_variables_schema_from_dict():
     flow = builder.build()
 
     assert flow.schemas is not None
-    assert flow.schemas.variables is not None
+    assert flow.schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_from_simple_dict():
@@ -80,7 +80,7 @@ def test_variables_schema_from_simple_dict():
     flow = builder.build()
 
     assert flow.schemas is not None
-    assert flow.schemas.variables is not None
+    assert flow.schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_load_flow():
@@ -116,7 +116,7 @@ def test_variables_schema_load_flow():
     rebuilt_flow = loaded_builder.build()
 
     assert rebuilt_flow.schemas is not None
-    assert rebuilt_flow.schemas.variables is not None
+    assert rebuilt_flow.schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_method_chaining():

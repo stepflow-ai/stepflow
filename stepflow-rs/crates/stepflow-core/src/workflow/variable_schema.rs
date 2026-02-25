@@ -21,7 +21,8 @@ use std::collections::{HashMap, HashSet};
 /// Variable schema for workflow variables using JSON Schema format.
 ///
 /// This allows flows to declare required variables with their types,
-/// default values, descriptions, and secret annotations.
+/// default values, descriptions, secret annotations, and environment
+/// variable mappings.
 ///
 /// Example:
 /// ```yaml
@@ -31,6 +32,7 @@ use std::collections::{HashMap, HashSet};
 ///     api_key:
 ///       type: string
 ///       is_secret: true
+///       env_var: "OPENAI_API_KEY"
 ///       description: "OpenAI API key"
 ///     temperature:
 ///       type: number
@@ -47,6 +49,9 @@ pub struct VariableSchema {
     defaults: HashMap<String, ValueRef>,
     secrets: Secrets,
     required: HashSet<String>,
+    /// Mapping from variable name to the environment variable name
+    /// that should be used to populate it when `--env-variables` is enabled.
+    env_vars: HashMap<String, String>,
 }
 
 impl schemars::JsonSchema for VariableSchema {
@@ -87,9 +92,16 @@ impl VariableSchema {
 
         let mut variables = Vec::new();
         let mut defaults = HashMap::new();
+        let mut env_vars = HashMap::new();
         if let Some(properties) = schema_value.get("properties").and_then(|p| p.as_object()) {
             for (var_name, var_schema) in properties {
                 variables.push(var_name.clone());
+
+                // Parse env_var annotation
+                if let Some(env_var) = var_schema.get("env_var").and_then(|v| v.as_str()) {
+                    env_vars.insert(var_name.clone(), env_var.to_string());
+                }
+
                 let var_type = var_schema.get("type");
                 let var_default = if let Some(default_value) = var_schema.get("default") {
                     Some(default_value.clone())
@@ -135,6 +147,7 @@ impl VariableSchema {
             defaults,
             secrets,
             required,
+            env_vars,
         }
     }
 
@@ -145,6 +158,16 @@ impl VariableSchema {
     /// Return variable names from the schema properties.
     pub fn variables(&self) -> &'_ [String] {
         &self.variables
+    }
+
+    /// Get the environment variable name for a given variable, if annotated.
+    pub fn env_var_name(&self, variable_name: &str) -> Option<&str> {
+        self.env_vars.get(variable_name).map(|s| s.as_str())
+    }
+
+    /// Get the full mapping of variable names to environment variable names.
+    pub fn env_var_map(&self) -> &HashMap<String, String> {
+        &self.env_vars
     }
 
     /// Get the list of required variables.
@@ -234,6 +257,42 @@ mod tests {
             Some(json!(0.7))
         );
         assert_eq!(var_schema.default_value("api_key"), None);
+    }
+
+    #[test]
+    fn test_env_var_annotation() {
+        let schema_json = json!({
+            "type": "object",
+            "properties": {
+                "api_key": {
+                    "type": "string",
+                    "is_secret": true,
+                    "env_var": "OPENAI_API_KEY"
+                },
+                "temperature": {
+                    "type": "number",
+                    "default": 0.7
+                },
+                "db_url": {
+                    "type": "string",
+                    "env_var": "DATABASE_URL"
+                }
+            },
+            "required": ["api_key"]
+        });
+
+        let schema = SchemaRef::parse_json(&schema_json.to_string()).unwrap();
+        let var_schema = VariableSchema::new(schema);
+
+        assert_eq!(var_schema.env_var_name("api_key"), Some("OPENAI_API_KEY"));
+        assert_eq!(var_schema.env_var_name("temperature"), None);
+        assert_eq!(var_schema.env_var_name("db_url"), Some("DATABASE_URL"));
+        assert_eq!(var_schema.env_var_name("nonexistent"), None);
+
+        let env_map = var_schema.env_var_map();
+        assert_eq!(env_map.len(), 2);
+        assert_eq!(env_map.get("api_key").unwrap(), "OPENAI_API_KEY");
+        assert_eq!(env_map.get("db_url").unwrap(), "DATABASE_URL");
     }
 
     #[test]
