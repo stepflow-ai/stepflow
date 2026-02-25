@@ -118,11 +118,11 @@
       }
     },
     "RetryConfig": {
-      "description": "Configuration for retry behavior when component execution fails.",
+      "description": "Configuration for retry behavior when transport errors occur.\n\nTransport errors are infrastructure-level failures — subprocess crashes,\nnetwork timeouts, connection refused — where the component never ran or\ndidn't complete. Component logic errors are retried separately via the\nstep's `ErrorAction::Retry` and do not count against this budget.",
       "type": "object",
       "properties": {
         "maxAttempts": {
-          "description": "Maximum number of execution attempts (default: 3).",
+          "description": "Maximum number of retries due to transport errors — subprocess crashes,\nnetwork timeouts, connection failures (default: 3).",
           "type": [
             "integer",
             "null"
@@ -131,7 +131,7 @@
           "minimum": 0
         },
         "backoff": {
-          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).",
+          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).\nUsed by the orchestrator to compute delay between retry attempts.",
           "$ref": "#/$defs/BackoffConfig",
           "default": {
             "type": "fibonacci",

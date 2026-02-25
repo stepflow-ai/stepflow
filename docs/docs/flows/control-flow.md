@@ -126,9 +126,13 @@ steps:
 
 ### Error Actions
 
-- **`terminate`** (default): Stop workflow execution
+- **`fail`** (default): Stop workflow execution
 - **`useDefault`**: Use `defaultValue` and mark step as successful
-- **`skip`**: Mark step as skipped (triggers skip propagation)
+- **`retry`**: Retry the step up to `maxRetries` times (default: 3, for component errors only)
+
+:::note
+Transport failures (subprocess crashes, network timeouts) are retried automatically by the plugin independently of `onError`. The `retry` error action only applies to errors returned by the component itself.
+:::
 
 ### Default Output Requirements
 

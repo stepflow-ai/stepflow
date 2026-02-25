@@ -428,7 +428,7 @@ class ComponentExecuteParams(Struct, kw_only=True):
     attempt: Annotated[
         int,
         Meta(
-            description='The attempt number for this execution (1-based, for retry logic).',
+            description='The execution attempt number (1-based).\n\nA monotonically increasing counter that increments on every re-execution\nof this step, regardless of the reason:\n- **Transport error**: The subprocess crashed or a network failure occurred.\n- **Component error**: The component returned an error and the step has\n  `onError: { action: retry }`.\n- **Orchestrator recovery**: The orchestrator crashed and is re-executing\n  tasks that were in-flight.\n\nComponents can use this to implement idempotency guards or progressive\nfallback strategies.',
             ge=0,
         ),
     ]

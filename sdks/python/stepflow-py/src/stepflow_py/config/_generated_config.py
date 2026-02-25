@@ -356,7 +356,8 @@ class RetryConfig(Struct, kw_only=True):
         Annotated[
             int | None,
             Meta(
-                description='Maximum number of execution attempts (default: 3).', ge=0
+                description='Maximum number of retries due to transport errors — subprocess crashes,\nnetwork timeouts, connection failures (default: 3).',
+                ge=0,
             ),
         ]
         | UnsetType
@@ -365,7 +366,7 @@ class RetryConfig(Struct, kw_only=True):
         Annotated[
             BackoffConfig,
             Meta(
-                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
+                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).\nUsed by the orchestrator to compute delay between retry attempts.'
             ),
         ]
         | UnsetType

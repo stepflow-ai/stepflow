@@ -478,8 +478,12 @@ impl FlowVisualizer {
             stepflow_core::workflow::ErrorAction::UseDefault { .. } => {
                 tooltip.push_str("\\nError Action: Use Default");
             }
-            stepflow_core::workflow::ErrorAction::Retry => {
-                tooltip.push_str("\\nError Action: Retry");
+            stepflow_core::workflow::ErrorAction::Retry { max_retries } => {
+                if let Some(n) = max_retries {
+                    tooltip.push_str(&format!("\\nError Action: Retry (max {n})"));
+                } else {
+                    tooltip.push_str("\\nError Action: Retry");
+                }
             }
         }
 

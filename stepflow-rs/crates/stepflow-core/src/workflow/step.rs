@@ -83,13 +83,36 @@ pub enum ErrorAction {
         default_value: Option<serde_json::Value>,
     },
     /// If the step fails, retry it.
+    ///
+    /// `max_retries` limits retries due to component errors — cases where the
+    /// component ran and returned an error. Transport-level failures (subprocess
+    /// crashes, network errors) are retried separately according to the plugin's
+    /// retry configuration and do not count against this budget.
+    #[serde(rename_all = "camelCase")]
     #[schemars(title = "OnErrorRetry")]
-    Retry,
+    Retry {
+        /// Maximum number of retries due to component errors (default: 3).
+        ///
+        /// Total attempts for component errors = max_retries + 1 (initial).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_retries: Option<u32>,
+    },
 }
 
 impl ErrorAction {
+    /// Default maximum retries for component errors.
+    pub const DEFAULT_MAX_RETRIES: u32 = 3;
+
     pub fn is_default(&self) -> bool {
         matches!(self, Self::Fail)
+    }
+
+    /// Get the max retries for component errors, if this is a Retry action.
+    pub fn max_retries(&self) -> Option<u32> {
+        match self {
+            Self::Retry { max_retries } => Some(max_retries.unwrap_or(Self::DEFAULT_MAX_RETRIES)),
+            _ => None,
+        }
     }
 }
 
@@ -103,8 +126,18 @@ mod tests {
         let fail = ErrorAction::Fail;
         assert_eq!(serde_yaml_ng::to_string(&fail).unwrap(), "action: fail\n");
 
-        let retry = ErrorAction::Retry;
+        // Retry with default max_retries omits the field
+        let retry = ErrorAction::Retry { max_retries: None };
         assert_eq!(serde_yaml_ng::to_string(&retry).unwrap(), "action: retry\n");
+
+        // Retry with explicit max_retries includes the field
+        let retry_with_max = ErrorAction::Retry {
+            max_retries: Some(5),
+        };
+        assert_eq!(
+            serde_yaml_ng::to_string(&retry_with_max).unwrap(),
+            "action: retry\nmaxRetries: 5\n"
+        );
 
         let use_default = ErrorAction::UseDefault {
             default_value: Some(serde_json::json!("test_default")),
@@ -129,8 +162,19 @@ mod tests {
         let fail: ErrorAction = serde_yaml_ng::from_str("action: fail").unwrap();
         assert_eq!(fail, ErrorAction::Fail);
 
+        // Retry without maxRetries
         let retry: ErrorAction = serde_yaml_ng::from_str("action: retry").unwrap();
-        assert_eq!(retry, ErrorAction::Retry);
+        assert_eq!(retry, ErrorAction::Retry { max_retries: None });
+
+        // Retry with maxRetries
+        let retry_with_max: ErrorAction =
+            serde_yaml_ng::from_str("action: retry\nmaxRetries: 5").unwrap();
+        assert_eq!(
+            retry_with_max,
+            ErrorAction::Retry {
+                max_retries: Some(5)
+            }
+        );
 
         let use_default: ErrorAction =
             serde_yaml_ng::from_str("action: useDefault\ndefaultValue: test_default").unwrap();
@@ -146,12 +190,28 @@ mod tests {
     fn test_error_action_default() {
         assert_eq!(ErrorAction::default(), ErrorAction::Fail);
         assert!(ErrorAction::Fail.is_default());
-        assert!(!ErrorAction::Retry.is_default());
+        assert!(!ErrorAction::Retry { max_retries: None }.is_default());
         assert!(
             !ErrorAction::UseDefault {
                 default_value: Some(serde_json::json!("test"))
             }
             .is_default()
+        );
+    }
+
+    #[test]
+    fn test_error_action_max_retries() {
+        assert_eq!(ErrorAction::Fail.max_retries(), None);
+        assert_eq!(
+            ErrorAction::Retry { max_retries: None }.max_retries(),
+            Some(ErrorAction::DEFAULT_MAX_RETRIES)
+        );
+        assert_eq!(
+            ErrorAction::Retry {
+                max_retries: Some(5)
+            }
+            .max_retries(),
+            Some(5)
         );
     }
 

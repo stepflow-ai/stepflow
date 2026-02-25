@@ -11,9 +11,7 @@
 // the License.
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use backon::BackoffBuilder as _;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -38,13 +36,20 @@ use crate::protocol::{
 };
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
-/// Configuration for retry behavior when component execution fails.
+/// Configuration for retry behavior when transport errors occur.
+///
+/// Transport errors are infrastructure-level failures — subprocess crashes,
+/// network timeouts, connection refused — where the component never ran or
+/// didn't complete. Component logic errors are retried separately via the
+/// step's `ErrorAction::Retry` and do not count against this budget.
 #[derive(Default, Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RetryConfig {
-    /// Maximum number of execution attempts (default: 3).
+    /// Maximum number of retries due to transport errors — subprocess crashes,
+    /// network timeouts, connection failures (default: 3).
     pub max_attempts: Option<u32>,
     /// Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).
+    /// Used by the orchestrator to compute delay between retry attempts.
     #[serde(default)]
     pub backoff: BackoffConfig,
 }
@@ -52,7 +57,8 @@ pub struct RetryConfig {
 impl RetryConfig {
     const DEFAULT_MAX_ATTEMPTS: u32 = 3;
 
-    fn max_attempts(&self) -> u32 {
+    /// Get the configured max attempts (default: 3).
+    pub fn max_attempts(&self) -> u32 {
         self.max_attempts.unwrap_or(Self::DEFAULT_MAX_ATTEMPTS)
     }
 }
@@ -122,41 +128,6 @@ impl BackoffConfig {
 
     fn default_factor() -> f32 {
         2.0
-    }
-
-    /// Build a backoff iterator based on the configured strategy.
-    /// Jitter is always enabled to prevent thundering herd effects.
-    fn build(&self) -> Box<dyn Iterator<Item = Duration> + Send> {
-        match self {
-            Self::Constant { delay_ms } => Box::new(
-                backon::ConstantBuilder::default()
-                    .with_delay(Duration::from_millis(*delay_ms))
-                    .with_jitter()
-                    .build(),
-            ),
-            Self::Exponential {
-                min_delay_ms,
-                max_delay_ms,
-                factor,
-            } => Box::new(
-                backon::ExponentialBuilder::default()
-                    .with_min_delay(Duration::from_millis(*min_delay_ms))
-                    .with_max_delay(Duration::from_millis(*max_delay_ms))
-                    .with_factor(*factor)
-                    .with_jitter()
-                    .build(),
-            ),
-            Self::Fibonacci {
-                min_delay_ms,
-                max_delay_ms,
-            } => Box::new(
-                backon::FibonacciBuilder::default()
-                    .with_min_delay(Duration::from_millis(*min_delay_ms))
-                    .with_max_delay(Duration::from_millis(*max_delay_ms))
-                    .with_jitter()
-                    .build(),
-            ),
-        }
     }
 }
 
@@ -571,10 +542,6 @@ impl Plugin for StepflowPlugin {
         input: ValueRef,
         attempt: u32,
     ) -> Result<FlowResult> {
-        let max_retries = self.retry_config.max_attempts();
-        let can_restart = self.is_subprocess_mode().await;
-        let mut backoff = self.retry_config.backoff.build();
-
         // Blobify large input fields if the worker supports blob refs
         let should_blobify = self.should_blobify().await;
         let execute_input = if should_blobify {
@@ -593,93 +560,54 @@ impl Plugin for StepflowPlugin {
             input
         };
 
-        // The component sees a combined attempt number: the orchestrator-level
-        // attempt (from journal replay after crashes) plus transport-level retries
-        // (from connection failures within a single execution). This means the
-        // component always sees a monotonically increasing attempt number regardless
-        // of whether the retry was caused by an orchestrator crash or a worker crash.
-        for retry in 0..max_retries {
-            let component_attempt = attempt + retry;
+        // Create observability context from run context and step
+        let observability = ObservabilityContext::from_run_context(run_context, step);
 
-            // Create observability context from run context and step
-            let observability = ObservabilityContext::from_run_context(run_context, step);
+        // Get the client handle (will create if not initialized)
+        let client_handle = self.get_or_create_client_handle().await?;
 
-            // Get the client handle (will create if not initialized)
-            let client_handle = self.get_or_create_client_handle().await?;
+        // Single attempt — the orchestrator handles retries and provides the
+        // monotonically increasing attempt number.
+        let response = client_handle
+            .method(
+                &ComponentExecuteParams {
+                    component: component.clone(),
+                    input: execute_input.clone(),
+                    attempt,
+                    observability,
+                },
+                Some(Arc::clone(run_context)),
+            )
+            .await
+            .change_context(PluginError::Execution)?;
 
-            let result = client_handle
-                .method(
-                    &ComponentExecuteParams {
-                        component: component.clone(),
-                        input: execute_input.clone(),
-                        attempt: component_attempt,
-                        observability,
-                    },
-                    Some(Arc::clone(run_context)),
-                )
-                .await;
+        // Resolve any blob refs in the output (safe no-op if none present)
+        let output = if should_blobify {
+            let blob_store = run_context.blob_store();
+            let resolved = blob_ref_ops::resolve_blob_refs(
+                response.output.as_ref().clone(),
+                blob_store.as_ref(),
+            )
+            .await
+            .change_context(PluginError::Execution)
+            .attach_printable("Failed to resolve blob refs in output")?;
+            ValueRef::new(resolved)
+        } else {
+            response.output
+        };
+        Ok(FlowResult::Success(output))
+    }
 
-            match result {
-                Ok(response) => {
-                    // Resolve any blob refs in the output (safe no-op if none present)
-                    let output = if should_blobify {
-                        let blob_store = run_context.blob_store();
-                        let resolved = blob_ref_ops::resolve_blob_refs(
-                            response.output.as_ref().clone(),
-                            blob_store.as_ref(),
-                        )
-                        .await
-                        .change_context(PluginError::Execution)
-                        .attach_printable("Failed to resolve blob refs in output")?;
-                        ValueRef::new(resolved)
-                    } else {
-                        response.output
-                    };
-                    return Ok(FlowResult::Success(output));
-                }
-                Err(err) => {
-                    if retry + 1 < max_retries {
-                        if can_restart {
-                            // Subprocess mode: restart the process then retry
-                            log::warn!(
-                                "Component execution failed (attempt {}, retry {}/{}), restarting subprocess: {}",
-                                component_attempt,
-                                retry + 1,
-                                max_retries,
-                                err
-                            );
+    fn transport_max_retries(&self) -> u32 {
+        self.retry_config.max_attempts()
+    }
 
-                            // Try to restart the subprocess
-                            if let Err(restart_err) = self.restart_subprocess().await {
-                                log::error!("Failed to restart subprocess: {}", restart_err);
-                                // If restart fails, return the original error
-                                return Err(err).change_context(PluginError::Execution);
-                            }
-                        } else {
-                            // Remote mode: wait with backoff for external restart (Docker/k8s)
-                            let delay = backoff.next().unwrap_or(Duration::from_millis(1000));
-                            log::warn!(
-                                "Component execution failed (attempt {}, retry {}/{}), retrying in {:?}: {}",
-                                component_attempt,
-                                retry + 1,
-                                max_retries,
-                                delay,
-                                err
-                            );
-                            tokio::time::sleep(delay).await;
-                        }
-
-                        // Continue to next retry
-                        continue;
-                    }
-
-                    // No more retries - return error
-                    return Err(err).change_context(PluginError::Execution);
-                }
-            }
+    async fn prepare_for_retry(&self) -> Result<()> {
+        if self.is_subprocess_mode().await {
+            log::info!("Restarting subprocess for retry");
+            self.restart_subprocess().await?;
         }
-
-        // Should not reach here, but just in case
-        Err(PluginError::Execution).attach_printable("Max retry attempts exceeded")
+        // Remote mode: no-op — external orchestration (Docker/k8s) handles restart.
+        Ok(())
     }
 }

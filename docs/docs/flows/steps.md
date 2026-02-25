@@ -36,7 +36,7 @@ See [Control Flow](./control-flow.md#skipping) for more details on control flow 
 By default, an error in a step causes a failure that terminates the entire workflow.
 However, steps can specify `on_error` to configure different error handling.
 
-```yaml title="Error Handling examlpe"
+```yaml title="Error Handling with Default Output"
 steps:
   - id: risky_operation
     component: /external/api_call
@@ -51,19 +51,34 @@ steps:
       endpoint: "https://api.example.com"
 ```
 
+```yaml title="Error Handling with Retry"
+steps:
+  - id: flaky_api_call
+    component: /external/api
+    # highlight-start
+    onError:
+      action: retry
+      maxRetries: 5    # default: 3
+    # highlight-end
+    input:
+      url: "https://api.example.com"
+```
+
 ### Error Action
 
 The `action` may be one of the following:
 
-- **`terminate`** (default): Stop workflow execution
-- **`continue`**: Use `default_output` and mark step as successful
-- **`skip`**: Mark step as skipped (triggers skip propagation)
-
-In the future, this may include options for retrying failed steps.
+- **`fail`** (default): Stop workflow execution
+- **`useDefault`**: Use `defaultValue` and mark step as successful
+- **`retry`**: Retry the step up to `maxRetries` times (default: 3)
 
 :::note
-When using `action: continue`, the `default_output` must be set and produce a value that conforms to the component's output schema.
+When using `action: useDefault`, the `defaultValue` must be set and produce a value that conforms to the component's output schema.
 The default output may be an [expression](./expressions.md) that references earlier steps.
+:::
+
+:::note
+The `retry` action applies to **component errors** -- cases where the component ran and returned an error. Transport failures (subprocess crashes, network timeouts, connection failures) are retried automatically by the plugin independently of `onError` and are controlled via `transport_max_retries` in the plugin configuration.
 :::
 
 See [Control Flow](./control-flow.md#errors) for more details on error handling in steps.

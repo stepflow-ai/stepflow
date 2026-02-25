@@ -487,9 +487,18 @@
     },
     "OnErrorRetry": {
       "title": "OnErrorRetry",
-      "description": "If the step fails, retry it.",
+      "description": "If the step fails, retry it.\n\n`max_retries` limits retries due to component errors — cases where the\ncomponent ran and returned an error. Transport-level failures (subprocess\ncrashes, network errors) are retried separately according to the plugin's\nretry configuration and do not count against this budget.",
       "type": "object",
       "properties": {
+        "maxRetries": {
+          "description": "Maximum number of retries due to component errors (default: 3).\n\nTotal attempts for component errors = max_retries + 1 (initial).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
         "action": {
           "type": "string",
           "const": "retry",
