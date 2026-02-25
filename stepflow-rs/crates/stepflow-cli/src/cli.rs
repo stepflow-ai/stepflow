@@ -522,6 +522,7 @@ impl Cli {
                     max_concurrency,
                     overrides: overrides.unwrap_or_default(),
                     variables: if variables.is_empty() {
+                        log::info!("No variables provided");
                         None
                     } else {
                         Some(variables)
