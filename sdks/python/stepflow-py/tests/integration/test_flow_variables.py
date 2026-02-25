@@ -62,7 +62,7 @@ def _build_flow_with_env_vars() -> dict:
     return builder.build()
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_get_flow_variables_roundtrip(
     stepflow_client: StepflowClient,
 ):

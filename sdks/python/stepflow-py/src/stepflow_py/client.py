@@ -350,9 +350,7 @@ class StepflowClient:
         response = await self._flow_api.get_flow_variables(flow_id)
 
         if not response.env_vars:
-            logger.info(
-                "No env_var annotations found for flow %s", flow_id
-            )
+            logger.info("No env_var annotations found for flow %s", flow_id)
             return explicit_variables
 
         logger.info(

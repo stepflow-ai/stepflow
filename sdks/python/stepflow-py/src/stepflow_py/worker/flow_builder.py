@@ -452,7 +452,7 @@ class FlowBuilder:
         wrapped_output = _wrap_value_expr(output_to_use)
 
         # Build schemas dict in JSON Schema format if any schemas are set
-        schemas = None
+        schemas: dict[str, Any] | None = None
         if (
             self.input_schema is not None
             or self.output_schema is not None
@@ -465,7 +465,7 @@ class FlowBuilder:
                 properties["output"] = self.output_schema
             if self.variables_schema is not None:
                 properties["variables"] = self.variables_schema
-            schemas: dict[str, Any] = {"type": "object"}
+            schemas = {"type": "object"}
             if properties:
                 schemas["properties"] = properties
 
