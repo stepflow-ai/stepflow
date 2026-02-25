@@ -23,16 +23,16 @@ description: 'Build stepflow-server and run Docker Compose recovery integration 
 runs:
   using: 'composite'
   steps:
+    # Use dtolnay/rust-toolchain (not setup-rust-toolchain) because we
+    # configure Swatinem/rust-cache separately with workspaces.
     - name: Setup Rust toolchain
-      uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: stable
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Configure Rust cache
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
-          stepflow-rs
+          ./stepflow-rs
 
     # Install protoc for etcd-client compilation (needed by stepflow-server)
     - name: Install protoc

@@ -58,23 +58,42 @@ jobs:
         with:
           filters: |
             rust:
+              - '.github/actions/rust-checks/**'
+              - 'scripts/check-rust.sh'
+              - 'scripts/_lib.sh'
               - 'stepflow-rs/**'
               - 'schemas/**'
             python:
+              - '.github/actions/python-checks/**'
+              - 'scripts/check-python.sh'
+              - 'scripts/_lib.sh'
               - 'sdks/python/**'
               - 'schemas/**'
             docs:
+              - '.github/actions/docs-checks/**'
+              - 'scripts/check-docs.sh'
+              - 'scripts/_lib.sh'
               - 'docs/**'
               - 'README.md'
               - '*.md'
             langflow:
+              - '.github/actions/langflow-checks/**'
+              - 'scripts/check-langflow.sh'
+              - 'scripts/_lib.sh'
               - 'integrations/langflow/**'
               - 'stepflow-rs/**'
               - 'sdks/python/**'
             recovery:
+              - '.github/actions/recovery-tests/**'
+              - 'scripts/check-recovery.sh'
+              - 'scripts/_lib.sh'
               - 'tests/recovery/**'
             openapi:
+              - '.github/actions/openapi-checks/**'
+              - 'scripts/check-openapi.sh'
+              - 'scripts/_lib.sh'
               - 'schemas/openapi.json'
+              - '.redocly.yml'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
@@ -175,15 +194,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Use dtolnay/rust-toolchain (not setup-rust-toolchain) because we
+      # configure Swatinem/rust-cache separately with workspaces.
       - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Configure Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            stepflow-rs
+            ./stepflow-rs
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:

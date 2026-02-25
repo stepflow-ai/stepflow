@@ -61,6 +61,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+          workspaces: |
+            ./stepflow-rs
 
       - name: Build binaries (native)
         if: ${{ !matrix.cross }}

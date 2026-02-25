@@ -39,18 +39,20 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # Use dtolnay/rust-toolchain (not setup-rust-toolchain) because we
+    # configure Swatinem/rust-cache separately with workspaces.
     - name: Setup Rust toolchain
-      uses: actions-rust-lang/setup-rust-toolchain@v1
+      uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ inputs.rust-toolchain }}
-        components: 'clippy'
+        components: clippy
 
     # Configure Rust dependency caching for faster builds
     - name: Configure Rust cache
       uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
-          stepflow-rs
+          ./stepflow-rs
 
     # Install cargo-deny for dependency security audit
     # Intsall cargo-machete for unused dependency detection
@@ -93,3 +95,5 @@ runs:
     - name: Run Rust build and test checks
       shell: bash
       run: ./scripts/check-rust.sh -v
+      env:
+        RUSTFLAGS: -D warnings
