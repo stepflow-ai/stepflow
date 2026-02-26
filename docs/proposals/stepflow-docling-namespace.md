@@ -7,6 +7,16 @@
 
 Deploy the docling-step-worker integration as a standalone Kubernetes namespace that proves the "drop-in replacement for docling-serve" story end-to-end. A caller hitting `localhost:5001` should see identical behavior to upstream docling-serve — same endpoints, same request/response shapes — backed by 3 load-balanced docling-step-worker pods orchestrated through Stepflow.
 
+This deployment is also a live demonstration that docling-step-worker already addresses known architectural limitations in upstream docling-serve (documented in detail in `docling-step-worker.md`):
+
+- **In-memory task state prevents horizontal scaling** ([docling-serve #378](https://github.com/docling-project/docling-serve/issues/378), [#317](https://github.com/docling-project/docling-serve/issues/317)) — docling-serve stores async task state in an in-memory dict pinned to a single Uvicorn worker. Users are told to set `UVICORN_WORKERS=1`. In our deployment, all execution state lives in the Stepflow server. Any pod can serve status polls for any task. The 3-worker pool demonstrates this directly.
+
+- **No horizontal scaling path** ([docling-serve #10](https://github.com/docling-project/docling-serve/issues/10), [#257](https://github.com/docling-project/docling-serve/issues/257), [Discussion #1890](https://github.com/docling-project/docling/discussions/1890)) — docling-serve runs an isolated orchestrator per process with no shared queue. Users are advised to use sticky sessions. Our deployment routes through Stepflow's orchestrator → Pingora LB → 3 workers with least-connections. No sticky sessions, shared state by default.
+
+- **Sync timeout handling** ([docling-serve #317](https://github.com/docling-project/docling-serve/issues/317)) — `DOCLING_SERVE_MAX_SYNC_WAIT` has no effect beyond ~250s due to ASGI/Uvicorn limits. Our sync path uses `StepflowClient.run()` with server-side `wait_timeout`, independent of the ASGI stack.
+
+The `stepflow-docling` namespace makes these improvements concrete and testable rather than theoretical.
+
 ## Non-goals
 
 This is **not** an extension of the existing `stepflow` namespace. That namespace was built around langflow integration and carries architecture (langflow workers, OpenSearch, docling-serve sidecar pattern) that is irrelevant here. We reuse only the structural conventions (deployment/service/headless patterns, o11y wiring, Pingora LB) and the shared `stepflow-o11y` observability stack.
