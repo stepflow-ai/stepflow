@@ -465,7 +465,7 @@ impl Plugin for StepflowPlugin {
 
         // Single attempt — the orchestrator handles retries and provides the
         // monotonically increasing attempt number.
-        let response = client_handle
+        let response = match client_handle
             .method(
                 &ComponentExecuteParams {
                     component: component.clone(),
@@ -476,7 +476,31 @@ impl Plugin for StepflowPlugin {
                 Some(Arc::clone(run_context)),
             )
             .await
-            .change_context(PluginError::Execution)?;
+        {
+            Ok(response) => response,
+            Err(report) => {
+                // Check if this is a component server error (MethodError response)
+                // vs a true transport failure (subprocess crash, network timeout).
+                // Component server errors should become FlowResult::Failed so
+                // the executor can use the original error code for retry decisions.
+                if let Some(TransportError::ServerError {
+                    code,
+                    message,
+                    data,
+                }) = report.frames().find_map(|f| f.downcast_ref::<TransportError>())
+                {
+                    let flow_error = stepflow_core::FlowError {
+                        code: *code as i64,
+                        message: message.clone().into(),
+                        data: data.clone().map(ValueRef::new),
+                    };
+                    return Ok(FlowResult::Failed(flow_error));
+                }
+                // True transport error — propagate as Err for the step runner
+                // to tag as TRANSPORT_ERROR.
+                return Err(report.change_context(PluginError::Execution));
+            }
+        };
 
         // Resolve any blob refs in the output (safe no-op if none present)
         let output = if should_blobify {
