@@ -70,7 +70,11 @@ async def test_failover_recovery_sequential(compose_env):
     # 5. Release step2 so orch-2 can proceed after claiming the orphan
     release_delay("step2")
 
-    # 6. Orch-2 should claim the orphan after lease expiry and finish the run
+    # 6. Release step3 when dispatched by recovery
+    poll_for_delay("step3", timeout=30)
+    release_delay("step3")
+
+    # 7. Orch-2 should claim the orphan after lease expiry and finish the run
     result = await wait_for_run(ORCH2_URL, run_id, timeout=60)
 
     # 7. Assertions
@@ -128,6 +132,10 @@ async def test_failover_recovery_parallel(compose_env):
     # Release remaining parallel steps so orch-2 can proceed after failover
     for label in ["parallel_b", "parallel_c", "parallel_d"]:
         release_delay(label)
+
+    # Release aggregate when dispatched by recovery
+    poll_for_delay("aggregate", timeout=30)
+    release_delay("aggregate")
 
     result = await wait_for_run(ORCH2_URL, run_id, timeout=90)
     assert result["status"] == "completed"

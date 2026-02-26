@@ -158,10 +158,23 @@ else
 fi
 
 # =============================================================================
-# RUN RECOVERY TESTS
+# DOCKER BUILD (pre-build images so pytest doesn't timeout during build)
 # =============================================================================
 
 cd "$RECOVERY_DIR"
+
+COMPOSE_CMD=(docker compose -f docker-compose.yml)
+if [ -n "$COMPOSE_OVERRIDE" ]; then
+    COMPOSE_CMD+=(-f "$COMPOSE_OVERRIDE")
+fi
+
+if ! run_check "Docker build" "${COMPOSE_CMD[@]}" build; then
+    print_fix "Fix Docker build errors"
+fi
+
+# =============================================================================
+# RUN RECOVERY TESTS
+# =============================================================================
 
 if ! run_check "Recovery tests" uv run pytest -v --timeout=300; then
     print_fix "Fix failing recovery tests"

@@ -75,7 +75,11 @@ async def test_restart_recovery_sequential(compose_env):
     # 6. Release step2 so recovery can proceed
     release_delay("step2")
 
-    # 7. Wait for run to complete via recovery
+    # 7. Release step3 when dispatched by recovery
+    poll_for_delay("step3", timeout=30)
+    release_delay("step3")
+
+    # 8. Wait for run to complete via recovery
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
 
     # 8. Assertions
@@ -142,6 +146,10 @@ async def test_restart_recovery_parallel(compose_env):
     # Release all remaining held parallel steps so recovery can proceed
     for label in ["parallel_b", "parallel_c", "parallel_d"]:
         release_delay(label)
+
+    # Release aggregate when dispatched by recovery
+    poll_for_delay("aggregate", timeout=30)
+    release_delay("aggregate")
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
     assert result["status"] == "completed"

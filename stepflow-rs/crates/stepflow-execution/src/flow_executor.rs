@@ -17,7 +17,7 @@
 //! a pluggable [`Scheduler`] and manages concurrency, state tracking, and
 //! result recording.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -93,6 +93,9 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+    /// Subflow run IDs that were in-flight (initialized but not completed) at crash time.
+    /// These already have a `RunInitialized` journal event, so recovery skips writing a duplicate.
+    inflight_subflow_run_ids: HashSet<Uuid>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -112,6 +115,7 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        inflight_subflow_run_ids: HashSet<Uuid>,
         checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
@@ -126,6 +130,7 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
+            inflight_subflow_run_ids,
             checkpointer,
         }
     }
@@ -587,6 +592,12 @@ impl FlowExecutor {
         for rid in run_ids {
             if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
+
+                // Skip duplicate RunInitialized journal write for subflows that were
+                // already in-flight before the crash — they already have this event.
+                if self.inflight_subflow_run_ids.contains(&rid) {
+                    continue;
+                }
 
                 // Journal: Record the needed steps for this run
                 let needed_steps = run_state.items_state().needed_steps_for_journal();

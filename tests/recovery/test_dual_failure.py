@@ -86,11 +86,17 @@ async def test_dual_failure_recovery(compose_env):
     for label in ["step2", "parallel_b", "parallel_c", "parallel_d"]:
         release_delay(label)
 
-    # 8. Wait for both runs to complete (either orchestrator may claim either run)
+    # 8. Release step3 and aggregate when dispatched by recovery
+    poll_for_delay("step3", timeout=30)
+    release_delay("step3")
+    poll_for_delay("aggregate", timeout=30)
+    release_delay("aggregate")
+
+    # 9. Wait for both runs to complete (either orchestrator may claim either run)
     result_a = await wait_for_run_on_either(run_a_id, timeout=90)
     result_b = await wait_for_run_on_either(run_b_id, timeout=90)
 
-    # 9. Assertions — both runs succeeded
+    # 10. Assertions — both runs succeeded
     assert result_a["status"] == "completed", f"Run A: {result_a['status']}"
     assert result_b["status"] == "completed", f"Run B: {result_b['status']}"
 
