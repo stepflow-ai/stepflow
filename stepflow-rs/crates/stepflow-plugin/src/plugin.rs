@@ -63,9 +63,12 @@ pub trait Plugin: Send + Sync {
 
     /// Prepare the plugin for a retry after a transport error.
     ///
-    /// Implementations may use this to recover resources needed for the next
-    /// attempt (e.g. restarting a crashed subprocess). The default is a no-op.
-    async fn prepare_for_retry(&self) -> Result<()>;
+    /// Implementations may use this to recover / re-initialize resources needed
+    /// for the next attempt (e.g. restarting a crashed subprocess). The default
+    /// is a no-op.
+    async fn prepare_for_retry(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Trait implemented by a deserializable plugin configuration.

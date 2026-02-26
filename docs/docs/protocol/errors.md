@@ -59,3 +59,19 @@ The protocol defines error codes in standardized ranges following JSON-RPC conve
 | -32010 | Session Expired | HTTP session has expired | Session cleanup or timeout |
 | -32011 | Invalid Value | Invalid value for a field | Value in a field is not valid |
 | -32012 | Not found | Referenced value is not found | Referenced entity does not exist |
+
+### Flow Result Error Codes
+
+When a step fails, the orchestrator surfaces the error in the run result with a positive error code. These codes are distinct from the JSON-RPC protocol codes above, which are used for communication between the orchestrator and component servers.
+
+| Code | Name | Description |
+|------|------|-------------|
+| 1 | Undefined Field | A referenced field does not exist in the step output |
+| 500 | Component Error | The component ran and returned an error (default code for component-reported failures) |
+| 503 | Transport Error | Infrastructure failure — the component never ran or didn't complete (subprocess crash, network timeout, connection refused) |
+
+The orchestrator uses these codes to make retry decisions:
+
+- **503 (Transport Error)**: Retried up to `retry.transportMaxRetries` (default: 3). The plugin's `prepare_for_retry()` is called before each retry to allow resource recovery (e.g. restarting a crashed subprocess).
+- **500 (Component Error)**: Retried only if the step has `onError: { action: retry }`, up to `maxRetries` (default: 3).
+- **Other codes**: Not retried automatically.
