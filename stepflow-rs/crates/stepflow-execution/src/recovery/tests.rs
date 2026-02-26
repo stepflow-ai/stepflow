@@ -1892,6 +1892,20 @@ async fn test_recovery_resumes_inflight_subflow() {
         )
         .await
         .unwrap();
+    // Subflow: RunCreated (written before SubflowSubmitted, matching production order)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: inflight_subflow_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: Some(root_run_id),
+            },
+        )
+        .await
+        .unwrap();
     // SubflowSubmitted: root step0 submitted the subflow
     journal
         .write(
@@ -1902,20 +1916,6 @@ async fn test_recovery_resumes_inflight_subflow() {
                 step_index: 0,
                 subflow_key,
                 subflow_run_id: inflight_subflow_id,
-            },
-        )
-        .await
-        .unwrap();
-    // Subflow: RunCreated
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RunCreated {
-                run_id: inflight_subflow_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
             },
         )
         .await

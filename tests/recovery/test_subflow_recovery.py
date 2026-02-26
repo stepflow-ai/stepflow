@@ -118,7 +118,7 @@ async def test_subflow_failover_recovery(compose_env):
     5. Release recovered inner_delay and final_step
     6. Assert: all inner_delay executions belong to a single subflow run_id
        (recovery reuses the subflow, doesn't restart from scratch)
-    7. Assert: final_step executed once
+    7. Assert: final_step executed at least once
     """
     clear_tracker()
 
