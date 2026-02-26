@@ -3,7 +3,7 @@
 **Status:** Draft  
 **Authors:** Nate McCall  
 **Created:** February 2026  
-**Prerequisite:** Existing `integrations/docling/` package and K8s deployment (see `docling-integration.md`)
+**Prerequisite:** Existing `integrations/docling/` package and [K8s deployment](./stepflow-docling-namespace.md)
 
 ## Summary
 
@@ -14,24 +14,24 @@ This proposal describes two complementary strategies for scaling document proces
 
 Each phase delivers standalone value while structurally enabling the next. The entire approach works **without forking or modifying any docling project code**.
 
-**Prerequisite:** The `docling-step-worker` proposal (see `docling-step-worker.md`) establishes the flow abstraction and validates output parity using the Python SDK with no changes required to any Docling code. This proposal builds the Rust infrastructure and native components that progressively replace what's behind that flow contract.
+**Prerequisite:** The [docling-step-worker proposal](./docling-step-worker.md) establishes the flow abstraction and validates output parity using the Python SDK with no changes required to any Docling code. This proposal builds on the effort by using the Rust infrastructure and native components to progressively replace what's behind that flow contract.
 
 **Current state:** Python `StepflowDoclingServer` → HTTP → `docling-serve` sidecar (~31s/paper avg, monolithic sequential pipeline)  
-**End state:** Disaggregated Stepflow flow with per-stage parallelism, Rust-native processing for the common path, and docling-serve fallback for complex formats. A single 50-page document that today takes ~37s can be parallelized across layout workers to ~4s + assembly overhead.
+**End state:** Build on the docling-serve emulation defined in the [docling-step-worker proposal](./docling-step-worker.md) to create a Disaggregated Stepflow flow with per-stage parallelism, Rust-native processing for the common path, and docling-serve fallback for complex formats. A single 50-page document that today takes ~37s can be parallelized across layout workers to ~4s + assembly overhead.
 
 ## Motivation
 
 ### Operational Overhead
 
-The current Python-based `StepflowDoclingServer` adds significant operational weight to each docling-worker pod. The worker itself is a thin HTTP proxy — it receives Stepflow JSON-RPC requests, reformats them, and forwards to the docling-serve sidecar on localhost. Despite this simplicity, it requires a full Python runtime, `uv` dependency resolution, and ~150-200MB of memory overhead.
+The current Python-based `StepflowDoclingServer` is designed for integration with Langflow's use of Docling and as such adds significant operational weight to each docling-worker pod. The worker itself is a thin HTTP proxy — it receives Stepflow JSON-RPC requests, reformats them, and forwards to the docling-serve sidecar on localhost. Despite this simplicity, it requires a full Python runtime, `uv` dependency resolution, and ~150-200MB of memory overhead. The new docling-step-worker creates a full doculing-serve replacement with much lower per-pod overhead (as we no longer require Langflow integration), but still just delegates to docling internals. 
 
 ### Performance at Scale
 
-From our K8s performance testing (`examples/production/k8s/run-pdf-workflow.sh`), the sweet spot for our Kind node is 3 docling pods with parallelism=4, yielding ~31s/paper. CPU contention is the binding constraint — at `OMP_NUM_THREADS=4, cpu limit=4000m`, adding a 4th pod saturates the node rather than improving throughput. Reducing per-pod overhead directly increases the headroom available for actual document processing.
+From our K8s performance testing (`examples/production/k8s/run-pdf-workflow.sh`), the sweet spot for our Kind node is 3 docling pods with parallelism=4, yielding ~31s/paper. CPU contention is the binding constraint — at `OMP_NUM_THREADS=4, cpu limit=4000m`, adding a 4th pod saturates the node rather than improving throughput. Reducing per-pod overhead directly increases the headroom available for actual document processing. Additionally, even just breaking up the docling pipeline to enable page-level parallelism will create a substantial performance improvement by supporting per-page fan out across the architecture. 
 
 ### Path Toward Native Processing
 
-As document ingestion scales, the HTTP round-trip through docling-serve adds latency and complexity. A Rust-based server creates the foundation for eventually performing document processing natively — particularly chunking (CPU-bound, no ML) and ONNX inference (the layout model already uses ONNX Runtime).
+As document ingestion scales, the HTTP round-trip through docling-serve adds latency and complexity. A Rust-based server creates the foundation for eventually performing document processing natively. Particularly compeling as replacement candidates are the chunking (CPU-bound, no ML) and ONNX inference (the layout model already uses ONNX Runtime) use cases. Not only will they be faster as native Rust components (no Global Interpreter Lock and python dependency baggage for starters), will again enable parallelism and fan-out by allowing stepflow internals to route tasks to optimised instances, eg. GPU based hardware for inference. 
 
 ## Background
 
