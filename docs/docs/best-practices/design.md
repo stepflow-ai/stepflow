@@ -606,16 +606,13 @@ steps:
 ```
 
 ```yaml
-# ✅ Good - comprehensive error handling
+# ✅ Good - retry on failure
 steps:
   - id: critical_operation
     component: /external/api
-    on_error:
+    onError:
       action: retry
-      max_attempts: 3
-      fallback:
-        action: use_default
-        default_value: { status: "unavailable" }
+      maxRetries: 3
     input:
       data: { $input: "$" }
 ```
