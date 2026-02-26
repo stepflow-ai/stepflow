@@ -24,6 +24,7 @@ from unittest.mock import MagicMock
 from docling_step_worker.response_builder import (
     build_convert_response,
     build_export_document,
+    normalize_format_name,
 )
 
 
@@ -112,6 +113,26 @@ class TestBuildExportDocument:
         )
 
         assert result["md_content"] == "# Title\n\nBody text"
+        assert result["_export_errors"] == []
+
+    def test_format_name_md_normalized_to_markdown(self):
+        doc = _make_mock_doc()
+        result = build_export_document(doc, "test.pdf", to_formats=["md"])
+
+        assert result["md_content"] == "# Title\n\nBody text"
+
+    def test_format_name_all_aliases(self):
+        assert normalize_format_name("md") == "markdown"
+        assert normalize_format_name("html") == "html"
+        assert normalize_format_name("json") == "json"
+        assert normalize_format_name("text") == "text"
+        assert normalize_format_name("doctags") == "doctags"
+
+    def test_unknown_format_name_skipped_after_normalization(self):
+        doc = _make_mock_doc()
+        result = build_export_document(doc, "test.pdf", to_formats=["xml"])
+
+        assert "xml_content" not in result
         assert result["_export_errors"] == []
 
     def test_export_failure_produces_none_and_error_item(self):

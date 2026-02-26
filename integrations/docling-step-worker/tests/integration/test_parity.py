@@ -422,3 +422,79 @@ class TestFullPipelineParity:
         assert classification["format"] == "pdf"
         assert len(doc_dict.get("pages", {})) > 0
         assert len(doc_dict.get("texts", [])) > 0
+
+
+class TestConverterCacheIntegration:
+    """Test ConverterCache with real docling converters."""
+
+    def test_convert_with_ocr_disabled(self, test_pdf_bytes):
+        """options with do_ocr=false produces valid output."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.converter_cache import ConverterCache
+
+        cache = ConverterCache()
+        converter = cache.get_by_options({"do_ocr": False})
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = converter.convert(source=stream)
+        doc_dict = result.document.export_to_dict()
+
+        assert doc_dict.get("schema_name") == "DoclingDocument"
+
+    def test_convert_with_table_mode_accurate(self, test_pdf_bytes):
+        """options with table_mode=accurate works."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.converter_cache import ConverterCache
+
+        cache = ConverterCache()
+        converter = cache.get_by_options({"table_mode": "accurate"})
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = converter.convert(source=stream)
+        doc_dict = result.document.export_to_dict()
+
+        assert doc_dict.get("schema_name") == "DoclingDocument"
+
+    def test_convert_with_all_to_formats_short_names(
+        self, test_pdf_bytes, docling_converter
+    ):
+        """All short format names produce content via normalization."""
+        from docling.datamodel.base_models import DocumentStream
+
+        from docling_step_worker.response_builder import build_convert_response
+
+        stream = DocumentStream(name="test.pdf", stream=BytesIO(test_pdf_bytes))
+        result = docling_converter.convert(source=stream)
+
+        # Use short names — normalization should map "md" → "markdown"
+        from docling_step_worker.response_builder import normalize_format_name
+
+        short_names = ["md", "json", "html", "text", "doctags"]
+        normalized = [normalize_format_name(f) for f in short_names]
+
+        response = build_convert_response(
+            result.document,
+            filename="test.pdf",
+            elapsed_seconds=1.0,
+            to_formats=normalized,
+        )
+
+        assert response["document"]["md_content"] is not None
+        assert response["document"]["json_content"] is not None
+        assert response["document"]["html_content"] is not None
+        assert response["document"]["text_content"] is not None
+        assert response["document"]["doctags_content"] is not None
+
+    def test_converter_cache_reuse(self):
+        """Same options produce same converter instance."""
+        from docling_step_worker.converter_cache import ConverterCache
+
+        cache = ConverterCache()
+        opts = {"do_ocr": False, "do_table_structure": False}
+
+        c1 = cache.get_by_options(opts)
+        c2 = cache.get_by_options(opts)
+
+        assert c1 is c2

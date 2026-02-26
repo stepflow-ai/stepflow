@@ -27,6 +27,46 @@ schemas:
           type: string
           enum: [embedded, placeholder, referenced]
           description: Image reference mode for markdown/html exports (default: embedded)
+        options:
+          type: object
+          description: "docling-serve compatible conversion options"
+          properties:
+            to_formats:
+              type: array
+              items:
+                type: string
+            image_export_mode:
+              type: string
+            do_ocr:
+              type: boolean
+            force_ocr:
+              type: boolean
+            ocr_engine:
+              type: string
+            ocr_lang:
+              type: array
+              items:
+                type: string
+            pdf_backend:
+              type: string
+            table_mode:
+              type: string
+            do_table_structure:
+              type: boolean
+            include_images:
+              type: boolean
+            images_scale:
+              type: number
+            page_range:
+              type: string
+            document_timeout:
+              type: number
+            abort_on_error:
+              type: boolean
+            from_formats:
+              type: array
+              items:
+                type: string
         chunk_options:
           type: object
           description: Optional chunking configuration
@@ -65,6 +105,7 @@ steps:
       pipeline_config: { $step: "classify", path: "recommended_config" }
       to_formats: { $input: "to_formats" }
       image_export_mode: { $input: "image_export_mode" }
+      options: { $input: "options" }
 
   - id: chunk
     component: /docling/chunk

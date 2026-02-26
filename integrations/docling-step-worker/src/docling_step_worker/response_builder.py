@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_TO_FORMATS: list[str] = ["markdown"]
 DEFAULT_IMAGE_EXPORT_MODE = "embedded"
 
+# docling-serve short name → internal name
+FORMAT_NAME_ALIASES: dict[str, str] = {
+    "md": "markdown",
+}
+
 # Maps format name → (export method, content field, accepts_image_mode)
 FORMAT_EXPORT_MAP: dict[str, tuple[str, str, bool]] = {
     "markdown": ("export_to_markdown", "md_content", True),
@@ -39,6 +44,30 @@ FORMAT_EXPORT_MAP: dict[str, tuple[str, str, bool]] = {
     "json": ("export_to_dict", "json_content", False),
     "doctags": ("export_to_doctags", "doctags_content", False),
 }
+
+# Add yaml and html_split_page if docling supports them
+try:
+    from docling_core.types.doc.document import DoclingDocument as _DocCheck
+
+    if hasattr(_DocCheck, "export_to_yaml"):
+        FORMAT_EXPORT_MAP["yaml"] = ("export_to_yaml", "yaml_content", False)
+    if hasattr(_DocCheck, "export_to_html_split_page"):
+        FORMAT_EXPORT_MAP["html_split_page"] = (
+            "export_to_html_split_page",
+            "html_split_page_content",
+            True,
+        )
+except ImportError:
+    pass
+
+
+def normalize_format_name(name: str) -> str:
+    """Normalize a docling-serve short format name to internal name.
+
+    Maps aliases like ``"md"`` to ``"markdown"``. Unrecognized names
+    are returned unchanged so that the caller can log and skip them.
+    """
+    return FORMAT_NAME_ALIASES.get(name, name)
 
 
 def _make_error_item(message: str) -> dict[str, str]:
@@ -85,7 +114,8 @@ def build_export_document(
 
     result: dict[str, Any] = {"filename": filename}
 
-    for fmt in to_formats:
+    for raw_fmt in to_formats:
+        fmt = normalize_format_name(raw_fmt)
         entry = FORMAT_EXPORT_MAP.get(fmt)
         if entry is None:
             logger.warning("Unknown export format %r, skipping", fmt)
