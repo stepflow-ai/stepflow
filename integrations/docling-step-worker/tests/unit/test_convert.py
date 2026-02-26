@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from docling_step_worker.convert import _run_conversion, convert_document
+from docling_step_worker.converter_cache import ConverterCache
 
 
 def _make_mock_doc():
@@ -51,6 +52,16 @@ def _make_mock_converter(mock_doc=None):
     mock_converter = MagicMock()
     mock_converter.convert.return_value = mock_result
     return mock_converter
+
+
+def _make_mock_cache(mock_converter=None):
+    """Create a mock ConverterCache that returns a mock converter."""
+    if mock_converter is None:
+        mock_converter = _make_mock_converter()
+    cache = MagicMock(spec=ConverterCache)
+    cache.get_by_config_name.return_value = mock_converter
+    cache.get_by_options.return_value = mock_converter
+    return cache, mock_converter
 
 
 class TestRunConversion:
@@ -126,7 +137,7 @@ class TestConvertDocument:
     ):
         mock_get_bytes.return_value = b"fake pdf bytes"
         mock_put_blob.return_value = "sha256:doc123"
-        mock_converter = _make_mock_converter()
+        mock_cache, mock_converter = _make_mock_cache()
 
         result = await convert_document(
             {
@@ -135,7 +146,7 @@ class TestConvertDocument:
                 "to_formats": ["json"],
             },
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         assert result["status"] == "success"
@@ -150,7 +161,7 @@ class TestConvertDocument:
     ):
         mock_get_bytes.return_value = b"pdf bytes"
         mock_put_blob.return_value = "sha256:doc123"
-        mock_converter = _make_mock_converter()
+        mock_cache, _ = _make_mock_cache()
 
         result = await convert_document(
             {
@@ -159,7 +170,7 @@ class TestConvertDocument:
                 "to_formats": ["markdown"],
             },
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         assert result["status"] == "success"
@@ -174,28 +185,6 @@ class TestConvertDocument:
         assert "processing_time_ms" not in result
 
     @pytest.mark.asyncio
-    @patch("docling_step_worker.convert.get_document_bytes")
-    async def test_does_not_accept_pipeline_options(self, mock_get_bytes, mock_context):
-        """Pipeline options in input should be ignored."""
-        mock_get_bytes.return_value = b"pdf bytes"
-        mock_converter = _make_mock_converter()
-
-        # pipeline_options in input should be ignored
-        await convert_document(
-            {
-                "source": "blob:sha256:abc",
-                "source_kind": "blob",
-                "pipeline_options": {"do_ocr": True},
-            },
-            mock_context,
-            mock_converter,
-        )
-
-        # converter.convert() should NOT receive pipeline_options
-        call_kwargs = mock_converter.convert.call_args.kwargs
-        assert "pipeline_options" not in call_kwargs
-
-    @pytest.mark.asyncio
     @patch("docling_step_worker.convert.put_document_blob")
     @patch("docling_step_worker.convert.get_document_bytes")
     async def test_stores_document_dict_in_blob_store(
@@ -203,7 +192,7 @@ class TestConvertDocument:
     ):
         mock_get_bytes.return_value = b"pdf bytes"
         mock_put_blob.return_value = "sha256:stored_doc"
-        mock_converter = _make_mock_converter()
+        mock_cache, _ = _make_mock_cache()
 
         doc_dict = {
             "schema_name": "DoclingDocument",
@@ -215,7 +204,7 @@ class TestConvertDocument:
         result = await convert_document(
             {"source": "blob:sha256:abc", "source_kind": "blob"},
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         # Blob store receives document_dict, not the full response
@@ -229,11 +218,12 @@ class TestConvertDocument:
 
         mock_converter = MagicMock()
         mock_converter.convert.side_effect = RuntimeError("conversion failed")
+        mock_cache, _ = _make_mock_cache(mock_converter)
 
         result = await convert_document(
             {"source": "blob:sha256:abc", "source_kind": "blob"},
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         assert result["status"] == "failure"
@@ -248,12 +238,12 @@ class TestConvertDocument:
     async def test_handles_retrieval_error(self, mock_get_bytes, mock_context):
         mock_get_bytes.side_effect = RuntimeError("blob not found")
 
-        mock_converter = MagicMock()
+        mock_cache, mock_converter = _make_mock_cache()
 
         result = await convert_document(
             {"source": "blob:sha256:missing", "source_kind": "blob"},
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         assert result["status"] == "failure"
@@ -272,7 +262,7 @@ class TestConvertDocument:
     ):
         mock_get_bytes.return_value = b"pdf bytes"
         mock_put_blob.return_value = "sha256:doc"
-        mock_converter = _make_mock_converter()
+        mock_cache, _ = _make_mock_cache()
 
         result = await convert_document(
             {
@@ -281,8 +271,130 @@ class TestConvertDocument:
                 "to_formats": ["markdown", "json"],
             },
             mock_context,
-            mock_converter,
+            mock_cache,
         )
 
         assert "md_content" in result["document"]
         assert "json_content" in result["document"]
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_options_dict_passed_to_converter_cache(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """When options dict is present, get_by_options is called."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, _ = _make_mock_cache()
+
+        options = {"do_ocr": False, "table_mode": "accurate"}
+        await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "options": options,
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        mock_cache.get_by_options.assert_called_once_with(options)
+        mock_cache.get_by_config_name.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_pipeline_config_used_when_no_options(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """When no options dict, get_by_config_name is called."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, _ = _make_mock_cache()
+
+        await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "pipeline_config": "scanned",
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        mock_cache.get_by_config_name.assert_called_once_with("scanned")
+        mock_cache.get_by_options.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_options_take_precedence_over_pipeline_config(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """When both options and pipeline_config are present, options win."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, _ = _make_mock_cache()
+
+        options = {"do_ocr": True}
+        await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "pipeline_config": "born_digital",
+                "options": options,
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        mock_cache.get_by_options.assert_called_once_with(options)
+        mock_cache.get_by_config_name.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_backward_compat_top_level_to_formats(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """Old-style top-level to_formats still works."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, _ = _make_mock_cache()
+
+        result = await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "to_formats": ["markdown", "html"],
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        assert "md_content" in result["document"]
+        assert "html_content" in result["document"]
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_to_formats_in_options_normalized(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """to_formats=["md"] in options is normalized to ["markdown"]."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, _ = _make_mock_cache()
+
+        result = await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "options": {"to_formats": ["md"]},
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        assert "md_content" in result["document"]

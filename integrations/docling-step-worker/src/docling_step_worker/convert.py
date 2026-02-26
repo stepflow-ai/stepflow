@@ -15,8 +15,8 @@
 """Document conversion component.
 
 Wraps docling's DocumentConverter.convert() directly.
-The converter is pre-configured with pipeline options selected
-by config name in the server layer.
+Supports both named pipeline configs (from classify step) and
+per-request options matching docling-serve's ConvertDocumentsOptions.
 """
 
 from __future__ import annotations
@@ -35,9 +35,11 @@ from docling_step_worker.blob_utils import (
     get_document_bytes,
     put_document_blob,
 )
+from docling_step_worker.converter_cache import ConverterCache
 from docling_step_worker.response_builder import (
     _make_error_item,
     build_convert_response,
+    normalize_format_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,18 +88,19 @@ def _run_conversion(
 async def convert_document(
     input_data: dict[str, Any],
     context: StepflowContext,
-    converter: DocumentConverter,
+    converter_cache: ConverterCache,
 ) -> dict[str, Any]:
     """Convert a document using docling's DocumentConverter directly.
 
-    The converter is pre-configured with the appropriate pipeline options
-    (selected by pipeline_config name in the server layer). This function
-    does NOT accept per-request pipeline_options — DocumentConverter.convert()
-    doesn't support that.
+    Supports both named pipeline configs (from classify step) and
+    per-request options matching docling-serve's ConvertDocumentsOptions.
+    Per-request options take precedence over named configs.
 
     Input:
         source: blob reference or URL
         source_kind: "blob" or "url"
+        pipeline_config: named config from classify step (default: "default")
+        options: dict of docling-serve compatible conversion options
         to_formats: list of export formats (default: ["markdown"])
         image_export_mode: image reference mode (default: "embedded")
 
@@ -112,8 +115,26 @@ async def convert_document(
     source = input_data.get("source", "")
     source_kind = input_data.get("source_kind", "blob")
     filename = input_data.get("filename", "document.pdf")
-    to_formats = input_data.get("to_formats")
-    image_export_mode = input_data.get("image_export_mode")
+
+    # Per-request options (nested dict) take precedence
+    request_options = input_data.get("options")
+    pipeline_config = input_data.get("pipeline_config", "default")
+
+    if request_options:
+        converter = converter_cache.get_by_options(request_options)
+        # to_formats and image_export_mode from options take precedence
+        to_formats = request_options.get("to_formats", input_data.get("to_formats"))
+        image_export_mode = request_options.get(
+            "image_export_mode", input_data.get("image_export_mode")
+        )
+    else:
+        converter = converter_cache.get_by_config_name(pipeline_config)
+        to_formats = input_data.get("to_formats")
+        image_export_mode = input_data.get("image_export_mode")
+
+    # Normalize format names (e.g. "md" → "markdown")
+    if to_formats:
+        to_formats = [normalize_format_name(f) for f in to_formats]
 
     try:
         doc_bytes = await get_document_bytes(source, source_kind)

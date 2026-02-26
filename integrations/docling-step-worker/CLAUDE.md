@@ -68,7 +68,7 @@ uv run poe check        # All checks + tests
 ## Architecture
 
 - **No sidecar** — docling library runs in-process
-- **Pipeline configs** are constructor-level, not per-request. One `DocumentConverter` per named config, lazily initialized.
+- **ConverterCache** — LRU cache of `DocumentConverter` instances keyed by options hash. Supports both named pipeline configs (from classify) and per-request docling-serve compatible options. Matches docling-serve's caching strategy.
 - **DocumentStream** — documents passed as in-memory `BytesIO` wrappers, no temp files
 - **asyncio.to_thread()** — sync docling calls wrapped to avoid blocking the event loop
 - **Blob store** — binary documents flow through Stepflow's blob store via `StepflowContext`
@@ -77,8 +77,9 @@ uv run poe check        # All checks + tests
 
 - `src/docling_step_worker/server.py` — Main server, component registration
 - `src/docling_step_worker/classify.py` — Document probing via pypdfium2
-- `src/docling_step_worker/convert.py` — DocumentConverter wrapper
-- `src/docling_step_worker/response_builder.py` — Renders ConversionResult into docling-serve response shape
+- `src/docling_step_worker/convert.py` — DocumentConverter wrapper, options/config dispatch
+- `src/docling_step_worker/converter_cache.py` — LRU converter cache, options-to-pipeline mapping
+- `src/docling_step_worker/response_builder.py` — Renders ConversionResult into docling-serve response shape, format name normalization
 - `src/docling_step_worker/chunk.py` — HybridChunker wrapper
 - `src/docling_step_worker/config.py` — Named pipeline configurations
 - `src/docling_step_worker/blob_utils.py` — Blob store helpers
