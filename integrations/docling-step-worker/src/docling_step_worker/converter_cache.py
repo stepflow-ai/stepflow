@@ -25,6 +25,8 @@ import json
 import logging
 from typing import Any
 
+from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
@@ -54,6 +56,12 @@ OCR_ENGINE_MAP = {
 TABLE_MODE_MAP = {
     "fast": TableFormerMode.FAST,
     "accurate": TableFormerMode.ACCURATE,
+}
+
+# Map docling-serve's pdf_backend string to backend class
+PDF_BACKEND_MAP: dict[str, type] = {
+    "dlparse_v2": DoclingParseDocumentBackend,
+    "pypdfium2": PyPdfiumDocumentBackend,
 }
 
 
@@ -94,6 +102,13 @@ def build_pipeline_options(request_options: dict[str, Any]) -> PdfPipelineOption
     if "include_images" in request_options:
         kwargs["generate_picture_images"] = request_options["include_images"]
 
+    if "abort_on_error" in request_options:
+        # abort_on_error may not be available in all docling versions
+        if "abort_on_error" in PdfPipelineOptions.model_fields:
+            kwargs["abort_on_error"] = request_options["abort_on_error"]
+        else:
+            logger.warning("abort_on_error not supported in this docling version")
+
     # Table mode
     table_mode = request_options.get("table_mode")
     if table_mode and table_mode in TABLE_MODE_MAP:
@@ -130,11 +145,25 @@ def build_converter(request_options: dict[str, Any]) -> DocumentConverter:
 
     pipeline_cls = StandardPdfPipeline
 
+    # pdf_backend → backend class
+    pdf_format_kwargs: dict[str, Any] = {
+        "pipeline_cls": pipeline_cls,
+        "pipeline_options": pipeline_options,
+    }
+    pdf_backend = request_options.get("pdf_backend")
+    if pdf_backend:
+        backend_cls = PDF_BACKEND_MAP.get(pdf_backend)
+        if backend_cls:
+            pdf_format_kwargs["backend"] = backend_cls
+        else:
+            logger.warning(
+                "Unknown pdf_backend '%s', using default. Supported: %s",
+                pdf_backend,
+                list(PDF_BACKEND_MAP.keys()),
+            )
+
     format_options: dict[InputFormat, FormatOption] = {
-        InputFormat.PDF: PdfFormatOption(
-            pipeline_cls=pipeline_cls,
-            pipeline_options=pipeline_options,
-        )
+        InputFormat.PDF: PdfFormatOption(**pdf_format_kwargs)
     }
 
     # from_formats → allowed_formats

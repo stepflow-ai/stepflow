@@ -24,6 +24,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMo
 from docling_step_worker.converter_cache import (
     ConverterCache,
     _options_hash,
+    build_converter,
     build_pipeline_options,
 )
 
@@ -102,6 +103,58 @@ class TestBuildPipelineOptions:
             opts = build_pipeline_options({"ocr_engine": "nonexistent"})
         default = PdfPipelineOptions()
         assert opts.ocr_options == default.ocr_options
+
+    def test_abort_on_error_logged_when_unsupported(self, caplog):
+        """abort_on_error logs warning if unsupported."""
+        has_field = "abort_on_error" in PdfPipelineOptions.model_fields
+        with caplog.at_level(logging.WARNING):
+            opts = build_pipeline_options({"abort_on_error": True})
+        if has_field:
+            assert opts.abort_on_error is True
+        else:
+            assert "abort_on_error not supported" in caplog.text
+
+
+class TestBuildConverter:
+    """Tests for build_converter with pdf_backend."""
+
+    def test_pdf_backend_dlparse_v2(self):
+        from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+
+        converter = build_converter({"pdf_backend": "dlparse_v2"})
+        from docling.datamodel.base_models import InputFormat
+
+        fmt_opt = converter.format_to_options[InputFormat.PDF]
+        assert fmt_opt.backend is DoclingParseDocumentBackend
+
+    def test_pdf_backend_pypdfium2(self):
+        from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+
+        converter = build_converter({"pdf_backend": "pypdfium2"})
+        from docling.datamodel.base_models import InputFormat
+
+        fmt_opt = converter.format_to_options[InputFormat.PDF]
+        assert fmt_opt.backend is PyPdfiumDocumentBackend
+
+    def test_pdf_backend_unknown_uses_default(self, caplog):
+        from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+
+        with caplog.at_level(logging.WARNING):
+            converter = build_converter({"pdf_backend": "nonexistent"})
+        assert "Unknown pdf_backend" in caplog.text
+        from docling.datamodel.base_models import InputFormat
+
+        fmt_opt = converter.format_to_options[InputFormat.PDF]
+        assert fmt_opt.backend is DoclingParseDocumentBackend
+
+    def test_pdf_backend_not_set_uses_default(self):
+        from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
+
+        converter = build_converter({})
+        from docling.datamodel.base_models import InputFormat
+
+        fmt_opt = converter.format_to_options[InputFormat.PDF]
+        assert fmt_opt.backend is DoclingParseDocumentBackend
 
 
 class TestConverterCache:

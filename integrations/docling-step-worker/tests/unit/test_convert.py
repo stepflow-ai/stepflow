@@ -23,7 +23,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from docling_step_worker.convert import _run_conversion, convert_document
+from docling_step_worker.convert import (
+    _parse_page_range,
+    _run_conversion,
+    convert_document,
+)
 from docling_step_worker.converter_cache import ConverterCache
 
 
@@ -398,3 +402,81 @@ class TestConvertDocument:
         )
 
         assert "md_content" in result["document"]
+
+
+class TestParsePageRange:
+    """Tests for _parse_page_range helper."""
+
+    def test_none_returns_none(self):
+        assert _parse_page_range(None) is None
+
+    def test_int_returns_none(self):
+        # int values are handled via max_num_pages, not page_range tuple
+        assert _parse_page_range(5) is None
+
+    def test_string_range_parsed(self):
+        assert _parse_page_range("1-10") == (1, 10)
+
+    def test_string_range_single_page(self):
+        assert _parse_page_range("3-3") == (3, 3)
+
+    def test_invalid_string_returns_none(self):
+        assert _parse_page_range("abc") is None
+
+    def test_malformed_range_returns_none(self):
+        assert _parse_page_range("1-abc") is None
+
+
+class TestRunConversionPageRange:
+    """Tests for page_range threading into converter.convert()."""
+
+    def test_page_range_string_passed_as_tuple(self):
+        mock_converter = _make_mock_converter()
+
+        _run_conversion(mock_converter, b"fake pdf", "test.pdf", page_range="1-5")
+
+        call_kwargs = mock_converter.convert.call_args.kwargs
+        assert call_kwargs["page_range"] == (1, 5)
+        assert "max_num_pages" not in call_kwargs
+
+    def test_page_range_int_passed_as_max_num_pages(self):
+        mock_converter = _make_mock_converter()
+
+        _run_conversion(mock_converter, b"fake pdf", "test.pdf", page_range=10)
+
+        call_kwargs = mock_converter.convert.call_args.kwargs
+        assert call_kwargs["max_num_pages"] == 10
+        assert "page_range" not in call_kwargs
+
+    def test_page_range_none_not_passed(self):
+        mock_converter = _make_mock_converter()
+
+        _run_conversion(mock_converter, b"fake pdf", "test.pdf")
+
+        call_kwargs = mock_converter.convert.call_args.kwargs
+        assert "page_range" not in call_kwargs
+        assert "max_num_pages" not in call_kwargs
+
+    @pytest.mark.asyncio
+    @patch("docling_step_worker.convert.put_document_blob")
+    @patch("docling_step_worker.convert.get_document_bytes")
+    async def test_page_range_from_options_threaded(
+        self, mock_get_bytes, mock_put_blob, mock_context
+    ):
+        """page_range in options is threaded to _run_conversion."""
+        mock_get_bytes.return_value = b"pdf bytes"
+        mock_put_blob.return_value = "sha256:doc"
+        mock_cache, mock_converter = _make_mock_cache()
+
+        await convert_document(
+            {
+                "source": "blob:sha256:abc",
+                "source_kind": "blob",
+                "options": {"page_range": "1-5"},
+            },
+            mock_context,
+            mock_cache,
+        )
+
+        call_kwargs = mock_converter.convert.call_args.kwargs
+        assert call_kwargs["page_range"] == (1, 5)

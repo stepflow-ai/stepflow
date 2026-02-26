@@ -45,12 +45,40 @@ from docling_step_worker.response_builder import (
 logger = logging.getLogger(__name__)
 
 
+def _parse_page_range(page_range: int | str | None) -> tuple[int, int] | None:
+    """Parse a page_range value into a (start, end) tuple for converter.convert().
+
+    Accepts:
+        - int: treated as max_num_pages (returns None, caller uses max_num_pages)
+        - str like "1-10": parsed as (start, end) tuple
+        - None: no page range constraint
+
+    Returns:
+        A (start, end) tuple, or None if not applicable.
+        For int values, returns None (caller should use max_num_pages instead).
+    """
+    if page_range is None:
+        return None
+    if isinstance(page_range, int):
+        return None  # handled via max_num_pages in caller
+    if isinstance(page_range, str) and "-" in page_range:
+        parts = page_range.split("-", 1)
+        try:
+            return (int(parts[0]), int(parts[1]))
+        except (ValueError, IndexError):
+            logger.warning("Invalid page_range format '%s', ignoring", page_range)
+            return None
+    logger.warning("Unsupported page_range value '%s', ignoring", page_range)
+    return None
+
+
 def _run_conversion(
     converter: DocumentConverter,
     data: bytes,
     filename: str,
     to_formats: list[str] | None = None,
     image_export_mode: str | None = None,
+    page_range: int | str | None = None,
 ) -> dict[str, Any]:
     """Run synchronous docling conversion.
 
@@ -60,14 +88,24 @@ def _run_conversion(
         filename: Filename for the document stream
         to_formats: Export formats for response rendering
         image_export_mode: Image reference mode for markdown/html
+        page_range: Page range constraint (int for max pages, or "start-end" string)
 
     Returns:
         Dict with document (ExportDocumentResponse shape), document_dict,
         status, processing_time, errors, timings
     """
     stream = bytes_to_document_stream(data, filename)
+
+    convert_kwargs: dict[str, Any] = {"source": stream}
+    if page_range is not None:
+        parsed = _parse_page_range(page_range)
+        if parsed is not None:
+            convert_kwargs["page_range"] = parsed
+        elif isinstance(page_range, int):
+            convert_kwargs["max_num_pages"] = page_range
+
     start = time.monotonic()
-    result = converter.convert(source=stream)
+    result = converter.convert(**convert_kwargs)
     elapsed_seconds = time.monotonic() - start
 
     doc = result.document
@@ -120,6 +158,7 @@ async def convert_document(
     request_options = input_data.get("options")
     pipeline_config = input_data.get("pipeline_config", "default")
 
+    page_range = None
     if request_options:
         converter = converter_cache.get_by_options(request_options)
         # to_formats and image_export_mode from options take precedence
@@ -127,6 +166,7 @@ async def convert_document(
         image_export_mode = request_options.get(
             "image_export_mode", input_data.get("image_export_mode")
         )
+        page_range = request_options.get("page_range")
     else:
         converter = converter_cache.get_by_config_name(pipeline_config)
         to_formats = input_data.get("to_formats")
@@ -158,6 +198,7 @@ async def convert_document(
             filename,
             to_formats,
             image_export_mode,
+            page_range,
         )
     except Exception as e:
         logger.error("Document conversion failed: %s", e)
