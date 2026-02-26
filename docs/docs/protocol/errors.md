@@ -67,11 +67,13 @@ When a step fails, the orchestrator surfaces the error in the run result with a 
 | Code | Name | Description |
 |------|------|-------------|
 | 1 | Undefined Field | A referenced field does not exist in the step output |
-| 500 | Component Error | The component ran and returned an error (default code for component-reported failures) |
-| 503 | Transport Error | Infrastructure failure — the component never ran or didn't complete (subprocess crash, network timeout, connection refused) |
+| 400 | Bad Request | Invalid input or structure |
+| 404 | Not Found | A referenced entity was not found |
+| 500 | Internal Error | The component ran and returned an error (default code for component-reported failures) |
+| 5000+ | Transport Error | Infrastructure failure — the component never ran or didn't complete (subprocess crash, network timeout, connection refused) |
 
 The orchestrator uses these codes to make retry decisions:
 
-- **503 (Transport Error)**: Retried up to `retry.transportMaxRetries` (default: 3). The plugin's `prepare_for_retry()` is called before each retry to allow resource recovery (e.g. restarting a crashed subprocess).
-- **500 (Component Error)**: Retried only if the step has `onError: { action: retry }`, up to `maxRetries` (default: 3).
-- **Other codes**: Not retried automatically.
+- **5000+ (Transport Error)**: Any code ≥ 5000 is treated as a transport error. Retried up to `retry.transportMaxRetries` (default: 3). The plugin's `prepare_for_retry()` is called before each retry to allow resource recovery (e.g. restarting a crashed subprocess).
+- **Other codes (Component Error)**: Retried only if the step has `onError: { action: retry }`, up to `maxRetries` (default: 3).
+- Codes without a matching retry policy are not retried.

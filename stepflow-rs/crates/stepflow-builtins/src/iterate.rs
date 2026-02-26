@@ -148,7 +148,7 @@ impl BuiltinComponent for IterateComponent {
 
                     // Result doesn't have expected structure - return error
                     return Ok(FlowResult::Failed(stepflow_core::FlowError::new(
-                        400,
+                        stepflow_core::ErrorCode::BAD_REQUEST,
                         "Workflow result must contain either 'result' or 'next' field",
                     )));
                 }

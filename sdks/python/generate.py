@@ -68,6 +68,9 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
         # protocol.json: "JsonRpcVersion", "InitializeParams", "ComponentExecuteResult", etc.
         cmd.append("--use-title-as-name")
 
+        # Generate integer enums as (int, Enum) subclasses (e.g. ErrorCode)
+        cmd.append("--use-subclass-enum")
+
         if verbose:
             print(f"Running: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)

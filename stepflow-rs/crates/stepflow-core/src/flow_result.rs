@@ -14,6 +14,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error_code::ErrorCode;
 use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
 
@@ -31,14 +32,6 @@ impl std::fmt::Display for FlowError {
         write!(f, "error({}): {}", self.code, self.message)
     }
 }
-
-pub const FLOW_ERROR_UNDEFINED_FIELD: i64 = 1;
-
-/// Error code used for transport/infrastructure errors — subprocess crashes,
-/// network timeouts, connection refused — where the component never ran or
-/// didn't complete. The orchestrator uses this code to distinguish transport
-/// failures from component logic errors when making retry decisions.
-pub const FLOW_ERROR_TRANSPORT: i64 = 503;
 
 impl FlowError {
     pub fn new(code: i64, message: impl Into<Cow<'static, str>>) -> Self {
@@ -72,7 +65,7 @@ impl FlowError {
         };
 
         Self {
-            code: 500, // Default to internal server error for system errors
+            code: ErrorCode::INTERNAL_ERROR,
             message: message.into(),
             data,
         }
@@ -240,7 +233,7 @@ impl FlowResult {
 
     /// Returns true if this is a transport/infrastructure error.
     pub fn is_transport_error(&self) -> bool {
-        matches!(self, Self::Failed(e) if e.code == FLOW_ERROR_TRANSPORT)
+        matches!(self, Self::Failed(e) if ErrorCode::is_transport(e.code))
     }
 
     /// Unwrap a successful result, panicking if the result is not Success.

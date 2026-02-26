@@ -66,9 +66,7 @@ pub trait Plugin: Send + Sync {
     /// Implementations may use this to recover / re-initialize resources needed
     /// for the next attempt (e.g. restarting a crashed subprocess). The default
     /// is a no-op.
-    async fn prepare_for_retry(&self) -> Result<()> {
-        Ok(())
-    }
+    async fn prepare_for_retry(&self) -> Result<()>;
 }
 
 /// Trait implemented by a deserializable plugin configuration.

@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Annotated, Any, Literal, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, field
@@ -171,6 +171,32 @@ class InitializeResult(Struct, kw_only=True):
 
 class Initialized(Struct, kw_only=True):
     pass
+
+
+class ErrorCode(IntEnum):
+    PARSE_ERROR = -32700
+    INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    JSON_RPC_INTERNAL_ERROR = -32603
+    SERVER_ERROR = -32000
+    COMPONENT_NOT_FOUND = -32001
+    SERVER_NOT_INITIALIZED = -32002
+    INVALID_INPUT_SCHEMA = -32003
+    COMPONENT_EXECUTION_FAILED = -32004
+    RESOURCE_UNAVAILABLE = -32005
+    TIMEOUT = -32006
+    PERMISSION_DENIED = -32007
+    BLOB_NOT_FOUND = -32008
+    EXPRESSION_EVAL_FAILED = -32009
+    SESSION_EXPIRED = -32010
+    INVALID_VALUE = -32011
+    NOT_FOUND = -32012
+    UNDEFINED_FIELD = 1
+    BAD_REQUEST = 400
+    ENTITY_NOT_FOUND = 404
+    INTERNAL_ERROR = 500
+    TRANSPORT_ERROR = 5000
 
 
 JsonRpc: TypeAlias = Annotated[

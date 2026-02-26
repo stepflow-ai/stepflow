@@ -12,20 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-from enum import IntEnum
 from typing import Any
 
+from stepflow_py.worker.generated_protocol import ErrorCode
 
-class ErrorCode(IntEnum):
-    GENERIC_ERROR = -32000
-    NOT_INITIALIZED = -32001
 
-    INVALID_REQUEST = -32600
-    COMPONENT_ERROR = -32001
-    VALIDATION_ERROR = -32002
-    EXECUTION_ERROR = -32003
-    RUNTIME_ERROR = -32004
-    VALUE_ERROR = -32005
+def is_transport_error(code: int) -> bool:
+    """Returns True if the given code represents a transport/infrastructure error."""
+    return code >= 5000
 
 
 class StepflowError(Exception):
@@ -40,7 +34,7 @@ class StepflowError(Exception):
     @property
     def default_code(self) -> ErrorCode:
         """Default error code for this exception type."""
-        return ErrorCode.GENERIC_ERROR
+        return ErrorCode.SERVER_ERROR
 
     def to_json_rpc_error(self) -> dict:
         """Convert to JSON-RPC error format."""
@@ -52,7 +46,7 @@ class StepflowProtocolError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.INVALID_REQUEST  # Invalid Request
+        return ErrorCode.INVALID_REQUEST
 
 
 class StepflowComponentError(StepflowError):
@@ -60,7 +54,7 @@ class StepflowComponentError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.COMPONENT_ERROR
+        return ErrorCode.COMPONENT_NOT_FOUND
 
 
 class StepflowValidationError(StepflowError):
@@ -68,7 +62,7 @@ class StepflowValidationError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.VALIDATION_ERROR
+        return ErrorCode.INVALID_INPUT_SCHEMA
 
 
 class StepflowValueError(StepflowError):
@@ -76,7 +70,7 @@ class StepflowValueError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.VALUE_ERROR
+        return ErrorCode.INVALID_VALUE
 
 
 class StepflowExecutionError(StepflowError):
@@ -84,7 +78,7 @@ class StepflowExecutionError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.EXECUTION_ERROR
+        return ErrorCode.COMPONENT_EXECUTION_FAILED
 
 
 class StepflowRuntimeError(StepflowError):
@@ -92,7 +86,7 @@ class StepflowRuntimeError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.RUNTIME_ERROR
+        return ErrorCode.RESOURCE_UNAVAILABLE
 
 
 class ComponentNotFoundError(StepflowComponentError):
@@ -112,7 +106,7 @@ class ServerNotInitializedError(StepflowProtocolError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.NOT_INITIALIZED
+        return ErrorCode.SERVER_NOT_INITIALIZED
 
 
 class InputValidationError(StepflowValidationError):

@@ -181,7 +181,7 @@ async fn execute_step_async(
                         ))
                         .attach_printable(format!("Component: {resolved_component}")),
                 );
-                flow_error.code = stepflow_core::FLOW_ERROR_TRANSPORT;
+                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
                 FlowResult::Failed(flow_error)
             }
         };
