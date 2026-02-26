@@ -70,7 +70,7 @@ The `action` may be one of the following:
 
 - **`fail`** (default): Stop workflow execution
 - **`useDefault`**: Use `defaultValue` and mark step as successful
-- **`retry`**: Retry the step up to `maxRetries` times (default: 3)
+- **`retry`**: Retry component errors within the step up to `maxRetries` times (default: 3)
 
 :::note
 When using `action: useDefault`, the `defaultValue` must be set and produce a value that conforms to the component's output schema.
@@ -78,7 +78,7 @@ The default output may be an [expression](./expressions.md) that references earl
 :::
 
 :::note
-The `retry` action applies to **component errors** -- cases where the component ran and returned an error. Transport failures (subprocess crashes, network timeouts, connection failures) are retried automatically by the plugin independently of `onError` and are controlled via `transport_max_retries` in the plugin configuration.
+The `retry` action applies to **component errors** -- cases where the component ran and returned an error. Transport failures (subprocess crashes, network timeouts, connection failures) are retried automatically by the orchestrator independently of `onError` and are controlled via `retry` in the orchestrator configuration.
 :::
 
 See [Control Flow](./control-flow.md#errors) for more details on error handling in steps.

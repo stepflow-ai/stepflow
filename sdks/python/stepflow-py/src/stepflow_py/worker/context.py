@@ -199,7 +199,7 @@ class StepflowContext:
         re-execution of this step, regardless of the reason:
 
         - **Transport error**: The subprocess crashed or a network failure
-          occurred. Retried up to the plugin's ``transport_max_retries``.
+          occurred. Retried up to the orchestrator's ``retry.transportMaxRetries``.
         - **Component error**: The component returned an error and the step
           has ``onError: { action: retry }``. Retried up to ``maxRetries``.
         - **Orchestrator recovery**: The orchestrator crashed and is

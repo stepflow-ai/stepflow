@@ -486,10 +486,6 @@ impl Plugin for McpPlugin {
         Ok(FlowResult::Success(ValueRef::new(content)))
     }
 
-    fn transport_max_retries(&self) -> u32 {
-        0
-    }
-
     async fn prepare_for_retry(&self) -> Result<()> {
         Ok(())
     }

@@ -85,3 +85,5 @@ plugins:
 routes:
   "/mock/{component}":
     - plugin: mock
+retry:
+  transportMaxRetries: 0

@@ -33,7 +33,6 @@ async fn test_http_plugin_creation_failure() {
         transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18080".to_string(),
         },
-        retry: None,
     };
 
     let plugin = config
@@ -101,7 +100,6 @@ async fn test_http_protocol_integration() {
         transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18081".to_string(),
         },
-        retry: None,
     };
 
     let plugin = config
@@ -260,7 +258,6 @@ async fn test_http_plugin_lifecycle() {
         transport: StepflowTransport::Remote {
             url: "http://127.0.0.1:18082".to_string(),
         },
-        retry: None,
     };
 
     let plugin = config

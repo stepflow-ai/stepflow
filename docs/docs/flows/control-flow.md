@@ -131,7 +131,7 @@ steps:
 - **`retry`**: Retry the step up to `maxRetries` times (default: 3, for component errors only)
 
 :::note
-Transport failures (subprocess crashes, network timeouts) are retried automatically by the plugin independently of `onError`. The `retry` error action only applies to errors returned by the component itself.
+Transport failures (subprocess crashes, network timeouts) are retried automatically by the orchestrator independently of `onError`. The `retry` error action only applies to errors returned by the component itself.
 :::
 
 ### Default Output Requirements

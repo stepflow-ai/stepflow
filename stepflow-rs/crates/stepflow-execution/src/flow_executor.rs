@@ -54,18 +54,6 @@ struct RetryState {
     component_retries: u32,
 }
 
-/// Compute fibonacci backoff delay for a retry.
-///
-/// Uses fibonacci sequence: 1s, 1s, 2s, 3s, 5s, 8s, 10s (capped).
-fn compute_retry_delay(retry_count: u32) -> std::time::Duration {
-    let fibs_ms: [u64; 7] = [1000, 1000, 2000, 3000, 5000, 8000, 10000];
-    let ms = fibs_ms
-        .get(retry_count.saturating_sub(1) as usize)
-        .copied()
-        .unwrap_or(10000);
-    std::time::Duration::from_millis(ms)
-}
-
 /// Executor for running workflows with one or more items.
 ///
 /// FlowExecutor coordinates execution across multiple items, using a scheduler
@@ -532,6 +520,7 @@ impl FlowExecutor {
                     status: stepflow_core::status::ExecutionStatus::Completed,
                 })
                 .await?;
+                self.evict_retry_state(run_id);
                 self.runs.remove(&run_id);
             } else {
                 // Subflow with items but 0 steps: record item results (state store notifies on completion)
@@ -574,6 +563,7 @@ impl FlowExecutor {
                     status: stepflow_core::status::ExecutionStatus::Completed,
                 })
                 .await?;
+                self.evict_retry_state(run_id);
                 self.runs.remove(&run_id);
             }
         }
@@ -943,6 +933,7 @@ impl FlowExecutor {
 
                 // Evict completed subflow from in-memory state.
                 // Results are persisted to the metadata store; RunState is redundant.
+                self.evict_retry_state(run_id);
                 self.runs.remove(&run_id);
                 log::debug!(
                     "Evicted completed subflow run_id={}, remaining_runs={}",
@@ -968,13 +959,13 @@ impl FlowExecutor {
 
         let task = task_result.task();
         let run_id = task.run_id;
-        let is_transport = task_result.step.is_transport_error;
+        let is_transport = task_result.step.result.is_transport_error();
         let retry_key = (run_id, task.item_index, task.step_index);
 
         // Determine whether we should retry and check the budget
         let should_retry = if is_transport {
-            // Transport error — check plugin's transport_max_retries
-            let max = self.get_transport_max_retries(task)?;
+            // Transport error — check orchestrator-level transport retry config
+            let max = self.retry_config().transport_max_retries;
             let state = self.retry_state.entry(retry_key).or_default();
             state.transport_retries < max
         } else {
@@ -991,7 +982,7 @@ impl FlowExecutor {
         if !should_retry {
             // Budget exhausted or not a retriable error — record metric if budget existed
             let had_budget = if is_transport {
-                self.get_transport_max_retries(task).unwrap_or(0) > 0
+                self.retry_config().transport_max_retries > 0
             } else {
                 self.get_component_max_retries(task).is_some()
             };
@@ -1018,7 +1009,7 @@ impl FlowExecutor {
             "component_error"
         };
 
-        // 1. Increment per-reason counter and compute delay
+        // 1. Increment per-reason counter
         let retry_count = {
             let state = self.retry_state.entry(retry_key).or_default();
             if is_transport {
@@ -1029,7 +1020,9 @@ impl FlowExecutor {
                 state.component_retries
             }
         };
-        let delay = compute_retry_delay(retry_count);
+
+        // Shared backoff for all retries (transport and component)
+        let delay = self.retry_config().delay(retry_count);
 
         // 2. For transport errors, prepare the plugin for retry (e.g. restart subprocess)
         if is_transport
@@ -1088,10 +1081,11 @@ impl FlowExecutor {
         Ok(Some(retry_future.boxed()))
     }
 
-    /// Look up the transport_max_retries for the plugin handling a task's step.
-    fn get_transport_max_retries(&self, task: Task) -> Result<u32> {
-        let (plugin, _) = self.lookup_plugin_for_task(task)?;
-        Ok(plugin.transport_max_retries())
+    /// Get the transport retry config from the environment.
+    fn retry_config(&self) -> &stepflow_core::RetryConfig {
+        self.env
+            .get::<stepflow_core::RetryConfig>()
+            .expect("RetryConfig must be in environment")
     }
 
     /// Look up the component max_retries from the step's ErrorAction, if it's a Retry action.
@@ -1123,6 +1117,11 @@ impl FlowExecutor {
         self.env
             .get_plugin_and_component(&step.component, input)
             .change_context(ExecutionError::RouterError)
+    }
+
+    /// Remove all retry state entries for a given run.
+    fn evict_retry_state(&mut self, run_id: Uuid) {
+        self.retry_state.retain(|(rid, _, _), _| *rid != run_id);
     }
 
     /// Resolve the output for a completed item.

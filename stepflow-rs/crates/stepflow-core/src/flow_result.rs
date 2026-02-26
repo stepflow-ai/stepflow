@@ -34,6 +34,12 @@ impl std::fmt::Display for FlowError {
 
 pub const FLOW_ERROR_UNDEFINED_FIELD: i64 = 1;
 
+/// Error code used for transport/infrastructure errors — subprocess crashes,
+/// network timeouts, connection refused — where the component never ran or
+/// didn't complete. The orchestrator uses this code to distinguish transport
+/// failures from component logic errors when making retry decisions.
+pub const FLOW_ERROR_TRANSPORT: i64 = 503;
+
 impl FlowError {
     pub fn new(code: i64, message: impl Into<Cow<'static, str>>) -> Self {
         Self {
@@ -230,6 +236,11 @@ impl FlowResult {
             Self::Failed(error) => Some(error),
             _ => None,
         }
+    }
+
+    /// Returns true if this is a transport/infrastructure error.
+    pub fn is_transport_error(&self) -> bool {
+        matches!(self, Self::Failed(e) if e.code == FLOW_ERROR_TRANSPORT)
     }
 
     /// Unwrap a successful result, panicking if the result is not Success.

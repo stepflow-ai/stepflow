@@ -88,10 +88,6 @@ impl Plugin for Builtins {
             .change_context(PluginError::UdfExecution)
     }
 
-    fn transport_max_retries(&self) -> u32 {
-        0
-    }
-
     async fn prepare_for_retry(&self) -> Result<()> {
         Ok(())
     }

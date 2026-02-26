@@ -61,18 +61,10 @@ pub trait Plugin: Send + Sync {
         attempt: u32,
     ) -> Result<FlowResult>;
 
-    /// Maximum number of retries due to transport errors (default 0 = no retry).
-    ///
-    /// This limits retries when the transport fails (subprocess crash, network
-    /// timeout, connection refused) — cases where the component never ran or
-    /// didn't complete. Component logic errors are retried separately via
-    /// the step's `ErrorAction::Retry` and do not count against this budget.
-    fn transport_max_retries(&self) -> u32;
-
     /// Prepare the plugin for a retry after a transport error.
     ///
-    /// For subprocess plugins, this restarts the crashed process.
-    /// For remote plugins, this is a no-op (external orchestration handles restart).
+    /// Implementations may use this to recover resources needed for the next
+    /// attempt (e.g. restarting a crashed subprocess). The default is a no-op.
     async fn prepare_for_retry(&self) -> Result<()>;
 }
 

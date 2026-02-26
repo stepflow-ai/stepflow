@@ -78,11 +78,6 @@ pub struct StepRunResult {
     pub metadata: StepMetadata,
     /// The execution result (success or failure).
     pub result: FlowResult,
-    /// True if the failure was caused by a transport/infrastructure error
-    /// (subprocess crash, network timeout, connection refused) rather than
-    /// a component logic error. Only meaningful when `result` is `Failed`.
-    #[serde(skip)]
-    pub is_transport_error: bool,
 }
 
 impl StepRunResult {
@@ -94,14 +89,7 @@ impl StepRunResult {
                 component,
             },
             result,
-            is_transport_error: false,
         }
-    }
-
-    /// Create a new step run result with the transport error flag set.
-    pub fn with_transport_error(mut self, is_transport_error: bool) -> Self {
-        self.is_transport_error = is_transport_error;
-        self
     }
 
     /// Get the step index.
@@ -135,14 +123,6 @@ impl StepRunResult {
     }
 }
 
-/// Result of a single step execution attempt, before error action handling.
-struct StepExecutionOutcome {
-    result: FlowResult,
-    /// True if the failure was caused by the transport (plugin returned Err)
-    /// rather than the component itself (plugin returned Ok(Failed)).
-    is_transport_error: bool,
-}
-
 /// Execute a single step asynchronously.
 ///
 /// This is the core step execution function used by `StepRunner`.
@@ -158,7 +138,7 @@ async fn execute_step_async(
     run_context: &Arc<RunContext>,
     step_id: &StepId,
     attempt: u32,
-) -> Result<StepExecutionOutcome> {
+) -> Result<FlowResult> {
     use stepflow_observability::fastrace::prelude::*;
 
     // Set step_id in diagnostic context for all logs in this step execution
@@ -169,7 +149,7 @@ async fn execute_step_async(
         .with_property(|| ("step_id", step.id.clone()))
         .with_property(|| ("component", resolved_component.to_string()));
 
-    let (result, is_transport_error) = async move {
+    let result = async move {
         log::debug!(
             "Executing step: component={}, step_id={}",
             resolved_component,
@@ -180,15 +160,17 @@ async fn execute_step_async(
         let component = stepflow_core::workflow::Component::from_string(resolved_component);
 
         // Execute the component
-        let (result, is_transport_error) = match plugin
+        let result = match plugin
             .execute(&component, run_context, Some(step_id), input, attempt)
             .await
         {
-            Ok(result) => (result, false),
+            Ok(result) => result,
             Err(error) => {
                 // Plugin returned Err — this is a transport/infrastructure error
                 // (subprocess crash, network timeout, etc.)
-                let flow_error = stepflow_core::FlowError::from_error_stack(
+                // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
+                // transport failures from component logic errors.
+                let mut flow_error = stepflow_core::FlowError::from_error_stack(
                     error
                         .change_context(ExecutionError::StepFailed {
                             step: step.id.to_owned(),
@@ -199,13 +181,14 @@ async fn execute_step_async(
                         ))
                         .attach_printable(format!("Component: {resolved_component}")),
                 );
-                (FlowResult::Failed(flow_error), true)
+                flow_error.code = stepflow_core::FLOW_ERROR_TRANSPORT;
+                FlowResult::Failed(flow_error)
             }
         };
 
         log::debug!("Step execution completed: step_id={}", step.id);
 
-        Ok::<_, error_stack::Report<ExecutionError>>((result, is_transport_error))
+        Ok::<_, error_stack::Report<ExecutionError>>(result)
     }
     .in_span(span)
     .await?;
@@ -219,22 +202,13 @@ async fn execute_step_async(
                     error
                 );
                 let value = default_value.clone().unwrap_or(serde_json::Value::Null);
-                Ok(StepExecutionOutcome {
-                    result: FlowResult::Success(ValueRef::new(value)),
-                    is_transport_error: false,
-                })
+                Ok(FlowResult::Success(ValueRef::new(value)))
             }
             // Fail and Retry both pass through — the executor handles retry decisions
             stepflow_core::workflow::ErrorAction::Fail
-            | stepflow_core::workflow::ErrorAction::Retry { .. } => Ok(StepExecutionOutcome {
-                result,
-                is_transport_error,
-            }),
+            | stepflow_core::workflow::ErrorAction::Retry { .. } => Ok(result),
         },
-        _ => Ok(StepExecutionOutcome {
-            result,
-            is_transport_error: false,
-        }),
+        _ => Ok(result),
     }
 }
 
@@ -337,7 +311,6 @@ impl StepRunner {
         )
         .await?;
 
-        Ok(StepRunResult::new(step_id, component, outcome.result)
-            .with_transport_error(outcome.is_transport_error))
+        Ok(StepRunResult::new(step_id, component, outcome))
     }
 }

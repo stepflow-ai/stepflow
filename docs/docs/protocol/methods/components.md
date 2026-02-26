@@ -193,7 +193,7 @@ The `attempt` counter is shared across all retry reasons. A step may be re-execu
 
 | Reason | Trigger | Limit | Configured Via |
 |--------|---------|-------|----------------|
-| **Transport error** | Subprocess crash, network timeout, connection failure | `transport_max_retries` | Plugin config |
+| **Transport error** | Subprocess crash, network timeout, connection failure | `transportMaxRetries` (default: 3) | Orchestrator `retry` config |
 | **Component error** | Component ran and returned an error; step has `onError: { action: retry }` | `maxRetries` (default: 3) | Step-level `onError` |
 | **Orchestrator recovery** | Orchestrator crashed; task was started but no completion journaled | Unlimited | N/A |
 

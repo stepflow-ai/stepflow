@@ -67,6 +67,11 @@ pub struct StepflowConfig {
     /// Controls whether the orchestrator serves blob endpoints and the URL workers use.
     #[serde(default)]
     pub blob_api: BlobApiConfig,
+    /// Retry configuration.
+    /// Controls backoff for all retries and the retry limit for transport errors
+    /// (subprocess crash, network timeout, connection refused).
+    #[serde(default)]
+    pub retry: stepflow_core::RetryConfig,
 }
 
 impl Default for StepflowConfig {
@@ -87,6 +92,7 @@ impl Default for StepflowConfig {
             lease_manager: LeaseManagerConfig::default(),
             recovery: RecoveryConfig::default(),
             blob_api: BlobApiConfig::default(),
+            retry: stepflow_core::RetryConfig::default(),
         }
     }
 }
@@ -170,7 +176,8 @@ impl StepflowConfig {
             .working_directory(working_directory)
             .plugin_router(plugin_router)
             .blob_threshold(self.blob_api.effective_blob_threshold())
-            .blob_api_url(self.blob_api.url);
+            .blob_api_url(self.blob_api.url)
+            .retry(self.retry);
 
         if let Some(id) = orchestrator_id {
             builder = builder.orchestrator_id(id);

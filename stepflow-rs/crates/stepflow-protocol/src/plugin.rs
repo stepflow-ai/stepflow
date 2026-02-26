@@ -36,108 +36,10 @@ use crate::protocol::{
 };
 use crate::subprocess::{SubprocessHandle, SubprocessLauncher};
 
-/// Configuration for retry behavior when transport errors occur.
-///
-/// Transport errors are infrastructure-level failures — subprocess crashes,
-/// network timeouts, connection refused — where the component never ran or
-/// didn't complete. Component logic errors are retried separately via the
-/// step's `ErrorAction::Retry` and do not count against this budget.
-#[derive(Default, Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RetryConfig {
-    /// Maximum number of retries due to transport errors — subprocess crashes,
-    /// network timeouts, connection failures (default: 3).
-    pub max_attempts: Option<u32>,
-    /// Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).
-    /// Used by the orchestrator to compute delay between retry attempts.
-    #[serde(default)]
-    pub backoff: BackoffConfig,
-}
-
-impl RetryConfig {
-    const DEFAULT_MAX_ATTEMPTS: u32 = 3;
-
-    /// Get the configured max attempts (default: 3).
-    pub fn max_attempts(&self) -> u32 {
-        self.max_attempts.unwrap_or(Self::DEFAULT_MAX_ATTEMPTS)
-    }
-}
-
-/// Backoff strategy for retry delays. Each variant carries only its relevant parameters.
-#[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
-#[serde(tag = "type", rename_all = "camelCase")]
-#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
-pub enum BackoffConfig {
-    /// Fixed delay between retries.
-    #[serde(rename_all = "camelCase")]
-    #[schemars(title = "BackoffConfigConstant")]
-    Constant {
-        /// Delay in milliseconds (default: 1000).
-        #[serde(default = "BackoffConfig::default_min_delay_ms")]
-        #[schemars(range(min = 0))]
-        delay_ms: u64,
-    },
-    /// Exponential backoff (delay doubles each attempt by default).
-    #[serde(rename_all = "camelCase")]
-    #[schemars(title = "BackoffConfigExponential")]
-    Exponential {
-        /// Starting delay in milliseconds (default: 1000).
-        #[serde(default = "BackoffConfig::default_min_delay_ms")]
-        #[schemars(range(min = 0))]
-        min_delay_ms: u64,
-        /// Maximum delay cap in milliseconds (default: 10000).
-        #[serde(default = "BackoffConfig::default_max_delay_ms")]
-        #[schemars(range(min = 0))]
-        max_delay_ms: u64,
-        /// Multiplier per attempt (default: 2.0).
-        #[serde(default = "BackoffConfig::default_factor")]
-        factor: f32,
-    },
-    /// Fibonacci backoff (delay follows the Fibonacci sequence).
-    #[serde(rename_all = "camelCase")]
-    #[schemars(title = "BackoffConfigFibonacci")]
-    Fibonacci {
-        /// Starting delay in milliseconds (default: 1000).
-        #[serde(default = "BackoffConfig::default_min_delay_ms")]
-        #[schemars(range(min = 0))]
-        min_delay_ms: u64,
-        /// Maximum delay cap in milliseconds (default: 10000).
-        #[serde(default = "BackoffConfig::default_max_delay_ms")]
-        #[schemars(range(min = 0))]
-        max_delay_ms: u64,
-    },
-}
-
-impl Default for BackoffConfig {
-    fn default() -> Self {
-        Self::Fibonacci {
-            min_delay_ms: Self::default_min_delay_ms(),
-            max_delay_ms: Self::default_max_delay_ms(),
-        }
-    }
-}
-
-impl BackoffConfig {
-    fn default_min_delay_ms() -> u64 {
-        1000
-    }
-
-    fn default_max_delay_ms() -> u64 {
-        10000
-    }
-
-    fn default_factor() -> f32 {
-        2.0
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct StepflowPluginConfig {
     #[serde(flatten)]
     pub transport: StepflowTransport,
-    /// Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub retry: Option<RetryConfig>,
 }
 
 /// Configuration for Stepflow plugin transport.
@@ -233,12 +135,10 @@ impl PluginConfig for StepflowPluginConfig {
 
                 Ok(DynPlugin::boxed(StepflowPlugin::new(
                     StepflowPluginState::UninitializedSubprocess(launcher),
-                    self.retry.unwrap_or_default(),
                 )))
             }
             StepflowTransport::Remote { url } => Ok(DynPlugin::boxed(StepflowPlugin::new(
                 StepflowPluginState::UninitializedRemote(url),
-                self.retry.unwrap_or_default(),
             ))),
         }
     }
@@ -255,18 +155,15 @@ pub struct StepflowPlugin {
     /// Whether the worker supports `$blob` references in inputs/outputs.
     /// Set from the InitializeResult response.
     supports_blob_refs: RwLock<bool>,
-    /// Retry configuration for component execution failures.
-    retry_config: RetryConfig,
 }
 
 impl StepflowPlugin {
-    fn new(state: StepflowPluginState, retry_config: RetryConfig) -> Self {
+    fn new(state: StepflowPluginState) -> Self {
         Self {
             state: RwLock::new(state),
             blob_api_url: RwLock::new(None),
             blob_threshold: RwLock::new(0),
             supports_blob_refs: RwLock::new(false),
-            retry_config,
         }
     }
 
@@ -596,10 +493,6 @@ impl Plugin for StepflowPlugin {
             response.output
         };
         Ok(FlowResult::Success(output))
-    }
-
-    fn transport_max_retries(&self) -> u32 {
-        self.retry_config.max_attempts()
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

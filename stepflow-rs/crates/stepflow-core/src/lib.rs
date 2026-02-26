@@ -20,6 +20,7 @@ pub mod json_schema;
 pub mod run_params;
 pub mod schema;
 pub mod status;
+pub mod transport_retry;
 pub mod values;
 pub mod workflow;
 
@@ -32,4 +33,5 @@ pub use blob_ref::BlobRef;
 pub use environment::StepflowEnvironment;
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use run_params::{DEFAULT_WAIT_TIMEOUT_SECS, GetRunParams, ResultOrder, SubmitRunParams};
+pub use transport_retry::RetryConfig;
 pub use values::ValueExpr;

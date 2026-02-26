@@ -24,6 +24,8 @@ use stepflow_state::{
     OrchestratorId,
 };
 
+use stepflow_core::RetryConfig;
+
 use crate::execution_config::ExecutionConfig;
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
@@ -87,6 +89,7 @@ pub struct StepflowEnvironmentBuilder {
     blob_threshold: usize,
     orchestrator_id: Option<OrchestratorId>,
     checkpoint_interval: usize,
+    transport_retry: RetryConfig,
 }
 
 impl Default for StepflowEnvironmentBuilder {
@@ -110,6 +113,7 @@ impl StepflowEnvironmentBuilder {
             blob_threshold: 0,
             orchestrator_id: None,
             checkpoint_interval: 0,
+            transport_retry: RetryConfig::default(),
         }
     }
 
@@ -215,6 +219,15 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the retry configuration.
+    ///
+    /// Controls backoff for all retries and the retry limit for transport
+    /// errors (subprocess crash, network timeout, connection refused).
+    pub fn retry(mut self, config: RetryConfig) -> Self {
+        self.transport_retry = config;
+        self
+    }
+
     /// Build the environment, initializing all plugins.
     ///
     /// This is async because plugin initialization may require async operations
@@ -277,6 +290,9 @@ impl StepflowEnvironmentBuilder {
         env.insert(ExecutionConfig {
             checkpoint_interval: self.checkpoint_interval,
         });
+
+        // Store transport retry configuration
+        env.insert(self.transport_retry);
 
         // Store orchestrator ID if set (distributed mode)
         if let Some(id) = self.orchestrator_id {
