@@ -5,7 +5,7 @@
 
 ## Goal
 
-Deploy the docling-step-worker integration as a standalone Kubernetes namespace that proves the "drop-in replacement for docling-serve" story end-to-end. A caller hitting `localhost:5001` should see identical behavior to upstream docling-serve — same endpoints, same request/response shapes — backed by 3 load-balanced docling-step-worker pods orchestrated through Stepflow.
+Deploy the docling-step-worker integration as a standalone Kubernetes namespace that proves the "drop-in replacement for docling-serve" story end-to-end. A caller hitting `localhost:5001` should see identical behavior to upstream docling-serve: the same endpoints and the same request/response shapes. Unlike docling-serve, this deployment is backed by 3 load-balanced docling-step-worker pods orchestrated through Stepflow.
 
 This deployment is also a live demonstration that docling-step-worker already addresses known architectural limitations in upstream docling-serve (documented in detail in `docling-step-worker.md`):
 
@@ -15,7 +15,7 @@ This deployment is also a live demonstration that docling-step-worker already ad
 
 - **Sync timeout handling** ([docling-serve #317](https://github.com/docling-project/docling-serve/issues/317)) — `DOCLING_SERVE_MAX_SYNC_WAIT` has no effect beyond ~250s due to ASGI/Uvicorn limits. Our sync path uses `StepflowClient.run()` with server-side `wait_timeout`, independent of the ASGI stack.
 
-The `stepflow-docling` namespace makes these improvements concrete and testable rather than theoretical.
+The `stepflow-docling` namespace proposed in this document makes these improvements concrete and testable.
 
 ## Non-goals
 
@@ -23,41 +23,47 @@ This is **not** an extension of the existing `stepflow` namespace. That namespac
 
 ## Architecture
 
-```
-caller
-  │
-  │  POST /v1alpha/convert/file  (identical to docling-serve)
-  │  POST /v1alpha/convert/source
-  │
-  ▼
-┌─────────────────────────────────────┐
-│  orchestrator pod                   │  stepflow-docling namespace
-│                                     │
-│  ┌────────────────┐                 │
-│  │ HTTP Facade    │ :5001           │  FastAPI, translates docling-serve API
-│  │                │                 │  → flow submission on localhost:7840
-│  └───────┬────────┘                 │
-│          │ localhost                │
-│  ┌───────▼────────┐                 │
-│  │ stepflow-server│ :7840           │  Rust orchestrator, evaluates flow DAG
-│  └───────┬────────┘                 │
-│          │                          │
-└──────────┼──────────────────────────┘
-           │  /docling/* step dispatch
-           ▼
-┌──────────────────────────┐
-│  Pingora Load Balancer   │
-│  :8080                   │  Least-connections across workers
-└───┬────────┬────────┬────┘
-    │        │        │
-    ▼        ▼        ▼
- ┌──────┐ ┌──────┐ ┌──────┐
- │ dsw  │ │ dsw  │ │ dsw  │   docling-step-worker (single container)
- │ :8080│ │ :8080│ │ :8080│   docling library in-process, no sidecar
- └──────┘ └──────┘ └──────┘
-    │        │        │
-    └────────┴────────┘
-         OTLP ──► otel-collector.stepflow-o11y:4317
+```mermaid
+graph TD
+    caller(["Caller<br/><i>curl, SDK, Open WebUI</i>"])
+
+    caller -->|"POST /v1alpha/convert/file<br/>POST /v1alpha/convert/source<br/><i>identical to docling-serve</i>"| facade
+
+    subgraph orchestrator-pod["Orchestrator Pod"]
+        facade["HTTP Facade :5001<br/><i>FastAPI — translates docling-serve API</i>"]
+        stepflow["stepflow-server :7840<br/><i>Rust orchestrator — evaluates flow DAG</i>"]
+        facade -->|"localhost:7840<br/>flow submission"| stepflow
+    end
+
+    stepflow -->|/docling/* step dispatch| lb
+
+    lb["Pingora Load Balancer :8080<br/><i>least-connections routing</i>"]
+
+    lb --> dsw1 & dsw2 & dsw3
+
+    subgraph workers["Worker Pool (3 replicas)"]
+        dsw1["docling-step-worker :8080<br/><i>docling in-process, no sidecar</i>"]
+        dsw2["docling-step-worker :8080<br/><i>docling in-process, no sidecar</i>"]
+        dsw3["docling-step-worker :8080<br/><i>docling in-process, no sidecar</i>"]
+    end
+
+    dsw1 & dsw2 & dsw3 -.->|OTLP| otel
+    facade -.->|OTLP| otel
+    stepflow -.->|OTLP| otel
+    lb -.->|OTLP| otel
+
+    otel["otel-collector.stepflow-o11y:4317<br/><i>→ Jaeger, Prometheus, Loki, Grafana</i>"]
+
+    style orchestrator-pod fill:#1a1a2e,stroke:#4a9eff,stroke-width:2px,color:#fff
+    style workers fill:#1a1a2e,stroke:#48bb78,stroke-width:2px,color:#fff
+    style facade fill:#2d3748,stroke:#4a9eff,color:#fff
+    style stepflow fill:#2d3748,stroke:#4a9eff,color:#fff
+    style lb fill:#2d3748,stroke:#ecc94b,color:#fff
+    style dsw1 fill:#2d3748,stroke:#48bb78,color:#fff
+    style dsw2 fill:#2d3748,stroke:#48bb78,color:#fff
+    style dsw3 fill:#2d3748,stroke:#48bb78,color:#fff
+    style otel fill:#2d3748,stroke:#9f7aea,color:#fff
+    style caller fill:#4a5568,stroke:#a0aec0,color:#fff
 ```
 
 ### Why the facade is a sidecar
@@ -69,7 +75,7 @@ The HTTP facade's only downstream dependency is stepflow-server. Colocating them
 - **Atomic scaling** — facade and server scale together as a unit, which is the right default since they share the same throughput bottleneck (waiting on worker pods to process documents)
 - **Fewer failure modes** — no scenario where the facade is up but can't reach the server
 
-The tradeoff is that you can't scale the facade independently of the server. For a testbed this is fine. If a future production deployment needs independent scaling (e.g., many concurrent uploads queuing while workers are saturated), the facade can be extracted to its own deployment with minimal changes — it's still a separate container with a separate image.
+The tradeoff is that you can't scale the facade independently of the server. For a testbed this is fine. If a future production deployment needs independent scaling (e.g., many concurrent uploads queuing while workers are saturated), the facade can be extracted to its own deployment with minimal changes.
 
 ## Components
 
@@ -86,13 +92,13 @@ A thin FastAPI application that makes the system look exactly like docling-serve
 - Submits the flow to stepflow-server on `localhost:7840`
 - Translates the flow output back into docling-serve's `ExportDocumentResponse` shape
 
-The facade image is lightweight — no docling library, no models, no OCR. Just FastAPI + httpx.
+The facade image is designed to be lightweight, relying only on FastAPI and httpx libraries. 
 
 **Container 2: stepflow-server** (:7840)
 
-The Rust orchestrator. Receives flow submissions from the facade, evaluates the classify → convert → chunk DAG, dispatches each step to the worker pool via the Pingora LB. ConfigMap holds the server config and the `docling-process-document` flow definition.
+This is the Rust orchestrator and the hand-off point to Stepflow. The orchestrator receives flow submissions from the facade, evaluates the classify → convert → chunk DAG flow, and dispatches each step to the worker pool via the Pingora LB. A ConfigMap holds the server config and the `docling-process-document` flow definition.
 
-Server config is minimal — one plugin, one route:
+The Stepflow orchestrator config is minimal with only one plugin and one route:
 
 ```yaml
 plugins:
@@ -108,21 +114,21 @@ routes:
 
 ### Pingora Load Balancer (1 replica)
 
-Discovers docling-step-worker pods via headless service DNS. Routes with least-connections strategy. Same `stepflow-load-balancer` image as the main namespace, configured with a different upstream.
+Discovers docling-step-worker pods via headless service DNS, routing with a least-connections strategy. This is the same `stepflow-load-balancer` image and functionality as the `stepflow` namespace, just configured with a different upstream.
 
 ### docling-step-worker (3 replicas)
 
-Single-container pods running the `docling-step-worker-server` entry point. The docling library (PDF parsing, OCR, table structure detection, model inference) runs in-process. No docling-serve sidecar.
+The Doclint step workers consist of single-container pods running the `docling-step-worker-server` entry point. The docling library (PDF parsing, OCR, table structure detection, model inference) runs in-process. 
 
-Registers three Stepflow components: `/classify`, `/convert`, `/chunk`.
+Stepflow's docling integration code registers three Stepflow components: `/classify`, `/convert`, `/chunk`, to route to individual workers. 
 
-Image built from `integrations/docling-step-worker/docker/Dockerfile`, which pre-downloads model artifacts at build time. Tagged distinctly from the main namespace image (e.g., `stepflow-docling-worker:parity-v1`).
+The container images are built from `integrations/docling-step-worker/docker/Dockerfile`, which pre-downloads model artifacts at build time. 
 
 ## Facade Application
 
 ### Why it lives in `integrations/docling-step-worker`
 
-The facade is application code, not deployment config. It shares types and contracts with the existing integration:
+Though minimal and specific to this deployment, the facade is application code, not deployment configuration. It shares types and contracts with the existing integration:
 
 - `response_builder.py` already defines the `ExportDocumentResponse` shape and format normalization
 - The `options` dict schema in the flow YAML matches docling-serve's `ConvertDocumentsOptions` exactly (#689)
