@@ -487,10 +487,12 @@ impl Plugin for StepflowPlugin {
                     code,
                     message,
                     data,
-                }) = report.frames().find_map(|f| f.downcast_ref::<TransportError>())
+                }) = report
+                    .frames()
+                    .find_map(|f| f.downcast_ref::<TransportError>())
                 {
                     let flow_error = stepflow_core::FlowError {
-                        code: *code as i64,
+                        code: *code,
                         message: message.clone().into(),
                         data: data.clone().map(ValueRef::new),
                     };
