@@ -11,7 +11,7 @@ This deployment is also a live demonstration that docling-step-worker already ad
 
 - **In-memory task state prevents horizontal scaling** ([docling-serve #378](https://github.com/docling-project/docling-serve/issues/378), [#317](https://github.com/docling-project/docling-serve/issues/317)) — docling-serve stores async task state in an in-memory dict pinned to a single Uvicorn worker. Users are told to set `UVICORN_WORKERS=1`. In our deployment, all execution state lives in the Stepflow server. Any pod can serve status polls for any task. The 3-worker pool demonstrates this directly.
 
-- **No horizontal scaling path** ([docling-serve #10](https://github.com/docling-project/docling-serve/issues/10), [#257](https://github.com/docling-project/docling-serve/issues/257), [Discussion #1890](https://github.com/docling-project/docling/discussions/1890)) — docling-serve runs an isolated orchestrator per process with no shared queue. Users are advised to use sticky sessions. Our deployment routes through Stepflow's orchestrator → Pingora LB → 3 workers with least-connections. No sticky sessions, shared state by default.
+- **No horizontal scaling path** ([docling-serve #10](https://github.com/docling-project/docling-serve/issues/10), [#257](https://github.com/docling-project/docling-serve/issues/257), [Discussion #1890](https://github.com/docling-project/docling/discussions/1890)) — docling-serve runs an isolated orchestrator per process with no shared queue. Users are advised to use sticky sessions. Our deployment routes through Stepflow's orchestrator → Stepflow Load Balancer → 3 workers with least-connections. No sticky sessions, shared state by default.
 
 - **Sync timeout handling** ([docling-serve #317](https://github.com/docling-project/docling-serve/issues/317)) — `DOCLING_SERVE_MAX_SYNC_WAIT` has no effect beyond ~250s due to ASGI/Uvicorn limits. Our sync path uses `StepflowClient.run()` with server-side `wait_timeout`, independent of the ASGI stack.
 
@@ -19,7 +19,7 @@ The `stepflow-docling` namespace proposed in this document makes these improveme
 
 ## Non-goals
 
-This is **not** an extension of the existing `stepflow` namespace. That namespace was built around langflow integration and carries architecture (langflow workers, OpenSearch, docling-serve sidecar pattern) that is irrelevant here. We reuse only the structural conventions (deployment/service/headless patterns, o11y wiring, Pingora LB) and the shared `stepflow-o11y` observability stack.
+This is **not** an extension of the existing `stepflow` namespace. That namespace was built around langflow integration and carries architecture (langflow workers, OpenSearch, docling-serve sidecar pattern) that is irrelevant here. We reuse only the structural conventions (deployment/service/headless patterns, o11y wiring, Stepflow Load Balancer) and the shared `stepflow-o11y` observability stack.
 
 ## Architecture
 
@@ -37,7 +37,7 @@ graph TD
 
     stepflow -->|/docling/* step dispatch| lb
 
-    lb["Pingora Load Balancer :8080<br/><i>least-connections routing</i>"]
+    lb["Stepflow Load Balancer :8080<br/><i>least-connections routing</i>"]
 
     lb --> dsw1 & dsw2 & dsw3
 
@@ -96,7 +96,7 @@ The facade image is designed to be lightweight, relying only on FastAPI and http
 
 **Container 2: stepflow-server** (:7840)
 
-This is the Rust orchestrator and the hand-off point to Stepflow. The orchestrator receives flow submissions from the facade, evaluates the classify → convert → chunk DAG flow, and dispatches each step to the worker pool via the Pingora LB. A ConfigMap holds the server config and the `docling-process-document` flow definition.
+This is the Rust orchestrator and the hand-off point to Stepflow. The orchestrator receives flow submissions from the facade, evaluates the classify → convert → chunk DAG flow, and dispatches each step to the worker pool via the Stepflow LB. A ConfigMap holds the server config and the `docling-process-document` flow definition.
 
 The Stepflow orchestrator config is minimal with only one plugin and one route:
 
@@ -112,7 +112,7 @@ routes:
     - plugin: docling
 ```
 
-### Pingora Load Balancer (1 replica)
+### Stepflow Load Balancer (1 replica)
 
 Discovers docling-step-worker pods via headless service DNS, routing with a least-connections strategy. This is the same `stepflow-load-balancer` image and functionality as the `stepflow` namespace, just configured with a different upstream.
 
@@ -186,9 +186,9 @@ examples/production/k8s/
     worker/
       deployment.yaml        # 3 replicas, single container, no sidecar
       service.yaml           # ClusterIP :8080
-      service-headless.yaml  # Pingora pod discovery
+      service-headless.yaml  # Stepflow Load Balancer pod discovery
     loadbalancer/
-      deployment.yaml        # Pingora LB → worker-headless
+      deployment.yaml        # Stepflow Load Balancer → worker-headless
       service.yaml           # ClusterIP :8080
 ```
 
@@ -197,7 +197,7 @@ examples/production/k8s/
 | Pod | Containers | Memory (request/limit) | Notes |
 |-----|-----------|----------------------|-------|
 | orchestrator | facade + stepflow-server | 384Mi / 768Mi | Facade ~128Mi, server ~256Mi |
-| Pingora LB | 1 | 128Mi / 256Mi | Rust, small footprint |
+| Stepflow LB | 1 | 128Mi / 256Mi | Rust, small footprint |
 | docling-step-worker (×3) | 1 | 2Gi / 4Gi | docling models are memory-hungry |
 
 Total cluster ask: ~3 workers × 4Gi + orchestrator + LB ≈ **14Gi** (vs ~21Gi in the sidecar architecture from the `stepflow` namespace which allocated 6Gi per docling-serve sidecar).
@@ -257,7 +257,7 @@ The caller has no idea Stepflow is involved. Traces in Grafana tell the full sto
 
 1. **No sidecar needed for docling** — docling library runs in-process in the worker pods, one container per worker, ~30% less memory than the docling-serve sidecar pattern
 2. **Drop-in API compatibility** — same endpoints, same request/response shapes as docling-serve
-3. **Horizontal scaling** — 3 workers behind Pingora with least-connections routing
+3. **Horizontal scaling** — 3 workers behind the stepflow-load-balancer with least-connections routing
 4. **Full observability** — same Grafana/Jaeger/Prometheus stack, traces decompose the full orchestration chain
 5. **Options parity** — all 15 docling-serve request options (#689) flow through the facade → flow schema → converter cache
 6. **Compact orchestrator** — facade + server colocated as sidecar, localhost communication, single pod to manage
