@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Annotated, Any, Literal, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, field
@@ -171,6 +171,34 @@ class InitializeResult(Struct, kw_only=True):
 
 class Initialized(Struct, kw_only=True):
     pass
+
+
+class ErrorCode(IntEnum):
+    PARSE_ERROR = -32700
+    JSON_RPC_INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    JSON_RPC_INTERNAL_ERROR = -32603
+    WORKER_ERROR = -32000
+    COMPONENT_NOT_FOUND = -32001
+    WORKER_NOT_INITIALIZED = -32002
+    INVALID_INPUT_SCHEMA = -32003
+    INVALID_VALUE = -32004
+    NOT_FOUND = -32005
+    PROTOCOL_VERSION_MISMATCH = -32006
+    WORKER_DEPENDENCY_ERROR = -32007
+    WORKER_CONFIGURATION_ERROR = -32008
+    COMPONENT_EXECUTION_FAILED = -32100
+    COMPONENT_VALUE_ERROR = -32101
+    COMPONENT_RESOURCE_UNAVAILABLE = -32102
+    COMPONENT_BAD_REQUEST = -32103
+    UNDEFINED_FIELD = -32200
+    ENTITY_NOT_FOUND = -32201
+    INTERNAL_ERROR = -32202
+    TRANSPORT_ERROR = -32300
+    TRANSPORT_SPAWN_ERROR = -32301
+    TRANSPORT_CONNECTION_ERROR = -32302
+    TRANSPORT_PROTOCOL_ERROR = -32303
 
 
 JsonRpc: TypeAlias = Annotated[
@@ -428,7 +456,7 @@ class ComponentExecuteParams(Struct, kw_only=True):
     attempt: Annotated[
         int,
         Meta(
-            description='The attempt number for this execution (1-based, for retry logic).',
+            description='The execution attempt number (1-based).\n\nA monotonically increasing counter that increments on every re-execution\nof this step, regardless of the reason:\n- **Transport error**: The subprocess crashed or a network failure occurred.\n- **Component error**: The component returned an error and the step has\n  `onError: { action: retry }`.\n- **Orchestrator recovery**: The orchestrator crashed and is re-executing\n  tasks that were in-flight.\n\nComponents can use this to implement idempotency guards or progressive\nfallback strategies.',
             ge=0,
         ),
     ]

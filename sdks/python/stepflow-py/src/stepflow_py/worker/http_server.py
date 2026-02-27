@@ -36,6 +36,7 @@ from .exceptions import (
 from .generated_protocol import (
     ComponentExecuteParams,
     Error,
+    ErrorCode,
     Message,
     Method,
     MethodError,
@@ -288,7 +289,7 @@ class _HttpServerContext:
             return self.create_error_response(
                 request_id=request.id,
                 status_code=500,
-                error_code=-32603,
+                error_code=ErrorCode.JSON_RPC_INTERNAL_ERROR,
                 error_message=f"Internal error: {str(e)}",
             )
 
@@ -329,7 +330,7 @@ class _HttpServerContext:
                 execution_task.cancel()
             yield self.create_sse_error_event(
                 request_id=request_id,
-                error_code=-32603,
+                error_code=ErrorCode.JSON_RPC_INTERNAL_ERROR,
                 error_message=f"Request execution failed: {str(e)}",
             )
         finally:
@@ -394,14 +395,14 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
             return ctx.create_error_response(
                 request_id=None,
                 status_code=400,
-                error_code=-32600,
+                error_code=ErrorCode.JSON_RPC_INVALID_REQUEST,
                 error_message=str(e),
             )
         except Exception as e:
             return ctx.create_error_response(
                 request_id=None,
                 status_code=500,
-                error_code=-32603,
+                error_code=ErrorCode.JSON_RPC_INTERNAL_ERROR,
                 error_message=f"Internal error: {str(e)}",
             )
 

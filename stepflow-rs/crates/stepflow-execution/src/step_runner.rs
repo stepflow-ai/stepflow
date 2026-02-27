@@ -166,8 +166,11 @@ async fn execute_step_async(
         {
             Ok(result) => result,
             Err(error) => {
-                // Convert plugin execution errors to FlowResult::Failed
-                let flow_error = stepflow_core::FlowError::from_error_stack(
+                // Plugin returned Err — this is a transport/infrastructure error
+                // (subprocess crash, network timeout, etc.)
+                // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
+                // transport failures from component logic errors.
+                let mut flow_error = stepflow_core::FlowError::from_error_stack(
                     error
                         .change_context(ExecutionError::StepFailed {
                             step: step.id.to_owned(),
@@ -178,6 +181,10 @@ async fn execute_step_async(
                         ))
                         .attach_printable(format!("Component: {resolved_component}")),
                 );
+                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
+                // TODO: Map specific TransportError variants to sub-type codes
+                // (-32301 spawn, -32302 connection, -32303 protocol) for
+                // structured diagnostics.
                 FlowResult::Failed(flow_error)
             }
         };
@@ -200,15 +207,9 @@ async fn execute_step_async(
                 let value = default_value.clone().unwrap_or(serde_json::Value::Null);
                 Ok(FlowResult::Success(ValueRef::new(value)))
             }
-            stepflow_core::workflow::ErrorAction::Fail => Ok(result),
-            stepflow_core::workflow::ErrorAction::Retry => {
-                // TODO: Implement retry logic
-                log::warn!(
-                    "Retry error action not yet implemented for step {}",
-                    step.id
-                );
-                Ok(result)
-            }
+            // Fail and Retry both pass through — the executor handles retry decisions
+            stepflow_core::workflow::ErrorAction::Fail
+            | stepflow_core::workflow::ErrorAction::Retry { .. } => Ok(result),
         },
         _ => Ok(result),
     }
@@ -302,7 +303,7 @@ impl StepRunner {
             .change_context(ExecutionError::RouterError)?;
 
         // Execute the step (system error if infrastructure fails)
-        let result = execute_step_async(
+        let outcome = execute_step_async(
             plugin,
             &self.step,
             &resolved_component,
@@ -313,6 +314,6 @@ impl StepRunner {
         )
         .await?;
 
-        Ok(StepRunResult::new(step_id, component, result))
+        Ok(StepRunResult::new(step_id, component, outcome))
     }
 }

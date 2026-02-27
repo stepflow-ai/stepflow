@@ -21,18 +21,23 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import Any, ClassVar, Self
+from typing import Annotated, Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 
 class OnErrorRetry(BaseModel):
     """
-    If the step fails, retry it.
+    If the step fails, retry it.  `max_retries` limits retries due to component errors — cases where the component ran and returned an error. Transport-level failures (subprocess crashes, network errors) are retried separately according to the plugin's retry configuration and do not count against this budget.
     """  # noqa: E501
 
+    max_retries: Annotated[int, Field(strict=True, ge=0)] | None = Field(
+        default=None,
+        description="Maximum number of retries due to component errors (default: 3).  Total attempts for component errors = max_retries + 1 (initial).",
+        alias="maxRetries",
+    )
     action: StrictStr
-    __properties: ClassVar[list[str]] = ["action"]
+    __properties: ClassVar[list[str]] = ["maxRetries", "action"]
 
     @field_validator("action")
     def action_validate_enum(cls, value):
@@ -78,6 +83,11 @@ class OnErrorRetry(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # set to None if max_retries (nullable) is None
+        # and model_fields_set contains the field
+        if self.max_retries is None and "max_retries" in self.model_fields_set:
+            _dict["maxRetries"] = None
+
         return _dict
 
     @classmethod
@@ -90,6 +100,11 @@ class OnErrorRetry(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate(
-            {"action": obj.get("action") if obj.get("action") is not None else "retry"}
+            {
+                "maxRetries": obj.get("maxRetries"),
+                "action": obj.get("action")
+                if obj.get("action") is not None
+                else "retry",
+            }
         )
         return _obj

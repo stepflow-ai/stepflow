@@ -129,7 +129,7 @@ impl<'a> Error<'a> {
     #[allow(dead_code)]
     pub fn method_not_found(method: Method) -> Self {
         Error {
-            code: -32601, // Method not found
+            code: stepflow_core::ErrorCode::METHOD_NOT_FOUND,
             message: Cow::Owned(format!("Method not found: '{method}'")),
             data: None,
         }
@@ -137,7 +137,7 @@ impl<'a> Error<'a> {
 
     pub fn invalid_parameters(id: &RequestId) -> Self {
         Error {
-            code: -32602, // Invalid params
+            code: stepflow_core::ErrorCode::INVALID_PARAMS,
             message: Cow::Owned(format!("Invalid parameters for request {id}")),
             data: None,
         }
@@ -145,7 +145,7 @@ impl<'a> Error<'a> {
 
     pub fn internal(message: impl Into<Cow<'a, str>>) -> Self {
         Error {
-            code: -32000, // Internal error
+            code: stepflow_core::ErrorCode::WORKER_ERROR,
             message: message.into(),
             data: None,
         }
@@ -153,7 +153,7 @@ impl<'a> Error<'a> {
 
     pub fn invalid_value(field: &str, expected: &str) -> Self {
         Error {
-            code: -32012,
+            code: stepflow_core::ErrorCode::INVALID_VALUE,
             message: format!("Invalid value for field '{field}': expected {expected}").into(),
             data: None,
         }
@@ -161,7 +161,7 @@ impl<'a> Error<'a> {
 
     pub fn not_found(entity: &str, id: &str) -> Self {
         Error {
-            code: -32011,
+            code: stepflow_core::ErrorCode::NOT_FOUND,
             message: format!("Not found: {entity} with ID '{id}'").into(),
             data: None,
         }
@@ -448,6 +448,7 @@ mod tests {
             g.subschema_for::<InitializeParams>();
             g.subschema_for::<InitializeResult>();
             g.subschema_for::<Initialized>();
+            g.subschema_for::<stepflow_core::ErrorCode>();
         });
         let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
 

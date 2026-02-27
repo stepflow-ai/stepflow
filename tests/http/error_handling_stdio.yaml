@@ -56,8 +56,7 @@ test:
       output:
         outcome: failed
         error:
-          code: 500
-          message: 'step "error_step" failed'
+          code: -32100
 
     - name: "RuntimeError is wrapped and surfaced"
       input:
@@ -66,8 +65,7 @@ test:
       output:
         outcome: failed
         error:
-          code: 500
-          message: 'step "error_step" failed'
+          code: -32100
 
     - name: "Success case works normally"
       input:

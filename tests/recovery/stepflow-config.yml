@@ -4,12 +4,6 @@ plugins:
   test-worker:
     type: stepflow
     url: "http://worker:8080"
-    retry:
-      maxAttempts: 3
-      backoff:
-        type: fibonacci
-        minDelayMs: 2000
-        maxDelayMs: 10000
 
 routes:
   "/test/{*component}":
@@ -38,3 +32,10 @@ recovery:
 
 blobApi:
   enabled: false
+
+retry:
+  transportMaxRetries: 3
+  backoff:
+    type: fibonacci
+    minDelayMs: 2000
+    maxDelayMs: 10000

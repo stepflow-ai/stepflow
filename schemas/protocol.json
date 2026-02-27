@@ -27,7 +27,7 @@
           "$ref": "#/$defs/Value"
         },
         "attempt": {
-          "description": "The attempt number for this execution (1-based, for retry logic).",
+          "description": "The execution attempt number (1-based).\n\nA monotonically increasing counter that increments on every re-execution\nof this step, regardless of the reason:\n- **Transport error**: The subprocess crashed or a network failure occurred.\n- **Component error**: The component returned an error and the step has\n  `onError: { action: retry }`.\n- **Orchestrator recovery**: The orchestrator crashed and is re-executing\n  tasks that were in-flight.\n\nComponents can use this to implement idempotency guards or progressive\nfallback strategies.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0
@@ -717,6 +717,64 @@
     "Initialized": {
       "description": "Sent from Stepflow to the component server after initialization is complete.",
       "type": "object"
+    },
+    "ErrorCode": {
+      "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32000 to -32099: Worker errors (never retried)\n  -32100 to -32199: Component execution errors (retried with onError: retry)\n  -32200 to -32299: Orchestrator errors (never retried)\n  -32300 to -32399: Transport errors (always retried)\n\nWorker predefined: -32000 to -32010, user-defined: -32011 to -32099.\nComponent execution predefined: -32100 to -32109, user-defined: -32110 to -32199.",
+      "type": "integer",
+      "enum": [
+        -32700,
+        -32600,
+        -32601,
+        -32602,
+        -32603,
+        -32000,
+        -32001,
+        -32002,
+        -32003,
+        -32004,
+        -32005,
+        -32006,
+        -32007,
+        -32008,
+        -32100,
+        -32101,
+        -32102,
+        -32103,
+        -32200,
+        -32201,
+        -32202,
+        -32300,
+        -32301,
+        -32302,
+        -32303
+      ],
+      "x-enum-varnames": [
+        "PARSE_ERROR",
+        "JSON_RPC_INVALID_REQUEST",
+        "METHOD_NOT_FOUND",
+        "INVALID_PARAMS",
+        "JSON_RPC_INTERNAL_ERROR",
+        "WORKER_ERROR",
+        "COMPONENT_NOT_FOUND",
+        "WORKER_NOT_INITIALIZED",
+        "INVALID_INPUT_SCHEMA",
+        "INVALID_VALUE",
+        "NOT_FOUND",
+        "PROTOCOL_VERSION_MISMATCH",
+        "WORKER_DEPENDENCY_ERROR",
+        "WORKER_CONFIGURATION_ERROR",
+        "COMPONENT_EXECUTION_FAILED",
+        "COMPONENT_VALUE_ERROR",
+        "COMPONENT_RESOURCE_UNAVAILABLE",
+        "COMPONENT_BAD_REQUEST",
+        "UNDEFINED_FIELD",
+        "ENTITY_NOT_FOUND",
+        "INTERNAL_ERROR",
+        "TRANSPORT_ERROR",
+        "TRANSPORT_SPAWN_ERROR",
+        "TRANSPORT_CONNECTION_ERROR",
+        "TRANSPORT_PROTOCOL_ERROR"
+      ]
     },
     "MethodRequest": {
       "description": "Request to execute a method.",

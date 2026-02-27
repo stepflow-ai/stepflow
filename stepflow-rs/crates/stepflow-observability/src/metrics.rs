@@ -114,3 +114,72 @@ pub fn record_blob_get(blob_type: &str, size_bytes: u64, duration_seconds: f64) 
     BLOB_GET_BYTES.add(size_bytes, &attrs);
     BLOB_GET_DURATION.record(duration_seconds, &attrs);
 }
+
+// =========================================================================
+// Step Retry Metrics
+// =========================================================================
+
+/// Total step retries, labeled by reason and component.
+///
+/// Reason values:
+/// - `"transport_error"`: subprocess crash, network timeout, connection failure
+/// - `"component_error"`: component ran and returned an error (step has `onError: retry`)
+/// - `"orchestrator_recovery"`: orchestrator crashed; re-executing in-flight tasks
+static STEP_RETRIES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("step.retries_total")
+        .with_description("Total step execution retries")
+        .build()
+});
+
+/// Steps that failed after exhausting their retry budget.
+static STEP_RETRIES_EXHAUSTED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("step.retries_exhausted_total")
+        .with_description("Steps that failed after exhausting retry budget")
+        .build()
+});
+
+/// Total step execution attempts (initial + retries), by outcome.
+static STEP_EXECUTIONS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("step.executions_total")
+        .with_description("Total step execution attempts")
+        .build()
+});
+
+/// Record a step retry.
+pub fn record_step_retry(reason: &str, component: &str) {
+    STEP_RETRIES.add(
+        1,
+        &[
+            KeyValue::new("reason", reason.to_string()),
+            KeyValue::new("component", component.to_string()),
+        ],
+    );
+}
+
+/// Record retry budget exhaustion (step failed after all retries).
+pub fn record_step_retries_exhausted(reason: &str, component: &str) {
+    STEP_RETRIES_EXHAUSTED.add(
+        1,
+        &[
+            KeyValue::new("reason", reason.to_string()),
+            KeyValue::new("component", component.to_string()),
+        ],
+    );
+}
+
+/// Record a step execution attempt.
+pub fn record_step_execution(component: &str, outcome: &str) {
+    STEP_EXECUTIONS.add(
+        1,
+        &[
+            KeyValue::new("component", component.to_string()),
+            KeyValue::new("outcome", outcome.to_string()),
+        ],
+    );
+}

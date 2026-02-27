@@ -59,6 +59,18 @@
       "default": {
         "enabled": true
       }
+    },
+    "retry": {
+      "description": "Retry configuration.\nControls backoff for all retries and the retry limit for transport errors\n(subprocess crash, network timeout, connection refused).",
+      "$ref": "#/$defs/RetryConfig",
+      "default": {
+        "transportMaxRetries": 3,
+        "backoff": {
+          "type": "fibonacci",
+          "minDelayMs": 1000,
+          "maxDelayMs": 10000
+        }
+      }
     }
   },
   "required": [
@@ -117,73 +129,9 @@
         }
       }
     },
-    "RetryConfig": {
-      "description": "Configuration for retry behavior when component execution fails.",
-      "type": "object",
-      "properties": {
-        "maxAttempts": {
-          "description": "Maximum number of execution attempts (default: 3).",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint32",
-          "minimum": 0
-        },
-        "backoff": {
-          "description": "Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).",
-          "$ref": "#/$defs/BackoffConfig",
-          "default": {
-            "type": "fibonacci",
-            "minDelayMs": 1000,
-            "maxDelayMs": 10000
-          }
-        }
-      }
-    },
-    "BackoffConfig": {
-      "description": "Backoff strategy for retry delays. Each variant carries only its relevant parameters.",
-      "oneOf": [
-        {
-          "$ref": "#/$defs/BackoffConfigConstant"
-        },
-        {
-          "$ref": "#/$defs/BackoffConfigExponential"
-        },
-        {
-          "$ref": "#/$defs/BackoffConfigFibonacci"
-        }
-      ],
-      "discriminator": {
-        "propertyName": "type",
-        "mapping": {
-          "constant": "#/$defs/BackoffConfigConstant",
-          "exponential": "#/$defs/BackoffConfigExponential",
-          "fibonacci": "#/$defs/BackoffConfigFibonacci"
-        }
-      }
-    },
     "StepflowPluginConfig": {
       "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server",
       "type": "object",
-      "properties": {
-        "retry": {
-          "description": "Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).",
-          "oneOf": [
-            {
-              "$ref": "#/$defs/RetryConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "type": {
-          "type": "string",
-          "const": "stepflow",
-          "default": "stepflow"
-        }
-      },
       "anyOf": [
         {
           "title": "StepflowSubprocessConfig",
@@ -236,6 +184,13 @@
           ]
         }
       ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "stepflow",
+          "default": "stepflow"
+        }
+      },
       "required": [
         "type"
       ]
@@ -710,6 +665,50 @@
         }
       }
     },
+    "RetryConfig": {
+      "description": "Orchestrator-level retry configuration.\n\nControls backoff delays for all retries and the retry limit for transport\nerrors (subprocess crashes, network timeouts, connection refused).\n\nComponent error retry limits are configured per-step via\n`onError: { action: retry, maxRetries }` and share this backoff config.",
+      "type": "object",
+      "properties": {
+        "transportMaxRetries": {
+          "description": "Maximum number of retries for transport errors (default: 3).\n\nTransport errors are infrastructure-level failures — subprocess crashes,\nnetwork timeouts, connection refused — where the component never ran or\ndidn't complete.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0,
+          "default": 3
+        },
+        "backoff": {
+          "description": "Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).\n\nThis backoff applies to both transport error retries and component error\nretries. The same delay progression is used regardless of retry reason.",
+          "$ref": "#/$defs/BackoffConfig",
+          "default": {
+            "type": "fibonacci",
+            "minDelayMs": 1000,
+            "maxDelayMs": 10000
+          }
+        }
+      }
+    },
+    "BackoffConfig": {
+      "description": "Backoff strategy for retry delays.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BackoffConfigConstant"
+        },
+        {
+          "$ref": "#/$defs/BackoffConfigExponential"
+        },
+        {
+          "$ref": "#/$defs/BackoffConfigFibonacci"
+        }
+      ],
+      "discriminator": {
+        "propertyName": "type",
+        "mapping": {
+          "constant": "#/$defs/BackoffConfigConstant",
+          "exponential": "#/$defs/BackoffConfigExponential",
+          "fibonacci": "#/$defs/BackoffConfigFibonacci"
+        }
+      }
+    },
     "BuiltinPluginConfig": {
       "title": "BuiltinPluginConfig",
       "type": "object",
@@ -720,6 +719,84 @@
           "default": "builtin"
         }
       },
+      "required": [
+        "type"
+      ]
+    },
+    "InMemoryStore": {
+      "title": "InMemoryStore",
+      "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "inMemory",
+          "default": "inMemory"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "SqliteStore": {
+      "title": "SqliteStore",
+      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "sqlite",
+          "default": "sqlite"
+        }
+      },
+      "$ref": "#/$defs/SqliteStateStoreConfig",
+      "required": [
+        "type"
+      ]
+    },
+    "FilesystemStore": {
+      "title": "FilesystemStore",
+      "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "filesystem",
+          "default": "filesystem"
+        }
+      },
+      "$ref": "#/$defs/FilesystemBlobStoreConfig",
+      "required": [
+        "type"
+      ]
+    },
+    "NoOpLeaseManager": {
+      "title": "NoOpLeaseManager",
+      "description": "No-op lease management (single orchestrator mode).\n\nThis is the default for single-node deployments where there's no need\nfor distributed coordination. All lease requests succeed immediately.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "noOp",
+          "default": "noOp"
+        }
+      },
+      "required": [
+        "type"
+      ]
+    },
+    "EtcdLeaseManager": {
+      "title": "EtcdLeaseManager",
+      "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "etcd",
+          "default": "etcd"
+        }
+      },
+      "$ref": "#/$defs/EtcdLeaseManagerConfig",
       "required": [
         "type"
       ]
@@ -806,84 +883,6 @@
           "default": "fibonacci"
         }
       },
-      "required": [
-        "type"
-      ]
-    },
-    "InMemoryStore": {
-      "title": "InMemoryStore",
-      "description": "In-memory storage (default, for testing and demos).\n\n**Supported stores**: metadata, blobs, journal\n\nData is not persisted across restarts. Useful for development,\ntesting, and demos where persistence is not required.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "inMemory",
-          "default": "inMemory"
-        }
-      },
-      "required": [
-        "type"
-      ]
-    },
-    "SqliteStore": {
-      "title": "SqliteStore",
-      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "sqlite",
-          "default": "sqlite"
-        }
-      },
-      "$ref": "#/$defs/SqliteStateStoreConfig",
-      "required": [
-        "type"
-      ]
-    },
-    "FilesystemStore": {
-      "title": "FilesystemStore",
-      "description": "Filesystem-based blob storage.\n\n**Supported stores**: blobs only\n\nStores blobs as JSON files in a directory. If no directory is specified,\na temporary directory is created and cleaned up when the store is dropped.\nSuitable for local development and single-instance deployments.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "filesystem",
-          "default": "filesystem"
-        }
-      },
-      "$ref": "#/$defs/FilesystemBlobStoreConfig",
-      "required": [
-        "type"
-      ]
-    },
-    "NoOpLeaseManager": {
-      "title": "NoOpLeaseManager",
-      "description": "No-op lease management (single orchestrator mode).\n\nThis is the default for single-node deployments where there's no need\nfor distributed coordination. All lease requests succeed immediately.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "noOp",
-          "default": "noOp"
-        }
-      },
-      "required": [
-        "type"
-      ]
-    },
-    "EtcdLeaseManager": {
-      "title": "EtcdLeaseManager",
-      "description": "etcd-backed lease management for distributed deployments.\n\nUses etcd v3 for distributed coordination with one etcd lease per\norchestrator. Provides automatic cleanup on crash, push-based orphan\ndetection, and efficient `release_all` via lease revocation.",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "etcd",
-          "default": "etcd"
-        }
-      },
-      "$ref": "#/$defs/EtcdLeaseManagerConfig",
       "required": [
         "type"
       ]

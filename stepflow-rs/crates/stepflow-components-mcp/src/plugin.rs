@@ -468,7 +468,7 @@ impl Plugin for McpPlugin {
                 {
                     // This is a tool execution failure, not an implementation failure
                     return Ok(FlowResult::Failed(FlowError::new(
-                        500,
+                        stepflow_core::ErrorCode::INTERNAL_ERROR,
                         format!("Tool '{tool_name}' execution failed"),
                     )));
                 }
@@ -484,6 +484,10 @@ impl Plugin for McpPlugin {
         });
 
         Ok(FlowResult::Success(ValueRef::new(content)))
+    }
+
+    async fn prepare_for_retry(&self) -> Result<()> {
+        Ok(())
     }
 }
 

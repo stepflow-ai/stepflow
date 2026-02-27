@@ -52,6 +52,41 @@ class HealthCheckConfig(Struct, kw_only=True):
     ) = 100
 
 
+class StepflowSubprocessConfig(Struct, kw_only=True):
+    type: Literal['stepflow']
+    command: str
+    args: list[str] | UnsetType = UNSET
+    env: (
+        Annotated[
+            dict[str, str],
+            Meta(
+                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    healthCheck: (
+        Annotated[
+            HealthCheckConfig | None,
+            Meta(description='Health check configuration for the subprocess server.'),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class StepflowRemoteConfig(Struct, kw_only=True):
+    type: Literal['stepflow']
+    url: str
+
+
+StepflowPluginConfig: TypeAlias = Annotated[
+    StepflowSubprocessConfig | StepflowRemoteConfig,
+    Meta(
+        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
+    ),
+]
+
+
 class Schema(Struct, kw_only=True):
     pass
 
@@ -219,6 +254,43 @@ class BuiltinPluginConfig(Struct, kw_only=True, tag_field='type', tag='builtin')
     pass
 
 
+class InMemoryStore(Struct, kw_only=True, tag_field='type', tag='inMemory'):
+    pass
+
+
+class SqliteStore(Struct, kw_only=True, tag_field='type', tag='sqlite'):
+    databaseUrl: str
+    maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
+    autoMigrate: bool | UnsetType = True
+
+
+class FilesystemStore(Struct, kw_only=True, tag_field='type', tag='filesystem'):
+    directory: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Directory path for storing blobs. If not specified, a temporary directory is used.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class NoOpLeaseManager(Struct, kw_only=True, tag_field='type', tag='noOp'):
+    pass
+
+
+class EtcdLeaseManager(Struct, kw_only=True, tag_field='type', tag='etcd'):
+    endpoints: Annotated[
+        list[str],
+        Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
+    ]
+    key_prefix: (
+        Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
+        | UnsetType
+    ) = '/stepflow/leases'
+
+
 class BackoffConfigConstant(Struct, kw_only=True, tag_field='type', tag='constant'):
     delayMs: (
         Annotated[int, Meta(description='Delay in milliseconds (default: 1000).', ge=0)]
@@ -270,51 +342,6 @@ class BackoffConfigFibonacci(Struct, kw_only=True, tag_field='type', tag='fibona
     ) = 10000
 
 
-class InMemoryStore(Struct, kw_only=True, tag_field='type', tag='inMemory'):
-    pass
-
-
-class SqliteStore(Struct, kw_only=True, tag_field='type', tag='sqlite'):
-    databaseUrl: str
-    maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
-    autoMigrate: bool | UnsetType = True
-
-
-class FilesystemStore(Struct, kw_only=True, tag_field='type', tag='filesystem'):
-    directory: (
-        Annotated[
-            str | None,
-            Meta(
-                description='Directory path for storing blobs. If not specified, a temporary directory is used.'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-class NoOpLeaseManager(Struct, kw_only=True, tag_field='type', tag='noOp'):
-    pass
-
-
-class EtcdLeaseManager(Struct, kw_only=True, tag_field='type', tag='etcd'):
-    endpoints: Annotated[
-        list[str],
-        Meta(description='etcd endpoints (e.g., `["http://localhost:2379"]`).'),
-    ]
-    key_prefix: (
-        Annotated[str, Meta(description='Key prefix for all stepflow lease keys.')]
-        | UnsetType
-    ) = '/stepflow/leases'
-
-
-BackoffConfig: TypeAlias = Annotated[
-    BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
-    Meta(
-        description='Backoff strategy for retry delays. Each variant carries only its relevant parameters.'
-    ),
-]
-
-
 class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
     result: Value
 
@@ -351,83 +378,9 @@ LeaseManagerConfig: TypeAlias = Annotated[
 ]
 
 
-class RetryConfig(Struct, kw_only=True):
-    maxAttempts: (
-        Annotated[
-            int | None,
-            Meta(
-                description='Maximum number of execution attempts (default: 3).', ge=0
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    backoff: (
-        Annotated[
-            BackoffConfig,
-            Meta(
-                description='Backoff strategy and parameters (default: fibonacci with 1s min, 10s max).'
-            ),
-        ]
-        | UnsetType
-    ) = field(
-        default_factory=lambda: {
-            'type': 'fibonacci',
-            'minDelayMs': 1000,
-            'maxDelayMs': 10000,
-        }
-    )
-
-
-class StepflowSubprocessConfig(Struct, kw_only=True):
-    type: Literal['stepflow']
-    command: str
-    retry: (
-        Annotated[
-            RetryConfig | None,
-            Meta(
-                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    args: list[str] | UnsetType = UNSET
-    env: (
-        Annotated[
-            dict[str, str],
-            Meta(
-                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    healthCheck: (
-        Annotated[
-            HealthCheckConfig | None,
-            Meta(description='Health check configuration for the subprocess server.'),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-class StepflowRemoteConfig(Struct, kw_only=True):
-    type: Literal['stepflow']
-    url: str
-    retry: (
-        Annotated[
-            RetryConfig | None,
-            Meta(
-                description='Retry configuration for component execution failures (default: 3 attempts, fibonacci backoff).'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-StepflowPluginConfig: TypeAlias = Annotated[
-    StepflowSubprocessConfig | StepflowRemoteConfig,
-    Meta(
-        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
-    ),
+BackoffConfig: TypeAlias = Annotated[
+    BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
+    Meta(description='Backoff strategy for retry delays.'),
 ]
 
 
@@ -518,6 +471,34 @@ StorageConfig: TypeAlias = Annotated[
 ]
 
 
+class RetryConfig(Struct, kw_only=True):
+    transportMaxRetries: (
+        Annotated[
+            int,
+            Meta(
+                description="Maximum number of retries for transport errors (default: 3).\n\nTransport errors are infrastructure-level failures — subprocess crashes,\nnetwork timeouts, connection refused — where the component never ran or\ndidn't complete.",
+                ge=0,
+            ),
+        ]
+        | UnsetType
+    ) = 3
+    backoff: (
+        Annotated[
+            BackoffConfig,
+            Meta(
+                description='Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).\n\nThis backoff applies to both transport error retries and component error\nretries. The same delay progression is used regardless of retry reason.'
+            ),
+        ]
+        | UnsetType
+    ) = field(
+        default_factory=lambda: {
+            'type': 'fibonacci',
+            'minDelayMs': 1000,
+            'maxDelayMs': 10000,
+        }
+    )
+
+
 class MockComponent(Struct, kw_only=True):
     input_schema: Schema
     output_schema: Schema
@@ -596,3 +577,24 @@ class StepflowConfig(Struct, kw_only=True):
         ]
         | UnsetType
     ) = field(default_factory=lambda: convert({'enabled': True}, type=BlobApiConfig))
+    retry: (
+        Annotated[
+            RetryConfig,
+            Meta(
+                description='Retry configuration.\nControls backoff for all retries and the retry limit for transport errors\n(subprocess crash, network timeout, connection refused).'
+            ),
+        ]
+        | UnsetType
+    ) = field(
+        default_factory=lambda: convert(
+            {
+                'transportMaxRetries': 3,
+                'backoff': {
+                    'type': 'fibonacci',
+                    'minDelayMs': 1000,
+                    'maxDelayMs': 10000,
+                },
+            },
+            type=RetryConfig,
+        )
+    )

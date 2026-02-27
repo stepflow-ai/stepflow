@@ -12,7 +12,6 @@ doctest = false
 
 [dependencies]
 async-stream.workspace = true
-backon.workspace = true
 erased-serde.workspace = true
 error-stack.workspace = true
 fastrace.workspace = true

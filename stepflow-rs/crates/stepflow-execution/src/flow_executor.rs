@@ -38,7 +38,9 @@ use crate::state::ItemsState;
 use crate::step_runner::{StepRunResult, StepRunner};
 use crate::task::{Task, TaskResult};
 use crate::{ExecutionError, Result};
-use stepflow_plugin::{SubflowReceiver, SubflowRequest, SubflowSubmitter};
+use stepflow_plugin::{
+    Plugin as _, PluginRouterExt as _, SubflowReceiver, SubflowRequest, SubflowSubmitter,
+};
 
 /// Executor for running workflows with one or more items.
 ///
@@ -246,7 +248,9 @@ impl FlowExecutor {
             if remaining == Some(0) {
                 // Wait for any in-flight tasks to complete before returning
                 while let Some(task_result) = in_flight.next().await {
-                    self.complete_task(task_result).await?;
+                    if let Some(retry_future) = self.complete_task(task_result).await? {
+                        in_flight.push(retry_future);
+                    }
                     self.checkpointer
                         .maybe_checkpoint(&self.runs, &self.recovered_subflows)
                         .await?;
@@ -332,11 +336,13 @@ impl FlowExecutor {
             tokio::select! {
                 // Handle task completion
                 Some(task_result) = in_flight.next() => {
-                    self.complete_task(task_result).await?;
-                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows).await?;
-                    if let Some(r) = &mut remaining {
+                    if let Some(retry_future) = self.complete_task(task_result).await? {
+                        in_flight.push(retry_future);
+                    } else if let Some(r) = &mut remaining {
+                        // Only count fuel for actual completions, not retries
                         *r = r.saturating_sub(1);
                     }
+                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows).await?;
                 }
                 // Handle subflow submission
                 Some(submit_request) = self.submit_receiver.recv() => {
@@ -749,10 +755,38 @@ impl FlowExecutor {
     }
 
     /// Complete a task and update state.
-    async fn complete_task(&mut self, task_result: TaskResult) -> Result<()> {
+    ///
+    /// Returns `Some(future)` if the task should be retried (push into `in_flight`),
+    /// or `None` if the task completed normally.
+    async fn complete_task(
+        &mut self,
+        task_result: TaskResult,
+    ) -> Result<Option<futures::future::BoxFuture<'static, TaskResult>>> {
         let task = task_result.task();
-        let result = task_result.step.result.clone();
         let run_id = task.run_id;
+        let component_path = task_result.step.component().to_string();
+
+        // Record step execution metric
+        let outcome = if task_result.is_success() {
+            "success"
+        } else {
+            "failed"
+        };
+        stepflow_observability::metrics::record_step_execution(&component_path, outcome);
+
+        // ---------------------------------------------------------------
+        // Retry decision: check if we should retry instead of completing
+        // ---------------------------------------------------------------
+        if task_result.step.is_failed()
+            && let Some(retry_future) = self.maybe_retry_task(&task_result, &component_path).await?
+        {
+            return Ok(Some(retry_future));
+        }
+
+        // ---------------------------------------------------------------
+        // Normal completion path
+        // ---------------------------------------------------------------
+        let result = task_result.step.result.clone();
 
         // Update state and get newly ready tasks
         let new_tasks = if let Some(run_state) = self.run_state_mut(run_id) {
@@ -891,7 +925,185 @@ impl FlowExecutor {
             // Root runs are handled in execute_to_completion
         }
 
-        Ok(())
+        Ok(None)
+    }
+
+    /// Evaluate whether a failed task should be retried and, if so, build the retry future.
+    ///
+    /// Returns `Some(future)` if retrying, `None` if the task should complete normally.
+    async fn maybe_retry_task(
+        &mut self,
+        task_result: &TaskResult,
+        component_path: &str,
+    ) -> Result<Option<futures::future::BoxFuture<'static, TaskResult>>> {
+        use futures::future::FutureExt as _;
+
+        let task = task_result.task();
+        let run_id = task.run_id;
+        let is_transport = task_result.step.result.is_transport_error();
+        let is_component_execution = task_result.step.result.is_component_execution_error();
+
+        // 1. Read limits (immutable borrows — no conflict with runs)
+        let transport_max = self.retry_config().transport_max_retries;
+        let component_max = self.get_component_max_retries(task);
+
+        // 2. Check budget against item state
+        let run_state = self
+            .run_state_mut(run_id)
+            .expect("run should exist for retry");
+        let item = run_state.items_state_mut().item_mut(task.item_index);
+        let retry = item.retry_state_mut(task.step_index);
+
+        let should_retry = if is_transport {
+            retry.transport_retries < transport_max
+        } else if is_component_execution {
+            // Only component execution errors (-32100 to -32199) are eligible
+            // for onError retry. Protocol, orchestrator, and JSON-RPC errors
+            // indicate structural problems that won't resolve on retry.
+            if let Some(max) = component_max {
+                retry.component_retries < max
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !should_retry {
+            // Budget exhausted or not a retriable error — record metric if budget existed
+            let had_budget = if is_transport {
+                transport_max > 0
+            } else {
+                component_max.is_some()
+            };
+            if had_budget {
+                let reason = if is_transport {
+                    "transport_error"
+                } else {
+                    "component_error"
+                };
+                stepflow_observability::metrics::record_step_retries_exhausted(
+                    reason,
+                    component_path,
+                );
+            }
+            return Ok(None);
+        }
+
+        // ---------------------------------------------------------------
+        // Retry path
+        // ---------------------------------------------------------------
+        let reason = if is_transport {
+            "transport_error"
+        } else {
+            "component_error"
+        };
+
+        // 3. Increment per-reason counter in item state
+        let retry_count = if is_transport {
+            retry.transport_retries += 1;
+            retry.transport_retries
+        } else {
+            retry.component_retries += 1;
+            retry.component_retries
+        };
+
+        // Shared backoff for all retries (transport and component)
+        let delay = self.retry_config().delay(retry_count);
+
+        // 2. For transport errors, prepare the plugin for retry (e.g. restart subprocess)
+        if is_transport
+            && let Ok((plugin, _)) = self.lookup_plugin_for_task(task)
+            && let Err(e) = plugin.prepare_for_retry().await
+        {
+            log::warn!(
+                "prepare_for_retry failed for step '{}': {:?}",
+                task_result.step.step_name(),
+                e
+            );
+            // Continue with retry anyway — the execution attempt will fail
+            // and be handled by the next retry cycle
+        }
+
+        // 3. Increment attempt counter in item state
+        let new_attempt = {
+            let run_state = self
+                .run_state_mut(run_id)
+                .expect("run should exist for retry");
+            let item = run_state.items_state_mut().item_mut(task.item_index);
+            item.record_attempt(task.step_index)
+        };
+
+        // 4. Journal the new attempt
+        self.write_journal(JournalEvent::TasksStarted {
+            runs: vec![RunTaskAttempts {
+                run_id,
+                tasks: vec![TaskAttempt::new(
+                    task.item_index,
+                    task.step_index,
+                    new_attempt,
+                )],
+            }],
+        })
+        .await?;
+
+        // 5. Record retry metric
+        stepflow_observability::metrics::record_step_retry(reason, component_path);
+
+        log::info!(
+            "Retrying step '{}' (reason: {}, attempt: {}, delay: {:?})",
+            task_result.step.step_name(),
+            reason,
+            new_attempt,
+            delay
+        );
+
+        // 6. Build retry future: sleep then re-execute
+        let task_future = self.prepare_task_future(task)?;
+        let retry_future = async move {
+            tokio::time::sleep(delay).await;
+            task_future.await
+        };
+
+        Ok(Some(retry_future.boxed()))
+    }
+
+    /// Get the transport retry config from the environment.
+    fn retry_config(&self) -> &stepflow_core::RetryConfig {
+        self.env
+            .get::<stepflow_core::RetryConfig>()
+            .expect("RetryConfig must be in environment")
+    }
+
+    /// Look up the component max_retries from the step's ErrorAction, if it's a Retry action.
+    fn get_component_max_retries(&self, task: Task) -> Option<u32> {
+        let run_state = self.run_state(task.run_id)?;
+        let item = run_state.items_state().item(task.item_index);
+        let step = item.flow().step(task.step_index);
+        step.on_error_or_default().max_retries()
+    }
+
+    /// Look up the plugin for a task's step component, using the step's resolved input for routing.
+    fn lookup_plugin_for_task(
+        &self,
+        task: Task,
+    ) -> Result<(&std::sync::Arc<stepflow_plugin::DynPlugin<'static>>, String)> {
+        let run_state = self.run_state(task.run_id).ok_or_else(|| {
+            error_stack::report!(ExecutionError::Deadlock)
+                .attach_printable(format!("Unknown run_id {} for retry lookup", task.run_id))
+        })?;
+        let item = run_state.items_state().item(task.item_index);
+        let step = item.flow().step(task.step_index);
+
+        // Resolve step input for routing (dependencies are complete at this point)
+        let input = match step.input.resolve(item) {
+            FlowResult::Success(v) => v,
+            FlowResult::Failed(_) => stepflow_core::values::ValueRef::new(serde_json::Value::Null),
+        };
+
+        self.env
+            .get_plugin_and_component(&step.component, input)
+            .change_context(ExecutionError::RouterError)
     }
 
     /// Resolve the output for a completed item.

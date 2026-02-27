@@ -203,6 +203,10 @@ mod tests {
                 stepflow_core::workflow::ValueRef::new(json!({})),
             ))
         }
+
+        async fn prepare_for_retry(&self) -> crate::Result<()> {
+            Ok(())
+        }
     }
 
     #[test]

@@ -64,7 +64,7 @@ test:
     output:
       outcome: failed
       error:
-        code: 500
+        code: -32300
         message: step "step1" failed
         data:
           stack:

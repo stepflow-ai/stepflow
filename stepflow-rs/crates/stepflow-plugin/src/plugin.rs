@@ -48,11 +48,10 @@ pub trait Plugin: Send + Sync {
     /// * `run_context` - The run context with flow, environment, and subflow submission
     /// * `step` - The step being executed (None for workflow-level operations)
     /// * `input` - The resolved input values
-    /// * `attempt` - The orchestrator-level execution attempt number (1-based).
-    ///   Increases when the orchestrator recovers a task from its journal.
-    ///   Implementations with transport-level retries (e.g., StepflowPlugin)
-    ///   may add the retry count to produce a combined attempt number for
-    ///   the component.
+    /// * `attempt` - The execution attempt number (1-based). A monotonically
+    ///   increasing counter that increments on every re-execution of this step,
+    ///   regardless of the reason (transport error, component error, or
+    ///   orchestrator recovery).
     async fn execute(
         &self,
         component: &Component,
@@ -61,6 +60,13 @@ pub trait Plugin: Send + Sync {
         input: ValueRef,
         attempt: u32,
     ) -> Result<FlowResult>;
+
+    /// Prepare the plugin for a retry after a transport error.
+    ///
+    /// Implementations may use this to recover / re-initialize resources needed
+    /// for the next attempt (e.g. restarting a crashed subprocess). The default
+    /// is a no-op.
+    async fn prepare_for_retry(&self) -> Result<()>;
 }
 
 /// Trait implemented by a deserializable plugin configuration.

@@ -87,4 +87,8 @@ impl Plugin for Builtins {
             .await
             .change_context(PluginError::UdfExecution)
     }
+
+    async fn prepare_for_retry(&self) -> Result<()> {
+        Ok(())
+    }
 }

@@ -275,6 +275,10 @@ impl Plugin for MockPlugin {
             MockComponentBehavior::Result { result } => Ok(result.clone()),
         }
     }
+
+    async fn prepare_for_retry(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

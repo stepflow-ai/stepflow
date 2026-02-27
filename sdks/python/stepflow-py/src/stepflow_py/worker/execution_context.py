@@ -41,6 +41,17 @@ class ExecutionContext:
     run_id: str | None = None
     step_id: str | None = None
     flow_id: str | None = None
+
+    #: The execution attempt number (1-based).
+    #:
+    #: A monotonically increasing counter that increments on every
+    #: re-execution of this step, regardless of the reason:
+    #:
+    #: - **Transport error**: subprocess crash, network timeout.
+    #: - **Component error**: component returned an error and the step
+    #:   has ``onError: { action: retry }``.
+    #: - **Orchestrator recovery**: orchestrator crashed and is
+    #:   re-executing in-flight tasks.
     attempt: int = 1
 
 

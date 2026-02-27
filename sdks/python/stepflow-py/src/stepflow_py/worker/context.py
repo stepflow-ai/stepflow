@@ -193,7 +193,21 @@ class StepflowContext:
 
     @property
     def attempt(self) -> int:
-        """Get the current attempt number (1-based, for retry logic)."""
+        """The execution attempt number (1-based).
+
+        A monotonically increasing counter that increments on every
+        re-execution of this step, regardless of the reason:
+
+        - **Transport error**: The subprocess crashed or a network failure
+          occurred. Retried up to the orchestrator's ``retry.transportMaxRetries``.
+        - **Component error**: The component returned an error and the step
+          has ``onError: { action: retry }``. Retried up to ``maxRetries``.
+        - **Orchestrator recovery**: The orchestrator crashed and is
+          re-executing tasks that were in-flight.
+
+        Components can use this to implement idempotency guards or
+        progressive fallback strategies.
+        """
         return self._attempt
 
     def _generate_subflow_key(self) -> str:

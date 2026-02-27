@@ -14,6 +14,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error_code::ErrorCode;
 use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
 
@@ -31,8 +32,6 @@ impl std::fmt::Display for FlowError {
         write!(f, "error({}): {}", self.code, self.message)
     }
 }
-
-pub const FLOW_ERROR_UNDEFINED_FIELD: i64 = 1;
 
 impl FlowError {
     pub fn new(code: i64, message: impl Into<Cow<'static, str>>) -> Self {
@@ -66,7 +65,7 @@ impl FlowError {
         };
 
         Self {
-            code: 500, // Default to internal server error for system errors
+            code: ErrorCode::INTERNAL_ERROR,
             message: message.into(),
             data,
         }
@@ -232,6 +231,17 @@ impl FlowResult {
         }
     }
 
+    /// Returns true if this is a transport/infrastructure error.
+    pub fn is_transport_error(&self) -> bool {
+        matches!(self, Self::Failed(e) if ErrorCode::is_transport(e.code))
+    }
+
+    /// Returns true if this is a component execution error
+    /// (retryable with `onError: { action: retry }`).
+    pub fn is_component_execution_error(&self) -> bool {
+        matches!(self, Self::Failed(e) if ErrorCode::is_component_execution(e.code))
+    }
+
     /// Unwrap a successful result, panicking if the result is not Success.
     ///
     /// This is primarily useful for testing where we expect a successful result.
@@ -273,7 +283,7 @@ mod tests {
         let flow_error = FlowError::from_error_stack(report);
 
         // Verify basic fields
-        assert_eq!(flow_error.code, 500);
+        assert_eq!(flow_error.code, ErrorCode::INTERNAL_ERROR);
         assert_eq!(flow_error.message, "TestError: higher level error");
         assert!(flow_error.data.is_some());
 

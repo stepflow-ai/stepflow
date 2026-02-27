@@ -282,14 +282,14 @@ impl ValueExpr {
             ValueExpr::Step { step, path } => {
                 let Some(idx) = ctx.step_index(step) else {
                     return FlowResult::Failed(crate::FlowError::new(
-                        404,
+                        crate::ErrorCode::ENTITY_NOT_FOUND,
                         format!("Unknown step: {}", step),
                     ));
                 };
 
                 let Some(result) = ctx.get_result(idx) else {
                     return FlowResult::Failed(crate::FlowError::new(
-                        500,
+                        crate::ErrorCode::INTERNAL_ERROR,
                         format!("Step {} not completed", step),
                     ));
                 };
@@ -306,7 +306,7 @@ impl ValueExpr {
                             FlowResult::Success(sub_value)
                         } else {
                             FlowResult::Failed(crate::FlowError::new(
-                                crate::FLOW_ERROR_UNDEFINED_FIELD,
+                                crate::ErrorCode::UNDEFINED_FIELD,
                                 format!("Path {} not found", path),
                             ))
                         }
@@ -318,7 +318,7 @@ impl ValueExpr {
             ValueExpr::Input { input: path } => {
                 let Some(input_value) = ctx.get_input() else {
                     return FlowResult::Failed(crate::FlowError::new(
-                        500,
+                        crate::ErrorCode::INTERNAL_ERROR,
                         "Workflow input not available in context",
                     ));
                 };
@@ -330,7 +330,7 @@ impl ValueExpr {
                     FlowResult::Success(sub_value)
                 } else {
                     FlowResult::Failed(crate::FlowError::new(
-                        crate::FLOW_ERROR_UNDEFINED_FIELD,
+                        crate::ErrorCode::UNDEFINED_FIELD,
                         format!("Input path {} not found", path),
                     ))
                 }
@@ -341,7 +341,7 @@ impl ValueExpr {
                 let parts = variable.parts();
                 if parts.is_empty() {
                     return FlowResult::Failed(crate::FlowError::new(
-                        500,
+                        crate::ErrorCode::INTERNAL_ERROR,
                         "Variable path is empty",
                     ));
                 }
@@ -351,7 +351,7 @@ impl ValueExpr {
                     PathPart::Field(name) | PathPart::IndexStr(name) => name.as_str(),
                     PathPart::Index(_) => {
                         return FlowResult::Failed(crate::FlowError::new(
-                            500,
+                            crate::ErrorCode::INTERNAL_ERROR,
                             "Variable name must be a string",
                         ));
                     }
@@ -380,7 +380,7 @@ impl ValueExpr {
 
                 // No variable and no default - error
                 FlowResult::Failed(crate::FlowError::new(
-                    crate::FLOW_ERROR_UNDEFINED_FIELD,
+                    crate::ErrorCode::UNDEFINED_FIELD,
                     format!("Undefined variable: {}", var_name),
                 ))
             }

@@ -185,6 +185,48 @@ The component methods provide a complete lifecycle for working with components:
 }
 ```
 
+### The `attempt` Field
+
+The `components/execute` request includes an `attempt` field -- a **1-based, monotonically increasing counter** that tracks how many times a step has been executed. On the first execution, `attempt` is `1`. Each subsequent re-execution increments the counter by one.
+
+The `attempt` counter is shared across all retry reasons. A step may be re-executed for any of the following reasons:
+
+| Reason | Trigger | Limit | Configured Via |
+|--------|---------|-------|----------------|
+| **Transport error** | Subprocess crash, network timeout, connection failure | `transportMaxRetries` (default: 3) | Orchestrator `retry` config |
+| **Component error** | Component ran and returned an error; step has `onError: { action: retry }` | `maxRetries` (default: 3) | Step-level `onError` |
+| **Orchestrator recovery** | Orchestrator crashed; task was started but no completion journaled | Unlimited | N/A |
+
+Transport errors and component errors have **separate budgets** -- exhausting transport retries does not consume component retry budget, and vice versa. The `attempt` counter increments regardless of which retry reason triggered the re-execution.
+
+```json title="First execution"
+{
+  "jsonrpc": "2.0",
+  "id": "execute-001",
+  "method": "components/execute",
+  "params": {
+    "component": { "name": "data_processor", "path": "/python/data_processor" },
+    "input": { "records": [] },
+    "attempt": 1
+  }
+}
+```
+
+```json title="Third execution (after two retries)"
+{
+  "jsonrpc": "2.0",
+  "id": "execute-003",
+  "method": "components/execute",
+  "params": {
+    "component": { "name": "data_processor", "path": "/python/data_processor" },
+    "input": { "records": [] },
+    "attempt": 3
+  }
+}
+```
+
+Components can use the `attempt` field for observability (logging, metrics) or to adjust their behavior on retries (e.g., using a longer timeout or a different strategy).
+
 ### Bidirectional Execution
 
 Components that need to interact with the runtime during execution can make requests back to the runtime:

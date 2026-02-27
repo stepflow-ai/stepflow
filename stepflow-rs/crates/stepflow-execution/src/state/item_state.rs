@@ -68,6 +68,18 @@ impl StepIndex {
     }
 }
 
+/// Per-step retry state tracking separate budgets for transport and component errors.
+///
+/// Reset on orchestrator recovery (recovery starts a fresh scheduling cycle with
+/// new retry budgets).
+#[derive(Debug, Default, Clone)]
+pub struct RetryState {
+    /// Number of retries consumed due to transport errors (subprocess crash, network failure).
+    pub transport_retries: u32,
+    /// Number of retries consumed due to component errors (component returned an error).
+    pub component_retries: u32,
+}
+
 /// Execution state for a single item in a batch.
 ///
 /// Tracks which steps have completed, which are waiting on dependencies,
@@ -102,6 +114,9 @@ pub struct ItemState {
     /// Per-step execution attempt count (0 = not yet started, 1+ = started).
     /// Tracks attempts across orchestrator crashes/recoveries.
     attempts: Vec<u32>,
+    /// Per-step retry budgets for the current scheduling cycle.
+    /// Reset on orchestrator recovery (fresh retry budgets).
+    retry_counts: Vec<RetryState>,
 }
 
 impl ItemState {
@@ -127,6 +142,7 @@ impl ItemState {
             variables,
             variable_schema,
             attempts: vec![0; num_steps],
+            retry_counts: vec![RetryState::default(); num_steps],
         }
     }
 
@@ -155,6 +171,16 @@ impl ItemState {
     pub fn record_attempt(&mut self, step_index: usize) -> u32 {
         self.attempts[step_index] += 1;
         self.attempts[step_index]
+    }
+
+    /// Get the retry state for a step.
+    pub fn retry_state(&self, step_index: usize) -> &RetryState {
+        &self.retry_counts[step_index]
+    }
+
+    /// Get a mutable reference to the retry state for a step.
+    pub fn retry_state_mut(&mut self, step_index: usize) -> &mut RetryState {
+        &mut self.retry_counts[step_index]
     }
 
     /// Set the attempt count to at least the given value.
