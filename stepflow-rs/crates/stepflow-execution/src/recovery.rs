@@ -290,6 +290,7 @@ async fn claim_for_recovery(
     let own_filters = RunFilters {
         status: Some(ExecutionStatus::Running),
         orchestrator_id: Some(Some(orchestrator_id.as_str().to_string())),
+        roots_only: Some(true),
         limit: Some(limit),
         ..Default::default()
     };
@@ -304,6 +305,7 @@ async fn claim_for_recovery(
         let orphan_filters = RunFilters {
             status: Some(ExecutionStatus::Running),
             orchestrator_id: Some(None), // NULL = orphaned
+            roots_only: Some(true),
             limit: Some(remaining),
             ..Default::default()
         };

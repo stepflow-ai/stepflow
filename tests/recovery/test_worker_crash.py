@@ -78,7 +78,14 @@ async def test_worker_crash_single_retry(compose_env):
     # 5. Wait for the auto-restarted worker to become healthy.
     wait_for_worker_health(timeout=30)
 
-    # 6. The orchestrator should retry step2 and the run should complete.
+    # 6. Orchestrator retries step2 (fibonacci backoff). Release it and step3.
+    poll_for_delay("step2", run_id=run_id, timeout=30)
+    release_delay("step2", run_id=run_id)
+
+    poll_for_delay("step3", run_id=run_id, timeout=30)
+    release_delay("step3", run_id=run_id)
+
+    # 7. Wait for run to complete
     result = await wait_for_run(ORCH1_URL, run_id, timeout=120)
     assert result["status"] == "completed", f"Expected completed, got {result['status']}"
 
@@ -169,7 +176,14 @@ async def test_worker_and_orchestrator_crash(compose_env):
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 7. Wait for the run to complete
+    # 7. Recovery re-dispatches step2. Release it and step3.
+    poll_for_delay("step2", run_id=run_id, timeout=30)
+    release_delay("step2", run_id=run_id)
+
+    poll_for_delay("step3", run_id=run_id, timeout=30)
+    release_delay("step3", run_id=run_id)
+
+    # 8. Wait for the run to complete
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
     assert result["status"] == "completed", f"Expected completed, got {result['status']}"
 

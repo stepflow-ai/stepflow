@@ -114,9 +114,12 @@ pub(super) async fn restore_from_journal(
         }
     }
 
-    // Find subflow RunCreated events and collect RunCompleted events.
+    // Find subflow RunCreated events, collect RunCompleted events, and track
+    // which subflows were in-flight (initialized but not completed) at crash time.
     let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
     let mut completed_runs: std::collections::HashSet<uuid::Uuid> =
+        std::collections::HashSet::new();
+    let mut inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid> =
         std::collections::HashSet::new();
     for event in &all_events {
         match event {
@@ -137,11 +140,15 @@ pub(super) async fn restore_from_journal(
                     },
                 );
             }
+            stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } if *rid != run_id => {
+                inflight_subflow_run_ids.insert(*rid);
+            }
             stepflow_state::JournalEvent::RunCompleted {
                 run_id: completed_id,
                 ..
             } => {
                 completed_runs.insert(*completed_id);
+                inflight_subflow_run_ids.remove(completed_id);
             }
             _ => {}
         }
@@ -200,5 +207,6 @@ pub(super) async fn restore_from_journal(
         run_state,
         subflow_map,
         subflow_runs,
+        inflight_subflow_run_ids,
     })
 }

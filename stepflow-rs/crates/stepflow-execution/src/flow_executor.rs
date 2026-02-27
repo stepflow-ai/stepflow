@@ -17,7 +17,7 @@
 //! a pluggable [`Scheduler`] and manages concurrency, state tracking, and
 //! result recording.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
@@ -93,6 +93,9 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+    /// Subflow run IDs that were in-flight (initialized but not completed) at crash time.
+    /// These already have a `RunInitialized` journal event, so recovery skips writing a duplicate.
+    inflight_subflow_run_ids: HashSet<Uuid>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -112,6 +115,7 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        inflight_subflow_run_ids: HashSet<Uuid>,
         checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
@@ -126,6 +130,7 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
+            inflight_subflow_run_ids,
             checkpointer,
         }
     }
@@ -426,6 +431,7 @@ impl FlowExecutor {
             parent_run_id,
         );
         run_params.workflow_name = request.flow.name().map(|s| s.to_string());
+        run_params.orchestrator_id = self.env.orchestrator_id().map(|id| id.as_str().to_string());
         if let Err(e) = self.metadata_store.create_run(run_params).await {
             log::error!(
                 "Failed to create subflow run record for {}: {:?}",
@@ -587,6 +593,12 @@ impl FlowExecutor {
         for rid in run_ids {
             if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
+
+                // Skip duplicate RunInitialized journal write for subflows that were
+                // already in-flight before the crash — they already have this event.
+                if self.inflight_subflow_run_ids.contains(&rid) {
+                    continue;
+                }
 
                 // Journal: Record the needed steps for this run
                 let needed_steps = run_state.items_state().needed_steps_for_journal();
@@ -752,6 +764,19 @@ impl FlowExecutor {
             Vec::new()
         };
 
+        log::info!(
+            "Task completed: run_id={}, item={}, step={}, result={}, new_tasks={}",
+            run_id,
+            task.item_index,
+            task.step_index,
+            if matches!(&result, stepflow_core::FlowResult::Failed(_)) {
+                "failed"
+            } else {
+                "ok"
+            },
+            new_tasks.len()
+        );
+
         // Journal: Record task completion
         self.write_journal(JournalEvent::TaskCompleted {
             run_id,
@@ -804,6 +829,13 @@ impl FlowExecutor {
                 } else {
                     stepflow_core::status::ExecutionStatus::Completed
                 };
+
+                log::info!(
+                    "Subflow run complete: run_id={}, status={:?}, root_run_id={}",
+                    run_id,
+                    final_status,
+                    self.root_run_id
+                );
 
                 // Record item results directly (no spawn needed since complete_task is async)
                 for item_index in 0..item_count {

@@ -31,4 +31,9 @@ pub(super) struct RecoveredState {
     pub subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
     /// Additional (subflow) RunStates keyed by run_id.
     pub subflow_runs: HashMap<uuid::Uuid, RunState>,
+    /// Subflow run IDs that were in-flight at crash time (initialized but not completed).
+    ///
+    /// These already have a `RunInitialized` journal event from the original execution,
+    /// so recovery must skip writing a duplicate.
+    pub inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid>,
 }

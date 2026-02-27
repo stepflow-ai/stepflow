@@ -276,11 +276,23 @@ impl RunContext {
             .await
             .change_context(crate::PluginError::Execution)?;
 
+        log::info!(
+            "Subflow submitted: parent_run_id={}, subflow_run_id={}, waiting for completion",
+            self.run_id,
+            run_id
+        );
+
         // Wait for completion using the unified metadata store notification
         self.metadata_store()
             .wait_for_completion(run_id)
             .await
             .change_context(crate::PluginError::Execution)?;
+
+        log::info!(
+            "Subflow completed: parent_run_id={}, subflow_run_id={}",
+            self.run_id,
+            run_id
+        );
 
         // Get results from metadata store
         let items = self

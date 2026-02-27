@@ -146,7 +146,11 @@ pub(super) async fn recover_execution_tree(
         .scheduler(Box::new(crate::DepthFirstScheduler::new()));
 
     if !recovered.subflow_runs.is_empty() || !recovered.subflow_map.is_empty() {
-        builder = builder.with_recovered_subflows(recovered.subflow_runs, recovered.subflow_map);
+        builder = builder.with_recovered_subflows(
+            recovered.subflow_runs,
+            recovered.subflow_map,
+            recovered.inflight_subflow_run_ids,
+        );
     }
 
     let flow_executor = builder

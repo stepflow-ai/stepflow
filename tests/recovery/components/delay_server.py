@@ -14,14 +14,19 @@
 
 """Delay component for recovery integration tests.
 
-Each invocation blocks for a configurable duration (or until explicitly released
-via the delay-control HTTP API), writes a tracker record to a JSONL file, and
-returns the input payload along with execution metadata.
+Each invocation blocks until explicitly released via the delay-control HTTP API,
+writes a tracker record to a JSONL file, and returns the input payload along
+with execution metadata.
+
+Delays never auto-complete — they block indefinitely until released. This makes
+tests fully deterministic: every step completes only when the test explicitly
+releases it via the API.
 
 Delay-control API
 -----------------
 - ``GET  /delay?run_id=...&step_id=...`` — check whether a delay is pending
 - ``POST /delay?run_id=...&step_id=...`` — release a pending delay
+- ``POST /delay/release-all`` — release all pending delays at once
 
 Both query parameters are optional.  When *run_id* is omitted the lookup
 matches any run (useful for subflows whose run ID is not known to the test).
@@ -141,11 +146,8 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
     _pending_delays[key] = my_entry
 
     try:
-        # Block until explicitly released or the configured timeout elapses.
-        try:
-            await asyncio.wait_for(event.wait(), timeout=input.seconds)
-        except asyncio.TimeoutError:
-            pass  # Normal fallback — behaves like the original fixed sleep
+        # Block until explicitly released via the delay-control API.
+        await event.wait()
     finally:
         # Only remove our own entry — a newer execution may have replaced it.
         if _pending_delays.get(key) is my_entry:
@@ -234,6 +236,15 @@ def _build_app() -> FastAPI:
         _key, entry = match
         entry["event"].set()
         return JSONResponse({"released": True})
+
+    @app.post("/delay/release-all")
+    async def post_release_all():
+        """Release all pending delays at once."""
+        count = 0
+        for _key, entry in list(_pending_delays.items()):
+            entry["event"].set()
+            count += 1
+        return JSONResponse({"released": count})
 
     return app
 

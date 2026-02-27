@@ -110,13 +110,11 @@ pub(super) async fn restore_from_checkpoint(
         .await
         .change_context(ExecutionError::CheckpointError)?;
 
-    let mut run_state = root_run_state;
+    // Pre-collect SubflowSubmitted events from tail so the subflow_map is
+    // populated BEFORE we encounter the corresponding RunCreated events.
+    // In the journal, RunCreated precedes SubflowSubmitted, so without this
+    // pre-pass the RunCreated handler would fail its subflow_map check.
     for event in &tail_events_for_replay {
-        run_state.apply_event(event);
-        for sub_state in subflow_runs.values_mut() {
-            sub_state.apply_event(event);
-        }
-        // Also update subflow map from new SubflowSubmitted events
         if let stepflow_state::JournalEvent::SubflowSubmitted {
             parent_run_id,
             item_index,
@@ -130,6 +128,28 @@ pub(super) async fn restore_from_checkpoint(
                 *subflow_run_id,
             );
         }
+    }
+
+    // Seed in-flight set: all checkpoint-restored subflows were past initialization.
+    let mut inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid> = checkpoint_data
+        .runs
+        .iter()
+        .filter(|rc| rc.run_id != run_id)
+        .map(|rc| rc.run_id)
+        .collect();
+
+    let mut run_state = root_run_state;
+    for event in &tail_events_for_replay {
+        run_state.apply_event(event);
+        for sub_state in subflow_runs.values_mut() {
+            sub_state.apply_event(event);
+        }
+        // Track in-flight subflows: add on RunInitialized, remove on RunCompleted.
+        if let stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } = event
+            && *rid != run_id
+        {
+            inflight_subflow_run_ids.insert(*rid);
+        }
         // Handle RunCompleted events: evict completed subflows from in-memory state.
         // Their results are already in the metadata store.
         if let stepflow_state::JournalEvent::RunCompleted {
@@ -139,6 +159,7 @@ pub(super) async fn restore_from_checkpoint(
             && *completed_id != run_id
         {
             subflow_runs.remove(completed_id);
+            inflight_subflow_run_ids.remove(completed_id);
         }
         // Handle new subflow RunCreated events after checkpoint
         if let stepflow_state::JournalEvent::RunCreated {
@@ -188,5 +209,6 @@ pub(super) async fn restore_from_checkpoint(
         run_state,
         subflow_map,
         subflow_runs,
+        inflight_subflow_run_ids,
     })
 }

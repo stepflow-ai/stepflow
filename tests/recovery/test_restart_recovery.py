@@ -41,6 +41,7 @@ from helpers import (
     get_step_tracker_records,
     poll_for_delay,
     read_tracker_records,
+    release_all_delays,
     release_delay,
     store_flow,
     submit_run,
@@ -68,14 +69,20 @@ async def test_restart_recovery_sequential(compose_env):
     # 4. Kill orchestrator-1 while step2 is deterministically held
     docker_kill("orchestrator-1")
 
-    # 5. Restart orchestrator-1 (same container, same orch-1 ID)
+    # 5. Clear stale pre-crash delays, then restart orchestrator-1
+    release_all_delays()
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 6. Release step2 so recovery can proceed
+    # 6. Recovery re-dispatches step2 (fresh delay entry). Release it.
+    poll_for_delay("step2", timeout=30)
     release_delay("step2")
 
-    # 7. Wait for run to complete via recovery
+    # 7. Release step3 when dispatched by recovery
+    poll_for_delay("step3", timeout=30)
+    release_delay("step3")
+
+    # 8. Wait for run to complete via recovery
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
 
     # 8. Assertions
@@ -136,12 +143,20 @@ async def test_restart_recovery_parallel(compose_env):
 
     # Kill orchestrator-1 while parallel steps are deterministically held
     docker_kill("orchestrator-1")
+
+    # Clear stale pre-crash delays, then restart
+    release_all_delays()
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # Release all remaining held parallel steps so recovery can proceed
+    # Recovery re-dispatches in-flight parallel steps. Release each one.
     for label in ["parallel_b", "parallel_c", "parallel_d"]:
+        poll_for_delay(label, timeout=30)
         release_delay(label)
+
+    # Release aggregate when dispatched by recovery
+    poll_for_delay("aggregate", timeout=30)
+    release_delay("aggregate")
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
     assert result["status"] == "completed"

@@ -21,7 +21,7 @@ use stepflow_core::{BlobId, ValueExpr};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _, ItemSteps, JournalEvent,
-    MetadataStoreExt as _, OrchestratorId, RunTaskAttempts, SequenceNumber,
+    MetadataStoreExt as _, OrchestratorId, RunTaskAttempts, SequenceNumber, TaskAttempt,
 };
 
 use crate::testing::MockExecutorBuilder;
@@ -993,12 +993,15 @@ async fn test_recovery_groups_by_root_run_id() {
     );
 }
 
-/// Orphaned subflows without a running root should be marked as failed.
+/// Orphaned subflows are not independently discovered during recovery.
 ///
-/// This can happen if the root run completed/failed but a subflow was left
-/// in Running status due to a race condition or bug.
+/// Recovery only queries for root runs (roots_only=true). Subflows are
+/// recovered as part of their root's execution tree, never independently.
+/// This prevents race conditions where another orchestrator's recovery sweep
+/// could mark an in-flight subflow as failed before the owning orchestrator
+/// has a chance to recover it.
 #[tokio::test]
-async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
+async fn test_recovery_ignores_orphaned_subflows() {
     let env = create_test_env().await;
     let orchestrator_id = OrchestratorId::new("test-orch");
     let metadata_store = env.metadata_store();
@@ -1043,25 +1046,16 @@ async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
         .await
         .expect("should write");
 
-    // Recovery should find the subflow but no root, and mark it as failed
+    // Recovery should NOT discover the subflow (roots_only filter)
     let result = recover_orphaned_runs(&env, orchestrator_id, 100)
         .await
         .expect("recovery should succeed overall");
 
     assert_eq!(result.recovered, 0, "No runs should be recovered");
-    assert_eq!(
-        result.failed, 1,
-        "Orphaned subflow should be marked as failed"
-    );
-    assert!(
-        result.failed_runs[0]
-            .1
-            .contains("Root run not found for recovery"),
-        "Error message should explain why: got {:?}",
-        result.failed_runs[0].1
-    );
+    assert_eq!(result.failed, 0, "Subflow should not be discovered at all");
 
-    // Verify the subflow was marked as Failed
+    // The subflow remains in Running status — it is NOT marked as Failed.
+    // This is correct: subflows should only be managed by their root's executor.
     let run = metadata_store
         .get_run(subflow_run_id)
         .await
@@ -1069,8 +1063,8 @@ async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
         .expect("run should exist");
     assert_eq!(
         run.summary.status,
-        ExecutionStatus::Failed,
-        "Orphaned subflow should be marked as failed"
+        ExecutionStatus::Running,
+        "Orphaned subflow should remain in Running (not independently recovered)"
     );
 }
 
@@ -1782,5 +1776,208 @@ async fn test_recovery_skips_completed_subflow_runstate() {
         run.summary.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with completed subflow in journal"
+    );
+}
+
+#[tokio::test]
+async fn test_recovery_resumes_inflight_subflow() {
+    // Test that recovery succeeds when a subflow's inner step was in-flight
+    // at crash time. The subflow had RunInitialized + TasksStarted but no
+    // TaskCompleted or RunCompleted. Recovery should reconstruct the subflow's
+    // RunState and skip writing a duplicate RunInitialized journal event.
+    use stepflow_core::workflow::FlowBuilder;
+
+    let env = create_test_env().await;
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let metadata_store = env.metadata_store();
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    // Create a 1-step flow (used for both root and subflow)
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "step0".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    let root_run_id = uuid::Uuid::now_v7();
+    let inflight_subflow_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+
+    // Create root run record
+    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create run");
+
+    // Also create the subflow's run record in metadata store
+    let subflow_params = CreateRunParams::new_subflow(
+        inflight_subflow_id,
+        flow_id.clone(),
+        vec![ValueRef::new(json!({}))],
+        root_run_id,
+        root_run_id,
+    );
+    metadata_store
+        .create_run(subflow_params)
+        .await
+        .expect("should create subflow run");
+
+    // Write journal events simulating crash during subflow's inner step:
+    // Root: RunCreated
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: None,
+            },
+        )
+        .await
+        .unwrap();
+    // Root: RunInitialized
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: root_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // Root: TasksStarted for step0
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: root_run_id,
+                    tasks: vec![TaskAttempt {
+                        item_index: 0,
+                        step_index: 0,
+                        attempt: 1,
+                    }],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: RunCreated (written before SubflowSubmitted, matching production order)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: inflight_subflow_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: Some(root_run_id),
+            },
+        )
+        .await
+        .unwrap();
+    // SubflowSubmitted: root step0 submitted the subflow
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::SubflowSubmitted {
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+                subflow_run_id: inflight_subflow_id,
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: RunInitialized (inner step0 is needed)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: inflight_subflow_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: TasksStarted for inner step0
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: inflight_subflow_id,
+                    tasks: vec![TaskAttempt {
+                        item_index: 0,
+                        step_index: 0,
+                        attempt: 1,
+                    }],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // === CRASH HERE ===
+    // Subflow inner step0 was in-flight (TasksStarted but no TaskCompleted).
+    // Root step0 was also in-flight (no TaskCompleted for root either).
+
+    let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+
+    assert_eq!(result.recovered, 1);
+
+    // Wait for execution to complete
+    let active_executions = env.active_executions();
+    for _ in 0..100 {
+        if active_executions.is_empty() {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        active_executions.is_empty(),
+        "Execution should complete within timeout"
+    );
+
+    // Root should have completed
+    let run = metadata_store
+        .get_run(root_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        run.summary.status,
+        ExecutionStatus::Completed,
+        "Root run should complete after recovery with in-flight subflow"
     );
 }
