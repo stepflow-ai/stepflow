@@ -993,12 +993,15 @@ async fn test_recovery_groups_by_root_run_id() {
     );
 }
 
-/// Orphaned subflows without a running root should be marked as failed.
+/// Orphaned subflows are not independently discovered during recovery.
 ///
-/// This can happen if the root run completed/failed but a subflow was left
-/// in Running status due to a race condition or bug.
+/// Recovery only queries for root runs (roots_only=true). Subflows are
+/// recovered as part of their root's execution tree, never independently.
+/// This prevents race conditions where another orchestrator's recovery sweep
+/// could mark an in-flight subflow as failed before the owning orchestrator
+/// has a chance to recover it.
 #[tokio::test]
-async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
+async fn test_recovery_ignores_orphaned_subflows() {
     let env = create_test_env().await;
     let orchestrator_id = OrchestratorId::new("test-orch");
     let metadata_store = env.metadata_store();
@@ -1043,25 +1046,16 @@ async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
         .await
         .expect("should write");
 
-    // Recovery should find the subflow but no root, and mark it as failed
+    // Recovery should NOT discover the subflow (roots_only filter)
     let result = recover_orphaned_runs(&env, orchestrator_id, 100)
         .await
         .expect("recovery should succeed overall");
 
     assert_eq!(result.recovered, 0, "No runs should be recovered");
-    assert_eq!(
-        result.failed, 1,
-        "Orphaned subflow should be marked as failed"
-    );
-    assert!(
-        result.failed_runs[0]
-            .1
-            .contains("Root run not found for recovery"),
-        "Error message should explain why: got {:?}",
-        result.failed_runs[0].1
-    );
+    assert_eq!(result.failed, 0, "Subflow should not be discovered at all");
 
-    // Verify the subflow was marked as Failed
+    // The subflow remains in Running status — it is NOT marked as Failed.
+    // This is correct: subflows should only be managed by their root's executor.
     let run = metadata_store
         .get_run(subflow_run_id)
         .await
@@ -1069,8 +1063,8 @@ async fn test_recovery_orphaned_subflows_without_root_marked_failed() {
         .expect("run should exist");
     assert_eq!(
         run.summary.status,
-        ExecutionStatus::Failed,
-        "Orphaned subflow should be marked as failed"
+        ExecutionStatus::Running,
+        "Orphaned subflow should remain in Running (not independently recovered)"
     );
 }
 

@@ -431,6 +431,7 @@ impl FlowExecutor {
             parent_run_id,
         );
         run_params.workflow_name = request.flow.name().map(|s| s.to_string());
+        run_params.orchestrator_id = self.env.orchestrator_id().map(|id| id.as_str().to_string());
         if let Err(e) = self.metadata_store.create_run(run_params).await {
             log::error!(
                 "Failed to create subflow run record for {}: {:?}",
@@ -768,7 +769,11 @@ impl FlowExecutor {
             run_id,
             task.item_index,
             task.step_index,
-            if matches!(&result, stepflow_core::FlowResult::Failed(_)) { "failed" } else { "ok" },
+            if matches!(&result, stepflow_core::FlowResult::Failed(_)) {
+                "failed"
+            } else {
+                "ok"
+            },
             new_tasks.len()
         );
 
