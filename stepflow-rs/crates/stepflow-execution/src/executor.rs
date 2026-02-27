@@ -114,7 +114,6 @@ pub async fn submit_run(
                 flow_id: flow_id.clone(),
                 inputs: inputs.clone(),
                 variables: params.variables.clone().unwrap_or_default(),
-                parent_run_id: None,
             },
         )
         .await

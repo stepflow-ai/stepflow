@@ -949,9 +949,7 @@ impl ExecutionJournal for SqliteStateStore {
                 JournalEvent::TasksStarted { runs } => {
                     runs.first().map(|r| r.run_id).unwrap_or(root_run_id)
                 }
-                JournalEvent::SubflowSubmitted {
-                    parent_run_id, ..
-                } => *parent_run_id,
+                JournalEvent::SubflowCreated { run_id, .. } => *run_id,
             };
 
             let event_type = match &event {
@@ -962,7 +960,7 @@ impl ExecutionJournal for SqliteStateStore {
                 JournalEvent::TaskCompleted { .. } => "task_completed",
                 JournalEvent::StepsUnblocked { .. } => "steps_unblocked",
                 JournalEvent::ItemCompleted { .. } => "item_completed",
-                JournalEvent::SubflowSubmitted { .. } => "subflow_submitted",
+                JournalEvent::SubflowCreated { .. } => "subflow_created",
             };
 
             let event_data =

@@ -37,15 +37,12 @@ use crate::{ExecutionError, Result};
 ///
 /// ## Subflow Recovery
 ///
-/// When `SubflowSubmitted` events are present in the journal, this function
+/// When `SubflowCreated` events are present in the journal, this function
 /// reconstructs subflow `RunState` objects and builds a deduplication map.
 /// When parent steps re-execute and re-submit subflows with the same deterministic
 /// key, the executor matches against the recovered subflow and returns the existing
 /// `run_id` instead of creating a duplicate. This avoids restarting completed or
 /// in-progress subflows from scratch.
-///
-/// Subflows without a `SubflowSubmitted` event (crash between `RunCreated` and
-/// `SubflowSubmitted`) are skipped — the parent step will re-create them.
 pub(super) async fn recover_execution_tree(
     env: &Arc<StepflowEnvironment>,
     journal: &Arc<dyn ExecutionJournal>,

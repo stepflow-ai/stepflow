@@ -110,26 +110,6 @@ pub(super) async fn restore_from_checkpoint(
         .await
         .change_context(ExecutionError::CheckpointError)?;
 
-    // Pre-collect SubflowSubmitted events from tail so the subflow_map is
-    // populated BEFORE we encounter the corresponding RunCreated events.
-    // In the journal, RunCreated precedes SubflowSubmitted, so without this
-    // pre-pass the RunCreated handler would fail its subflow_map check.
-    for event in &tail_events_for_replay {
-        if let stepflow_state::JournalEvent::SubflowSubmitted {
-            parent_run_id,
-            item_index,
-            step_index,
-            subflow_key,
-            subflow_run_id,
-        } = event
-        {
-            subflow_map.insert(
-                (*parent_run_id, *item_index, *step_index, *subflow_key),
-                *subflow_run_id,
-            );
-        }
-    }
-
     // Seed in-flight set: all checkpoint-restored subflows were past initialization.
     let mut inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid> = checkpoint_data
         .runs
@@ -143,6 +123,47 @@ pub(super) async fn restore_from_checkpoint(
         run_state.apply_event(event);
         for sub_state in subflow_runs.values_mut() {
             sub_state.apply_event(event);
+        }
+        // Handle SubflowCreated: update dedup map and create RunState atomically.
+        // The new subflow is inserted into subflow_runs so the outer loop applies
+        // all subsequent tail events to it naturally — no separate replay needed.
+        if let stepflow_state::JournalEvent::SubflowCreated {
+            run_id: sub_run_id,
+            flow_id: sub_flow_id,
+            inputs: sub_inputs,
+            variables: sub_variables,
+            parent_run_id,
+            item_index,
+            step_index,
+            subflow_key,
+        } = event
+        {
+            subflow_map.insert(
+                (*parent_run_id, *item_index, *step_index, *subflow_key),
+                *sub_run_id,
+            );
+            if !subflow_runs.contains_key(sub_run_id) {
+                let sub_flow = blob_store
+                    .get_flow(sub_flow_id)
+                    .await
+                    .change_context(ExecutionError::CheckpointError)?
+                    .ok_or_else(|| {
+                        error_stack::report!(ExecutionError::CheckpointError)
+                            .attach_printable(format!(
+                                "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
+                            ))
+                    })?;
+                let sub_state = RunState::new_subflow(
+                    *sub_run_id,
+                    sub_flow_id.clone(),
+                    root_run_id,
+                    *parent_run_id,
+                    sub_flow,
+                    sub_inputs.clone(),
+                    sub_variables.clone(),
+                );
+                subflow_runs.insert(*sub_run_id, sub_state);
+            }
         }
         // Track in-flight subflows: add on RunInitialized, remove on RunCompleted.
         if let stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } = event
@@ -160,41 +181,6 @@ pub(super) async fn restore_from_checkpoint(
         {
             subflow_runs.remove(completed_id);
             inflight_subflow_run_ids.remove(completed_id);
-        }
-        // Handle new subflow RunCreated events after checkpoint
-        if let stepflow_state::JournalEvent::RunCreated {
-            run_id: sub_run_id,
-            flow_id: sub_flow_id,
-            inputs: sub_inputs,
-            variables: sub_variables,
-            parent_run_id: Some(parent_id),
-        } = event
-            && !subflow_runs.contains_key(sub_run_id)
-            && subflow_map.values().any(|id| id == sub_run_id)
-        {
-            let sub_flow = blob_store
-                .get_flow(sub_flow_id)
-                .await
-                .change_context(ExecutionError::CheckpointError)?
-                .ok_or_else(|| {
-                    error_stack::report!(ExecutionError::CheckpointError).attach_printable(format!(
-                        "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
-                    ))
-                })?;
-            let mut sub_state = RunState::new_subflow(
-                *sub_run_id,
-                sub_flow_id.clone(),
-                root_run_id,
-                *parent_id,
-                sub_flow,
-                sub_inputs.clone(),
-                sub_variables.clone(),
-            );
-            // Apply remaining tail events to the new subflow
-            for ev in &tail_events_for_replay {
-                sub_state.apply_event(ev);
-            }
-            subflow_runs.insert(*sub_run_id, sub_state);
         }
     }
 

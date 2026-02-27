@@ -34,8 +34,8 @@ struct SubflowInfo {
 
 /// Full journal replay path — no checkpoint available.
 ///
-/// Reads the entire journal from sequence 0, extracts RunCreated for root + subflows,
-/// and applies all events to reconstruct execution state.
+/// Reads the entire journal from sequence 0, extracts RunCreated for root and
+/// SubflowCreated for subflows, and applies all events to reconstruct execution state.
 pub(super) async fn restore_from_journal(
     journal: &Arc<dyn ExecutionJournal>,
     root_run_id: uuid::Uuid,
@@ -65,7 +65,6 @@ pub(super) async fn restore_from_journal(
                 run_id: event_run_id,
                 inputs,
                 variables,
-                parent_run_id: None,
                 ..
             } if *event_run_id == run_id => Some((inputs.clone(), variables.clone())),
             _ => None,
@@ -96,26 +95,10 @@ pub(super) async fn restore_from_journal(
         run_state.is_complete()
     );
 
-    // Build subflow dedup map from journal events
+    // Build subflow dedup map and collect subflow info in a single pass.
+    // Each SubflowCreated event carries both the dedup mapping AND the creation data,
+    // so no separate pre-pass is needed.
     let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
-    for event in &all_events {
-        if let stepflow_state::JournalEvent::SubflowSubmitted {
-            parent_run_id,
-            item_index,
-            step_index,
-            subflow_key,
-            subflow_run_id,
-        } = event
-        {
-            subflow_map.insert(
-                (*parent_run_id, *item_index, *step_index, *subflow_key),
-                *subflow_run_id,
-            );
-        }
-    }
-
-    // Find subflow RunCreated events, collect RunCompleted events, and track
-    // which subflows were in-flight (initialized but not completed) at crash time.
     let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
     let mut completed_runs: std::collections::HashSet<uuid::Uuid> =
         std::collections::HashSet::new();
@@ -123,18 +106,25 @@ pub(super) async fn restore_from_journal(
         std::collections::HashSet::new();
     for event in &all_events {
         match event {
-            stepflow_state::JournalEvent::RunCreated {
+            stepflow_state::JournalEvent::SubflowCreated {
                 run_id: sub_run_id,
                 flow_id: sub_flow_id,
                 inputs: sub_inputs,
                 variables: sub_variables,
-                parent_run_id: Some(parent_id),
-            } if subflow_map.values().any(|id| id == sub_run_id) => {
+                parent_run_id,
+                item_index,
+                step_index,
+                subflow_key,
+            } => {
+                subflow_map.insert(
+                    (*parent_run_id, *item_index, *step_index, *subflow_key),
+                    *sub_run_id,
+                );
                 subflow_created.insert(
                     *sub_run_id,
                     SubflowInfo {
                         flow_id: sub_flow_id.clone(),
-                        parent_id: *parent_id,
+                        parent_id: *parent_run_id,
                         inputs: sub_inputs.clone(),
                         variables: sub_variables.clone(),
                     },

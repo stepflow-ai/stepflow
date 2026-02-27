@@ -89,7 +89,6 @@ async fn test_recovery_missing_flow_marks_run_failed() {
                 flow_id: fake_flow_id,
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -243,7 +242,6 @@ async fn test_recovery_already_complete_run_succeeds() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -365,7 +363,6 @@ async fn test_recovery_skips_active_executions() {
                 flow_id,
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -462,7 +459,6 @@ async fn test_recovery_resumes_partial_execution() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -579,7 +575,6 @@ async fn test_recovery_preserves_attempt_counts() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -731,7 +726,6 @@ async fn test_recovery_batches_parallel_tasks() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -897,7 +891,6 @@ async fn test_recovery_groups_by_root_run_id() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -918,15 +911,19 @@ async fn test_recovery_groups_by_root_run_id() {
         .expect("should write");
 
     // Write journal events for the subflow (in same journal, keyed by root_run_id)
+    let subflow_key = uuid::Uuid::now_v7();
     journal
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::SubflowCreated {
                 run_id: subflow_run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
             },
         )
         .await
@@ -1035,12 +1032,15 @@ async fn test_recovery_ignores_orphaned_subflows() {
     journal
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::SubflowCreated {
                 run_id: subflow_run_id,
                 flow_id,
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key: uuid::Uuid::now_v7(),
             },
         )
         .await
@@ -1374,7 +1374,6 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -1488,7 +1487,6 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -1523,16 +1521,20 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
         .await
         .expect("should write");
 
-    // Subflow: RunCreated (interleaved in the same journal)
+    // Subflow: SubflowCreated (interleaved in the same journal)
+    let subflow_key = uuid::Uuid::now_v7();
     journal
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::SubflowCreated {
                 run_id: subflow_run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
             },
         )
         .await
@@ -1687,7 +1689,6 @@ async fn test_recovery_skips_completed_subflow_runstate() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -1710,25 +1711,15 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowSubmitted {
-                parent_run_id: root_run_id,
-                item_index: 0,
-                step_index: 0,
-                subflow_key,
-                subflow_run_id: completed_subflow_id,
-            },
-        )
-        .await
-        .unwrap();
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::SubflowCreated {
                 run_id: completed_subflow_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
             },
         )
         .await
@@ -1850,7 +1841,6 @@ async fn test_recovery_resumes_inflight_subflow() {
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -1886,30 +1876,19 @@ async fn test_recovery_resumes_inflight_subflow() {
         )
         .await
         .unwrap();
-    // Subflow: RunCreated (written before SubflowSubmitted, matching production order)
+    // SubflowCreated: root step0 created the subflow
     journal
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::SubflowCreated {
                 run_id: inflight_subflow_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(root_run_id),
-            },
-        )
-        .await
-        .unwrap();
-    // SubflowSubmitted: root step0 submitted the subflow
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::SubflowSubmitted {
                 parent_run_id: root_run_id,
                 item_index: 0,
                 step_index: 0,
                 subflow_key,
-                subflow_run_id: inflight_subflow_id,
             },
         )
         .await
