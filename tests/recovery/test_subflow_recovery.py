@@ -42,6 +42,7 @@ from helpers import (
     docker_start,
     get_step_tracker_records,
     poll_for_delay,
+    query_run_status,
     read_tracker_records,
     release_all_delays,
     release_delay,
@@ -91,7 +92,14 @@ async def test_subflow_restart_recovery(compose_env):
     release_delay("inner_delay")
 
     # Release final_step when dispatched after subflow completes
-    poll_for_delay("final_step", timeout=30)
+    try:
+        poll_for_delay("final_step", timeout=30)
+    except TimeoutError:
+        status = query_run_status(run_id)
+        raise TimeoutError(
+            f"Delay for 'final_step' did not appear within 30s. "
+            f"Run {run_id} status: {status}"
+        )
     release_delay("final_step")
 
     # Wait for run to complete via recovery
@@ -153,7 +161,14 @@ async def test_subflow_failover_recovery(compose_env):
     release_delay("inner_delay")
 
     # Release final_step when dispatched
-    poll_for_delay("final_step", timeout=30)
+    try:
+        poll_for_delay("final_step", timeout=30)
+    except TimeoutError:
+        status = query_run_status(run_id)
+        raise TimeoutError(
+            f"Delay for 'final_step' did not appear within 30s. "
+            f"Run {run_id} status: {status}"
+        )
     release_delay("final_step")
 
     # Wait for run to complete on either orchestrator

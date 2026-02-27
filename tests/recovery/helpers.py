@@ -262,10 +262,15 @@ def clear_tracker():
 # Checkpoint verification helpers
 # ---------------------------------------------------------------------------
 
-def get_orchestrator_logs(service: str = "orchestrator-1") -> str:
-    """Get the stdout/stderr logs for an orchestrator service."""
+def docker_logs(service: str) -> str:
+    """Get the stdout/stderr logs for a Docker Compose service."""
     result = _compose("logs", "--no-log-prefix", service, check=False)
     return result.stdout + result.stderr
+
+
+def get_orchestrator_logs(service: str = "orchestrator-1") -> str:
+    """Get the stdout/stderr logs for an orchestrator service."""
+    return docker_logs(service)
 
 
 def has_checkpoint_created_log(service: str = "orchestrator-1") -> bool:
@@ -388,3 +393,15 @@ def release_all_delays() -> int:
         return resp.json().get("released", 0)
     except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
         return 0
+
+
+def query_run_status(run_id: str) -> str | None:
+    """Query run status from either orchestrator (sync, best-effort)."""
+    for url in [ORCH1_URL, ORCH2_URL]:
+        try:
+            resp = httpx.get(f"{url}/api/v1/runs/{run_id}", timeout=5)
+            if resp.status_code == 200:
+                return resp.json().get("status")
+        except Exception:
+            continue
+    return None

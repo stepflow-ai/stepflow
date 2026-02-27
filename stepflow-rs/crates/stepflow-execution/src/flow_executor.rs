@@ -763,6 +763,15 @@ impl FlowExecutor {
             Vec::new()
         };
 
+        log::info!(
+            "Task completed: run_id={}, item={}, step={}, result={}, new_tasks={}",
+            run_id,
+            task.item_index,
+            task.step_index,
+            if matches!(&result, stepflow_core::FlowResult::Failed(_)) { "failed" } else { "ok" },
+            new_tasks.len()
+        );
+
         // Journal: Record task completion
         self.write_journal(JournalEvent::TaskCompleted {
             run_id,
@@ -815,6 +824,13 @@ impl FlowExecutor {
                 } else {
                     stepflow_core::status::ExecutionStatus::Completed
                 };
+
+                log::info!(
+                    "Subflow run complete: run_id={}, status={:?}, root_run_id={}",
+                    run_id,
+                    final_status,
+                    self.root_run_id
+                );
 
                 // Record item results directly (no spawn needed since complete_task is async)
                 for item_index in 0..item_count {

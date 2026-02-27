@@ -148,10 +148,7 @@ pub async fn submit_run(
     if let Some(max) = params.max_concurrency {
         builder = builder.max_concurrency(max);
     }
-    let flow_executor = match builder
-        .build()
-        .await
-    {
+    let flow_executor = match builder.build().await {
         Ok(executor) => executor,
         Err(e) => {
             log::error!("Failed to build FlowExecutor: {:?}", e);
