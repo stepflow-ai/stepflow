@@ -145,7 +145,7 @@ impl<'a> Error<'a> {
 
     pub fn internal(message: impl Into<Cow<'a, str>>) -> Self {
         Error {
-            code: stepflow_core::ErrorCode::SERVER_ERROR,
+            code: stepflow_core::ErrorCode::WORKER_ERROR,
             message: message.into(),
             data: None,
         }

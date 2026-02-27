@@ -151,6 +151,15 @@ static STEP_EXECUTIONS: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+/// Aggregate step errors across all components (low-cardinality).
+static STEP_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("step.errors_total")
+        .with_description("Total step execution errors across all components")
+        .build()
+});
+
 /// Record a step retry.
 pub fn record_step_retry(reason: &str, component: &str) {
     STEP_RETRIES.add(
@@ -182,4 +191,7 @@ pub fn record_step_execution(component: &str, outcome: &str) {
             KeyValue::new("outcome", outcome.to_string()),
         ],
     );
+    if outcome == "failed" {
+        STEP_ERRORS.add(1, &[]);
+    }
 }

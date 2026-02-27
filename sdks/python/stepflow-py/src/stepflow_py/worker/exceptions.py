@@ -39,7 +39,7 @@ class StepflowError(Exception):
     @property
     def default_code(self) -> ErrorCode:
         """Default error code for this exception type."""
-        return ErrorCode.SERVER_ERROR
+        return ErrorCode.WORKER_ERROR
 
     def to_json_rpc_error(self) -> dict:
         """Convert to JSON-RPC error format."""
@@ -51,7 +51,7 @@ class StepflowProtocolError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.INVALID_REQUEST
+        return ErrorCode.JSON_RPC_INVALID_REQUEST
 
 
 class StepflowComponentError(StepflowError):
@@ -111,7 +111,7 @@ class ServerNotInitializedError(StepflowProtocolError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.SERVER_NOT_INITIALIZED
+        return ErrorCode.WORKER_NOT_INITIALIZED
 
 
 class InputValidationError(StepflowValidationError):

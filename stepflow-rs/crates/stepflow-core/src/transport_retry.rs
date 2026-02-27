@@ -129,6 +129,7 @@ impl BackoffConfig {
         10000
     }
 
+    /// Default multiplier for Exponential backoff (used by serde when `factor` is omitted).
     fn default_factor() -> f32 {
         2.0
     }

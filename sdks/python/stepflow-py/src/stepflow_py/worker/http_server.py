@@ -395,7 +395,7 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
             return ctx.create_error_response(
                 request_id=None,
                 status_code=400,
-                error_code=ErrorCode.INVALID_REQUEST,
+                error_code=ErrorCode.JSON_RPC_INVALID_REQUEST,
                 error_message=str(e),
             )
         except Exception as e:

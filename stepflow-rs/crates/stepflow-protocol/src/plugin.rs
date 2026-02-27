@@ -479,9 +479,9 @@ impl Plugin for StepflowPlugin {
         {
             Ok(response) => response,
             Err(report) => {
-                // Check if this is a component server error (MethodError response)
+                // Check if this is a worker error (MethodError response)
                 // vs a true transport failure (subprocess crash, network timeout).
-                // Component server errors should become FlowResult::Failed so
+                // Worker errors should become FlowResult::Failed so
                 // the executor can use the original error code for retry decisions.
                 if let Some(TransportError::ServerError {
                     code,

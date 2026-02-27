@@ -719,7 +719,7 @@
       "type": "object"
     },
     "ErrorCode": {
-      "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32000 to -32099: Component server errors (never retried)\n  -32100 to -32199: Component execution errors (retried with onError: retry)\n  -32200 to -32299: Orchestrator errors (never retried)\n  -32300 to -32399: Transport errors (always retried)\n\nComponent server predefined: -32000 to -32010, user-defined: -32011 to -32099.\nComponent execution predefined: -32100 to -32109, user-defined: -32110 to -32199.",
+      "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32000 to -32099: Worker errors (never retried)\n  -32100 to -32199: Component execution errors (retried with onError: retry)\n  -32200 to -32299: Orchestrator errors (never retried)\n  -32300 to -32399: Transport errors (always retried)\n\nWorker predefined: -32000 to -32010, user-defined: -32011 to -32099.\nComponent execution predefined: -32100 to -32109, user-defined: -32110 to -32199.",
       "type": "integer",
       "enum": [
         -32700,
@@ -750,19 +750,19 @@
       ],
       "x-enum-varnames": [
         "PARSE_ERROR",
-        "INVALID_REQUEST",
+        "JSON_RPC_INVALID_REQUEST",
         "METHOD_NOT_FOUND",
         "INVALID_PARAMS",
         "JSON_RPC_INTERNAL_ERROR",
-        "SERVER_ERROR",
+        "WORKER_ERROR",
         "COMPONENT_NOT_FOUND",
-        "SERVER_NOT_INITIALIZED",
+        "WORKER_NOT_INITIALIZED",
         "INVALID_INPUT_SCHEMA",
         "INVALID_VALUE",
         "NOT_FOUND",
         "PROTOCOL_VERSION_MISMATCH",
-        "DEPENDENCY_ERROR",
-        "CONFIGURATION_ERROR",
+        "WORKER_DEPENDENCY_ERROR",
+        "WORKER_CONFIGURATION_ERROR",
         "COMPONENT_EXECUTION_FAILED",
         "COMPONENT_VALUE_ERROR",
         "COMPONENT_RESOURCE_UNAVAILABLE",
