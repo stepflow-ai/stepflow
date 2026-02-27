@@ -70,7 +70,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32004
+          code: -32100
 
     - name: "RuntimeError is wrapped and surfaced"
       input:
@@ -79,7 +79,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32004
+          code: -32100
 
     - name: "Success case works normally"
       input:

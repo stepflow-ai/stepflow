@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Error Handling
 
-The Stepflow Protocol uses JSON-RPC 2.0 error handling with standardized error codes for consistent error reporting across all implementations. This specification defines standard error codes, error response formats, and best practices for error handling.
+The Stepflow Protocol uses JSON-RPC 2.0 error handling with standardized error codes organized into sub-ranges by origin and retryability. This specification defines the error code ranges, their retry behavior, and best practices for error handling.
 
 ## Error Response Format
 
@@ -24,22 +24,23 @@ All errors follow the JSON-RPC 2.0 error response specification:
 
 ### Error Response Fields
 
-- **`code`** (required): Integer error code from standardized ranges
+- **`code`** (required): Integer error code from the ranges below
 - **`message`** (required): Human-readable error description
 - **`data`** (optional): Additional structured error information for debugging
 
 ## Error Code Ranges
 
-All error codes across the platform are organized into four ranges:
+All error codes use JSON-RPC negative ranges. Retryability is determined by which range a code falls in.
 
-| Range | Category | Description |
-|-------|----------|-------------|
-| -32700 to -32600 | JSON-RPC Standard | Standard JSON-RPC 2.0 error codes |
-| -32099 to -32000 | Stepflow Protocol | Errors between orchestrator and component servers |
-| 1 to 4999 | Orchestrator / Component | Errors from expression evaluation, input validation, or component logic |
-| 5000+ | Transport | Infrastructure failures — the component never ran or didn't complete |
-
-These ranges are used consistently in JSON-RPC error responses between orchestrator and component servers, and in `FlowResult` error codes surfaced in run results.
+| Range | Category | Retry Behavior |
+|-------|----------|----------------|
+| -32700 to -32600 | JSON-RPC Standard | Never |
+| -32000 to -32010 | Component Server — predefined | Never |
+| -32011 to -32099 | Component Server — user-defined | Never |
+| -32100 to -32109 | Component Execution — predefined | With `onError: { action: retry }` |
+| -32110 to -32199 | Component Execution — user-defined | With `onError: { action: retry }` |
+| -32200 to -32299 | Orchestrator | Never |
+| -32300 to -32399 | Transport | Always |
 
 The `ErrorCode` enum in the protocol schema (`schemas/protocol.json`) defines all well-known codes. The Python SDK auto-generates a matching `ErrorCode(IntEnum)` class from this schema. Error code fields accept any integer — the enum provides convenience constants, not an exhaustive constraint.
 
@@ -47,50 +48,69 @@ The `ErrorCode` enum in the protocol schema (`schemas/protocol.json`) defines al
 
 ### JSON-RPC Standard Errors
 
-| Code | Name | Description | When to Use |
-|------|------|-------------|-------------|
-| -32700 | Parse Error | Invalid JSON was received | Malformed JSON in request |
-| -32600 | Invalid Request | The JSON sent is not a valid Request object | Missing required fields, invalid structure |
-| -32601 | Method Not Found | The method does not exist / is not available | Unknown method name |
-| -32602 | Invalid Params | Invalid method parameter(s) | Schema validation failure, wrong parameter types |
-| -32603 | Internal Error | Internal JSON-RPC error | Server implementation error |
+| Code | Name | Description |
+|------|------|-------------|
+| -32700 | Parse Error | Invalid JSON was received |
+| -32600 | Invalid Request | The JSON sent is not a valid Request object |
+| -32601 | Method Not Found | The method does not exist / is not available |
+| -32602 | Invalid Params | Invalid method parameter(s) |
+| -32603 | Internal Error | Internal JSON-RPC error |
 
-### Stepflow Protocol Errors
+### Component Server Errors (-32000 to -32099)
 
-These codes are used in JSON-RPC error responses between the orchestrator and component servers.
+Structural errors in the component server process itself — not in user code. These indicate SDK infrastructure issues (wrong component name, server not ready, schema mismatch). **Never retried**, even with `onError: { action: retry }`.
 
-| Code | Name | Description | When to Use |
-|------|------|-------------|-------------|
-| -32000 | Server Error | Generic server error | Unspecified server-side error |
-| -32001 | Component Not Found | Requested component does not exist | Unknown component name |
-| -32002 | Server Not Initialized | Server has not been initialized | Missing initialization |
-| -32003 | Invalid Input Schema | Input does not match component schema | Schema validation failure |
-| -32004 | Component Execution Failed | Component failed during execution | Business logic error in component |
-| -32005 | Resource Unavailable | Required resource is not available | External dependency failure |
-| -32006 | Timeout | Operation timed out | Long-running operation timeout |
-| -32007 | Permission Denied | Insufficient permissions | Authorization failure |
-| -32008 | Blob Not Found | Requested blob does not exist | Invalid blob ID |
-| -32009 | Expression Evaluation Failed | Flow expression could not be evaluated | Invalid reference or path |
-| -32010 | Session Expired | HTTP session has expired | Session cleanup or timeout |
-| -32011 | Invalid Value | Invalid value for a field | Value in a field is not valid |
-| -32012 | Not Found | Referenced value is not found | Referenced entity does not exist |
-
-### Orchestrator / Component Errors
-
-These codes appear in `FlowResult` errors surfaced in run results. They are set by the orchestrator during expression evaluation or input resolution.
+**Predefined (-32000 to -32010):**
 
 | Code | Name | Description |
 |------|------|-------------|
-| 1 | Undefined Field | A referenced field does not exist in the step output, input, or variable |
-| 400 | Bad Request | Invalid input or structure |
-| 404 | Entity Not Found | A referenced entity was not found (e.g., unknown step name) |
-| 500 | Internal Error | Default code for component-reported failures or internal errors |
+| -32000 | Server Error | Generic server error |
+| -32001 | Component Not Found | Requested component does not exist on the server |
+| -32002 | Server Not Initialized | Server has not been initialized |
+| -32003 | Invalid Input Schema | Input does not match the component's declared schema |
+| -32004 | Invalid Value | Invalid value for a protocol field |
+| -32005 | Not Found | Referenced entity not found (flow, blob, etc.) |
+| -32006 | Protocol Version Mismatch | Protocol version incompatibility between orchestrator and component server |
+| -32007 | Dependency Error | Required dependency unavailable (e.g., Python import failure) |
+| -32008 | Configuration Error | Invalid or incompatible configuration |
 
-### Transport Errors
+**User-defined (-32011 to -32099):** Available for SDK implementers to define non-retryable server errors.
+
+### Component Execution Errors (-32100 to -32199)
+
+Errors from user component code — the component ran but its logic failed. These are the only errors eligible for retry via `onError: { action: retry }`.
+
+**Predefined (-32100 to -32109):**
 
 | Code | Name | Description |
 |------|------|-------------|
-| 5000+ | Transport Error | Infrastructure failure — subprocess crash, network timeout, connection refused |
+| -32100 | Component Execution Failed | Unhandled exception in component code |
+| -32101 | Component Value Error | Invalid value in component logic |
+| -32102 | Component Resource Unavailable | Required resource not available during execution |
+| -32103 | Component Bad Request | Invalid input structure in component logic |
+
+**User-defined (-32110 to -32199):** Available for component developers to define custom retryable error codes.
+
+### Orchestrator Errors (-32200 to -32299)
+
+Errors from the orchestrator during expression evaluation or input resolution. The flow definition or step outputs have structural problems. **Never retried** — the flow definition won't change between attempts.
+
+| Code | Name | Description |
+|------|------|-------------|
+| -32200 | Undefined Field | A referenced field does not exist in the step output, input, or variable |
+| -32201 | Entity Not Found | A referenced entity was not found (e.g., unknown step name) |
+| -32202 | Internal Error | Unexpected internal error |
+
+### Transport Errors (-32300 to -32399)
+
+Infrastructure failures — the component never ran or didn't complete. The JSON-RPC communication channel itself failed. **Always retried** up to `retry.transportMaxRetries` (default: 3).
+
+| Code | Name | Description |
+|------|------|-------------|
+| -32300 | Transport Error | Generic transport/infrastructure failure |
+| -32301 | Transport Spawn Error | Subprocess failed to start or crashed on startup |
+| -32302 | Transport Connection Error | HTTP request/response or SSE stream failure |
+| -32303 | Transport Protocol Error | Garbled or unparseable JSON-RPC message |
 
 ## How Errors Flow
 
@@ -98,22 +118,23 @@ When a step executes, errors are classified based on how they originated:
 
 ### Component server errors
 
-When a component server returns a JSON-RPC error response (e.g., the component raised an exception), the orchestrator converts it to a `FlowResult::Failed` with the **original error code** preserved. For example, if a Python component raises an exception, the SDK returns a `-32004` (Component Execution Failed) error, and the run result will show `code: -32004`.
+When a component server returns a JSON-RPC error response (e.g., the component raised an exception), the orchestrator converts it to a `FlowResult::Failed` with the **original error code** preserved. For example, if a Python component raises an exception, the SDK returns a `-32100` (Component Execution Failed) error, and the run result will show `code: -32100`.
 
 ### Transport errors
 
-When the component server is unreachable — subprocess crash, network timeout, connection refused — the orchestrator sets the error code to `5000` (Transport Error). This indicates the component never ran or didn't complete.
+When the component server is unreachable — subprocess crash, network timeout, connection refused — the orchestrator sets the error code to `-32300` (Transport Error). This indicates the component never ran or didn't complete.
 
 ### Orchestrator errors
 
-When the orchestrator itself encounters an error during expression evaluation or input resolution (e.g., a `$step` reference to an unknown step, or a path that doesn't exist in the output), it creates an error with an orchestrator code (1–4999).
+When the orchestrator itself encounters an error during expression evaluation or input resolution (e.g., a `$step` reference to an unknown step, or a path that doesn't exist in the output), it creates an error with an orchestrator code (-32200 to -32299).
 
 ## Retry Behavior
 
-The orchestrator uses error codes to make retry decisions:
+The orchestrator uses error code ranges to make retry decisions:
 
-- **Transport errors (code ≥ 5000)**: Retried up to `retry.transportMaxRetries` (default: 3). The plugin's `prepare_for_retry()` is called before each retry to allow resource recovery (e.g., restarting a crashed subprocess).
-- **Component errors (code < 5000)**: Retried only if the step has `onError: { action: retry }`, up to `maxRetries` (default: 3).
+- **Transport errors (-32300 to -32399)**: Always retried up to `retry.transportMaxRetries` (default: 3). The plugin's `prepare_for_retry()` is called before each retry to allow resource recovery (e.g., restarting a crashed subprocess).
+- **Component execution errors (-32100 to -32199)**: Retried only if the step has `onError: { action: retry }`, up to `maxRetries` (default: 3).
+- **All other errors**: Never retried. Component server errors, orchestrator errors, and JSON-RPC standard errors indicate structural problems that won't resolve on retry.
 - **Separate budgets**: Transport retries and component retries have independent counters. Exhausting one does not affect the other.
 
 Transport errors and component errors share a single monotonically increasing `attempt` counter visible to the component. See [Component Execution](./methods/components.md#the-attempt-field) for details.
@@ -124,7 +145,7 @@ Steps can configure `onError` to control behavior on failure:
 
 - **`fail`** (default): Stop workflow execution with the error
 - **`useDefault`**: Use a `defaultValue` and mark the step as successful
-- **`retry`**: Retry the step up to `maxRetries` times (for component errors only)
+- **`retry`**: Retry the step up to `maxRetries` times (for component execution errors only)
 
 ```yaml
 steps:
@@ -133,6 +154,25 @@ steps:
     onError:
       action: retry
       maxRetries: 5
+```
+
+## User-Defined Error Codes
+
+Component developers can define custom error codes in two ranges:
+
+- **Non-retryable (-32011 to -32099):** For server-level errors that shouldn't be retried.
+- **Retryable (-32110 to -32199):** For component logic errors that may succeed on retry.
+
+In the Python SDK, use `StepflowFailed` to raise errors with custom codes:
+
+```python
+from stepflow_py.worker.exceptions import StepflowFailed
+
+# Custom retryable error (in component execution range)
+raise StepflowFailed(error_code=-32150, message="Rate limited, try again later")
+
+# Custom non-retryable error (in component server range)
+raise StepflowFailed(error_code=-32050, message="Invalid API key")
 ```
 
 ## Using ErrorCode in the Python SDK
@@ -145,13 +185,15 @@ from stepflow_py import ErrorCode
 # Use in custom exceptions
 from stepflow_py.worker.exceptions import StepflowError
 
-raise StepflowError("Something went wrong", code=ErrorCode.RESOURCE_UNAVAILABLE)
+raise StepflowError("Something went wrong", code=ErrorCode.COMPONENT_RESOURCE_UNAVAILABLE)
 
 # Check error classification
-from stepflow_py.worker.exceptions import is_transport_error
+from stepflow_py.worker.exceptions import is_transport_error, is_component_execution_error
 
-is_transport_error(5000)   # True
-is_transport_error(-32004) # False
+is_transport_error(-32300)            # True
+is_transport_error(-32100)            # False
+is_component_execution_error(-32100)  # True
+is_component_execution_error(-32000)  # False
 ```
 
 Component servers can use any integer error code — the `ErrorCode` enum provides well-known constants but does not restrict the values.

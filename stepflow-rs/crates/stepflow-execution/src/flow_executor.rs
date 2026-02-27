@@ -941,6 +941,7 @@ impl FlowExecutor {
         let task = task_result.task();
         let run_id = task.run_id;
         let is_transport = task_result.step.result.is_transport_error();
+        let is_component_execution = task_result.step.result.is_component_execution_error();
 
         // 1. Read limits (immutable borrows — no conflict with runs)
         let transport_max = self.retry_config().transport_max_retries;
@@ -955,8 +956,15 @@ impl FlowExecutor {
 
         let should_retry = if is_transport {
             retry.transport_retries < transport_max
-        } else if let Some(max) = component_max {
-            retry.component_retries < max
+        } else if is_component_execution {
+            // Only component execution errors (-32100 to -32199) are eligible
+            // for onError retry. Protocol, orchestrator, and JSON-RPC errors
+            // indicate structural problems that won't resolve on retry.
+            if let Some(max) = component_max {
+                retry.component_retries < max
+            } else {
+                false
+            }
         } else {
             false
         };

@@ -182,6 +182,9 @@ async fn execute_step_async(
                         .attach_printable(format!("Component: {resolved_component}")),
                 );
                 flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
+                // TODO: Map specific TransportError variants to sub-type codes
+                // (-32301 spawn, -32302 connection, -32303 protocol) for
+                // structured diagnostics.
                 FlowResult::Failed(flow_error)
             }
         };

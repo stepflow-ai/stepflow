@@ -82,7 +82,7 @@ test:
       output:
         outcome: failed
         error:
-          code: 5000
+          code: -32300
           message: step "failing_step" failed
           data:
             stack:

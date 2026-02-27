@@ -12,26 +12,31 @@
 
 /// Unified error codes for the Stepflow platform.
 ///
-/// Provides well-known error code constants organized by range. Error code fields
-/// (e.g. `FlowError.code`, protocol `Error.code`) accept any integer — these
-/// constants are convenience values, not an exhaustive constraint.
+/// All error codes use JSON-RPC negative ranges, organized into sub-ranges by
+/// origin and retryability. Error code fields (e.g. `FlowError.code`, protocol
+/// `Error.code`) accept any integer — these constants are convenience values,
+/// not an exhaustive constraint.
 ///
 /// ## Ranges
 ///
-/// | Range | Category |
-/// |-------|----------|
-/// | -32700 to -32600 | JSON-RPC standard errors |
-/// | -32099 to -32000 | Stepflow protocol errors |
-/// | 1 to 4999 | Orchestrator and component errors |
-/// | 5000+ | Transport / infrastructure errors |
+/// | Range | Category | Retry Behavior |
+/// |-------|----------|----------------|
+/// | -32700 to -32600 | JSON-RPC standard | Never |
+/// | -32000 to -32010 | Component server (predefined) | Never |
+/// | -32011 to -32099 | Component server (user-defined) | Never |
+/// | -32100 to -32109 | Component execution (predefined) | With `onError: retry` |
+/// | -32110 to -32199 | Component execution (user-defined) | With `onError: retry` |
+/// | -32200 to -32209 | Orchestrator (predefined) | Never |
+/// | -32210 to -32299 | Orchestrator (reserved) | Never |
+/// | -32300 to -32399 | Transport | Always |
 ///
-/// **Retry rule:** codes >= 5000 are transport errors (retried up to
-/// `retry.transportMaxRetries`). All other positive codes are component errors
-/// (retried only with `onError: { action: retry }`).
+/// **Retry rule:** transport errors are always retried (up to
+/// `retry.transportMaxRetries`). Component execution errors are retried only
+/// with `onError: { action: retry }`. All other errors are never retried.
 pub struct ErrorCode;
 
 impl ErrorCode {
-    // ── JSON-RPC Standard Errors ─────────────────────────────────
+    // ── JSON-RPC Standard Errors (-32700 to -32600) ──────────────
 
     /// Invalid JSON was received by the server.
     pub const PARSE_ERROR: i64 = -32700;
@@ -44,56 +49,82 @@ impl ErrorCode {
     /// Internal JSON-RPC error.
     pub const JSON_RPC_INTERNAL_ERROR: i64 = -32603;
 
-    // ── Stepflow Protocol Errors ─────────────────────────────────
+    // ── Component Server Errors (-32000 to -32099) ───────────────
+    //
+    // Structural/SDK errors in the component server process itself.
+    // Not in user code. Retrying won't fix these.
+    // Predefined: -32000 to -32010. User-defined: -32011 to -32099.
 
     /// Generic server error.
     pub const SERVER_ERROR: i64 = -32000;
-    /// Requested component does not exist.
+    /// Requested component does not exist on the server.
     pub const COMPONENT_NOT_FOUND: i64 = -32001;
     /// Server has not been initialized.
     pub const SERVER_NOT_INITIALIZED: i64 = -32002;
-    /// Input does not match component schema.
+    /// Input does not match the component's declared schema.
     pub const INVALID_INPUT_SCHEMA: i64 = -32003;
-    /// Component failed during execution.
-    pub const COMPONENT_EXECUTION_FAILED: i64 = -32004;
-    /// Required resource is not available.
-    pub const RESOURCE_UNAVAILABLE: i64 = -32005;
-    /// Operation timed out.
-    pub const TIMEOUT: i64 = -32006;
-    /// Insufficient permissions.
-    pub const PERMISSION_DENIED: i64 = -32007;
-    /// Requested blob does not exist.
-    pub const BLOB_NOT_FOUND: i64 = -32008;
-    /// Flow expression could not be evaluated.
-    pub const EXPRESSION_EVAL_FAILED: i64 = -32009;
-    /// HTTP session has expired.
-    pub const SESSION_EXPIRED: i64 = -32010;
-    /// Invalid value for a field.
-    pub const INVALID_VALUE: i64 = -32011;
-    /// Referenced value is not found.
-    pub const NOT_FOUND: i64 = -32012;
+    /// Invalid value for a protocol field.
+    pub const INVALID_VALUE: i64 = -32004;
+    /// Referenced entity not found (flow, blob, etc.).
+    pub const NOT_FOUND: i64 = -32005;
+    /// Protocol version incompatibility between orchestrator and component server.
+    pub const PROTOCOL_VERSION_MISMATCH: i64 = -32006;
+    /// Required dependency unavailable (e.g., Python import failure).
+    pub const DEPENDENCY_ERROR: i64 = -32007;
+    /// Invalid or incompatible configuration.
+    pub const CONFIGURATION_ERROR: i64 = -32008;
 
-    // ── Orchestrator / Component Errors (1–4999) ─────────────────
+    // ── Component Execution Errors (-32100 to -32199) ────────────
+    //
+    // Errors from user component code. The component ran but its
+    // logic failed. Retrying may help.
+    // Predefined: -32100 to -32109. User-defined: -32110 to -32199.
+
+    /// Unhandled exception in component code.
+    pub const COMPONENT_EXECUTION_FAILED: i64 = -32100;
+    /// Invalid value in component logic.
+    pub const COMPONENT_VALUE_ERROR: i64 = -32101;
+    /// Required resource not available during component execution.
+    pub const COMPONENT_RESOURCE_UNAVAILABLE: i64 = -32102;
+    /// Invalid input structure in component logic.
+    pub const COMPONENT_BAD_REQUEST: i64 = -32103;
+
+    // ── Orchestrator Errors (-32200 to -32299) ───────────────────
+    //
+    // Errors from the orchestrator during expression evaluation or
+    // input resolution. Retrying won't fix these.
+    // Predefined: -32200 to -32209. Reserved: -32210 to -32299.
 
     /// A referenced field does not exist in the step output, input, or variable.
-    pub const UNDEFINED_FIELD: i64 = 1;
-    /// Invalid input or structure.
-    pub const BAD_REQUEST: i64 = 400;
+    pub const UNDEFINED_FIELD: i64 = -32200;
     /// A referenced entity was not found (e.g., unknown step name).
-    pub const ENTITY_NOT_FOUND: i64 = 404;
-    /// The component ran and returned an error, or an internal error occurred.
-    /// Default code for component-reported failures.
-    pub const INTERNAL_ERROR: i64 = 500;
+    pub const ENTITY_NOT_FOUND: i64 = -32201;
+    /// Unexpected internal error (default for `FlowError::from_error_stack()`).
+    pub const INTERNAL_ERROR: i64 = -32202;
 
-    // ── Transport Errors (5000+) ─────────────────────────────────
+    // ── Transport Errors (-32300 to -32399) ──────────────────────
+    //
+    // The component never ran or didn't complete. The JSON-RPC
+    // communication channel itself failed. Always retried.
 
-    /// Infrastructure failure — subprocess crash, network timeout, connection refused.
-    /// The component never ran or didn't complete.
-    pub const TRANSPORT_ERROR: i64 = 5000;
+    /// Generic transport/infrastructure failure.
+    pub const TRANSPORT_ERROR: i64 = -32300;
+    /// Subprocess failed to start or crashed on startup.
+    pub const TRANSPORT_SPAWN_ERROR: i64 = -32301;
+    /// HTTP request/response or SSE stream failure.
+    pub const TRANSPORT_CONNECTION_ERROR: i64 = -32302;
+    /// Garbled or unparseable JSON-RPC message.
+    pub const TRANSPORT_PROTOCOL_ERROR: i64 = -32303;
 
     /// Returns true if the given code represents a transport/infrastructure error.
     pub const fn is_transport(code: i64) -> bool {
-        code >= 5000
+        code >= -32399 && code <= -32300
+    }
+
+    /// Returns true if the given code represents a component execution error
+    /// (retryable with `onError: { action: retry }`).
+    pub const fn is_component_execution(code: i64) -> bool {
+        code >= -32199 && code <= -32100
     }
 }
 
@@ -104,22 +135,21 @@ impl schemars::JsonSchema for ErrorCode {
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32099 to -32000: Stepflow protocol errors\n  1 to 4999: Orchestrator and component errors\n  5000+: Transport / infrastructure errors\n\nRetry rule: codes >= 5000 are transport errors (retried up to transportMaxRetries). All other positive codes are component errors (retried only with onError: { action: retry }).",
+            "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32000 to -32099: Component server errors (never retried)\n  -32100 to -32199: Component execution errors (retried with onError: retry)\n  -32200 to -32299: Orchestrator errors (never retried)\n  -32300 to -32399: Transport errors (always retried)\n\nComponent server predefined: -32000 to -32010, user-defined: -32011 to -32099.\nComponent execution predefined: -32100 to -32109, user-defined: -32110 to -32199.",
             "type": "integer",
             "enum": [
                 -32700, -32600, -32601, -32602, -32603,
-                -32000, -32001, -32002, -32003, -32004, -32005,
-                -32006, -32007, -32008, -32009, -32010, -32011, -32012,
-                1, 400, 404, 500,
-                5000
+                -32000, -32001, -32002, -32003, -32004, -32005, -32006, -32007, -32008,
+                -32100, -32101, -32102, -32103,
+                -32200, -32201, -32202,
+                -32300, -32301, -32302, -32303
             ],
             "x-enum-varnames": [
                 "PARSE_ERROR", "INVALID_REQUEST", "METHOD_NOT_FOUND", "INVALID_PARAMS", "JSON_RPC_INTERNAL_ERROR",
-                "SERVER_ERROR", "COMPONENT_NOT_FOUND", "SERVER_NOT_INITIALIZED", "INVALID_INPUT_SCHEMA",
-                "COMPONENT_EXECUTION_FAILED", "RESOURCE_UNAVAILABLE", "TIMEOUT", "PERMISSION_DENIED",
-                "BLOB_NOT_FOUND", "EXPRESSION_EVAL_FAILED", "SESSION_EXPIRED", "INVALID_VALUE", "NOT_FOUND",
-                "UNDEFINED_FIELD", "BAD_REQUEST", "ENTITY_NOT_FOUND", "INTERNAL_ERROR",
-                "TRANSPORT_ERROR"
+                "SERVER_ERROR", "COMPONENT_NOT_FOUND", "SERVER_NOT_INITIALIZED", "INVALID_INPUT_SCHEMA", "INVALID_VALUE", "NOT_FOUND", "PROTOCOL_VERSION_MISMATCH", "DEPENDENCY_ERROR", "CONFIGURATION_ERROR",
+                "COMPONENT_EXECUTION_FAILED", "COMPONENT_VALUE_ERROR", "COMPONENT_RESOURCE_UNAVAILABLE", "COMPONENT_BAD_REQUEST",
+                "UNDEFINED_FIELD", "ENTITY_NOT_FOUND", "INTERNAL_ERROR",
+                "TRANSPORT_ERROR", "TRANSPORT_SPAWN_ERROR", "TRANSPORT_CONNECTION_ERROR", "TRANSPORT_PROTOCOL_ERROR"
             ]
         })
     }
@@ -131,13 +161,26 @@ mod tests {
 
     #[test]
     fn test_is_transport() {
-        assert!(ErrorCode::is_transport(5000));
-        assert!(ErrorCode::is_transport(5001));
-        assert!(ErrorCode::is_transport(9999));
-        assert!(!ErrorCode::is_transport(500));
-        assert!(!ErrorCode::is_transport(503));
-        assert!(!ErrorCode::is_transport(0));
+        assert!(ErrorCode::is_transport(-32300));
+        assert!(ErrorCode::is_transport(-32301));
+        assert!(ErrorCode::is_transport(-32399));
+        assert!(!ErrorCode::is_transport(-32400));
+        assert!(!ErrorCode::is_transport(-32299));
         assert!(!ErrorCode::is_transport(-32000));
+        assert!(!ErrorCode::is_transport(-32100));
+        assert!(!ErrorCode::is_transport(0));
+    }
+
+    #[test]
+    fn test_is_component_execution() {
+        assert!(ErrorCode::is_component_execution(-32100));
+        assert!(ErrorCode::is_component_execution(-32150));
+        assert!(ErrorCode::is_component_execution(-32199));
+        assert!(!ErrorCode::is_component_execution(-32200));
+        assert!(!ErrorCode::is_component_execution(-32099));
+        assert!(!ErrorCode::is_component_execution(-32000));
+        assert!(!ErrorCode::is_component_execution(-32300));
+        assert!(!ErrorCode::is_component_execution(0));
     }
 
     #[test]
@@ -146,16 +189,44 @@ mod tests {
         assert!(ErrorCode::PARSE_ERROR <= -32600);
         assert!(ErrorCode::INVALID_REQUEST >= -32700 && ErrorCode::INVALID_REQUEST <= -32600);
 
-        // Stepflow protocol errors: -32099 to -32000
+        // Component server errors: -32000 to -32099
         assert!(ErrorCode::SERVER_ERROR >= -32099 && ErrorCode::SERVER_ERROR <= -32000);
         assert!(ErrorCode::NOT_FOUND >= -32099 && ErrorCode::NOT_FOUND <= -32000);
+        assert!(
+            ErrorCode::PROTOCOL_VERSION_MISMATCH >= -32099
+                && ErrorCode::PROTOCOL_VERSION_MISMATCH <= -32000
+        );
+        assert!(ErrorCode::DEPENDENCY_ERROR >= -32099 && ErrorCode::DEPENDENCY_ERROR <= -32000);
+        assert!(
+            ErrorCode::CONFIGURATION_ERROR >= -32099 && ErrorCode::CONFIGURATION_ERROR <= -32000
+        );
 
-        // Orchestrator/component errors: 1 to 4999
-        assert!(ErrorCode::UNDEFINED_FIELD >= 1 && ErrorCode::UNDEFINED_FIELD < 5000);
-        assert!(ErrorCode::INTERNAL_ERROR >= 1 && ErrorCode::INTERNAL_ERROR < 5000);
+        // Component execution errors: -32100 to -32199
+        assert!(ErrorCode::is_component_execution(
+            ErrorCode::COMPONENT_EXECUTION_FAILED
+        ));
+        assert!(ErrorCode::is_component_execution(
+            ErrorCode::COMPONENT_VALUE_ERROR
+        ));
+        assert!(ErrorCode::is_component_execution(
+            ErrorCode::COMPONENT_RESOURCE_UNAVAILABLE
+        ));
+        assert!(ErrorCode::is_component_execution(
+            ErrorCode::COMPONENT_BAD_REQUEST
+        ));
 
-        // Transport errors: 5000+
-        assert!(ErrorCode::TRANSPORT_ERROR >= 5000);
+        // Orchestrator errors: -32200 to -32299
+        assert!(ErrorCode::UNDEFINED_FIELD >= -32299 && ErrorCode::UNDEFINED_FIELD <= -32200);
+        assert!(ErrorCode::ENTITY_NOT_FOUND >= -32299 && ErrorCode::ENTITY_NOT_FOUND <= -32200);
+        assert!(ErrorCode::INTERNAL_ERROR >= -32299 && ErrorCode::INTERNAL_ERROR <= -32200);
+
+        // Transport errors: -32300 to -32399
+        assert!(ErrorCode::is_transport(ErrorCode::TRANSPORT_ERROR));
+        assert!(ErrorCode::is_transport(ErrorCode::TRANSPORT_SPAWN_ERROR));
+        assert!(ErrorCode::is_transport(
+            ErrorCode::TRANSPORT_CONNECTION_ERROR
+        ));
+        assert!(ErrorCode::is_transport(ErrorCode::TRANSPORT_PROTOCOL_ERROR));
     }
 
     #[test]
@@ -182,5 +253,10 @@ mod tests {
         assert!(codes.contains(&ErrorCode::TRANSPORT_ERROR));
         assert!(codes.contains(&ErrorCode::INTERNAL_ERROR));
         assert!(codes.contains(&ErrorCode::UNDEFINED_FIELD));
+        assert!(codes.contains(&ErrorCode::COMPONENT_EXECUTION_FAILED));
+        assert!(codes.contains(&ErrorCode::COMPONENT_BAD_REQUEST));
+        assert!(codes.contains(&ErrorCode::PROTOCOL_VERSION_MISMATCH));
+        assert!(codes.contains(&ErrorCode::DEPENDENCY_ERROR));
+        assert!(codes.contains(&ErrorCode::CONFIGURATION_ERROR));
     }
 }

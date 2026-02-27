@@ -719,7 +719,7 @@
       "type": "object"
     },
     "ErrorCode": {
-      "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32099 to -32000: Stepflow protocol errors\n  1 to 4999: Orchestrator and component errors\n  5000+: Transport / infrastructure errors\n\nRetry rule: codes >= 5000 are transport errors (retried up to transportMaxRetries). All other positive codes are component errors (retried only with onError: { action: retry }).",
+      "description": "Well-known error codes for the Stepflow platform.\n\nRanges:\n  -32700 to -32600: JSON-RPC standard errors\n  -32000 to -32099: Component server errors (never retried)\n  -32100 to -32199: Component execution errors (retried with onError: retry)\n  -32200 to -32299: Orchestrator errors (never retried)\n  -32300 to -32399: Transport errors (always retried)\n\nComponent server predefined: -32000 to -32010, user-defined: -32011 to -32099.\nComponent execution predefined: -32100 to -32109, user-defined: -32110 to -32199.",
       "type": "integer",
       "enum": [
         -32700,
@@ -736,15 +736,17 @@
         -32006,
         -32007,
         -32008,
-        -32009,
-        -32010,
-        -32011,
-        -32012,
-        1,
-        400,
-        404,
-        500,
-        5000
+        -32100,
+        -32101,
+        -32102,
+        -32103,
+        -32200,
+        -32201,
+        -32202,
+        -32300,
+        -32301,
+        -32302,
+        -32303
       ],
       "x-enum-varnames": [
         "PARSE_ERROR",
@@ -756,20 +758,22 @@
         "COMPONENT_NOT_FOUND",
         "SERVER_NOT_INITIALIZED",
         "INVALID_INPUT_SCHEMA",
-        "COMPONENT_EXECUTION_FAILED",
-        "RESOURCE_UNAVAILABLE",
-        "TIMEOUT",
-        "PERMISSION_DENIED",
-        "BLOB_NOT_FOUND",
-        "EXPRESSION_EVAL_FAILED",
-        "SESSION_EXPIRED",
         "INVALID_VALUE",
         "NOT_FOUND",
+        "PROTOCOL_VERSION_MISMATCH",
+        "DEPENDENCY_ERROR",
+        "CONFIGURATION_ERROR",
+        "COMPONENT_EXECUTION_FAILED",
+        "COMPONENT_VALUE_ERROR",
+        "COMPONENT_RESOURCE_UNAVAILABLE",
+        "COMPONENT_BAD_REQUEST",
         "UNDEFINED_FIELD",
-        "BAD_REQUEST",
         "ENTITY_NOT_FOUND",
         "INTERNAL_ERROR",
-        "TRANSPORT_ERROR"
+        "TRANSPORT_ERROR",
+        "TRANSPORT_SPAWN_ERROR",
+        "TRANSPORT_CONNECTION_ERROR",
+        "TRANSPORT_PROTOCOL_ERROR"
       ]
     },
     "MethodRequest": {

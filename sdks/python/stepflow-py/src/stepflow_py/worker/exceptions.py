@@ -19,7 +19,12 @@ from stepflow_py.worker.generated_protocol import ErrorCode
 
 def is_transport_error(code: int) -> bool:
     """Returns True if the given code represents a transport/infrastructure error."""
-    return code >= 5000
+    return -32399 <= code <= -32300
+
+
+def is_component_execution_error(code: int) -> bool:
+    """Returns True if the code is a component execution error (retryable)."""
+    return -32199 <= code <= -32100
 
 
 class StepflowError(Exception):
@@ -70,7 +75,7 @@ class StepflowValueError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.INVALID_VALUE
+        return ErrorCode.COMPONENT_VALUE_ERROR
 
 
 class StepflowExecutionError(StepflowError):
@@ -86,7 +91,7 @@ class StepflowRuntimeError(StepflowError):
 
     @property
     def default_code(self) -> ErrorCode:
-        return ErrorCode.RESOURCE_UNAVAILABLE
+        return ErrorCode.COMPONENT_RESOURCE_UNAVAILABLE
 
 
 class ComponentNotFoundError(StepflowComponentError):
