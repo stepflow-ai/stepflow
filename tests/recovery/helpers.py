@@ -371,3 +371,20 @@ def release_delay(
         return False
     resp.raise_for_status()
     return False  # unreachable, but keeps mypy happy
+
+
+def release_all_delays() -> int:
+    """Release all pending delays via the worker's delay-control API.
+
+    Use this after killing an orchestrator (but before restarting) to clear
+    stale pre-crash delay entries from the worker's registry. Recovery
+    re-dispatches will create fresh entries that tests can then poll and
+    release deterministically.
+
+    Returns the number of delays released, or 0 if the worker is unreachable.
+    """
+    try:
+        resp = httpx.post(f"{WORKER_URL}/delay/release-all", timeout=5)
+        return resp.json().get("released", 0)
+    except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
+        return 0

@@ -41,6 +41,7 @@ from helpers import (
     has_checkpoint_recovery_log,
     poll_for_delay,
     read_tracker_records,
+    release_all_delays,
     release_delay,
     store_flow,
     submit_run,
@@ -67,10 +68,14 @@ async def test_failover_recovery_sequential(compose_env):
     # 4. Kill orchestrator-1 (stays dead) while step2 is deterministically held
     docker_kill("orchestrator-1")
 
-    # 5. Release step2 so orch-2 can proceed after claiming the orphan
+    # 5. Clear stale pre-crash delays so orch-2's recovery dispatches fresh entries
+    release_all_delays()
+
+    # 6. Orch-2 claims orphan after lease expiry, re-dispatches step2
+    poll_for_delay("step2", timeout=30)
     release_delay("step2")
 
-    # 6. Release step3 when dispatched by recovery
+    # 7. Release step3 when dispatched by recovery
     poll_for_delay("step3", timeout=30)
     release_delay("step3")
 
@@ -129,8 +134,12 @@ async def test_failover_recovery_parallel(compose_env):
     # Kill orchestrator-1 (stays dead)
     docker_kill("orchestrator-1")
 
-    # Release remaining parallel steps so orch-2 can proceed after failover
+    # Clear stale pre-crash delays so orch-2's recovery dispatches fresh entries
+    release_all_delays()
+
+    # Orch-2 claims orphan after lease expiry, re-dispatches parallel steps
     for label in ["parallel_b", "parallel_c", "parallel_d"]:
+        poll_for_delay(label, timeout=30)
         release_delay(label)
 
     # Release aggregate when dispatched by recovery

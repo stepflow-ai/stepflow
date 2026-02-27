@@ -38,6 +38,7 @@ from helpers import (
     get_step_tracker_records,
     poll_for_delay,
     read_tracker_records,
+    release_all_delays,
     release_delay,
     store_flow,
     submit_run,
@@ -77,22 +78,25 @@ async def test_dual_failure_recovery(compose_env):
     # 5. Kill BOTH orchestrators while steps are deterministically held
     docker_kill("orchestrator-1", "orchestrator-2")
 
-    # 6. Restart both
+    # 6. Clear stale pre-crash delays, then restart both orchestrators
+    release_all_delays()
     docker_start("orchestrator-1", "orchestrator-2")
     wait_for_health(ORCH1_URL, timeout=30)
     wait_for_health(ORCH2_URL, timeout=30)
 
-    # 7. Release all held delays so recovery can proceed
+    # 7. Recovery re-dispatches in-flight steps with fresh delay entries.
+    #    Poll and release each one, then their successor steps.
     for label in ["step2", "parallel_b", "parallel_c", "parallel_d"]:
+        poll_for_delay(label, timeout=30)
         release_delay(label)
 
-    # 8. Release step3 and aggregate when dispatched by recovery
     poll_for_delay("step3", timeout=30)
     release_delay("step3")
+
     poll_for_delay("aggregate", timeout=30)
     release_delay("aggregate")
 
-    # 9. Wait for both runs to complete (either orchestrator may claim either run)
+    # 8. Wait for both runs to complete
     result_a = await wait_for_run_on_either(run_a_id, timeout=90)
     result_b = await wait_for_run_on_either(run_b_id, timeout=90)
 

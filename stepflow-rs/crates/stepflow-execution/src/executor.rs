@@ -62,8 +62,6 @@ pub async fn submit_run(
 ) -> Result<RunStatus> {
     let run_id = Uuid::now_v7();
     let state_store = env.metadata_store();
-    let item_count = inputs.len();
-    let max_concurrency = params.max_concurrency.unwrap_or(item_count);
 
     // Ensure the flow is stored as a blob
     let flow_content =
@@ -145,9 +143,12 @@ pub async fn submit_run(
     );
 
     // Build FlowExecutor before spawning - handle errors synchronously
-    let flow_executor = match crate::FlowExecutorBuilder::new(env.clone(), run_state)
-        .max_concurrency(max_concurrency)
-        .scheduler(Box::new(crate::DepthFirstScheduler::new()))
+    let mut builder = crate::FlowExecutorBuilder::new(env.clone(), run_state)
+        .scheduler(Box::new(crate::DepthFirstScheduler::new()));
+    if let Some(max) = params.max_concurrency {
+        builder = builder.max_concurrency(max);
+    }
+    let flow_executor = match builder
         .build()
         .await
     {

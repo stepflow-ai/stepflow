@@ -178,6 +178,20 @@ fi
 
 if ! run_check "Recovery tests" uv run pytest -v --timeout=300; then
     print_fix "Fix failing recovery tests"
+
+    # Dump Docker logs for debugging failed tests
+    for svc in orchestrator-1 orchestrator-2 worker; do
+        if [ -n "$GITHUB_ACTIONS" ]; then
+            echo "::group::Docker logs: $svc"
+        else
+            echo ""
+            echo "--- Docker logs: $svc ---"
+        fi
+        "${COMPOSE_CMD[@]}" logs --no-log-prefix "$svc" 2>/dev/null || true
+        if [ -n "$GITHUB_ACTIONS" ]; then
+            echo "::endgroup::"
+        fi
+    done
 fi
 
 # =============================================================================
