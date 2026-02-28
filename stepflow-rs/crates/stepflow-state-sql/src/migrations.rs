@@ -396,8 +396,11 @@ async fn add_created_at_seqno_column(conn: &mut SqliteConnection) -> Result<(), 
         .await
         .change_context(StateError::Initialization)?;
 
+    // Composite index: recovery queries filter on both root_run_id and
+    // created_at_seqno (e.g., "all sub-runs in tree X created after checkpoint Y").
     sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_runs_created_at_seqno ON runs(created_at_seqno)",
+        "CREATE INDEX IF NOT EXISTS idx_runs_root_run_id_created_at_seqno \
+         ON runs(root_run_id, created_at_seqno)",
     )
     .execute(&mut *conn)
     .await
