@@ -616,7 +616,7 @@ impl JournalComplianceTests {
                     vars
                 },
             },
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: Uuid::now_v7(),
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({"sub": true}))],
@@ -703,10 +703,10 @@ impl JournalComplianceTests {
                     assert_eq!(f1, f2, "RunCreated flow_id should match");
                 }
                 (
-                    JournalEvent::SubflowCreated { flow_id: f1, .. },
-                    JournalEvent::SubflowCreated { flow_id: f2, .. },
+                    JournalEvent::SubRunCreated { flow_id: f1, .. },
+                    JournalEvent::SubRunCreated { flow_id: f2, .. },
                 ) => {
-                    assert_eq!(f1, f2, "SubflowCreated flow_id should match");
+                    assert_eq!(f1, f2, "SubRunCreated flow_id should match");
                 }
                 (
                     JournalEvent::RunInitialized {

@@ -184,7 +184,7 @@ impl RunState {
     ///   newly ready tasks. Returns the newly ready tasks.
     /// - `TasksStarted`: Records attempt counts for tasks about to execute.
     ///   Returns empty (tasks are discovered via other events).
-    /// - Other events (`RunCreated`, `SubflowCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
+    /// - Other events (`RunCreated`, `SubRunCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
     ///   Informational or handled elsewhere. Returns empty.
     pub fn apply_event(&mut self, event: &JournalEvent) -> Vec<Task> {
         match event {
@@ -253,8 +253,8 @@ impl RunState {
                 // Terminal state - no state update needed
                 Vec::new()
             }
-            JournalEvent::SubflowCreated { .. } => {
-                // Subflow tracking - handled by recovery, not RunState
+            JournalEvent::SubRunCreated { .. } => {
+                // Sub-run tracking - handled by recovery, not RunState
                 Vec::new()
             }
         }

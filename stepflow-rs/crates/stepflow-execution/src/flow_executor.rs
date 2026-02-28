@@ -405,12 +405,12 @@ impl FlowExecutor {
         // Store the run state
         self.runs.insert(run_id, run_state);
 
-        // Journal: Record subflow creation and parent association atomically.
-        // This single event provides everything needed for recovery: the subflow's
+        // Journal: Record sub-run creation and parent association atomically.
+        // This single event provides everything needed for recovery: the sub-run's
         // creation data AND the dedup mapping (parent_run_id, item_index, step_index,
         // subflow_key). All events for the execution tree share the same journal
         // (keyed by root_run_id).
-        self.write_journal(JournalEvent::SubflowCreated {
+        self.write_journal(JournalEvent::SubRunCreated {
             run_id,
             flow_id: request.flow_id.clone(),
             inputs: request.inputs.clone(),

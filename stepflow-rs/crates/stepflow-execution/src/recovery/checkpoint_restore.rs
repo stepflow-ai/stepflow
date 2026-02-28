@@ -124,10 +124,10 @@ pub(super) async fn restore_from_checkpoint(
         for sub_state in subflow_runs.values_mut() {
             sub_state.apply_event(event);
         }
-        // Handle SubflowCreated: update dedup map and create RunState atomically.
-        // The new subflow is inserted into subflow_runs so the outer loop applies
+        // Handle SubRunCreated: update dedup map and create RunState atomically.
+        // The new sub-run is inserted into subflow_runs so the outer loop applies
         // all subsequent tail events to it naturally — no separate replay needed.
-        if let stepflow_state::JournalEvent::SubflowCreated {
+        if let stepflow_state::JournalEvent::SubRunCreated {
             run_id: sub_run_id,
             flow_id: sub_flow_id,
             inputs: sub_inputs,

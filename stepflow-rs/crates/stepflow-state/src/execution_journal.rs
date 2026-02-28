@@ -275,22 +275,22 @@ pub enum JournalEvent {
     // =========================================================================
     // Subflow Lifecycle
     // =========================================================================
-    /// A subflow was created and associated with its parent task.
+    /// A sub-run was created and associated with its parent task.
     ///
-    /// Combines the subflow's creation data (flow_id, inputs, variables) with
+    /// Combines the sub-run's creation data (flow_id, inputs, variables) with
     /// the parent task association (item_index, step_index, subflow_key).
     /// During recovery, this single event provides everything needed to both
-    /// reconstruct the subflow's RunState AND populate the dedup map.
-    SubflowCreated {
-        /// The subflow run ID.
+    /// reconstruct the sub-run's RunState AND populate the dedup map.
+    SubRunCreated {
+        /// The sub-run's run ID.
         run_id: Uuid,
-        /// The flow being executed by the subflow.
+        /// The flow being executed by the sub-run.
         flow_id: BlobId,
-        /// Input data for each item in the subflow.
+        /// Input data for each item in the sub-run.
         inputs: Vec<ValueRef>,
-        /// Variables provided for the subflow execution.
+        /// Variables provided for the sub-run execution.
         variables: HashMap<String, ValueRef>,
-        /// The parent run that created this subflow.
+        /// The parent run that created this sub-run.
         parent_run_id: Uuid,
         /// Item index within the parent run.
         item_index: u32,

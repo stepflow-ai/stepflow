@@ -35,7 +35,7 @@ struct SubflowInfo {
 /// Full journal replay path — no checkpoint available.
 ///
 /// Reads the entire journal from sequence 0, extracts RunCreated for root and
-/// SubflowCreated for subflows, and applies all events to reconstruct execution state.
+/// SubRunCreated for subflows, and applies all events to reconstruct execution state.
 pub(super) async fn restore_from_journal(
     journal: &Arc<dyn ExecutionJournal>,
     root_run_id: uuid::Uuid,
@@ -95,8 +95,8 @@ pub(super) async fn restore_from_journal(
         run_state.is_complete()
     );
 
-    // Build subflow dedup map and collect subflow info in a single pass.
-    // Each SubflowCreated event carries both the dedup mapping AND the creation data,
+    // Build subflow dedup map and collect sub-run info in a single pass.
+    // Each SubRunCreated event carries both the dedup mapping AND the creation data,
     // so no separate pre-pass is needed.
     let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
     let mut subflow_created: HashMap<uuid::Uuid, SubflowInfo> = HashMap::new();
@@ -106,7 +106,7 @@ pub(super) async fn restore_from_journal(
         std::collections::HashSet::new();
     for event in &all_events {
         match event {
-            stepflow_state::JournalEvent::SubflowCreated {
+            stepflow_state::JournalEvent::SubRunCreated {
                 run_id: sub_run_id,
                 flow_id: sub_flow_id,
                 inputs: sub_inputs,

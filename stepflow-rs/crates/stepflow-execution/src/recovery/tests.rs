@@ -915,7 +915,7 @@ async fn test_recovery_groups_by_root_run_id() {
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: subflow_run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
@@ -1032,7 +1032,7 @@ async fn test_recovery_ignores_orphaned_subflows() {
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: subflow_run_id,
                 flow_id,
                 inputs: vec![ValueRef::new(json!({}))],
@@ -1521,12 +1521,12 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
         .await
         .expect("should write");
 
-    // Subflow: SubflowCreated (interleaved in the same journal)
+    // Subflow: SubRunCreated (interleaved in the same journal)
     let subflow_key = uuid::Uuid::now_v7();
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: subflow_run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
@@ -1566,6 +1566,18 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
                 result: stepflow_core::FlowResult::Success(ValueRef::new(
                     json!({"subflow": "done"}),
                 )),
+            },
+        )
+        .await
+        .expect("should write");
+
+    // Subflow: RunCompleted (subflow finished before crash)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCompleted {
+                run_id: subflow_run_id,
+                status: ExecutionStatus::Completed,
             },
         )
         .await
@@ -1711,7 +1723,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: completed_subflow_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],
@@ -1876,11 +1888,11 @@ async fn test_recovery_resumes_inflight_subflow() {
         )
         .await
         .unwrap();
-    // SubflowCreated: root step0 created the subflow
+    // SubRunCreated: root step0 created the subflow
     journal
         .write(
             root_run_id,
-            JournalEvent::SubflowCreated {
+            JournalEvent::SubRunCreated {
                 run_id: inflight_subflow_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({}))],

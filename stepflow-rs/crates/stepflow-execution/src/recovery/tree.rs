@@ -37,7 +37,7 @@ use crate::{ExecutionError, Result};
 ///
 /// ## Subflow Recovery
 ///
-/// When `SubflowCreated` events are present in the journal, this function
+/// When `SubRunCreated` events are present in the journal, this function
 /// reconstructs subflow `RunState` objects and builds a deduplication map.
 /// When parent steps re-execute and re-submit subflows with the same deterministic
 /// key, the executor matches against the recovered subflow and returns the existing
