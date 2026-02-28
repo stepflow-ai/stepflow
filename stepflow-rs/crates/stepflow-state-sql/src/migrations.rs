@@ -65,6 +65,12 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
         add_orchestrator_id_column,
     )
     .await?;
+    run_migration(
+        pool,
+        "005_add_created_at_seqno_to_runs",
+        add_created_at_seqno_column,
+    )
+    .await?;
 
     Ok(())
 }
@@ -375,6 +381,27 @@ async fn add_orchestrator_id_column(conn: &mut SqliteConnection) -> Result<(), S
         .execute(&mut *conn)
         .await
         .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Add created_at_seqno column to runs table for journal-aware recovery.
+///
+/// Stores the journal sequence number at which the RunCreated/SubRunCreated
+/// event was written, enabling efficient metadata queries during recovery
+/// (filter by offset range instead of scanning all sub-runs in a tree).
+async fn add_created_at_seqno_column(conn: &mut SqliteConnection) -> Result<(), StateError> {
+    sqlx::query("ALTER TABLE runs ADD COLUMN created_at_seqno INTEGER")
+        .execute(&mut *conn)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_runs_created_at_seqno ON runs(created_at_seqno)",
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
 
     Ok(())
 }

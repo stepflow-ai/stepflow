@@ -150,6 +150,7 @@ impl InMemoryStateStore {
                 root_run_id: params.root_run_id,
                 parent_run_id: params.parent_run_id,
                 orchestrator_id: params.orchestrator_id,
+                created_at_seqno: params.created_at_seqno.map(|s| s.value()),
             },
             item_details: Some(item_details),
             overrides: if params.overrides.is_empty() {
@@ -306,6 +307,13 @@ impl MetadataStore for InMemoryStateStore {
                     // Apply orchestrator_id filter
                     if let Some(ref orch_filter) = filters.orchestrator_id
                         && exec.orchestrator_id.as_ref() != orch_filter.as_ref()
+                    {
+                        return false;
+                    }
+
+                    // Apply created_at_seqno lower bound filter
+                    if let Some(offset_gte) = filters.created_at_seqno_gte
+                        && exec.created_at_seqno.is_none_or(|o| o < offset_gte)
                     {
                         return false;
                     }

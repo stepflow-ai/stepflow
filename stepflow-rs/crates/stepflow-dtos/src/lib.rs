@@ -134,6 +134,12 @@ pub struct RunSummary {
     /// Set when the run is created and updated during recovery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub orchestrator_id: Option<String>,
+    /// Journal sequence number of the event that created this run.
+    ///
+    /// Records where in the journal this run was created, enabling efficient
+    /// metadata queries during recovery (filter by offset range).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at_seqno: Option<u64>,
 }
 
 /// Detailed flow run information including item details.
@@ -175,6 +181,11 @@ pub struct RunFilters {
     /// - `Some(None)` — orphaned runs (orchestrator_id IS NULL)
     /// - `None` — no orchestrator filter applied
     pub orchestrator_id: Option<Option<String>>,
+    /// Only return runs whose `created_at_seqno >= this value`.
+    ///
+    /// Useful for pruning recovery queries to sub-runs created after a
+    /// checkpoint sequence number, avoiding a full scan of the tree.
+    pub created_at_seqno_gte: Option<u64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -379,6 +390,7 @@ mod tests {
                 root_run_id: run_id,
                 parent_run_id: None,
                 orchestrator_id: None,
+                created_at_seqno: None,
             },
             item_details: Some(vec![ItemDetails {
                 item_index: 0,

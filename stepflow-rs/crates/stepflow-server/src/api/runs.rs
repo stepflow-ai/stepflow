@@ -103,6 +103,7 @@ impl From<RunStatus> for CreateRunResponse {
                 root_run_id: status.root_run_id,
                 parent_run_id: status.parent_run_id,
                 orchestrator_id: None,
+                created_at_seqno: None,
             },
             results: status.results,
         }
@@ -453,6 +454,7 @@ pub async fn list_runs(
         roots_only: query.roots_only,
         max_depth: query.max_depth,
         orchestrator_id: None,
+        created_at_seqno_gte: None,
         limit: query.limit,
         offset: query.offset,
     };

@@ -23,6 +23,8 @@ use stepflow_core::{
 };
 use uuid::Uuid;
 
+use crate::SequenceNumber;
+
 /// Parameters for creating a new workflow run.
 ///
 /// A run can have one or more input items. Use `vec![input]` for single-item runs.
@@ -54,6 +56,12 @@ pub struct CreateRunParams {
     /// Set when the run is created and updated during recovery.
     /// None means the run is orphaned (no orchestrator owns it).
     pub orchestrator_id: Option<String>,
+    /// Journal sequence number of the RunCreated/SubRunCreated event.
+    ///
+    /// Records where in the journal this run was created, enabling efficient
+    /// metadata store queries during recovery (filter by offset range instead
+    /// of scanning all sub-runs).
+    pub created_at_seqno: Option<SequenceNumber>,
 }
 
 impl CreateRunParams {
@@ -72,6 +80,7 @@ impl CreateRunParams {
             root_run_id: run_id,
             parent_run_id: None,
             orchestrator_id: None,
+            created_at_seqno: None,
         }
     }
 
@@ -96,6 +105,7 @@ impl CreateRunParams {
             root_run_id,
             parent_run_id: Some(parent_run_id),
             orchestrator_id: None,
+            created_at_seqno: None,
         }
     }
 

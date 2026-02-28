@@ -59,8 +59,7 @@
 //! println!("Recovered {} runs", recovered);
 //! ```
 
-mod checkpoint_restore;
-mod journal_restore;
+mod restore;
 mod tree;
 mod types;
 

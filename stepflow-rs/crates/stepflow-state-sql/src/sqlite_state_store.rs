@@ -137,7 +137,7 @@ impl SqliteStateStore {
 
         // Insert run metadata (items stored separately in run_items)
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id) VALUES (?, ?, ?, 'running', ?, ?, ?, ?)";
+        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id, created_at_seqno) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)";
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
@@ -147,6 +147,7 @@ impl SqliteStateStore {
             .bind(params.root_run_id.to_string())
             .bind(params.parent_run_id.map(|id| id.to_string()))
             .bind(&params.orchestrator_id)
+            .bind(params.created_at_seqno.map(|s| s.value() as i64))
             .execute(pool)
             .await
             .change_context(StateError::Internal)?;
@@ -280,7 +281,7 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -396,6 +397,7 @@ impl MetadataStore for SqliteStateStore {
                         .and_then(|s| Uuid::parse_str(s).ok());
 
                     let orchestrator_id: Option<String> = row.get("orchestrator_id");
+                    let created_at_seqno: Option<i64> = row.get("created_at_seqno");
 
                     let details = RunDetails {
                         summary: RunSummary {
@@ -409,6 +411,7 @@ impl MetadataStore for SqliteStateStore {
                             root_run_id,
                             parent_run_id,
                             orchestrator_id,
+                            created_at_seqno: created_at_seqno.map(|v| v as u64),
                         },
                         item_details: Some(item_details),
                         overrides: None,
@@ -434,6 +437,7 @@ impl MetadataStore for SqliteStateStore {
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
                     r.root_run_id, r.parent_run_id, r.orchestrator_id,
+                    r.created_at_seqno,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
                     COALESCE(i.completed, 0) as item_completed,
@@ -500,6 +504,12 @@ impl MetadataStore for SqliteStateStore {
                         conditions.push("r.orchestrator_id IS NULL".to_string());
                     }
                 }
+            }
+
+            // Filter by created_at_seqno lower bound (journal sequence ordering)
+            if let Some(offset_gte) = filters.created_at_seqno_gte {
+                conditions.push("r.created_at_seqno >= ?".to_string());
+                bind_values.push(offset_gte.to_string());
             }
 
             if !conditions.is_empty() {
@@ -576,6 +586,7 @@ impl MetadataStore for SqliteStateStore {
                     .and_then(|s| Uuid::parse_str(s).ok());
 
                 let orchestrator_id: Option<String> = row.get("orchestrator_id");
+                let created_at_seqno: Option<i64> = row.get("created_at_seqno");
 
                 let summary = RunSummary {
                     run_id,
@@ -588,6 +599,7 @@ impl MetadataStore for SqliteStateStore {
                     root_run_id,
                     parent_run_id,
                     orchestrator_id,
+                    created_at_seqno: created_at_seqno.map(|v| v as u64),
                 };
 
                 summaries.push(summary);

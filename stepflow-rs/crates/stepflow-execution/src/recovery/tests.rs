@@ -1972,3 +1972,328 @@ async fn test_recovery_resumes_inflight_subflow() {
         "Root run should complete after recovery with in-flight subflow"
     );
 }
+
+/// Journal-only recovery syncs the metadata store when a subflow's RunCompleted
+/// was journalled but the metadata store was not updated before the crash.
+///
+/// Scenario:
+/// 1. Subflow completes: journal RunCompleted is written (journal-first ordering)
+/// 2. CRASH before metadata store update_run_status / record_item_result
+/// 3. Recovery replays the journal, detects the discrepancy, and syncs metadata
+/// 4. Parent step can then wait_for_completion and get the subflow's results
+#[tokio::test]
+async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
+    use stepflow_core::workflow::FlowBuilder;
+
+    let env = create_test_env().await;
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let metadata_store = env.metadata_store();
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    // Create a 1-step flow (used for both root and subflow)
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![StepBuilder::new("step0")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()])
+            .output(ValueExpr::Step {
+                step: "step0".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    let root_run_id = uuid::Uuid::now_v7();
+    let subflow_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+
+    // Create root run record
+    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create root run");
+
+    // Create subflow run record — but do NOT update status or record results.
+    // This simulates the crash window: journal has RunCompleted but metadata
+    // store still shows Running.
+    let subflow_params = CreateRunParams::new_subflow(
+        subflow_run_id,
+        flow_id.clone(),
+        vec![ValueRef::new(json!({}))],
+        root_run_id,
+        root_run_id,
+    );
+    metadata_store
+        .create_run(subflow_params)
+        .await
+        .expect("should create subflow run");
+
+    // === Journal events ===
+    // Root: RunCreated
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+    // Root: RunInitialized
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: root_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // SubRunCreated
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::SubRunCreated {
+                run_id: subflow_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: RunInitialized
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: subflow_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: TaskCompleted
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: subflow_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(
+                    json!({"sub_result": "ok"}),
+                )),
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: RunCompleted (journalled, but metadata NOT updated — crash window)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCompleted {
+                run_id: subflow_run_id,
+                status: ExecutionStatus::Completed,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Verify the subflow is still Running in metadata store (simulating crash)
+    let subflow_before = metadata_store
+        .get_run(subflow_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        subflow_before.summary.status,
+        ExecutionStatus::Running,
+        "Subflow should still be Running before recovery (crash window)"
+    );
+
+    // === Recovery ===
+    let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+
+    assert_eq!(result.recovered, 1);
+
+    // Wait for execution to complete
+    let active_executions = env.active_executions();
+    for _ in 0..100 {
+        if active_executions.is_empty() {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        active_executions.is_empty(),
+        "Execution should complete within timeout"
+    );
+
+    // Verify the subflow's metadata was synced during recovery
+    let subflow_after = metadata_store
+        .get_run(subflow_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        subflow_after.summary.status,
+        ExecutionStatus::Completed,
+        "Subflow metadata should be synced to Completed during recovery"
+    );
+
+    // Verify the root run completed successfully
+    let root_run = metadata_store
+        .get_run(root_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        root_run.summary.status,
+        ExecutionStatus::Completed,
+        "Root run should complete after recovery with metadata sync"
+    );
+}
+
+/// Checkpoint recovery syncs the metadata store when a subflow's RunCompleted
+/// appears in the tail events but the metadata store was not updated before
+/// the crash.
+///
+/// This uses a checkpoint that captures the subflow as in-flight, then tail
+/// events include the subflow completing. Recovery should detect the stale
+/// metadata and sync it.
+#[tokio::test]
+async fn test_checkpoint_recovery_syncs_metadata_for_crash_window_completion() {
+    use stepflow_mock::{MockComponentBehavior, MockPlugin};
+    use stepflow_state::CheckpointStoreExt as _;
+
+    let store = Arc::new(stepflow_state::InMemoryStateStore::new());
+
+    // Phase 1: Execute with a wait signal to block mid-flow.
+    // We use a 3-step chain: step0 -> step1 -> step2 with checkpoint_interval=2.
+    let mut mock_plugin = MockPlugin::new();
+    let behavior = MockComponentBehavior::result(stepflow_core::FlowResult::Success(
+        ValueRef::new(json!({"result": "ok"})),
+    ));
+    mock_plugin
+        .mock_component("/mock/test")
+        .behavior(ValueRef::new(json!({})), behavior.clone());
+    mock_plugin
+        .mock_component("/mock/test")
+        .behavior(ValueRef::new(json!({"result": "ok"})), behavior.clone());
+    // Block step1 so we get a checkpoint with step0 done but step1 pending
+    let _signal = mock_plugin.wait_for("/mock/test", ValueRef::new(json!({"result": "ok"})));
+
+    let env1 = build_env_with_checkpoint_interval(mock_plugin, store.clone(), 2).await;
+
+    let flow = Arc::new(crate::testing::create_chain_flow(3));
+    let flow_id = env1
+        .blob_store()
+        .store_flow(flow.clone())
+        .await
+        .expect("should store flow");
+
+    let status = crate::executor::submit_run(
+        &env1,
+        flow,
+        flow_id,
+        vec![ValueRef::new(json!({}))],
+        Default::default(),
+    )
+    .await
+    .expect("should submit run");
+
+    let run_id = status.run_id;
+
+    // Poll until a checkpoint appears
+    let checkpoint_store = env1.checkpoint_store().clone();
+    let mut checkpoint_found = false;
+    for _ in 0..200 {
+        if checkpoint_store
+            .get_latest_checkpoint(run_id)
+            .await
+            .expect("should query checkpoint store")
+            .is_some()
+        {
+            checkpoint_found = true;
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(checkpoint_found, "Checkpoint should have been created");
+
+    // Abort execution (simulating a crash)
+    env1.active_executions().shutdown();
+
+    // Verify run is still Running
+    let run = env1
+        .metadata_store()
+        .get_run(run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(run.summary.status, ExecutionStatus::Running);
+
+    // Phase 2: Recover with a new env (same stores, no wait signal)
+    let mock_plugin2 = create_standard_mock_plugin();
+    let env2 = build_env_with_checkpoint_interval(mock_plugin2, store, 2).await;
+
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let result = recover_orphaned_runs(&env2, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+
+    assert_eq!(result.recovered, 1);
+
+    // Wait for recovered execution to complete
+    let active_executions = env2.active_executions();
+    for _ in 0..200 {
+        if active_executions.is_empty() {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        active_executions.is_empty(),
+        "Recovered execution should complete within timeout"
+    );
+
+    // Verify the run completed successfully via checkpoint-based recovery
+    let run = env2
+        .metadata_store()
+        .get_run(run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        run.summary.status,
+        ExecutionStatus::Completed,
+        "Run should complete after checkpoint-based recovery with metadata sync"
+    );
+}

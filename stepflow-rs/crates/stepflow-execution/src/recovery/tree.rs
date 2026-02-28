@@ -25,8 +25,7 @@ use stepflow_state::{
     MetadataStoreExt as _,
 };
 
-use super::checkpoint_restore::restore_from_checkpoint;
-use super::journal_restore::restore_from_journal;
+use super::restore::{restore_from_checkpoint, restore_from_journal};
 use crate::{ExecutionError, Result};
 
 /// Recover an execution tree by replaying its journal and resuming the root run.
@@ -106,6 +105,7 @@ pub(super) async fn recover_execution_tree(
             &flow,
             blob_store.as_ref(),
             journal.as_ref(),
+            state_store.as_ref(),
         )
         .await
         .change_context(ExecutionError::RecoveryFailed)?
@@ -118,6 +118,7 @@ pub(super) async fn recover_execution_tree(
             root_info,
             &flow,
             blob_store.as_ref(),
+            state_store.as_ref(),
         )
         .await?
     };
