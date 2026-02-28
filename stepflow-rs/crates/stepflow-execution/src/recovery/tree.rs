@@ -25,7 +25,7 @@ use stepflow_state::{
     MetadataStoreExt as _,
 };
 
-use super::restore::{restore_from_checkpoint, restore_from_journal};
+use super::restore::{restore_from_checkpoint, restore_from_journal, sync_run_state_to_metadata};
 use crate::{ExecutionError, Result};
 
 /// Recover an execution tree by replaying its journal and resuming the root run.
@@ -123,9 +123,24 @@ pub(super) async fn recover_execution_tree(
         .await?
     };
 
-    // If the run is already complete, no need to resume
+    // If the run is already complete, sync metadata and return — no need to resume.
+    //
+    // Crash window: the journal recorded RunCompleted for the root run but the
+    // metadata store was not updated before the crash (journal-first ordering).
+    // Without this sync, the metadata store would remain "Running" and the run
+    // would be re-discovered on every recovery cycle.
     if recovered.run_state.is_complete() {
-        log::info!("Root run {} already complete after recovery", run_id);
+        log::info!("Root run {} already complete after recovery, syncing metadata", run_id);
+        if let Some(status) = recovered.root_terminal_status {
+            sync_run_state_to_metadata(
+                run_id,
+                &recovered.run_state,
+                status,
+                state_store.as_ref(),
+                || ExecutionError::RecoveryFailed,
+            )
+            .await?;
+        }
         return Ok(());
     }
 

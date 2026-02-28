@@ -14,6 +14,8 @@
 
 use std::collections::HashMap;
 
+use stepflow_core::status::ExecutionStatus;
+
 use crate::RunState;
 
 /// State recovered from either a checkpoint or full journal replay.
@@ -36,4 +38,10 @@ pub(super) struct RecoveredState {
     /// These already have a `RunInitialized` journal event from the original execution,
     /// so recovery must skip writing a duplicate.
     pub inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid>,
+    /// Terminal status from the root run's `RunCompleted` event, if present.
+    ///
+    /// Set when the journal contains a `RunCompleted` for the root run,
+    /// indicating the run finished but the metadata store may not have been
+    /// updated before the crash (journal-first ordering crash window).
+    pub root_terminal_status: Option<ExecutionStatus>,
 }

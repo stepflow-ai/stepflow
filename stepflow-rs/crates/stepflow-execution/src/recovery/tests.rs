@@ -2181,6 +2181,39 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
     );
 }
 
+// ============================================================================
+// Crash window coverage
+// ============================================================================
+//
+// These tests exercise recovery when a crash occurs between two durable writes
+// (journal and metadata store). Because all creation and completion events use
+// journal-first ordering, the journal is always the authoritative source of
+// truth and the metadata store may lag behind.
+//
+// ## Scenarios covered
+//
+// 1. **Sub-run completion** (journal RunCompleted, metadata still Running):
+//    - `test_journal_recovery_syncs_metadata_for_crash_window_completion`
+//    - `test_checkpoint_recovery_syncs_metadata_for_crash_window_completion`
+//
+// 2. **Root run completion** (journal RunCompleted for root, metadata Running):
+//    - `test_root_run_completion_crash_window_syncs_metadata`
+//
+// 3. **Sub-run creation** (journal SubRunCreated, no metadata record):
+//    - `test_subrun_creation_crash_window_creates_metadata`
+//
+// ## Scenario NOT covered: root run creation
+//
+// If a crash occurs after the root run's RunCreated is journalled but before
+// the metadata store record is created, the run is not recoverable — and this
+// is by design. Recovery discovers runs via the metadata store (querying for
+// status=Running), so a run without a metadata record will never be found.
+// The caller never received a success response for the submission, so they
+// know to retry. The orphaned journal entry is inert (keyed by root_run_id,
+// won't collide with a future retry). No test is needed because recovery
+// simply never encounters this state.
+// ============================================================================
+
 /// Checkpoint recovery syncs the metadata store when a subflow's RunCompleted
 /// appears in the tail events but the metadata store was not updated before
 /// the crash.
@@ -2295,5 +2328,328 @@ async fn test_checkpoint_recovery_syncs_metadata_for_crash_window_completion() {
         run.summary.status,
         ExecutionStatus::Completed,
         "Run should complete after checkpoint-based recovery with metadata sync"
+    );
+}
+
+/// Recovery syncs the metadata store when the ROOT run's RunCompleted was
+/// journalled but the metadata store was not updated before the crash.
+///
+/// Scenario:
+/// 1. Root run executes fully: all journal events through RunCompleted are written
+/// 2. CRASH before metadata store update_run_status for the root
+/// 3. Recovery replays the journal, detects root is complete, and syncs metadata
+///
+/// Without this fix, the metadata store would remain "Running" and the run
+/// would be re-discovered on every recovery cycle, creating an infinite loop.
+#[tokio::test]
+async fn test_root_run_completion_crash_window_syncs_metadata() {
+    let env = create_test_env().await;
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let metadata_store = env.metadata_store();
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    // Store a valid flow
+    let flow = Arc::new(create_test_flow());
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    // Create a run record (metadata says Running)
+    let run_id = uuid::Uuid::now_v7();
+    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create run");
+
+    // Write a complete set of journal events: the run executed fully
+    journal
+        .write(
+            run_id,
+            JournalEvent::RunCreated {
+                run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            run_id,
+            JournalEvent::RunInitialized {
+                run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            run_id,
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            run_id,
+            JournalEvent::ItemCompleted {
+                run_id,
+                item_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"result": "ok"}))),
+            },
+        )
+        .await
+        .unwrap();
+    journal
+        .write(
+            run_id,
+            JournalEvent::RunCompleted {
+                run_id,
+                status: ExecutionStatus::Completed,
+            },
+        )
+        .await
+        .unwrap();
+
+    // === CRASH HERE ===
+    // Journal has RunCompleted but metadata store still shows Running.
+
+    // Verify pre-condition: metadata shows Running
+    let run_before = metadata_store
+        .get_run(run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        run_before.summary.status,
+        ExecutionStatus::Running,
+        "Root run should still be Running before recovery (crash window)"
+    );
+
+    // Recovery should detect the root is complete and sync metadata
+    let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+    assert_eq!(result.recovered, 1);
+    assert_eq!(result.failed, 0);
+
+    // Verify: metadata now shows Completed
+    let run_after = metadata_store
+        .get_run(run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        run_after.summary.status,
+        ExecutionStatus::Completed,
+        "Root run metadata should be synced to Completed during recovery"
+    );
+
+    // Verify: item results were synced to metadata
+    let items = metadata_store
+        .get_item_results(run_id, Default::default())
+        .await
+        .expect("should get item results");
+    assert_eq!(items.len(), 1, "Should have 1 item result synced");
+}
+
+/// Recovery creates a metadata record for a sub-run when the journal has
+/// SubRunCreated but the metadata store has no record (crash between journal
+/// write and create_run).
+///
+/// Scenario:
+/// 1. Root run starts, submits a subflow
+/// 2. Journal records SubRunCreated for the subflow
+/// 3. CRASH before metadata store create_run for the subflow
+/// 4. Recovery replays journal, creates the missing metadata record,
+///    and resumes execution — both root and subflow complete
+#[tokio::test]
+async fn test_subrun_creation_crash_window_creates_metadata() {
+    use stepflow_core::workflow::FlowBuilder;
+
+    let env = create_test_env().await;
+    let orchestrator_id = OrchestratorId::new("test-orch");
+    let metadata_store = env.metadata_store();
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    // Create a 1-step flow (used for both root and subflow)
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![StepBuilder::new("step0")
+                .component("/mock/test")
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()])
+            .output(ValueExpr::Step {
+                step: "step0".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    let root_run_id = uuid::Uuid::now_v7();
+    let subflow_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+
+    // Create root run record in metadata
+    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create root run");
+
+    // Do NOT create the subflow metadata record — this is the crash window.
+
+    // === Journal events ===
+    // Root: RunCreated
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+    // Root: RunInitialized
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: root_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // SubRunCreated (journal has it, metadata does NOT)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::SubRunCreated {
+                run_id: subflow_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: RunInitialized
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RunInitialized {
+                run_id: subflow_run_id,
+                needed_steps: vec![ItemSteps {
+                    item_index: 0,
+                    step_indices: vec![0],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    // Subflow: TasksStarted (in-flight at crash time)
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: subflow_run_id,
+                    tasks: vec![TaskAttempt {
+                        item_index: 0,
+                        step_index: 0,
+                        attempt: 1,
+                    }],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // === CRASH HERE ===
+    // Journal has SubRunCreated + RunInitialized + TasksStarted for the subflow,
+    // but NO metadata record exists for the subflow.
+
+    // Verify pre-condition: subflow has no metadata record
+    let subflow_before = metadata_store.get_run(subflow_run_id).await.expect("query ok");
+    assert!(
+        subflow_before.is_none(),
+        "Subflow should have no metadata record before recovery (crash window)"
+    );
+
+    // Recovery should create the missing metadata record and resume execution
+    let result = recover_orphaned_runs(&env, orchestrator_id, 100)
+        .await
+        .expect("recovery should succeed");
+    assert_eq!(result.recovered, 1, "Should recover the root run");
+
+    // Wait for execution to complete
+    let active_executions = env.active_executions();
+    for _ in 0..100 {
+        if active_executions.is_empty() {
+            break;
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        active_executions.is_empty(),
+        "Execution should complete within timeout"
+    );
+
+    // Verify: subflow now has a metadata record (created during recovery)
+    let subflow_after = metadata_store
+        .get_run(subflow_run_id)
+        .await
+        .expect("query ok")
+        .expect("subflow metadata should exist after recovery");
+    assert!(
+        matches!(
+            subflow_after.summary.status,
+            ExecutionStatus::Completed | ExecutionStatus::Running
+        ),
+        "Subflow should have been created and processed"
+    );
+
+    // Verify: root run completed successfully
+    let root_run = metadata_store
+        .get_run(root_run_id)
+        .await
+        .expect("should get run")
+        .expect("run should exist");
+    assert_eq!(
+        root_run.summary.status,
+        ExecutionStatus::Completed,
+        "Root run should complete after recovery with missing subflow metadata"
     );
 }

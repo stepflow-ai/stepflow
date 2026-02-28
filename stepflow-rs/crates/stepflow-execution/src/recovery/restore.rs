@@ -22,12 +22,12 @@
 //! on `RunCompleted` (handling the crash window between journal write and
 //! metadata update).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_core::status::ExecutionStatus;
-use stepflow_state::{ExecutionJournal, SequenceNumber};
+use stepflow_state::{CreateRunParams, ExecutionJournal, SequenceNumber};
 
 use super::types::RecoveredState;
 use crate::checkpoint::CheckpointData;
@@ -99,8 +99,8 @@ pub(super) async fn restore_from_journal(
     let mut subflow_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
     let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> =
         HashMap::new();
-    let mut inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid> =
-        std::collections::HashSet::new();
+    let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = HashSet::new();
+    let mut root_terminal_status: Option<ExecutionStatus> = None;
 
     // Full replay from beginning — no useful lower bound for pruning.
     replay_events(
@@ -111,6 +111,7 @@ pub(super) async fn restore_from_journal(
         &mut subflow_runs,
         &mut subflow_map,
         &mut inflight_subflow_run_ids,
+        &mut root_terminal_status,
         blob_store,
         metadata_store,
         || ExecutionError::RecoveryFailed,
@@ -130,6 +131,7 @@ pub(super) async fn restore_from_journal(
         subflow_map,
         subflow_runs,
         inflight_subflow_run_ids,
+        root_terminal_status,
     })
 }
 
@@ -232,12 +234,13 @@ pub(super) async fn restore_from_checkpoint(
         .change_context(ExecutionError::CheckpointError)?;
 
     // Seed in-flight set: all checkpoint-restored subflows were past initialization.
-    let mut inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid> = checkpoint_data
+    let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = checkpoint_data
         .runs
         .iter()
         .filter(|rc| rc.run_id != run_id)
         .map(|rc| rc.run_id)
         .collect();
+    let mut root_terminal_status: Option<ExecutionStatus> = None;
 
     // Checkpoint recovery: use the checkpoint sequence as a lower bound to
     // prune sub-runs created before the checkpoint from the metadata query.
@@ -249,6 +252,7 @@ pub(super) async fn restore_from_checkpoint(
         &mut subflow_runs,
         &mut subflow_map,
         &mut inflight_subflow_run_ids,
+        &mut root_terminal_status,
         blob_store,
         metadata_store,
         || ExecutionError::CheckpointError,
@@ -268,6 +272,7 @@ pub(super) async fn restore_from_checkpoint(
         subflow_map,
         subflow_runs,
         inflight_subflow_run_ids,
+        root_terminal_status,
     })
 }
 
@@ -282,16 +287,19 @@ pub(super) async fn restore_from_checkpoint(
 /// recovery paths. For each event it:
 ///
 /// 1. Applies the event to the root RunState and all subflow RunStates.
-/// 2. On `SubRunCreated`: updates the dedup map and creates a new RunState
-///    (loading the flow definition from the blob store).
+/// 2. On `SubRunCreated`: updates the dedup map, creates a new RunState
+///    (loading the flow definition from the blob store), and ensures a
+///    metadata record exists (crash window: journal written, metadata not).
 /// 3. On `RunInitialized` (non-root): adds the run to the in-flight set.
-/// 4. On `RunCompleted` (non-root): syncs the metadata store if needed
+/// 4. On `RunCompleted` (root): captures the terminal status in
+///    `root_terminal_status` for the caller to sync.
+/// 5. On `RunCompleted` (non-root): syncs the metadata store if needed
 ///    (crash window recovery), then evicts the RunState.
 ///
-/// Before iterating, pre-fetches all completed/failed sub-runs from the
-/// metadata store in a single batch query. For checkpoint recovery,
-/// `replay_start_offset` prunes the query to sub-runs created at or after
-/// the checkpoint sequence, avoiding a full scan of the tree.
+/// Before iterating, pre-fetches all sub-runs from the metadata store in a
+/// single batch query. For checkpoint recovery, `replay_start_offset` prunes
+/// the query to sub-runs created at or after the checkpoint sequence,
+/// avoiding a full scan of the tree.
 #[allow(clippy::too_many_arguments)]
 async fn replay_events(
     events: &[stepflow_state::JournalEvent],
@@ -300,17 +308,29 @@ async fn replay_events(
     run_state: &mut RunState,
     subflow_runs: &mut HashMap<uuid::Uuid, RunState>,
     subflow_map: &mut HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-    inflight_subflow_run_ids: &mut std::collections::HashSet<uuid::Uuid>,
+    inflight_subflow_run_ids: &mut HashSet<uuid::Uuid>,
+    root_terminal_status: &mut Option<ExecutionStatus>,
     blob_store: &dyn stepflow_state::BlobStore,
     metadata_store: &dyn stepflow_state::MetadataStore,
     make_error: fn() -> ExecutionError,
     replay_start_offset: Option<SequenceNumber>,
 ) -> Result<()> {
-    // Pre-fetch completed sub-runs from the metadata store in a single query.
+    // Pre-fetch sub-runs from the metadata store in a single query.
+    // Returns two sets:
+    // - `known`: all sub-run IDs that have metadata records
+    // - `completed`: sub-run IDs with terminal status (sync can be skipped)
+    //
     // Uses `replay_start_offset` as a `created_at_seqno` lower bound to
     // prune sub-runs created before the replay window.
-    let completed_in_metadata = prefetch_completed_subflows(
-        run_id, root_run_id, metadata_store, make_error, replay_start_offset,
+    let SubflowMetadata {
+        known_in_metadata,
+        completed_in_metadata,
+    } = prefetch_subflow_metadata(
+        run_id,
+        root_run_id,
+        metadata_store,
+        make_error,
+        replay_start_offset,
     )
     .await?;
 
@@ -360,6 +380,35 @@ async fn replay_events(
                 );
                 subflow_runs.insert(*sub_run_id, sub_state);
             }
+
+            // Ensure metadata record exists for this sub-run.
+            //
+            // Crash window: SubRunCreated was journalled but the crash happened
+            // before create_run(metadata). Without a metadata record, subsequent
+            // sync_run_state_to_metadata and FlowExecutor completion updates
+            // would fail to find the run. Create it here so the metadata store
+            // is consistent before execution resumes.
+            if !known_in_metadata.contains(sub_run_id) {
+                log::info!(
+                    "Creating missing metadata record for sub-run {} (crash window recovery)",
+                    sub_run_id
+                );
+                let mut params = CreateRunParams::new_subflow(
+                    *sub_run_id,
+                    sub_flow_id.clone(),
+                    sub_inputs.clone(),
+                    root_run_id,
+                    *parent_run_id,
+                );
+                params.created_at_seqno = replay_start_offset;
+                if let Err(e) = metadata_store.create_run(params).await {
+                    log::warn!(
+                        "Failed to create metadata record for sub-run {} during recovery: {:?}",
+                        sub_run_id,
+                        e
+                    );
+                }
+            }
         }
 
         // Track in-flight subflows: add on RunInitialized (non-root).
@@ -369,43 +418,59 @@ async fn replay_events(
             inflight_subflow_run_ids.insert(*rid);
         }
 
-        // Handle RunCompleted for subflows: sync metadata if needed, then evict.
+        // Handle RunCompleted: sync metadata for subflows, capture status for root.
         if let stepflow_state::JournalEvent::RunCompleted {
             run_id: completed_id,
             status,
         } = event
-            && *completed_id != run_id
         {
-            // If we have a RunState for this subflow and it's not already synced
-            // in the metadata store, sync it (crash window: journal RunCompleted
-            // written but metadata store not updated before crash).
-            if let Some(sub_state) = subflow_runs.get(completed_id)
-                && !completed_in_metadata.contains(completed_id)
-            {
-                log::info!(
-                    "Syncing metadata for completed subflow {} (status={:?})",
-                    completed_id,
-                    status
-                );
-                sync_run_state_to_metadata(
-                    *completed_id,
-                    sub_state,
-                    *status,
-                    metadata_store,
-                    make_error,
-                )
-                .await?;
-            }
+            if *completed_id == run_id {
+                // Root run completed: capture the terminal status for the caller
+                // to sync. We don't sync here because the root RunState is still
+                // needed by the caller (tree.rs) for the sync operation.
+                *root_terminal_status = Some(*status);
+            } else {
+                // Subflow completed: sync metadata if needed, then evict.
+                // If we have a RunState for this subflow and it's not already synced
+                // in the metadata store, sync it (crash window: journal RunCompleted
+                // written but metadata store not updated before crash).
+                if let Some(sub_state) = subflow_runs.get(completed_id)
+                    && !completed_in_metadata.contains(completed_id)
+                {
+                    log::info!(
+                        "Syncing metadata for completed subflow {} (status={:?})",
+                        completed_id,
+                        status
+                    );
+                    sync_run_state_to_metadata(
+                        *completed_id,
+                        sub_state,
+                        *status,
+                        metadata_store,
+                        make_error,
+                    )
+                    .await?;
+                }
 
-            subflow_runs.remove(completed_id);
-            inflight_subflow_run_ids.remove(completed_id);
+                subflow_runs.remove(completed_id);
+                inflight_subflow_run_ids.remove(completed_id);
+            }
         }
     }
 
     Ok(())
 }
 
-/// Pre-fetch sub-runs that already have terminal status in the metadata store.
+/// Pre-fetched sub-run metadata from the metadata store.
+struct SubflowMetadata {
+    /// All sub-run IDs known to the metadata store (have records).
+    known_in_metadata: HashSet<uuid::Uuid>,
+    /// Sub-run IDs with terminal status (completed/failed), whose metadata
+    /// is already in sync and can skip per-event sync checks.
+    completed_in_metadata: HashSet<uuid::Uuid>,
+}
+
+/// Pre-fetch sub-run metadata from the metadata store.
 ///
 /// Queries the metadata store for all sub-runs in this execution tree, optionally
 /// pruned by `replay_start_offset` (the journal sequence number at which replay
@@ -413,18 +478,15 @@ async fn replay_events(
 /// checkpoint; for full replay, `None` queries all sub-runs.
 ///
 /// Sub-runs created before the checkpoint that complete in the tail events may
-/// not be in this set. That's acceptable — sync is idempotent, so a redundant
-/// sync for these edge cases is harmless.
-///
-/// Returns a set of sub-run IDs whose metadata is already in sync (terminal
-/// status), so the caller can skip per-event metadata store checks.
-async fn prefetch_completed_subflows(
+/// not be in the completed set. That's acceptable — sync is idempotent, so a
+/// redundant sync for these edge cases is harmless.
+async fn prefetch_subflow_metadata(
     run_id: uuid::Uuid,
     root_run_id: uuid::Uuid,
     metadata_store: &dyn stepflow_state::MetadataStore,
     make_error: fn() -> ExecutionError,
     replay_start_offset: Option<SequenceNumber>,
-) -> Result<std::collections::HashSet<uuid::Uuid>> {
+) -> Result<SubflowMetadata> {
     let filters = stepflow_dtos::RunFilters {
         root_run_id: Some(root_run_id),
         created_at_seqno_gte: replay_start_offset.map(|s| s.value()),
@@ -436,24 +498,34 @@ async fn prefetch_completed_subflows(
         .await
         .change_context(make_error())?;
 
-    Ok(runs
-        .into_iter()
-        .filter(|r| {
-            r.run_id != run_id
-                && matches!(
-                    r.status,
-                    ExecutionStatus::Completed | ExecutionStatus::Failed
-                )
-        })
-        .map(|r| r.run_id)
-        .collect())
+    let mut known_in_metadata = HashSet::new();
+    let mut completed_in_metadata = HashSet::new();
+
+    for r in runs {
+        if r.run_id == run_id {
+            continue; // Skip root
+        }
+        known_in_metadata.insert(r.run_id);
+        if matches!(
+            r.status,
+            ExecutionStatus::Completed | ExecutionStatus::Failed
+        ) {
+            completed_in_metadata.insert(r.run_id);
+        }
+    }
+
+    Ok(SubflowMetadata {
+        known_in_metadata,
+        completed_in_metadata,
+    })
 }
 
-/// Write a completed subflow's item results and status to the metadata store.
+/// Write a completed run's item results and status to the metadata store.
 ///
 /// This resolves each item's output from the RunState and records it,
-/// then updates the run status to match the journal.
-async fn sync_run_state_to_metadata(
+/// then updates the run status to match the journal. Used for both subflow
+/// crash-window sync during replay and root run sync in tree.rs.
+pub(super) async fn sync_run_state_to_metadata(
     run_id: uuid::Uuid,
     sub_state: &RunState,
     status: ExecutionStatus,
