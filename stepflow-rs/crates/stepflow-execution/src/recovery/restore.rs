@@ -97,8 +97,7 @@ pub(super) async fn restore_from_journal(
     );
 
     let mut subflow_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
-    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> =
-        HashMap::new();
+    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
     let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = HashSet::new();
     let mut root_terminal_status: Option<ExecutionStatus> = None;
 
@@ -213,8 +212,7 @@ pub(super) async fn restore_from_checkpoint(
     }
 
     // Restore subflow dedup map from checkpoint
-    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> =
-        HashMap::new();
+    let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> = HashMap::new();
     for mapping in &checkpoint_data.subflow_map {
         subflow_map.insert(
             (

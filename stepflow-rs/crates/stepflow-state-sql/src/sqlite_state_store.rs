@@ -28,6 +28,21 @@ use uuid::Uuid;
 
 use crate::migrations;
 
+/// Map u64 → i64 preserving ordering (for SQLite INTEGER columns).
+///
+/// XORs the sign bit so that `0u64 → i64::MIN` and `u64::MAX → i64::MAX`.
+/// This is a bijection: every u64 maps to a unique i64 and the relative
+/// ordering of any two u64 values is preserved in the i64 domain, which
+/// means SQLite `>=` / `ORDER BY` comparisons work correctly.
+fn u64_to_sql(v: u64) -> i64 {
+    (v ^ (1u64 << 63)) as i64
+}
+
+/// Inverse of [`u64_to_sql`]: map i64 back to u64 preserving ordering.
+fn sql_to_u64(v: i64) -> u64 {
+    (v as u64) ^ (1u64 << 63)
+}
+
 /// Parse a datetime string from SQLite.
 ///
 /// SQLite's CURRENT_TIMESTAMP uses format "YYYY-MM-DD HH:MM:SS" but we also
@@ -139,6 +154,8 @@ impl SqliteStateStore {
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
         let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id, created_at_seqno) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)";
 
+        let created_at_seqno: Option<i64> = params.created_at_seqno.map(|s| u64_to_sql(s.value()));
+
         sqlx::query(sql)
             .bind(params.run_id.to_string())
             .bind(params.flow_id.to_string())
@@ -147,7 +164,7 @@ impl SqliteStateStore {
             .bind(params.root_run_id.to_string())
             .bind(params.parent_run_id.map(|id| id.to_string()))
             .bind(&params.orchestrator_id)
-            .bind(params.created_at_seqno.map(|s| s.value() as i64))
+            .bind(created_at_seqno)
             .execute(pool)
             .await
             .change_context(StateError::Internal)?;
@@ -411,7 +428,7 @@ impl MetadataStore for SqliteStateStore {
                             root_run_id,
                             parent_run_id,
                             orchestrator_id,
-                            created_at_seqno: created_at_seqno.map(|v| v as u64),
+                            created_at_seqno: created_at_seqno.map(sql_to_u64),
                         },
                         item_details: Some(item_details),
                         overrides: None,
@@ -506,10 +523,12 @@ impl MetadataStore for SqliteStateStore {
                 }
             }
 
-            // Filter by created_at_seqno lower bound (journal sequence ordering)
+            // Filter by created_at_seqno lower bound (journal sequence ordering).
+            // Convert u64 → i64 via u64_to_sql (order-preserving) so the SQL >=
+            // comparison operates on the same encoding used at insert time.
             if let Some(offset_gte) = filters.created_at_seqno_gte {
                 conditions.push("r.created_at_seqno >= ?".to_string());
-                bind_values.push(offset_gte.to_string());
+                bind_values.push(u64_to_sql(offset_gte).to_string());
             }
 
             if !conditions.is_empty() {
@@ -599,7 +618,7 @@ impl MetadataStore for SqliteStateStore {
                     root_run_id,
                     parent_run_id,
                     orchestrator_id,
-                    created_at_seqno: created_at_seqno.map(|v| v as u64),
+                    created_at_seqno: created_at_seqno.map(sql_to_u64),
                 };
 
                 summaries.push(summary);
@@ -1189,5 +1208,102 @@ impl CheckpointStore for SqliteStateStore {
             Ok(())
         }
         .boxed()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_u64_to_sql_roundtrip() {
+        let values: Vec<u64> = vec![
+            // u64 endpoints
+            0,
+            1,
+            u64::MAX - 1,
+            u64::MAX,
+            // Near the i64 sign-bit boundary (1 << 63)
+            (1u64 << 63) - 1, // i64::MAX as u64
+            1u64 << 63,       // i64::MAX as u64 + 1
+            (1u64 << 63) + 1,
+            // Small values
+            2,
+            100,
+            1000,
+            // Powers of 2
+            1u64 << 16,
+            1u64 << 32,
+            1u64 << 48,
+        ];
+
+        for v in values {
+            let sql = u64_to_sql(v);
+            let back = sql_to_u64(sql);
+            assert_eq!(back, v, "roundtrip failed for u64 {v}");
+        }
+    }
+
+    #[test]
+    fn test_sql_to_u64_roundtrip() {
+        let values: Vec<i64> = vec![
+            // i64 endpoints
+            i64::MIN,
+            i64::MIN + 1,
+            i64::MAX - 1,
+            i64::MAX,
+            // Near zero
+            -1,
+            0,
+            1,
+            // Other
+            -100,
+            100,
+        ];
+
+        for v in values {
+            let u = sql_to_u64(v);
+            let back = u64_to_sql(u);
+            assert_eq!(back, v, "roundtrip failed for i64 {v}");
+        }
+    }
+
+    #[test]
+    fn test_u64_to_sql_preserves_ordering() {
+        // Pairs where a < b in u64; verify u64_to_sql(a) < u64_to_sql(b) in i64.
+        let pairs: Vec<(u64, u64)> = vec![
+            (0, 1),
+            (0, u64::MAX),
+            (1, u64::MAX),
+            // Across the sign-bit boundary
+            ((1u64 << 63) - 1, 1u64 << 63),
+            ((1u64 << 63), (1u64 << 63) + 1),
+            // Small vs large
+            (0, 1u64 << 63),
+            (100, u64::MAX - 100),
+            // Adjacent values at interesting points
+            (i64::MAX as u64, i64::MAX as u64 + 1),
+        ];
+
+        for (a, b) in pairs {
+            let sa = u64_to_sql(a);
+            let sb = u64_to_sql(b);
+            assert!(
+                sa < sb,
+                "ordering not preserved: u64_to_sql({a}) = {sa}, u64_to_sql({b}) = {sb}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_u64_to_sql_known_mappings() {
+        // 0u64 should map to i64::MIN (smallest i64)
+        assert_eq!(u64_to_sql(0), i64::MIN);
+        // u64::MAX should map to i64::MAX (largest i64)
+        assert_eq!(u64_to_sql(u64::MAX), i64::MAX);
+        // The sign-bit boundary: 1<<63 maps to 0i64
+        assert_eq!(u64_to_sql(1u64 << 63), 0i64);
+        // Just below: (1<<63)-1 maps to -1i64
+        assert_eq!(u64_to_sql((1u64 << 63) - 1), -1i64);
     }
 }

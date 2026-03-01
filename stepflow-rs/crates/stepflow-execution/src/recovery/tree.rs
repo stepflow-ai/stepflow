@@ -130,7 +130,10 @@ pub(super) async fn recover_execution_tree(
     // Without this sync, the metadata store would remain "Running" and the run
     // would be re-discovered on every recovery cycle.
     if recovered.run_state.is_complete() {
-        log::info!("Root run {} already complete after recovery, syncing metadata", run_id);
+        log::info!(
+            "Root run {} already complete after recovery, syncing metadata",
+            run_id
+        );
         if let Some(status) = recovered.root_terminal_status {
             sync_run_state_to_metadata(
                 run_id,

@@ -351,7 +351,9 @@ async fn test_journal_subflow_shared_journal() {
     // Verify events have expected run_ids (2 parent, 2 subflow)
     let parent_count = all_entries
         .iter()
-        .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id))
+        .filter(
+            |e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id),
+        )
         .count();
     assert_eq!(parent_count, 2);
 

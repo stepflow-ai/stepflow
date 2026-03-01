@@ -1994,12 +1994,14 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
     // Create a 1-step flow (used for both root and subflow)
     let flow = Arc::new(
         FlowBuilder::test_flow()
-            .steps(vec![StepBuilder::new("step0")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build()])
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
             .output(ValueExpr::Step {
                 step: "step0".to_string(),
                 path: Default::default(),
@@ -2489,12 +2491,14 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     // Create a 1-step flow (used for both root and subflow)
     let flow = Arc::new(
         FlowBuilder::test_flow()
-            .steps(vec![StepBuilder::new("step0")
-                .component("/mock/test")
-                .input(ValueExpr::Input {
-                    input: Default::default(),
-                })
-                .build()])
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
             .output(ValueExpr::Step {
                 step: "step0".to_string(),
                 path: Default::default(),
@@ -2602,7 +2606,10 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     // but NO metadata record exists for the subflow.
 
     // Verify pre-condition: subflow has no metadata record
-    let subflow_before = metadata_store.get_run(subflow_run_id).await.expect("query ok");
+    let subflow_before = metadata_store
+        .get_run(subflow_run_id)
+        .await
+        .expect("query ok");
     assert!(
         subflow_before.is_none(),
         "Subflow should have no metadata record before recovery (crash window)"

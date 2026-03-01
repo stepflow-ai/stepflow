@@ -1357,6 +1357,15 @@
               "string",
               "null"
             ]
+          },
+          "createdAtSeqno": {
+            "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
           }
         },
         "required": [
@@ -1586,6 +1595,15 @@
               "string",
               "null"
             ]
+          },
+          "createdAtSeqno": {
+            "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
           },
           "results": {
             "description": "Item results, only populated when `wait=true` and the run has completed.\nEach entry contains the item's index, status, and result.",
@@ -1837,6 +1855,15 @@
               "string",
               "null"
             ]
+          },
+          "createdAtSeqno": {
+            "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
           },
           "itemDetails": {
             "description": "Item details with inputs and step statuses.\n- `None`: details not requested, or run is active (query executor)\n- `Some`: item-level details available",
