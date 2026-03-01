@@ -151,6 +151,7 @@ impl InMemoryStateStore {
                 parent_run_id: params.parent_run_id,
                 orchestrator_id: params.orchestrator_id,
                 created_at_seqno: params.created_at_seqno.map(|s| s.value()),
+                finished_at_seqno: None,
             },
             item_details: Some(item_details),
             overrides: if params.overrides.is_empty() {
@@ -311,9 +312,17 @@ impl MetadataStore for InMemoryStateStore {
                         return false;
                     }
 
-                    // Apply created_at_seqno lower bound filter
-                    if let Some(offset_gte) = filters.created_at_seqno_gte
+                    // Apply created_after_seqno filter
+                    if let Some(offset_gte) = filters.created_after_seqno
                         && exec.created_at_seqno.is_none_or(|o| o < offset_gte)
+                    {
+                        return false;
+                    }
+
+                    // Apply not_finished_before_seqno filter:
+                    // keep runs that are still running (None) or finished at/after this point
+                    if let Some(seqno) = filters.not_finished_before_seqno
+                        && exec.finished_at_seqno.is_some_and(|f| f < seqno)
                     {
                         return false;
                     }
@@ -347,6 +356,7 @@ impl MetadataStore for InMemoryStateStore {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
+        finished_at_seqno: Option<crate::SequenceNumber>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
             let is_terminal = matches!(
@@ -362,6 +372,9 @@ impl MetadataStore for InMemoryStateStore {
 
                 if is_terminal {
                     run_state.details.summary.completed_at = Some(chrono::Utc::now());
+                    if let Some(seqno) = finished_at_seqno {
+                        run_state.details.summary.finished_at_seqno = Some(seqno.value());
+                    }
                 }
             }
 

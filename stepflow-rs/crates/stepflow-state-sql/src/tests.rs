@@ -81,7 +81,7 @@ async fn test_journal_write_and_read() {
     let seq1 = store
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::RootRunCreated {
                 run_id,
                 flow_id,
                 inputs: vec![ValueRef::new(json!({"key": "value"}))],
@@ -112,7 +112,7 @@ async fn test_journal_write_and_read() {
         .await
         .unwrap();
     assert_eq!(entries.len(), 2);
-    assert!(matches!(entries[0], JournalEvent::RunCreated { .. }));
+    assert!(matches!(entries[0], JournalEvent::RootRunCreated { .. }));
     assert!(matches!(entries[1], JournalEvent::TaskCompleted { .. }));
 
     // Read from a specific sequence

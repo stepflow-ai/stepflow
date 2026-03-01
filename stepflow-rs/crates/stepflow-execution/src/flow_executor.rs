@@ -487,14 +487,27 @@ impl FlowExecutor {
             // 1. Truly empty subflow (0 items) - no results to record
             // 2. Subflow with items but 0 steps - each item has an output to record
             if item_count == 0 {
-                // Truly empty subflow: update status (state store will notify waiters)
+                // Truly empty subflow: journal first, then update metadata.
                 log::debug!(
                     "Truly empty subflow (0 items), marking as completed: run_id={}",
                     run_id
                 );
+
+                // Journal FIRST: record completion for recovery.
+                let finished_seqno = self
+                    .write_journal(JournalEvent::RunCompleted {
+                        run_id,
+                        status: stepflow_core::status::ExecutionStatus::Completed,
+                    })
+                    .await?;
+
                 if let Err(e) = self
                     .metadata_store
-                    .update_run_status(run_id, stepflow_core::status::ExecutionStatus::Completed)
+                    .update_run_status(
+                        run_id,
+                        stepflow_core::status::ExecutionStatus::Completed,
+                        Some(finished_seqno),
+                    )
                     .await
                 {
                     log::error!(
@@ -503,13 +516,6 @@ impl FlowExecutor {
                         e
                     );
                 }
-
-                // Journal + evict: subflow completed immediately with no items.
-                self.write_journal(JournalEvent::RunCompleted {
-                    run_id,
-                    status: stepflow_core::status::ExecutionStatus::Completed,
-                })
-                .await?;
                 self.runs.remove(&run_id);
             } else {
                 // Subflow with items but 0 steps: record item results (state store notifies on completion)
@@ -535,10 +541,21 @@ impl FlowExecutor {
                     }
                 }
 
-                // Update status and journal + evict: subflow completed with items but 0 steps.
+                // Journal FIRST, then update metadata: subflow completed with items but 0 steps.
+                let finished_seqno = self
+                    .write_journal(JournalEvent::RunCompleted {
+                        run_id,
+                        status: stepflow_core::status::ExecutionStatus::Completed,
+                    })
+                    .await?;
+
                 if let Err(e) = self
                     .metadata_store
-                    .update_run_status(run_id, stepflow_core::status::ExecutionStatus::Completed)
+                    .update_run_status(
+                        run_id,
+                        stepflow_core::status::ExecutionStatus::Completed,
+                        Some(finished_seqno),
+                    )
                     .await
                 {
                     log::error!(
@@ -547,11 +564,6 @@ impl FlowExecutor {
                         e
                     );
                 }
-                self.write_journal(JournalEvent::RunCompleted {
-                    run_id,
-                    status: stepflow_core::status::ExecutionStatus::Completed,
-                })
-                .await?;
                 self.runs.remove(&run_id);
             }
         }
@@ -666,16 +678,17 @@ impl FlowExecutor {
             stepflow_core::status::ExecutionStatus::Completed
         };
 
-        // Journal: Record run completion
-        self.write_journal(JournalEvent::RunCompleted {
-            run_id,
-            status: final_status,
-        })
-        .await?;
+        // Journal FIRST: Record run completion
+        let finished_seqno = self
+            .write_journal(JournalEvent::RunCompleted {
+                run_id,
+                status: final_status,
+            })
+            .await?;
 
         if let Err(e) = self
             .metadata_store
-            .update_run_status(run_id, final_status)
+            .update_run_status(run_id, final_status, Some(finished_seqno))
             .await
         {
             log::error!("Failed to update run status for {}: {:?}", run_id, e);
@@ -890,11 +903,12 @@ impl FlowExecutor {
                 // The journal is the source of truth — if we crash after this
                 // write but before updating the metadata store, recovery will
                 // detect the discrepancy and sync the metadata store.
-                self.write_journal(JournalEvent::RunCompleted {
-                    run_id,
-                    status: final_status,
-                })
-                .await?;
+                let finished_seqno = self
+                    .write_journal(JournalEvent::RunCompleted {
+                        run_id,
+                        status: final_status,
+                    })
+                    .await?;
 
                 // Metadata store: record item results and update status.
                 // This notifies any waiters (e.g., the parent step) that the
@@ -916,7 +930,7 @@ impl FlowExecutor {
 
                 if let Err(e) = self
                     .metadata_store
-                    .update_run_status(run_id, final_status)
+                    .update_run_status(run_id, final_status, Some(finished_seqno))
                     .await
                 {
                     log::error!(

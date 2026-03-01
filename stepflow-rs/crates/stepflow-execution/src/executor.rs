@@ -95,7 +95,7 @@ pub async fn submit_run(
     let created_at_seqno = journal
         .write(
             run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::RootRunCreated {
                 run_id,
                 flow_id: flow_id.clone(),
                 inputs: inputs.clone(),
@@ -136,7 +136,7 @@ pub async fn submit_run(
         Err(e) => {
             log::error!("Failed to apply overrides: {:?}", e);
             let _ = state_store
-                .update_run_status(run_id, ExecutionStatus::Failed)
+                .update_run_status(run_id, ExecutionStatus::Failed, None)
                 .await;
             return Err(e.change_context(ExecutionError::OverrideError));
         }
@@ -163,7 +163,7 @@ pub async fn submit_run(
         Err(e) => {
             log::error!("Failed to build FlowExecutor: {:?}", e);
             let _ = state_store
-                .update_run_status(run_id, ExecutionStatus::Failed)
+                .update_run_status(run_id, ExecutionStatus::Failed, None)
                 .await;
             return Err(e);
         }

@@ -236,7 +236,7 @@ impl MetadataComplianceTests {
 
         // Update to Completed
         store
-            .update_run_status(run_id, ExecutionStatus::Completed)
+            .update_run_status(run_id, ExecutionStatus::Completed, None)
             .await
             .expect("update_run_status should succeed");
 
@@ -249,7 +249,7 @@ impl MetadataComplianceTests {
 
         // Update to Failed
         store
-            .update_run_status(run_id, ExecutionStatus::Failed)
+            .update_run_status(run_id, ExecutionStatus::Failed, None)
             .await
             .expect("update_run_status should succeed");
 
@@ -323,11 +323,11 @@ impl MetadataComplianceTests {
 
         // Update statuses
         store
-            .update_run_status(run1_id, ExecutionStatus::Completed)
+            .update_run_status(run1_id, ExecutionStatus::Completed, None)
             .await
             .unwrap();
         store
-            .update_run_status(run2_id, ExecutionStatus::Failed)
+            .update_run_status(run2_id, ExecutionStatus::Failed, None)
             .await
             .unwrap();
         // run3 stays Running

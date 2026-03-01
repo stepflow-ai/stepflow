@@ -56,7 +56,7 @@ pub struct CreateRunParams {
     /// Set when the run is created and updated during recovery.
     /// None means the run is orphaned (no orchestrator owns it).
     pub orchestrator_id: Option<String>,
-    /// Journal sequence number of the RunCreated/SubRunCreated event.
+    /// Journal sequence number of the RootRunCreated/SubRunCreated event.
     ///
     /// Records where in the journal this run was created, enabling efficient
     /// metadata store queries during recovery (filter by offset range instead

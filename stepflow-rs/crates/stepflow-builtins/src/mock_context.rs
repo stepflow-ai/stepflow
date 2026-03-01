@@ -74,7 +74,7 @@ impl MockContext {
 
                 // Update status to completed (this triggers metadata store notification)
                 let _ = metadata_store
-                    .update_run_status(subflow_run_id, ExecutionStatus::Completed)
+                    .update_run_status(subflow_run_id, ExecutionStatus::Completed, None)
                     .await;
 
                 // Send back the run_id (caller will use state_store.wait_for_completion)

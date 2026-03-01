@@ -71,6 +71,12 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
         add_created_at_seqno_column,
     )
     .await?;
+    run_migration(
+        pool,
+        "006_add_finished_at_seqno_to_runs",
+        add_finished_at_seqno_column,
+    )
+    .await?;
 
     Ok(())
 }
@@ -387,7 +393,7 @@ async fn add_orchestrator_id_column(conn: &mut SqliteConnection) -> Result<(), S
 
 /// Add created_at_seqno column to runs table for journal-aware recovery.
 ///
-/// Stores the journal sequence number at which the RunCreated/SubRunCreated
+/// Stores the journal sequence number at which the RootRunCreated/SubRunCreated
 /// event was written, enabling efficient metadata queries during recovery
 /// (filter by offset range instead of scanning all sub-runs in a tree).
 async fn add_created_at_seqno_column(conn: &mut SqliteConnection) -> Result<(), StateError> {
@@ -401,6 +407,32 @@ async fn add_created_at_seqno_column(conn: &mut SqliteConnection) -> Result<(), 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_runs_root_run_id_created_at_seqno \
          ON runs(root_run_id, created_at_seqno)",
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Add finished_at_seqno column to runs table.
+///
+/// Stores the journal sequence number at which the RunCompleted event was
+/// written, enabling recovery to query: "sub-runs that finished at or after
+/// the checkpoint, or haven't finished yet" (`finished_at_seqno IS NULL OR
+/// finished_at_seqno >= ?`).
+async fn add_finished_at_seqno_column(conn: &mut SqliteConnection) -> Result<(), StateError> {
+    sqlx::query("ALTER TABLE runs ADD COLUMN finished_at_seqno INTEGER")
+        .execute(&mut *conn)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Composite index: recovery queries filter on root_run_id and
+    // finished_at_seqno (e.g., "sub-runs that finished at/after checkpoint Y,
+    // or haven't finished yet").
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_runs_root_run_id_finished_at_seqno \
+         ON runs(root_run_id, finished_at_seqno)",
     )
     .execute(&mut *conn)
     .await

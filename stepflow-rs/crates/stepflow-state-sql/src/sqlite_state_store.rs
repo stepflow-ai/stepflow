@@ -298,7 +298,7 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno FROM runs WHERE id = ?";
+            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno, finished_at_seqno FROM runs WHERE id = ?";
 
             let row = sqlx::query(sql)
                 .bind(run_id.to_string())
@@ -415,6 +415,7 @@ impl MetadataStore for SqliteStateStore {
 
                     let orchestrator_id: Option<String> = row.get("orchestrator_id");
                     let created_at_seqno: Option<i64> = row.get("created_at_seqno");
+                    let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
 
                     let details = RunDetails {
                         summary: RunSummary {
@@ -429,6 +430,7 @@ impl MetadataStore for SqliteStateStore {
                             parent_run_id,
                             orchestrator_id,
                             created_at_seqno: created_at_seqno.map(sql_to_u64),
+                            finished_at_seqno: finished_at_seqno.map(sql_to_u64),
                         },
                         item_details: Some(item_details),
                         overrides: None,
@@ -454,7 +456,7 @@ impl MetadataStore for SqliteStateStore {
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
                     r.root_run_id, r.parent_run_id, r.orchestrator_id,
-                    r.created_at_seqno,
+                    r.created_at_seqno, r.finished_at_seqno,
                     COALESCE(i.total, 0) as item_total,
                     COALESCE(i.running, 0) as item_running,
                     COALESCE(i.completed, 0) as item_completed,
@@ -523,12 +525,20 @@ impl MetadataStore for SqliteStateStore {
                 }
             }
 
-            // Filter by created_at_seqno lower bound (journal sequence ordering).
+            // Filter by created_after_seqno (journal sequence ordering).
             // Convert u64 → i64 via u64_to_sql (order-preserving) so the SQL >=
             // comparison operates on the same encoding used at insert time.
-            if let Some(offset_gte) = filters.created_at_seqno_gte {
+            if let Some(offset_gte) = filters.created_after_seqno {
                 conditions.push("r.created_at_seqno >= ?".to_string());
                 bind_values.push(u64_to_sql(offset_gte).to_string());
+            }
+
+            // Filter: runs that haven't finished before the given seqno.
+            // Semantics: still running (NULL) OR finished at/after this point.
+            if let Some(seqno) = filters.not_finished_before_seqno {
+                conditions
+                    .push("(r.finished_at_seqno IS NULL OR r.finished_at_seqno >= ?)".to_string());
+                bind_values.push(u64_to_sql(seqno).to_string());
             }
 
             if !conditions.is_empty() {
@@ -606,6 +616,7 @@ impl MetadataStore for SqliteStateStore {
 
                 let orchestrator_id: Option<String> = row.get("orchestrator_id");
                 let created_at_seqno: Option<i64> = row.get("created_at_seqno");
+                let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
 
                 let summary = RunSummary {
                     run_id,
@@ -619,6 +630,7 @@ impl MetadataStore for SqliteStateStore {
                     parent_run_id,
                     orchestrator_id,
                     created_at_seqno: created_at_seqno.map(sql_to_u64),
+                    finished_at_seqno: finished_at_seqno.map(sql_to_u64),
                 };
 
                 summaries.push(summary);
@@ -633,6 +645,7 @@ impl MetadataStore for SqliteStateStore {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
+        finished_at_seqno: Option<stepflow_state::SequenceNumber>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
 
@@ -645,18 +658,35 @@ impl MetadataStore for SqliteStateStore {
                     | ExecutionStatus::RecoveryFailed
             );
 
-            let sql = if is_terminal {
-                "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?"
-            } else {
-                "UPDATE runs SET status = ? WHERE id = ?"
-            };
-
-            sqlx::query(sql)
+            if let Some(seqno) = finished_at_seqno.filter(|_| is_terminal) {
+                let seqno_sql = u64_to_sql(seqno.value());
+                sqlx::query(
+                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP, \
+                     finished_at_seqno = ? WHERE id = ?",
+                )
+                .bind(status.as_str())
+                .bind(seqno_sql)
+                .bind(run_id.to_string())
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+            } else if is_terminal {
+                sqlx::query(
+                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                )
                 .bind(status.as_str())
                 .bind(run_id.to_string())
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
+            } else {
+                sqlx::query("UPDATE runs SET status = ? WHERE id = ?")
+                    .bind(status.as_str())
+                    .bind(run_id.to_string())
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
+            }
 
             if is_terminal {
                 self.completion_notifier.notify_completion(run_id);
@@ -971,7 +1001,7 @@ impl ExecutionJournal for SqliteStateStore {
             // Extract a representative run_id for the SQL column (used for indexing/debugging).
             // For TasksStarted with multiple runs, we use the first run's ID.
             let run_id = match &event {
-                JournalEvent::RunCreated { run_id, .. }
+                JournalEvent::RootRunCreated { run_id, .. }
                 | JournalEvent::RunInitialized { run_id, .. }
                 | JournalEvent::RunCompleted { run_id, .. }
                 | JournalEvent::TaskCompleted { run_id, .. }
@@ -984,7 +1014,7 @@ impl ExecutionJournal for SqliteStateStore {
             };
 
             let event_type = match &event {
-                JournalEvent::RunCreated { .. } => "run_created",
+                JournalEvent::RootRunCreated { .. } => "root_run_created",
                 JournalEvent::RunInitialized { .. } => "run_initialized",
                 JournalEvent::RunCompleted { .. } => "run_completed",
                 JournalEvent::TasksStarted { .. } => "tasks_started",

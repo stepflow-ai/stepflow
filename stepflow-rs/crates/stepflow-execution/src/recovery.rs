@@ -61,7 +61,6 @@
 
 mod restore;
 mod tree;
-mod types;
 
 #[cfg(test)]
 mod tests;
@@ -193,7 +192,7 @@ pub async fn recover_orphaned_runs(
                     result
                         .record_failure(info.run_id, "Root run not found for recovery".to_string());
                     if let Err(e) = metadata_store
-                        .update_run_status(info.run_id, ExecutionStatus::Failed)
+                        .update_run_status(info.run_id, ExecutionStatus::Failed, None)
                         .await
                     {
                         log::error!(
@@ -232,7 +231,7 @@ pub async fn recover_orphaned_runs(
                 // Mark the root run as Failed so it won't be retried on subsequent
                 // recovery attempts.
                 if let Err(update_err) = metadata_store
-                    .update_run_status(root_info.run_id, ExecutionStatus::Failed)
+                    .update_run_status(root_info.run_id, ExecutionStatus::Failed, None)
                     .await
                 {
                     log::error!(
@@ -390,7 +389,7 @@ async fn claim_for_recovery(
                 .unwrap_or_default();
 
             // Note: inputs and variables here are placeholders. Recovery extracts
-            // authoritative values from the RunCreated journal event, which contains
+            // authoritative values from the RootRunCreated journal event, which contains
             // the exact inputs and variables used when the run was originally created.
             // journal_offset is empty to replay from the beginning.
             recovery_infos.push(RunRecoveryInfo {

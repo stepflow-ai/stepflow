@@ -603,7 +603,7 @@ impl JournalComplianceTests {
         let flow_id = BlobId::from_content(&ValueRef::new(json!({"test": "flow"}))).unwrap();
 
         let events = vec![
-            JournalEvent::RunCreated {
+            JournalEvent::RootRunCreated {
                 run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![
@@ -697,10 +697,10 @@ impl JournalComplianceTests {
         for (i, event) in read_events.iter().enumerate() {
             match (event, &events[i]) {
                 (
-                    JournalEvent::RunCreated { flow_id: f1, .. },
-                    JournalEvent::RunCreated { flow_id: f2, .. },
+                    JournalEvent::RootRunCreated { flow_id: f1, .. },
+                    JournalEvent::RootRunCreated { flow_id: f2, .. },
                 ) => {
-                    assert_eq!(f1, f2, "RunCreated flow_id should match");
+                    assert_eq!(f1, f2, "RootRunCreated flow_id should match");
                 }
                 (
                     JournalEvent::SubRunCreated { flow_id: f1, .. },

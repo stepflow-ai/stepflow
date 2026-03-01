@@ -1366,6 +1366,15 @@
             ],
             "format": "uint64",
             "minimum": 0
+          },
+          "finishedAtSeqno": {
+            "description": "Journal sequence number of the RunCompleted event for this run.\n\nSet when the run reaches a terminal state. `None` means the run is\nstill in progress (or completed before this field was added).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
           }
         },
         "required": [
@@ -1598,6 +1607,15 @@
           },
           "createdAtSeqno": {
             "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "finishedAtSeqno": {
+            "description": "Journal sequence number of the RunCompleted event for this run.\n\nSet when the run reaches a terminal state. `None` means the run is\nstill in progress (or completed before this field was added).",
             "type": [
               "integer",
               "null"
@@ -1858,6 +1876,15 @@
           },
           "createdAtSeqno": {
             "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint64",
+            "minimum": 0
+          },
+          "finishedAtSeqno": {
+            "description": "Journal sequence number of the RunCompleted event for this run.\n\nSet when the run reaches a terminal state. `None` means the run is\nstill in progress (or completed before this field was added).",
             "type": [
               "integer",
               "null"

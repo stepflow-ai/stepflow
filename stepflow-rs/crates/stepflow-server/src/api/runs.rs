@@ -104,6 +104,7 @@ impl From<RunStatus> for CreateRunResponse {
                 parent_run_id: status.parent_run_id,
                 orchestrator_id: None,
                 created_at_seqno: None,
+                finished_at_seqno: None,
             },
             results: status.results,
         }
@@ -454,7 +455,8 @@ pub async fn list_runs(
         roots_only: query.roots_only,
         max_depth: query.max_depth,
         orchestrator_id: None,
-        created_at_seqno_gte: None,
+        created_after_seqno: None,
+        not_finished_before_seqno: None,
         limit: query.limit,
         offset: query.offset,
     };
@@ -634,7 +636,7 @@ pub async fn cancel_run(
             // TODO: Implement actual execution cancellation logic
             // For now, just update the status in the database
             metadata_store
-                .update_run_status(run_id, ExecutionStatus::Cancelled)
+                .update_run_status(run_id, ExecutionStatus::Cancelled, None)
                 .await?;
         }
     }

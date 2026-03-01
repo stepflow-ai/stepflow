@@ -140,6 +140,12 @@ pub struct RunSummary {
     /// metadata queries during recovery (filter by offset range).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at_seqno: Option<u64>,
+    /// Journal sequence number of the RunCompleted event for this run.
+    ///
+    /// Set when the run reaches a terminal state. `None` means the run is
+    /// still in progress (or completed before this field was added).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at_seqno: Option<u64>,
 }
 
 /// Detailed flow run information including item details.
@@ -181,11 +187,18 @@ pub struct RunFilters {
     /// - `Some(None)` — orphaned runs (orchestrator_id IS NULL)
     /// - `None` — no orchestrator filter applied
     pub orchestrator_id: Option<Option<String>>,
-    /// Only return runs whose `created_at_seqno >= this value`.
+    /// Only return runs created at or after this journal sequence number.
     ///
     /// Useful for pruning recovery queries to sub-runs created after a
     /// checkpoint sequence number, avoiding a full scan of the tree.
-    pub created_at_seqno_gte: Option<u64>,
+    pub created_after_seqno: Option<u64>,
+    /// Only return runs that haven't finished before this sequence number.
+    ///
+    /// Semantics: `finished_at_seqno IS NULL OR finished_at_seqno >= value`.
+    /// This captures runs that are still in progress, or that finished at or
+    /// after the given sequence number. Used during recovery to find sub-runs
+    /// relevant to a checkpoint window.
+    pub not_finished_before_seqno: Option<u64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
 }
@@ -391,6 +404,7 @@ mod tests {
                 parent_run_id: None,
                 orchestrator_id: None,
                 created_at_seqno: None,
+                finished_at_seqno: None,
             },
             item_details: Some(vec![ItemDetails {
                 item_index: 0,

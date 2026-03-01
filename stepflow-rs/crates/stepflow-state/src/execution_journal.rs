@@ -190,7 +190,7 @@ pub enum JournalEvent {
     // Run Lifecycle
     // =========================================================================
     /// Root run created with initial configuration.
-    RunCreated {
+    RootRunCreated {
         /// The run this event belongs to.
         run_id: Uuid,
         /// The flow being executed.
