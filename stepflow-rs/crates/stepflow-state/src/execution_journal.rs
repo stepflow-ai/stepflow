@@ -324,12 +324,43 @@ impl JournalEvent {
     /// Only events that mutate `RunState` are included: `RunInitialized`,
     /// `TasksStarted`, `TaskCompleted`. All others are either informational
     /// or handled separately by the recovery loop.
-    pub fn affected_run_ids(&self) -> Vec<&Uuid> {
+    pub fn affected_run_ids(&self) -> AffectedRunIds<'_> {
         match self {
             JournalEvent::RunInitialized { run_id, .. }
-            | JournalEvent::TaskCompleted { run_id, .. } => vec![run_id],
-            JournalEvent::TasksStarted { runs } => runs.iter().map(|r| &r.run_id).collect(),
-            _ => vec![],
+            | JournalEvent::TaskCompleted { run_id, .. } => AffectedRunIds::One(Some(run_id)),
+            JournalEvent::TasksStarted { runs } => AffectedRunIds::TaskAttempts(runs.iter()),
+            _ => AffectedRunIds::None,
+        }
+    }
+}
+
+/// Zero-allocation iterator over run IDs affected by a journal event.
+pub enum AffectedRunIds<'a> {
+    /// No runs affected (informational events).
+    None,
+    /// Exactly one run affected (most events).
+    One(Option<&'a Uuid>),
+    /// Runs from a `TasksStarted` event spanning multiple runs.
+    TaskAttempts(std::slice::Iter<'a, RunTaskAttempts>),
+}
+
+impl<'a> Iterator for AffectedRunIds<'a> {
+    type Item = &'a Uuid;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            AffectedRunIds::None => Option::None,
+            AffectedRunIds::One(id) => id.take(),
+            AffectedRunIds::TaskAttempts(iter) => iter.next().map(|r| &r.run_id),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            AffectedRunIds::None => (0, Some(0)),
+            AffectedRunIds::One(Some(_)) => (1, Some(1)),
+            AffectedRunIds::One(Option::None) => (0, Some(0)),
+            AffectedRunIds::TaskAttempts(iter) => iter.size_hint(),
         }
     }
 }

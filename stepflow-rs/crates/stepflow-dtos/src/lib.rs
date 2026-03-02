@@ -242,6 +242,8 @@ pub struct RunStatus {
     /// Parent run ID if this is a sub-flow.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_run_id: Option<Uuid>,
+    /// Journal sequence number of the event that created this run.
+    pub created_at_seqno: u64,
     /// Item results, only populated if include_results=true.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub results: Option<Vec<ItemResult>>,
@@ -260,6 +262,7 @@ impl RunStatus {
             completed_at: details.summary.completed_at,
             root_run_id: details.summary.root_run_id,
             parent_run_id: details.summary.parent_run_id,
+            created_at_seqno: details.summary.created_at_seqno,
             results: None,
         }
     }
@@ -278,6 +281,7 @@ impl RunStatus {
             completed_at: details.summary.completed_at,
             root_run_id: details.summary.root_run_id,
             parent_run_id: details.summary.parent_run_id,
+            created_at_seqno: details.summary.created_at_seqno,
             results: Some(items),
         }
     }
@@ -294,6 +298,7 @@ impl RunStatus {
             completed_at: summary.completed_at,
             root_run_id: summary.root_run_id,
             parent_run_id: summary.parent_run_id,
+            created_at_seqno: summary.created_at_seqno,
             results: None,
         }
     }

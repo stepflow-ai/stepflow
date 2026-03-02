@@ -667,7 +667,10 @@ impl ExecutionJournal for InMemoryStateStore {
         from_sequence: SequenceNumber,
     ) -> crate::JournalEventStream<'_> {
         // Clone events out while holding the DashMap guard, then yield them.
-        // The guard cannot be held across yield points.
+        // Clone all matching events into a Vec upfront because the DashMap
+        // guard cannot be held across yield points (it is not Send).
+        // This is acceptable: the in-memory journal is only used in tests,
+        // not in production where the SQLite implementation streams properly.
         let events: Vec<_> = self
             .journals
             .get(&root_run_id)
