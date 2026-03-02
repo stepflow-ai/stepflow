@@ -71,14 +71,13 @@ impl ExecutionJournal for NoOpJournal {
         async move { Ok(SequenceNumber::new(seq)) }.boxed()
     }
 
-    fn read_from(
+    fn stream_from(
         &self,
         _root_run_id: Uuid,
         _from_sequence: SequenceNumber,
-        _limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
+    ) -> crate::JournalEventStream<'_> {
         // No events to read - events are not stored
-        async move { Ok(Vec::new()) }.boxed()
+        Box::pin(futures::stream::empty())
     }
 
     fn latest_sequence(
@@ -173,14 +172,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_noop_read_from() {
+    async fn test_noop_stream_from() {
+        use futures::StreamExt as _;
+
         let journal = NoOpJournal::new();
         let run_id = Uuid::now_v7();
 
-        let events = journal
-            .read_from(run_id, SequenceNumber::new(0), 100)
-            .await
-            .unwrap();
+        let events: Vec<_> = journal
+            .stream_from(run_id, SequenceNumber::new(0))
+            .collect()
+            .await;
         assert!(events.is_empty());
     }
 

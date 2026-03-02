@@ -34,6 +34,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use std::pin::Pin;
+
+use futures::Stream;
 use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use stepflow_core::status::ExecutionStatus;
@@ -42,6 +45,20 @@ use stepflow_core::{BlobId, FlowResult};
 use uuid::Uuid;
 
 use crate::StateError;
+
+/// A stream of journal events with their sequence numbers, used for iterating
+/// over journal contents during recovery.
+///
+/// Implementations yield `(SequenceNumber, JournalEvent)` pairs in sequence
+/// order. Errors are propagated as stream items, allowing the consumer to
+/// handle them inline.
+pub type JournalEventStream<'a> = Pin<
+    Box<
+        dyn Stream<Item = error_stack::Result<(SequenceNumber, JournalEvent), StateError>>
+            + Send
+            + 'a,
+    >,
+>;
 
 /// Sequence number for journal entries.
 ///
@@ -301,6 +318,53 @@ pub enum JournalEvent {
     },
 }
 
+impl JournalEvent {
+    /// Returns the run IDs whose `RunState` is modified by this event.
+    ///
+    /// Only events that mutate `RunState` are included: `RunInitialized`,
+    /// `TasksStarted`, `TaskCompleted`. All others are either informational
+    /// or handled separately by the recovery loop.
+    pub fn affected_run_ids(&self) -> AffectedRunIds<'_> {
+        match self {
+            JournalEvent::RunInitialized { run_id, .. }
+            | JournalEvent::TaskCompleted { run_id, .. } => AffectedRunIds::One(Some(run_id)),
+            JournalEvent::TasksStarted { runs } => AffectedRunIds::TaskAttempts(runs.iter()),
+            _ => AffectedRunIds::None,
+        }
+    }
+}
+
+/// Zero-allocation iterator over run IDs affected by a journal event.
+pub enum AffectedRunIds<'a> {
+    /// No runs affected (informational events).
+    None,
+    /// Exactly one run affected (most events).
+    One(Option<&'a Uuid>),
+    /// Runs from a `TasksStarted` event spanning multiple runs.
+    TaskAttempts(std::slice::Iter<'a, RunTaskAttempts>),
+}
+
+impl<'a> Iterator for AffectedRunIds<'a> {
+    type Item = &'a Uuid;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            AffectedRunIds::None => Option::None,
+            AffectedRunIds::One(id) => id.take(),
+            AffectedRunIds::TaskAttempts(iter) => iter.next().map(|r| &r.run_id),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            AffectedRunIds::None => (0, Some(0)),
+            AffectedRunIds::One(Some(_)) => (1, Some(1)),
+            AffectedRunIds::One(Option::None) => (0, Some(0)),
+            AffectedRunIds::TaskAttempts(iter) => iter.size_hint(),
+        }
+    }
+}
+
 /// Trait for write-ahead journalling of execution events.
 ///
 /// This trait provides the foundation for recording execution events that
@@ -348,23 +412,22 @@ pub trait ExecutionJournal: Send + Sync {
         event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>>;
 
-    /// Read journal events for a root run starting from a sequence number.
+    /// Stream journal events for a root run starting from a sequence number.
     ///
-    /// Returns all events in the journal (across all runs in the tree).
+    /// Returns a stream yielding all events in the journal (across all runs
+    /// in the tree) in sequence order, starting from `from_sequence`.
     ///
     /// # Arguments
     /// * `root_run_id` - The root run's journal to read from
     /// * `from_sequence` - Start reading from this sequence (inclusive)
-    /// * `limit` - Maximum number of events to return
     ///
     /// # Returns
-    /// Events in sequence order
-    fn read_from(
+    /// A stream of events in sequence order
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>>;
+    ) -> JournalEventStream<'_>;
 
     /// Get the latest sequence number for a root run's journal.
     ///

@@ -25,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
+use futures::StreamExt as _;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_state::{CreateRunParams, ExecutionJournal, SequenceNumber};
 
@@ -98,9 +99,10 @@ impl<'a> Recovery<'a> {
 
     /// Full journal replay path — no checkpoint available.
     ///
-    /// Reads the entire journal from sequence 0, extracts `RootRunCreated` for the root
-    /// run, then replays all events through [`replay_events`](Self::replay_events)
-    /// to reconstruct execution state for both the root and any subflows.
+    /// Streams the journal from the root run's start sequence, extracts
+    /// `RootRunCreated` as the first event, then replays remaining events
+    /// through [`replay_events`](Self::replay_events) to reconstruct
+    /// execution state for both the root and any subflows.
     ///
     /// For completed subflows, checks the metadata store to determine whether
     /// results have been persisted. If the journal records a `RunCompleted` but
@@ -111,39 +113,38 @@ impl<'a> Recovery<'a> {
         &self,
         root_info: &stepflow_state::RunRecoveryInfo,
     ) -> Result<RecoveredState> {
-        let all_events = self
-            .journal
-            .read_from(self.root_run_id, SequenceNumber::new(0), usize::MAX)
-            .await
-            .change_context(ExecutionError::RecoveryFailed)?;
-        if all_events.is_empty() {
-            log::warn!(
-                "No journal entries for execution tree {}, cannot recover",
-                self.root_run_id
-            );
-            return Err(error_stack::report!(ExecutionError::RecoveryFailed)
-                .attach_printable("No journal entries found for this run"));
-        }
+        let start = root_info.start_sequence;
+        let mut stream = self.journal.stream_from(self.root_run_id, start);
 
-        // Extract inputs and variables from the root run's RootRunCreated event.
-        let (inputs, variables) = all_events
-            .iter()
-            .find_map(|event| match event {
-                stepflow_state::JournalEvent::RootRunCreated {
-                    run_id: event_run_id,
-                    inputs,
-                    variables,
-                    ..
-                } if *event_run_id == self.root_run_id => Some((inputs.clone(), variables.clone())),
-                _ => None,
-            })
+        // The first event must be RootRunCreated for the root run.
+        let (_seq, first_event) = stream
+            .next()
+            .await
             .ok_or_else(|| {
+                log::warn!(
+                    "No journal entries for execution tree {}, cannot recover",
+                    self.root_run_id
+                );
                 error_stack::report!(ExecutionError::RecoveryFailed)
-                    .attach_printable("No RootRunCreated event found in journal for root run")
-            })?;
+                    .attach_printable("No journal entries found for this run")
+            })?
+            .change_context(ExecutionError::RecoveryFailed)?;
+
+        let (inputs, variables) = match first_event {
+            stepflow_state::JournalEvent::RootRunCreated {
+                run_id: event_run_id,
+                inputs,
+                variables,
+                ..
+            } if event_run_id == self.root_run_id => (inputs, variables),
+            _ => {
+                return Err(error_stack::report!(ExecutionError::RecoveryFailed)
+                    .attach_printable("First journal event is not RootRunCreated for root run"));
+            }
+        };
 
         // Create RunState for the root run
-        let mut run_state = RunState::new(
+        let run_state = RunState::new(
             self.root_run_id,
             root_info.flow_id.clone(),
             self.flow.clone(),
@@ -151,39 +152,25 @@ impl<'a> Recovery<'a> {
             variables,
         );
 
-        let mut subflow_runs: HashMap<uuid::Uuid, RunState> = HashMap::new();
-        let mut subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid> =
-            HashMap::new();
-        let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = HashSet::new();
-        let mut root_terminal_status: Option<ExecutionStatus> = None;
+        let mut recovered = RecoveredState {
+            run_state,
+            subflow_map: HashMap::new(),
+            subflow_runs: HashMap::new(),
+            inflight_subflow_run_ids: HashSet::new(),
+            root_terminal_status: None,
+        };
 
-        // Full replay from beginning — no useful lower bound for pruning.
-        self.replay_events(
-            &all_events,
-            &mut run_state,
-            &mut subflow_runs,
-            &mut subflow_map,
-            &mut inflight_subflow_run_ids,
-            &mut root_terminal_status,
-            || ExecutionError::RecoveryFailed,
-            None,
-        )
-        .await?;
+        // Replay from the root run's start sequence.
+        let event_count = self.replay_events(stream, &mut recovered, None).await?;
 
         log::info!(
             "Replayed {} journal events for execution tree {}, root complete={}",
-            all_events.len(),
+            event_count + 1, // +1 for the RootRunCreated event consumed above
             self.root_run_id,
-            run_state.is_complete()
+            recovered.run_state.is_complete()
         );
 
-        Ok(RecoveredState {
-            run_state,
-            subflow_map,
-            subflow_runs,
-            inflight_subflow_run_ids,
-            root_terminal_status,
-        })
+        Ok(recovered)
     }
 
     // -----------------------------------------------------------------------
@@ -230,7 +217,7 @@ impl<'a> Recovery<'a> {
                     .attach_printable("Root run not found in checkpoint")
             })?;
 
-        let mut run_state =
+        let run_state =
             RunState::from_checkpoint(root_checkpoint, self.flow.clone()).map_err(|e| {
                 error_stack::report!(ExecutionError::CheckpointError)
                     .attach_printable(format!("root run restore failed: {e}"))
@@ -275,57 +262,48 @@ impl<'a> Recovery<'a> {
             );
         }
 
-        // Replay tail events (after checkpoint) to bring state up to date.
-        let tail_events = self
+        // Stream tail events (after checkpoint) to bring state up to date.
+        let tail_stream = self
             .journal
-            .read_from(self.root_run_id, stored_cp.sequence.next(), usize::MAX)
-            .await
-            .change_context(ExecutionError::CheckpointError)?;
+            .stream_from(self.root_run_id, stored_cp.sequence.next());
 
         // Seed in-flight set: all checkpoint-restored subflows were past initialization.
-        let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = checkpoint_data
+        let inflight_subflow_run_ids: HashSet<uuid::Uuid> = checkpoint_data
             .runs
             .iter()
             .filter(|rc| rc.run_id != self.root_run_id)
             .map(|rc| rc.run_id)
             .collect();
-        let mut root_terminal_status: Option<ExecutionStatus> = None;
 
-        // Checkpoint recovery: use the checkpoint sequence as a lower bound to
-        // prune sub-runs created before the checkpoint from the metadata query.
-        self.replay_events(
-            &tail_events,
-            &mut run_state,
-            &mut subflow_runs,
-            &mut subflow_map,
-            &mut inflight_subflow_run_ids,
-            &mut root_terminal_status,
-            || ExecutionError::CheckpointError,
-            Some(stored_cp.sequence),
-        )
-        .await?;
-
-        log::info!(
-            "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
-            tail_events.len(),
-            self.root_run_id,
-            run_state.is_complete()
-        );
-
-        Ok(RecoveredState {
+        let mut recovered = RecoveredState {
             run_state,
             subflow_map,
             subflow_runs,
             inflight_subflow_run_ids,
-            root_terminal_status,
-        })
+            root_terminal_status: None,
+        };
+
+        // Checkpoint recovery: use the checkpoint sequence as a lower bound to
+        // prune sub-runs created before the checkpoint from the metadata query.
+        let tail_count = self
+            .replay_events(tail_stream, &mut recovered, Some(stored_cp.sequence))
+            .await?;
+
+        log::info!(
+            "Restored from checkpoint + replayed {} tail events for tree {}, root complete={}",
+            tail_count,
+            self.root_run_id,
+            recovered.run_state.is_complete()
+        );
+
+        Ok(recovered)
     }
 
     // -----------------------------------------------------------------------
     // Shared replay logic
     // -----------------------------------------------------------------------
 
-    /// Replay a sequence of journal events, applying them to all in-memory
+    /// Replay a stream of journal events, applying them to all in-memory
     /// RunStates and handling subflow lifecycle events.
     ///
     /// This is the core replay loop shared by both journal-only and checkpoint
@@ -345,18 +323,14 @@ impl<'a> Recovery<'a> {
     /// single batch query. For checkpoint recovery, `replay_start_offset` prunes
     /// the query to sub-runs created at or after the checkpoint sequence,
     /// avoiding a full scan of the tree.
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// Returns the number of events replayed.
     async fn replay_events(
         &self,
-        events: &[stepflow_state::JournalEvent],
-        run_state: &mut RunState,
-        subflow_runs: &mut HashMap<uuid::Uuid, RunState>,
-        subflow_map: &mut HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-        inflight_subflow_run_ids: &mut HashSet<uuid::Uuid>,
-        root_terminal_status: &mut Option<ExecutionStatus>,
-        make_error: fn() -> ExecutionError,
+        mut events: stepflow_state::JournalEventStream<'_>,
+        recovered: &mut RecoveredState,
         replay_start_offset: Option<SequenceNumber>,
-    ) -> Result<()> {
+    ) -> Result<usize> {
         // Pre-fetch sub-runs from the metadata store in a single query.
         // Returns two sets:
         // - `known`: all sub-run IDs that have metadata records
@@ -367,15 +341,22 @@ impl<'a> Recovery<'a> {
         let SubflowMetadata {
             known_in_metadata,
             completed_in_metadata,
-        } = self
-            .prefetch_subflow_metadata(make_error, replay_start_offset)
-            .await?;
+        } = self.prefetch_subflow_metadata(replay_start_offset).await?;
 
-        for event in events {
-            // Apply event to root and all subflow RunStates
-            run_state.apply_event(event);
-            for sub_state in subflow_runs.values_mut() {
-                sub_state.apply_event(event);
+        let mut event_count: usize = 0;
+
+        while let Some(event_result) = events.next().await {
+            let (seq, event) = event_result.change_context(ExecutionError::RecoveryFailed)?;
+            event_count += 1;
+
+            // Apply event only to the RunStates it affects (O(1) per event
+            // instead of O(subflows) broadcast).
+            for run_id in event.affected_run_ids() {
+                if *run_id == self.root_run_id {
+                    recovered.run_state.apply_event(&event);
+                } else if let Some(sub) = recovered.subflow_runs.get_mut(run_id) {
+                    sub.apply_event(&event);
+                }
             }
 
             // Handle SubRunCreated: update dedup map and create RunState.
@@ -390,22 +371,24 @@ impl<'a> Recovery<'a> {
                 item_index,
                 step_index,
                 subflow_key,
-            } = event
+            } = &event
             {
-                subflow_map.insert(
+                recovered.subflow_map.insert(
                     (*parent_run_id, *item_index, *step_index, *subflow_key),
                     *sub_run_id,
                 );
-                if !subflow_runs.contains_key(sub_run_id) {
+                if !recovered.subflow_runs.contains_key(sub_run_id) {
                     let sub_flow = self
                         .blob_store
                         .get_flow(sub_flow_id)
                         .await
-                        .change_context(make_error())?
+                        .change_context(ExecutionError::RecoveryFailed)?
                         .ok_or_else(|| {
-                            error_stack::report!(make_error()).attach_printable(format!(
-                                "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
-                            ))
+                            error_stack::report!(ExecutionError::RecoveryFailed).attach_printable(
+                                format!(
+                                    "Subflow flow not found for run {sub_run_id}, flow_id={sub_flow_id}"
+                                ),
+                            )
                         })?;
                     let sub_state = RunState::new_subflow(
                         *sub_run_id,
@@ -416,7 +399,7 @@ impl<'a> Recovery<'a> {
                         sub_inputs.clone(),
                         sub_variables.clone(),
                     );
-                    subflow_runs.insert(*sub_run_id, sub_state);
+                    recovered.subflow_runs.insert(*sub_run_id, sub_state);
                 }
 
                 // Ensure metadata record exists for this sub-run.
@@ -431,14 +414,14 @@ impl<'a> Recovery<'a> {
                         "Creating missing metadata record for sub-run {} (crash window recovery)",
                         sub_run_id
                     );
-                    let mut params = CreateRunParams::new_subflow(
+                    let params = CreateRunParams::new_subflow(
                         *sub_run_id,
                         sub_flow_id.clone(),
                         sub_inputs.clone(),
                         self.root_run_id,
                         *parent_run_id,
+                        seq,
                     );
-                    params.created_at_seqno = replay_start_offset;
                     if let Err(e) = self.metadata_store.create_run(params).await {
                         log::warn!(
                             "Failed to create metadata record for sub-run {} during recovery: {:?}",
@@ -450,29 +433,29 @@ impl<'a> Recovery<'a> {
             }
 
             // Track in-flight subflows: add on RunInitialized (non-root).
-            if let stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } = event
+            if let stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } = &event
                 && *rid != self.root_run_id
             {
-                inflight_subflow_run_ids.insert(*rid);
+                recovered.inflight_subflow_run_ids.insert(*rid);
             }
 
             // Handle RunCompleted: sync metadata for subflows, capture status for root.
             if let stepflow_state::JournalEvent::RunCompleted {
                 run_id: completed_id,
                 status,
-            } = event
+            } = &event
             {
                 if *completed_id == self.root_run_id {
                     // Root run completed: capture the terminal status for the caller
                     // to sync. We don't sync here because the root RunState is still
                     // needed by the caller (tree.rs) for the sync operation.
-                    *root_terminal_status = Some(*status);
+                    recovered.root_terminal_status = Some(*status);
                 } else {
                     // Subflow completed: sync metadata if needed, then evict.
                     // If we have a RunState for this subflow and it's not already synced
                     // in the metadata store, sync it (crash window: journal RunCompleted
                     // written but metadata store not updated before crash).
-                    if let Some(sub_state) = subflow_runs.get(completed_id)
+                    if let Some(sub_state) = recovered.subflow_runs.get(completed_id)
                         && !completed_in_metadata.contains(completed_id)
                     {
                         log::info!(
@@ -485,18 +468,17 @@ impl<'a> Recovery<'a> {
                             sub_state,
                             *status,
                             self.metadata_store,
-                            make_error,
                         )
                         .await?;
                     }
 
-                    subflow_runs.remove(completed_id);
-                    inflight_subflow_run_ids.remove(completed_id);
+                    recovered.subflow_runs.remove(completed_id);
+                    recovered.inflight_subflow_run_ids.remove(completed_id);
                 }
             }
         }
 
-        Ok(())
+        Ok(event_count)
     }
 
     /// Pre-fetch sub-run metadata from the metadata store.
@@ -507,9 +489,13 @@ impl<'a> Recovery<'a> {
     /// finished at/after the checkpoint — capturing sub-runs created before the
     /// checkpoint that completed in the tail events. For full replay, `None` queries
     /// all sub-runs.
+    ///
+    /// The unbounded query (full replay, no checkpoint) is acceptable because it
+    /// only runs when no checkpoint exists, meaning the total journal size is less
+    /// than the checkpoint frequency — which bounds the number of subflows that
+    /// could have been created.
     async fn prefetch_subflow_metadata(
         &self,
-        make_error: fn() -> ExecutionError,
         replay_start_offset: Option<SequenceNumber>,
     ) -> Result<SubflowMetadata> {
         let filters = stepflow_dtos::RunFilters {
@@ -522,7 +508,7 @@ impl<'a> Recovery<'a> {
             .metadata_store
             .list_runs(&filters)
             .await
-            .change_context(make_error())?;
+            .change_context(ExecutionError::RecoveryFailed)?;
 
         let mut known_in_metadata = HashSet::new();
         let mut completed_in_metadata = HashSet::new();
@@ -566,7 +552,6 @@ pub(super) async fn sync_run_state_to_metadata(
     sub_state: &RunState,
     status: ExecutionStatus,
     metadata_store: &dyn stepflow_state::MetadataStore,
-    make_error: fn() -> ExecutionError,
 ) -> Result<()> {
     let items_state = sub_state.items_state();
     for item_index in 0..items_state.item_count() {
@@ -576,11 +561,11 @@ pub(super) async fn sync_run_state_to_metadata(
         metadata_store
             .record_item_result(run_id, item_index as usize, result, step_statuses)
             .await
-            .change_context(make_error())?;
+            .change_context(ExecutionError::RecoveryFailed)?;
     }
     metadata_store
         .update_run_status(run_id, status, None)
         .await
-        .change_context(make_error())?;
+        .change_context(ExecutionError::RecoveryFailed)?;
     Ok(())
 }

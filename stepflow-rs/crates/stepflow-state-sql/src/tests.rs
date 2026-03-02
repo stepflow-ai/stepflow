@@ -13,6 +13,7 @@
 //! Tests for the SQL state store implementation.
 
 use crate::SqliteStateStore;
+use futures::StreamExt as _;
 use serde_json::json;
 use std::collections::HashMap;
 use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
@@ -106,25 +107,22 @@ async fn test_journal_write_and_read() {
         .unwrap();
     assert_eq!(seq2.value(), 1);
 
-    // Read entries from the beginning
-    let entries = store
-        .read_from(run_id, SequenceNumber::new(0), 10)
-        .await
-        .unwrap();
-    assert_eq!(entries.len(), 2);
-    assert!(matches!(entries[0], JournalEvent::RootRunCreated { .. }));
-    assert!(matches!(entries[1], JournalEvent::TaskCompleted { .. }));
+    // Stream entries from the beginning, checking each element
+    let mut stream = store.stream_from(run_id, SequenceNumber::new(0));
+    let (seq, first) = stream.next().await.unwrap().unwrap();
+    assert!(matches!(first, JournalEvent::RootRunCreated { .. }));
+    assert_eq!(seq, seq1);
+    let (seq, second) = stream.next().await.unwrap().unwrap();
+    assert!(matches!(second, JournalEvent::TaskCompleted { .. }));
+    assert_eq!(seq, seq2);
+    assert!(stream.next().await.is_none());
 
-    // Read from a specific sequence
-    let entries_from_1 = store
-        .read_from(run_id, SequenceNumber::new(1), 10)
-        .await
-        .unwrap();
-    assert_eq!(entries_from_1.len(), 1);
-    assert!(matches!(
-        entries_from_1[0],
-        JournalEvent::TaskCompleted { .. }
-    ));
+    // Stream from a specific sequence
+    let mut stream = store.stream_from(run_id, SequenceNumber::new(1));
+    let (seq, first) = stream.next().await.unwrap().unwrap();
+    assert!(matches!(first, JournalEvent::TaskCompleted { .. }));
+    assert_eq!(seq, seq2);
+    assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]
@@ -233,7 +231,7 @@ async fn test_journal_list_active_roots() {
 }
 
 #[tokio::test]
-async fn test_journal_read_with_limit() {
+async fn test_journal_stream_from_sequence() {
     let store = SqliteStateStore::in_memory().await.unwrap();
     let run_id = Uuid::now_v7();
 
@@ -253,19 +251,31 @@ async fn test_journal_read_with_limit() {
             .unwrap();
     }
 
-    // Read with limit of 3
-    let entries = store
-        .read_from(run_id, SequenceNumber::new(0), 3)
-        .await
-        .unwrap();
-    assert_eq!(entries.len(), 3);
+    // Stream all entries, verify count and first/last
+    let mut stream = store.stream_from(run_id, SequenceNumber::new(0));
+    for expected_step in 0..10 {
+        let (_seq, event) = stream.next().await.unwrap().unwrap();
+        match event {
+            JournalEvent::TaskCompleted { step_index, .. } => {
+                assert_eq!(step_index, expected_step);
+            }
+            _ => panic!("Expected TaskCompleted"),
+        }
+    }
+    assert!(stream.next().await.is_none());
 
-    // Read with limit starting from sequence 5
-    let entries = store
-        .read_from(run_id, SequenceNumber::new(5), 3)
-        .await
-        .unwrap();
-    assert_eq!(entries.len(), 3);
+    // Stream starting from sequence 5
+    let mut stream = store.stream_from(run_id, SequenceNumber::new(5));
+    for expected_step in 5..10 {
+        let (_seq, event) = stream.next().await.unwrap().unwrap();
+        match event {
+            JournalEvent::TaskCompleted { step_index, .. } => {
+                assert_eq!(step_index, expected_step);
+            }
+            _ => panic!("Expected TaskCompleted"),
+        }
+    }
+    assert!(stream.next().await.is_none());
 }
 
 #[tokio::test]
@@ -341,27 +351,34 @@ async fn test_journal_subflow_shared_journal() {
         .unwrap();
     assert_eq!(seq4.value(), 3);
 
-    // Read all entries - should get all 4 in sequence order
-    let all_entries = store
-        .read_from(root_run_id, SequenceNumber::new(0), usize::MAX)
-        .await
-        .unwrap();
-    assert_eq!(all_entries.len(), 4);
+    // Stream all entries and verify the interleaved order
+    let mut stream = store.stream_from(root_run_id, SequenceNumber::new(0));
 
-    // Verify events have expected run_ids (2 parent, 2 subflow)
-    let parent_count = all_entries
-        .iter()
-        .filter(
-            |e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id),
-        )
-        .count();
-    assert_eq!(parent_count, 2);
+    // Event 1: parent step 0
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == parent_run_id)
+    );
 
-    let subflow_count = all_entries
-        .iter()
-        .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == subflow_run_id))
-        .count();
-    assert_eq!(subflow_count, 2);
+    // Event 2: subflow step 0
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == subflow_run_id)
+    );
+
+    // Event 3: subflow step 1
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == subflow_run_id)
+    );
+
+    // Event 4: parent step 1
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == parent_run_id)
+    );
+
+    assert!(stream.next().await.is_none());
 
     // Verify list_active_roots only shows one root journal
     let active_roots = store.list_active_roots().await.unwrap();

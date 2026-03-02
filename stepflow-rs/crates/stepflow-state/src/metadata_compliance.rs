@@ -51,7 +51,7 @@ use stepflow_core::{FlowResult, ValueExpr};
 use stepflow_dtos::ResultOrder;
 use uuid::Uuid;
 
-use crate::{BlobStore, CreateRunParams, MetadataStore};
+use crate::{BlobStore, CreateRunParams, MetadataStore, SequenceNumber};
 
 /// Compliance test suite for MetadataStore implementations.
 ///
@@ -145,7 +145,12 @@ impl MetadataComplianceTests {
         let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({"x": 1}));
 
-        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![input.clone()]);
+        let params = CreateRunParams::new(
+            run_id,
+            flow_id.clone(),
+            vec![input.clone()],
+            SequenceNumber::new(0),
+        );
 
         store
             .create_run(params)
@@ -181,7 +186,12 @@ impl MetadataComplianceTests {
         let run_id = Uuid::now_v7();
         let input = ValueRef::new(json!({"x": 1}));
 
-        let params = CreateRunParams::new(run_id, flow_id.clone(), vec![input.clone()]);
+        let params = CreateRunParams::new(
+            run_id,
+            flow_id.clone(),
+            vec![input.clone()],
+            SequenceNumber::new(0),
+        );
 
         // First create
         store
@@ -227,7 +237,12 @@ impl MetadataComplianceTests {
         let flow_id = store.store_flow(flow).await.unwrap();
 
         let run_id = Uuid::now_v7();
-        let params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            run_id,
+            flow_id,
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Initial status should be Running
@@ -300,7 +315,12 @@ impl MetadataComplianceTests {
         let run3_id = Uuid::now_v7();
 
         // Create run1 as root
-        let params = CreateRunParams::new(run1_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            run1_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Create run2 and run3 as subflows of run1 so we can filter by root_run_id
@@ -310,6 +330,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             run1_id,
             run1_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
         let params = CreateRunParams::new_subflow(
@@ -318,6 +339,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             run1_id,
             run1_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -366,7 +388,12 @@ impl MetadataComplianceTests {
 
         // Create a root run
         let root_id = Uuid::now_v7();
-        let params = CreateRunParams::new(root_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Create 4 more subflows under the same root
@@ -378,6 +405,7 @@ impl MetadataComplianceTests {
                 vec![ValueRef::new(json!({}))],
                 root_id,
                 root_id,
+                SequenceNumber::new(0),
             );
             store.create_run(params).await.unwrap();
         }
@@ -402,8 +430,12 @@ impl MetadataComplianceTests {
 
         // Create root run
         let root_run_id = Uuid::now_v7();
-        let root_params =
-            CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let root_params = CreateRunParams::new(
+            root_run_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(root_params).await.unwrap();
 
         // Create subflow
@@ -414,6 +446,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_run_id,
             root_run_id,
+            SequenceNumber::new(0),
         );
         store.create_run(subflow_params).await.unwrap();
 
@@ -446,7 +479,12 @@ impl MetadataComplianceTests {
 
         // Create root run
         let root_id = Uuid::now_v7();
-        let params = CreateRunParams::new(root_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Create subflows under the root
@@ -459,6 +497,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             root_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -468,6 +507,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             root_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -477,6 +517,7 @@ impl MetadataComplianceTests {
             other_root_id,
             flow_id.clone(),
             vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -511,7 +552,12 @@ impl MetadataComplianceTests {
 
         // Create root run
         let root_id = Uuid::now_v7();
-        let params = CreateRunParams::new(root_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Create direct children of root
@@ -524,6 +570,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             root_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -533,6 +580,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             root_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -544,6 +592,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             child1_id, // parent is child1, not root
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -592,7 +641,12 @@ impl MetadataComplianceTests {
         let grandchild_id = Uuid::now_v7();
 
         // Root
-        let params = CreateRunParams::new(root_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Child of root
@@ -602,6 +656,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,
             root_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -612,6 +667,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root_id,  // same root
             child_id, // parent is child
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -655,12 +711,20 @@ impl MetadataComplianceTests {
         let root1_id = Uuid::now_v7();
         let root2_id = Uuid::now_v7();
 
-        let params =
-            CreateRunParams::new(root1_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root1_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
-        let params =
-            CreateRunParams::new(root2_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
+        let params = CreateRunParams::new(
+            root2_id,
+            flow_id.clone(),
+            vec![ValueRef::new(json!({}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Create subflows under root1
@@ -673,6 +737,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root1_id,
             root1_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -682,6 +747,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root1_id,
             root1_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -693,6 +759,7 @@ impl MetadataComplianceTests {
             vec![ValueRef::new(json!({}))],
             root2_id,
             root2_id,
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -736,7 +803,12 @@ impl MetadataComplianceTests {
         let flow_id = store.store_flow(flow).await.unwrap();
 
         let run_id = Uuid::now_v7();
-        let params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({"x": 1}))]);
+        let params = CreateRunParams::new(
+            run_id,
+            flow_id,
+            vec![ValueRef::new(json!({"x": 1}))],
+            SequenceNumber::new(0),
+        );
         store.create_run(params).await.unwrap();
 
         // Record item result
@@ -779,6 +851,7 @@ impl MetadataComplianceTests {
                 ValueRef::new(json!({"x": 2})),
                 ValueRef::new(json!({"x": 3})),
             ],
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 
@@ -836,6 +909,7 @@ impl MetadataComplianceTests {
                 ValueRef::new(json!({"x": 1})),
                 ValueRef::new(json!({"x": 2})),
             ],
+            SequenceNumber::new(0),
         );
         store.create_run(params).await.unwrap();
 

@@ -106,9 +106,9 @@ pub async fn submit_run(
         .change_context(ExecutionError::JournalError)?;
 
     // Metadata store: Create run record with the journal offset.
-    let mut run_params = CreateRunParams::new(run_id, flow_id.clone(), inputs.clone());
+    let mut run_params =
+        CreateRunParams::new(run_id, flow_id.clone(), inputs.clone(), created_at_seqno);
     run_params.workflow_name = flow.name().map(|s| s.to_string());
-    run_params.created_at_seqno = Some(created_at_seqno);
     if !params.overrides.is_empty() {
         run_params.overrides = params.overrides.clone();
     }

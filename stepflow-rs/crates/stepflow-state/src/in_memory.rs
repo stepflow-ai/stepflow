@@ -150,7 +150,7 @@ impl InMemoryStateStore {
                 root_run_id: params.root_run_id,
                 parent_run_id: params.parent_run_id,
                 orchestrator_id: params.orchestrator_id,
-                created_at_seqno: params.created_at_seqno.map(|s| s.value()),
+                created_at_seqno: params.created_at_seqno.value(),
                 finished_at_seqno: None,
             },
             item_details: Some(item_details),
@@ -314,7 +314,7 @@ impl MetadataStore for InMemoryStateStore {
 
                     // Apply created_after_seqno filter
                     if let Some(offset_gte) = filters.created_after_seqno
-                        && exec.created_at_seqno.is_none_or(|o| o < offset_gte)
+                        && exec.created_at_seqno < offset_gte
                     {
                         return false;
                     }
@@ -661,31 +661,32 @@ impl ExecutionJournal for InMemoryStateStore {
         .boxed()
     }
 
-    fn read_from(
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, crate::StateError>> {
-        async move {
-            let journal = match self.journals.get(&root_run_id) {
-                Some(j) => j,
-                None => return Ok(Vec::new()),
-            };
+    ) -> crate::JournalEventStream<'_> {
+        // Clone events out while holding the DashMap guard, then yield them.
+        // Clone all matching events into a Vec upfront because the DashMap
+        // guard cannot be held across yield points (it is not Send).
+        // This is acceptable: the in-memory journal is only used in tests,
+        // not in production where the SQLite implementation streams properly.
+        let events: Vec<_> = self
+            .journals
+            .get(&root_run_id)
+            .map(|journal| {
+                let start_idx = from_sequence.value() as usize;
+                journal
+                    .events
+                    .iter()
+                    .enumerate()
+                    .skip(start_idx)
+                    .map(|(i, event)| (SequenceNumber::new(i as u64), event.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
 
-            let start_idx = from_sequence.value() as usize;
-
-            let events: Vec<_> = journal
-                .events
-                .iter()
-                .skip(start_idx)
-                .take(limit)
-                .cloned()
-                .collect();
-
-            Ok(events)
-        }
-        .boxed()
+        Box::pin(futures::stream::iter(events.into_iter().map(Ok)))
     }
 
     fn latest_sequence(

@@ -154,7 +154,7 @@ impl SqliteStateStore {
         // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
         let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id, created_at_seqno) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)";
 
-        let created_at_seqno: Option<i64> = params.created_at_seqno.map(|s| u64_to_sql(s.value()));
+        let created_at_seqno: i64 = u64_to_sql(params.created_at_seqno.value());
 
         sqlx::query(sql)
             .bind(params.run_id.to_string())
@@ -414,7 +414,7 @@ impl MetadataStore for SqliteStateStore {
                         .and_then(|s| Uuid::parse_str(s).ok());
 
                     let orchestrator_id: Option<String> = row.get("orchestrator_id");
-                    let created_at_seqno: Option<i64> = row.get("created_at_seqno");
+                    let created_at_seqno: i64 = row.get("created_at_seqno");
                     let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
 
                     let details = RunDetails {
@@ -429,7 +429,7 @@ impl MetadataStore for SqliteStateStore {
                             root_run_id,
                             parent_run_id,
                             orchestrator_id,
-                            created_at_seqno: created_at_seqno.map(sql_to_u64),
+                            created_at_seqno: sql_to_u64(created_at_seqno),
                             finished_at_seqno: finished_at_seqno.map(sql_to_u64),
                         },
                         item_details: Some(item_details),
@@ -615,7 +615,7 @@ impl MetadataStore for SqliteStateStore {
                     .and_then(|s| Uuid::parse_str(s).ok());
 
                 let orchestrator_id: Option<String> = row.get("orchestrator_id");
-                let created_at_seqno: Option<i64> = row.get("created_at_seqno");
+                let created_at_seqno: i64 = row.get("created_at_seqno");
                 let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
 
                 let summary = RunSummary {
@@ -629,7 +629,7 @@ impl MetadataStore for SqliteStateStore {
                     root_run_id,
                     parent_run_id,
                     orchestrator_id,
-                    created_at_seqno: created_at_seqno.map(sql_to_u64),
+                    created_at_seqno: sql_to_u64(created_at_seqno),
                     finished_at_seqno: finished_at_seqno.map(sql_to_u64),
                 };
 
@@ -1050,43 +1050,65 @@ impl ExecutionJournal for SqliteStateStore {
         .boxed()
     }
 
-    fn read_from(
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
+    ) -> stepflow_state::JournalEventStream<'_> {
         let pool = self.pool.clone();
+        const BATCH_SIZE: i64 = 1000;
 
-        async move {
-            // Read all events for this root run's journal (across all runs in the tree)
-            let sql = r#"
-                SELECT event_data
-                FROM journal_entries
-                WHERE root_run_id = ? AND sequence >= ?
-                ORDER BY sequence
-                LIMIT ?
-            "#;
+        Box::pin(async_stream::stream! {
+            let mut cursor = from_sequence.value() as i64;
 
-            let rows = sqlx::query(sql)
-                .bind(root_run_id.to_string())
-                .bind(from_sequence.value() as i64)
-                .bind(limit as i64)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
+            loop {
+                let sql = r#"
+                    SELECT sequence, event_data
+                    FROM journal_entries
+                    WHERE root_run_id = ? AND sequence >= ?
+                    ORDER BY sequence
+                    LIMIT ?
+                "#;
 
-            let mut events = Vec::new();
-            for row in rows {
-                let event_data: String = row.get("event_data");
-                let event: JournalEvent =
-                    serde_json::from_str(&event_data).change_context(StateError::Serialization)?;
-                events.push(event);
+                let rows = match sqlx::query(sql)
+                    .bind(root_run_id.to_string())
+                    .bind(cursor)
+                    .bind(BATCH_SIZE)
+                    .fetch_all(&pool)
+                    .await
+                {
+                    Ok(rows) => rows,
+                    Err(e) => {
+                        yield Err(error_stack::report!(StateError::Internal).attach(e));
+                        return;
+                    }
+                };
+
+                if rows.is_empty() {
+                    break;
+                }
+
+                for row in &rows {
+                    let seq: i64 = row.get("sequence");
+                    let event_data: String = row.get("event_data");
+                    match serde_json::from_str::<JournalEvent>(&event_data) {
+                        Ok(event) => yield Ok((SequenceNumber::new(seq as u64), event)),
+                        Err(e) => {
+                            yield Err(error_stack::report!(StateError::Serialization).attach(e));
+                            return;
+                        }
+                    }
+                }
+
+                if rows.len() < BATCH_SIZE as usize {
+                    break;
+                }
+
+                // Advance cursor past the last sequence seen, handling gaps.
+                let last_seq: i64 = rows.last().unwrap().get("sequence");
+                cursor = last_seq + 1;
             }
-
-            Ok(events)
-        }
-        .boxed()
+        })
     }
 
     fn latest_sequence(

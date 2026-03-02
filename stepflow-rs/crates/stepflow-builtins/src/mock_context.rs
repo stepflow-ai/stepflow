@@ -58,8 +58,12 @@ impl MockContext {
                 let input_count = request.inputs.len();
 
                 // Create the run in metadata store
-                let create_params =
-                    CreateRunParams::new(subflow_run_id, request.flow_id, request.inputs);
+                let create_params = CreateRunParams::new(
+                    subflow_run_id,
+                    request.flow_id,
+                    request.inputs,
+                    stepflow_state::SequenceNumber::new(0),
+                );
                 let _ = metadata_store.create_run(create_params).await;
 
                 // Record mock results for each item

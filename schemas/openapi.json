@@ -1360,10 +1360,7 @@
           },
           "createdAtSeqno": {
             "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": "integer",
             "format": "uint64",
             "minimum": 0
           },
@@ -1382,7 +1379,8 @@
           "flowId",
           "status",
           "createdAt",
-          "rootRunId"
+          "rootRunId",
+          "createdAtSeqno"
         ]
       },
       "ItemStatistics": {
@@ -1607,10 +1605,7 @@
           },
           "createdAtSeqno": {
             "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": "integer",
             "format": "uint64",
             "minimum": 0
           },
@@ -1639,7 +1634,8 @@
           "flowId",
           "status",
           "createdAt",
-          "rootRunId"
+          "rootRunId",
+          "createdAtSeqno"
         ]
       },
       "ItemResult": {
@@ -1876,10 +1872,7 @@
           },
           "createdAtSeqno": {
             "description": "Journal sequence number of the event that created this run.\n\nRecords where in the journal this run was created, enabling efficient\nmetadata queries during recovery (filter by offset range).",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "type": "integer",
             "format": "uint64",
             "minimum": 0
           },
@@ -1919,7 +1912,8 @@
           "flowId",
           "status",
           "createdAt",
-          "rootRunId"
+          "rootRunId",
+          "createdAtSeqno"
         ]
       },
       "ItemDetails": {

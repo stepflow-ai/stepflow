@@ -12,14 +12,11 @@
 
 //! Types for lease management.
 
-use std::collections::HashMap;
 use std::fmt;
 
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use stepflow_core::BlobId;
-use stepflow_core::workflow::ValueRef;
 use uuid::Uuid;
 
 /// Unique identifier for an orchestrator instance.
@@ -122,38 +119,22 @@ impl OrchestratorInfo {
     }
 }
 
-/// Information needed to recover a run.
+/// Information needed to recover a root run.
 ///
-/// This struct contains all the data needed to restore a run's state
-/// from the journal and resume execution.
+/// Only root runs are recovered; subflows are replayed from the journal
+/// during root-run recovery. Fields that are available from the journal
+/// (inputs, variables) are intentionally omitted — the authoritative
+/// values come from the `RootRunCreated` journal event.
 #[derive(Debug, Clone)]
 pub struct RunRecoveryInfo {
-    /// The run ID.
-    pub run_id: Uuid,
-
-    /// The root run ID (for subflow tracking).
+    /// The root run ID (journal key).
     pub root_run_id: Uuid,
-
-    /// The parent run ID (for subflows).
-    pub parent_run_id: Option<Uuid>,
 
     /// The flow being executed.
     pub flow_id: BlobId,
 
-    /// Input data for each item.
-    pub inputs: Vec<ValueRef>,
-
-    /// Variables provided for execution.
-    pub variables: HashMap<String, ValueRef>,
-
-    /// Opaque journal offset for replay.
-    ///
-    /// This is interpreted by the journal backend:
-    /// - SQLite: Typically the sequence number to start from
-    /// - NATS JetStream: Stream sequence or timestamp
-    ///
-    /// An empty `Bytes` indicates replay from the beginning.
-    pub journal_offset: Bytes,
+    /// Journal sequence number to start replay from.
+    pub start_sequence: crate::SequenceNumber,
 }
 
 #[cfg(test)]

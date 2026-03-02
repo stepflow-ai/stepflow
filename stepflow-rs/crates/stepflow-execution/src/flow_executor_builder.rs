@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_plugin::{ExecutionConfig, StepflowEnvironment, subflow_channel};
-use stepflow_state::{CheckpointStoreExt as _, CreateRunParams, MetadataStoreExt as _};
+use stepflow_state::{
+    CheckpointStoreExt as _, CreateRunParams, MetadataStoreExt as _, SequenceNumber,
+};
 
 use crate::checkpointer::Checkpointer;
 use crate::flow_executor::FlowExecutor;
@@ -166,6 +168,7 @@ impl FlowExecutorBuilder {
             run_id,
             self.run_state.flow_id().clone(),
             self.run_state.inputs(),
+            SequenceNumber::new(0),
         );
         run_params.workflow_name = flow.name().map(|s| s.to_string());
         state_store

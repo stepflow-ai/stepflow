@@ -30,9 +30,9 @@
 //!
 //! Journals are keyed by `root_run_id`, meaning all events for an execution tree
 //! (parent flow + all subflows) are stored in a single journal. During recovery,
-//! we load the entire journal and apply all events to the root run's `RunState`.
-//! Each `RunState` internally filters events by `run_id`, so subflow events are
-//! silently ignored when applied to the root.
+//! we stream the journal from the run's creation sequence and apply events to
+//! the affected `RunState`s using targeted dispatch via
+//! [`JournalEvent::affected_run_ids`](stepflow_state::JournalEvent::affected_run_ids).
 //!
 //! ## Execution Tree Recovery
 //!
@@ -68,14 +68,13 @@ mod tests;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use error_stack::ResultExt as _;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_dtos::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, ExecutionJournalExt as _, LeaseManagerExt as _, LeaseResult,
-    MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo,
+    MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo, SequenceNumber,
 };
 
 use crate::{ExecutionError, Result};
@@ -163,54 +162,19 @@ pub async fn recover_orphaned_runs(
         return Ok(RecoveryResult::new());
     }
 
-    // Group runs by root_run_id. Each group represents a full execution tree
-    // (root run + any subflows) that shares a single FlowExecutor. We recover
-    // only the root run from each tree — subflows will be re-created when the
-    // root's parent steps re-execute.
-    let mut trees: HashMap<uuid::Uuid, Vec<RunRecoveryInfo>> = HashMap::new();
-    for info in runs_to_recover {
-        trees.entry(info.root_run_id).or_default().push(info);
-    }
+    // Each RunRecoveryInfo is a root run (roots_only filter). Build a map
+    // keyed by root_run_id for iteration.
+    let trees: HashMap<uuid::Uuid, RunRecoveryInfo> = runs_to_recover
+        .into_iter()
+        .map(|info| (info.root_run_id, info))
+        .collect();
 
     log::info!("Found {} execution trees to recover", trees.len());
 
     let mut result = RecoveryResult::new();
 
-    for (root_run_id, group) in &trees {
-        // Find the root run in the group (where run_id == root_run_id)
-        let root_info = match group.iter().find(|r| r.run_id == *root_run_id) {
-            Some(info) => info,
-            None => {
-                // No root run found — these are orphaned subflows whose root is no longer
-                // in Running status. They cannot be recovered without their root executor.
-                log::warn!(
-                    "No root run found for tree {}, marking {} orphaned subflows as failed",
-                    root_run_id,
-                    group.len()
-                );
-                for info in group {
-                    result
-                        .record_failure(info.run_id, "Root run not found for recovery".to_string());
-                    if let Err(e) = metadata_store
-                        .update_run_status(info.run_id, ExecutionStatus::Failed, None)
-                        .await
-                    {
-                        log::error!(
-                            "Failed to mark orphaned subflow {} as failed: {:?}",
-                            info.run_id,
-                            e
-                        );
-                    }
-                }
-                continue;
-            }
-        };
-
-        log::info!(
-            "Recovering execution tree rooted at {} ({} runs in tree)",
-            root_run_id,
-            group.len()
-        );
+    for (root_run_id, root_info) in &trees {
+        log::info!("Recovering execution tree rooted at {}", root_run_id);
 
         match tree::recover_execution_tree(env, journal, root_info).await {
             Ok(()) => {
@@ -218,7 +182,7 @@ pub async fn recover_orphaned_runs(
                     "Successfully recovered execution tree rooted at {}",
                     root_run_id
                 );
-                result.record_success(root_info.run_id);
+                result.record_success(root_info.root_run_id);
             }
             Err(e) => {
                 log::error!(
@@ -226,17 +190,17 @@ pub async fn recover_orphaned_runs(
                     root_run_id,
                     e
                 );
-                result.record_failure(root_info.run_id, format!("{:?}", e));
+                result.record_failure(root_info.root_run_id, format!("{:?}", e));
 
                 // Mark the root run as Failed so it won't be retried on subsequent
                 // recovery attempts.
                 if let Err(update_err) = metadata_store
-                    .update_run_status(root_info.run_id, ExecutionStatus::Failed, None)
+                    .update_run_status(root_info.root_run_id, ExecutionStatus::Failed, None)
                     .await
                 {
                     log::error!(
                         "Failed to mark run {} as failed after recovery error: {:?}",
-                        root_info.run_id,
+                        root_info.root_run_id,
                         update_err
                     );
                 }
@@ -317,6 +281,11 @@ async fn claim_for_recovery(
     let mut recovery_infos = Vec::with_capacity(pending_runs.len());
 
     for summary in pending_runs {
+        debug_assert!(
+            summary.parent_run_id.is_none(),
+            "Should only recover root runs"
+        );
+
         // Attempt to acquire the lease before loading details. This ensures only
         // one orchestrator recovers each run. With deterministic IDs, re-acquiring
         // our own lease (same owner) succeeds immediately.
@@ -375,33 +344,11 @@ async fn claim_for_recovery(
             }
         }
 
-        // Get full run details for inputs
-        let details = metadata_store
-            .get_run(summary.run_id)
-            .await
-            .change_context(ExecutionError::RecoveryFailed)?;
-
-        if let Some(details) = details {
-            let inputs = details
-                .item_details
-                .as_ref()
-                .map(|items| items.iter().map(|item| item.input.clone()).collect())
-                .unwrap_or_default();
-
-            // Note: inputs and variables here are placeholders. Recovery extracts
-            // authoritative values from the RootRunCreated journal event, which contains
-            // the exact inputs and variables used when the run was originally created.
-            // journal_offset is empty to replay from the beginning.
-            recovery_infos.push(RunRecoveryInfo {
-                run_id: summary.run_id,
-                root_run_id: summary.root_run_id,
-                parent_run_id: summary.parent_run_id,
-                flow_id: summary.flow_id,
-                inputs,
-                variables: HashMap::new(),
-                journal_offset: Bytes::new(),
-            });
-        }
+        recovery_infos.push(RunRecoveryInfo {
+            root_run_id: summary.root_run_id,
+            flow_id: summary.flow_id,
+            start_sequence: SequenceNumber::new(summary.created_at_seqno),
+        });
     }
 
     Ok(recovery_infos)

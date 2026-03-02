@@ -11,6 +11,7 @@
 // the License.
 
 use super::*;
+use futures::StreamExt as _;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,6 +50,47 @@ fn create_test_flow() -> stepflow_core::workflow::Flow {
         .build()
 }
 
+/// Create a run following production ordering: journal write first, then metadata.
+///
+/// Writes a `RootRunCreated` journal event, then creates the metadata record
+/// with `created_at_seqno` set from the journal's returned sequence number.
+async fn create_test_run(
+    env: &StepflowEnvironment,
+    run_id: uuid::Uuid,
+    flow_id: BlobId,
+) -> SequenceNumber {
+    let journal = env.execution_journal();
+    let metadata_store = env.metadata_store();
+
+    // Journal first (mirrors production ordering in executor.rs)
+    let created_at_seqno = journal
+        .write(
+            run_id,
+            JournalEvent::RootRunCreated {
+                run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .expect("should write RootRunCreated");
+
+    // Metadata second, with the journal sequence
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id,
+        vec![ValueRef::new(json!({}))],
+        created_at_seqno,
+    );
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create run");
+
+    created_at_seqno
+}
+
 #[tokio::test]
 async fn test_recovery_no_runs_to_recover() {
     let env = create_test_env().await;
@@ -67,32 +109,12 @@ async fn test_recovery_missing_flow_marks_run_failed() {
     let env = create_test_env().await;
     let orchestrator_id = OrchestratorId::new("test-orch");
     let metadata_store = env.metadata_store();
-    let journal = env.execution_journal();
 
-    // Create a run record with a non-existent flow ID
+    // Create a run with a non-existent flow ID (flow blob not stored)
     let run_id = uuid::Uuid::now_v7();
     let fake_flow_id = BlobId::from_content(&ValueRef::new(json!({"nonexistent": true})))
         .expect("should create blob id");
-
-    let params = CreateRunParams::new(run_id, fake_flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
-
-    // Add a RootRunCreated journal entry (required for recovery)
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: fake_flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
+    create_test_run(&env, run_id, fake_flow_id).await;
 
     // Attempt recovery - should fail because flow doesn't exist
     let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -127,9 +149,16 @@ async fn test_recovery_missing_journal_entries_marks_run_failed() {
         .await
         .expect("should store flow");
 
-    // Create a run record but DON'T add any journal entries
+    // Create a run record but DON'T add any journal entries.
+    // In practice created_at_seqno is set from the journal write, but here
+    // there is no journal — we still need a value for discovery to work.
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({}))]);
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id,
+        vec![ValueRef::new(json!({}))],
+        SequenceNumber::new(0),
+    );
     metadata_store
         .create_run(params)
         .await
@@ -169,16 +198,9 @@ async fn test_recovery_missing_root_run_created_event_marks_run_failed() {
         .await
         .expect("should store flow");
 
-    // Create a run record
+    // Journal first: Add a TaskCompleted event but NO RootRunCreated event
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
-
-    // Add a TaskCompleted event but NO RootRunCreated event
-    journal
+    let created_at_seqno = journal
         .write(
             run_id,
             JournalEvent::TaskCompleted {
@@ -190,6 +212,18 @@ async fn test_recovery_missing_root_run_created_event_marks_run_failed() {
         )
         .await
         .expect("should write");
+
+    // Create metadata record
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id.clone(),
+        vec![ValueRef::new(json!({}))],
+        created_at_seqno,
+    );
+    metadata_store
+        .create_run(params)
+        .await
+        .expect("should create run");
 
     // Attempt recovery - should fail because no RootRunCreated event
     let result = recover_orphaned_runs(&env, orchestrator_id, 100)
@@ -214,7 +248,6 @@ async fn test_recovery_missing_root_run_created_event_marks_run_failed() {
 async fn test_recovery_already_complete_run_succeeds() {
     let env = create_test_env().await;
     let orchestrator_id = OrchestratorId::new("test-orch");
-    let metadata_store = env.metadata_store();
     let blob_store = env.blob_store();
     let journal = env.execution_journal();
 
@@ -225,28 +258,11 @@ async fn test_recovery_already_complete_run_succeeds() {
         .await
         .expect("should store flow");
 
-    // Create a run record
+    // Create run (journal + metadata)
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
-    // Add journal entries that represent a completed run
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
-
+    // Add remaining journal entries that represent a completed run
     journal
         .write(
             run_id,
@@ -335,9 +351,7 @@ async fn test_recovery_result_tracking() {
 async fn test_recovery_skips_active_executions() {
     let env = create_test_env().await;
     let orchestrator_id = OrchestratorId::new("test-orch");
-    let metadata_store = env.metadata_store();
     let blob_store = env.blob_store();
-    let journal = env.execution_journal();
 
     // Store a valid flow
     let flow = Arc::new(create_test_flow());
@@ -348,25 +362,7 @@ async fn test_recovery_skips_active_executions() {
 
     // Create a run that appears to need recovery
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
-
-    // Add journal entries so recovery would succeed
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id,
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
     // Register this run as already active (simulates an in-flight execution)
     let active = env.active_executions();
@@ -437,32 +433,15 @@ async fn test_recovery_resumes_partial_execution() {
         .await
         .expect("should store flow");
 
-    // Create a run record
+    // Create run (journal + metadata)
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
     // Journal entries for a PARTIAL execution:
-    // - RootRunCreated
+    // - RootRunCreated (written by create_test_run)
     // - RunInitialized (with both steps needed)
     // - TaskCompleted for step0 only
     // - NO ItemCompleted, NO RunCompleted (simulates crash after step0)
-
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
 
     journal
         .write(
@@ -559,27 +538,11 @@ async fn test_recovery_preserves_attempt_counts() {
         .await
         .expect("should store flow");
 
+    // Create run (journal + metadata) then add more journal events
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
-    // Journal: RootRunCreated, RunInitialized, TasksStarted(step0 attempt=1), NO TaskCompleted
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
-
+    // Journal: RunInitialized, TasksStarted(step0 attempt=1), NO TaskCompleted
     journal
         .write(
             run_id,
@@ -636,14 +599,17 @@ async fn test_recovery_preserves_attempt_counts() {
     assert_eq!(run.summary.status, ExecutionStatus::Completed);
 
     // Verify the journal now has a second TasksStarted with attempt=2
-    let all_entries = journal
-        .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+    let all_entries: Vec<_> = journal
+        .stream_from(run_id, SequenceNumber::new(0))
+        .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
         .expect("should read journal");
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|(_seq, event)| match event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })
@@ -710,27 +676,11 @@ async fn test_recovery_batches_parallel_tasks() {
         .await
         .expect("should store flow");
 
+    // Create run (journal + metadata) then add more journal events
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
     // Journal: both steps started (attempt 1) but neither completed (crash)
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
-
     journal
         .write(
             run_id,
@@ -788,14 +738,17 @@ async fn test_recovery_batches_parallel_tasks() {
     assert_eq!(run.summary.status, ExecutionStatus::Completed);
 
     // Check journal for the recovery TasksStarted
-    let all_entries = journal
-        .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+    let all_entries: Vec<_> = journal
+        .stream_from(run_id, SequenceNumber::new(0))
+        .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
         .expect("should read journal");
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|(_seq, event)| match event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })
@@ -859,14 +812,9 @@ async fn test_recovery_groups_by_root_run_id() {
         .await
         .expect("should store flow");
 
-    // Create root run
+    // Create root run (journal + metadata)
     let root_run_id = uuid::Uuid::now_v7();
-    let root_params =
-        CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(root_params)
-        .await
-        .expect("should create root run");
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Create subflow run with root_run_id pointing to the root
     let subflow_run_id = uuid::Uuid::now_v7();
@@ -876,26 +824,14 @@ async fn test_recovery_groups_by_root_run_id() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id, // parent is the root
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
         .await
         .expect("should create subflow run");
 
-    // Write journal events for the root run (partial execution)
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
-
+    // Write remaining journal events for the root run (partial execution)
     journal
         .write(
             root_run_id,
@@ -1022,6 +958,7 @@ async fn test_recovery_ignores_orphaned_subflows() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -1358,26 +1295,9 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
         .await
         .expect("should store flow");
 
+    // Create run (journal + metadata), no checkpoint stored
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
-
-    // Write journal events for a partial execution (no checkpoint stored)
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
     journal
         .write(
@@ -1470,28 +1390,10 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
     let root_run_id = uuid::Uuid::now_v7();
     let subflow_run_id = uuid::Uuid::now_v7();
 
-    // Create root run record
-    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    // Create root run (journal + metadata)
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Write interleaved root + subflow events (simulates real execution)
-    // Root: RootRunCreated
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .expect("should write");
-
     // Root: RunInitialized
     journal
         .write(
@@ -1658,12 +1560,8 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     let completed_subflow_id = uuid::Uuid::now_v7();
     let subflow_key = uuid::Uuid::now_v7();
 
-    // Create root run record
-    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    // Create root run (journal + metadata)
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Also create the completed subflow's run record + results in metadata store
     let mut subflow_params = CreateRunParams::new_subflow(
@@ -1672,6 +1570,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     subflow_params.workflow_name = Some("subflow".to_string());
     metadata_store
@@ -1692,19 +1591,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
         .await
         .expect("should update subflow status");
 
-    // Write root events
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .unwrap();
+    // Write remaining root events
     journal
         .write(
             root_run_id,
@@ -1823,12 +1710,8 @@ async fn test_recovery_resumes_inflight_subflow() {
     let inflight_subflow_id = uuid::Uuid::now_v7();
     let subflow_key = uuid::Uuid::now_v7();
 
-    // Create root run record
-    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    // Create root run (journal + metadata)
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Also create the subflow's run record in metadata store
     let subflow_params = CreateRunParams::new_subflow(
@@ -1837,6 +1720,7 @@ async fn test_recovery_resumes_inflight_subflow() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -1844,19 +1728,6 @@ async fn test_recovery_resumes_inflight_subflow() {
         .expect("should create subflow run");
 
     // Write journal events simulating crash during subflow's inner step:
-    // Root: RootRunCreated
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .unwrap();
     // Root: RunInitialized
     journal
         .write(
@@ -2018,12 +1889,8 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
     let subflow_run_id = uuid::Uuid::now_v7();
     let subflow_key = uuid::Uuid::now_v7();
 
-    // Create root run record
-    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create root run");
+    // Create root run (journal + metadata)
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Create subflow run record — but do NOT update status or record results.
     // This simulates the crash window: journal has RunCompleted but metadata
@@ -2034,6 +1901,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -2041,19 +1909,6 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should create subflow run");
 
     // === Journal events ===
-    // Root: RootRunCreated
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .unwrap();
     // Root: RunInitialized
     journal
         .write(
@@ -2358,27 +2213,11 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
         .await
         .expect("should store flow");
 
-    // Create a run record (metadata says Running)
+    // Create run (journal + metadata, metadata says Running)
     let run_id = uuid::Uuid::now_v7();
-    let params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create run");
+    create_test_run(&env, run_id, flow_id.clone()).await;
 
-    // Write a complete set of journal events: the run executed fully
-    journal
-        .write(
-            run_id,
-            JournalEvent::RootRunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .unwrap();
+    // Write remaining journal events: the run executed fully
     journal
         .write(
             run_id,
@@ -2515,29 +2354,12 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     let subflow_run_id = uuid::Uuid::now_v7();
     let subflow_key = uuid::Uuid::now_v7();
 
-    // Create root run record in metadata
-    let params = CreateRunParams::new(root_run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    metadata_store
-        .create_run(params)
-        .await
-        .expect("should create root run");
+    // Create root run (journal + metadata)
+    create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Do NOT create the subflow metadata record — this is the crash window.
 
     // === Journal events ===
-    // Root: RootRunCreated
-    journal
-        .write(
-            root_run_id,
-            JournalEvent::RootRunCreated {
-                run_id: root_run_id,
-                flow_id: flow_id.clone(),
-                inputs: vec![ValueRef::new(json!({}))],
-                variables: HashMap::new(),
-            },
-        )
-        .await
-        .unwrap();
     // Root: RunInitialized
     journal
         .write(

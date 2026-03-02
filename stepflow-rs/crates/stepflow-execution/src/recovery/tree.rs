@@ -48,10 +48,6 @@ pub(super) async fn recover_execution_tree(
     root_info: &stepflow_state::RunRecoveryInfo,
 ) -> Result<()> {
     let root_run_id = root_info.root_run_id;
-    debug_assert_eq!(
-        root_info.run_id, root_run_id,
-        "recover_execution_tree expects root run"
-    );
     let state_store = env.metadata_store();
     let blob_store = env.blob_store();
 
@@ -86,7 +82,7 @@ pub(super) async fn recover_execution_tree(
     // hard errors — once a checkpoint is written, the full journal may no longer
     // be available for replay.
     //
-    // If no checkpoint exists, fall back to full replay from sequence 0.
+    // If no checkpoint exists, fall back to full replay from the run's creation sequence.
 
     let checkpoint_store = env.checkpoint_store();
     let stored_checkpoint = checkpoint_store
@@ -114,27 +110,27 @@ pub(super) async fn recover_execution_tree(
         recovery.restore_from_journal(root_info).await?
     };
 
-    // If the run is already complete, sync metadata and return — no need to resume.
+    // If the journal contains a RunCompleted event for the root run, the run
+    // finished before the crash but the metadata store may not have been updated
+    // (journal-first ordering crash window). Sync metadata and return — no need
+    // to spawn an executor.
     //
-    // Crash window: the journal recorded RunCompleted for the root run but the
-    // metadata store was not updated before the crash (journal-first ordering).
-    // Without this sync, the metadata store would remain "Running" and the run
-    // would be re-discovered on every recovery cycle.
-    if recovered.run_state.is_complete() {
+    // Important: we gate on `root_terminal_status` (presence of RunCompleted),
+    // NOT on `is_complete()`. Before RunInitialized, `is_complete()` is vacuously
+    // true (0 running tasks) which would cause an early return and infinite
+    // recovery loop for runs that crashed before initialization.
+    if let Some(status) = recovered.root_terminal_status {
         log::info!(
             "Root run {} already complete after recovery, syncing metadata",
             root_run_id
         );
-        if let Some(status) = recovered.root_terminal_status {
-            sync_run_state_to_metadata(
-                root_run_id,
-                &recovered.run_state,
-                status,
-                state_store.as_ref(),
-                || ExecutionError::RecoveryFailed,
-            )
-            .await?;
-        }
+        sync_run_state_to_metadata(
+            root_run_id,
+            &recovered.run_state,
+            status,
+            state_store.as_ref(),
+        )
+        .await?;
         return Ok(());
     }
 
