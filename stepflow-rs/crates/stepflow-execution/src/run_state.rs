@@ -184,12 +184,12 @@ impl RunState {
     ///   newly ready tasks. Returns the newly ready tasks.
     /// - `TasksStarted`: Records attempt counts for tasks about to execute.
     ///   Returns empty (tasks are discovered via other events).
-    /// - Other events (`RunCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
+    /// - Other events (`RootRunCreated`, `SubRunCreated`, `RunCompleted`, `StepsUnblocked`, `ItemCompleted`):
     ///   Informational or handled elsewhere. Returns empty.
     pub fn apply_event(&mut self, event: &JournalEvent) -> Vec<Task> {
         match event {
-            JournalEvent::RunCreated { .. } => {
-                // RunCreated is handled at construction time, not via apply_event
+            JournalEvent::RootRunCreated { .. } => {
+                // RootRunCreated is handled at construction time, not via apply_event
                 Vec::new()
             }
             JournalEvent::RunInitialized {
@@ -253,8 +253,8 @@ impl RunState {
                 // Terminal state - no state update needed
                 Vec::new()
             }
-            JournalEvent::SubflowSubmitted { .. } => {
-                // Subflow tracking - handled by recovery, not RunState
+            JournalEvent::SubRunCreated { .. } => {
+                // Sub-run tracking - handled by recovery, not RunState
                 Vec::new()
             }
         }
@@ -347,7 +347,7 @@ impl RunState {
     /// Reconstruct a run state from recovery data.
     ///
     /// This creates a RunState from the data found in journal entries:
-    /// - RunCreated provides flow_id, inputs, variables, parent_run_id
+    /// - RootRunCreated/SubRunCreated provides flow_id, inputs, variables, parent_run_id
     /// - TaskCompleted entries provide which steps completed and their results
     ///
     /// After applying all completions, call `initialize_all()` to discover
@@ -355,13 +355,13 @@ impl RunState {
     ///
     /// # Arguments
     /// * `run_id` - The run ID to reconstruct
-    /// * `flow_id` - The flow ID (blob hash) from RunCreated
+    /// * `flow_id` - The flow ID (blob hash) from RootRunCreated/SubRunCreated
     /// * `flow` - The loaded flow (must be loaded from blob store first)
-    /// * `inputs` - Original inputs from RunCreated
-    /// * `variables` - Original variables from RunCreated
+    /// * `inputs` - Original inputs from RootRunCreated/SubRunCreated
+    /// * `variables` - Original variables from RootRunCreated/SubRunCreated
     /// * `completed_tasks` - List of (item_index, step_index, result) from TaskCompleted entries
-    /// * `root_run_id` - Root run ID (from RunCreated or the run tree)
-    /// * `parent_run_id` - Parent run ID from RunCreated (None for root runs)
+    /// * `root_run_id` - Root run ID (from RootRunCreated or the run tree)
+    /// * `parent_run_id` - Parent run ID from SubRunCreated (None for root runs)
     #[allow(clippy::too_many_arguments)]
     pub fn from_recovery_data(
         run_id: Uuid,

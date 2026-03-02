@@ -30,7 +30,7 @@ use stepflow_core::status::ExecutionStatus;
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
 use uuid::Uuid;
 
-use crate::StateError;
+use crate::{SequenceNumber, StateError};
 use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepStatusInfo};
 
 use super::state_store::CreateRunParams;
@@ -100,6 +100,9 @@ pub trait MetadataStore: Send + Sync {
     /// # Arguments
     /// * `run_id` - The run identifier
     /// * `status` - The new status
+    /// * `finished_at_seqno` - Journal sequence number of the RunCompleted event
+    ///   (only meaningful for terminal statuses; pass `None` for non-terminal or
+    ///   when the seqno is not available)
     ///
     /// # Returns
     /// Success if the run was updated
@@ -107,6 +110,7 @@ pub trait MetadataStore: Send + Sync {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
+        finished_at_seqno: Option<SequenceNumber>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
     /// Get workflow overrides for a run.

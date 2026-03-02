@@ -81,12 +81,11 @@ async fn test_journal_write_and_read() {
     let seq1 = store
         .write(
             root_run_id,
-            JournalEvent::RunCreated {
+            JournalEvent::RootRunCreated {
                 run_id,
                 flow_id,
                 inputs: vec![ValueRef::new(json!({"key": "value"}))],
                 variables: HashMap::new(),
-                parent_run_id: None,
             },
         )
         .await
@@ -113,7 +112,7 @@ async fn test_journal_write_and_read() {
         .await
         .unwrap();
     assert_eq!(entries.len(), 2);
-    assert!(matches!(entries[0], JournalEvent::RunCreated { .. }));
+    assert!(matches!(entries[0], JournalEvent::RootRunCreated { .. }));
     assert!(matches!(entries[1], JournalEvent::TaskCompleted { .. }));
 
     // Read from a specific sequence
@@ -349,19 +348,20 @@ async fn test_journal_subflow_shared_journal() {
         .unwrap();
     assert_eq!(all_entries.len(), 4);
 
-    // Filter for parent events only
-    let parent_entries: Vec<_> = all_entries
+    // Verify events have expected run_ids (2 parent, 2 subflow)
+    let parent_count = all_entries
         .iter()
-        .filter(|e| e.involves_run(parent_run_id))
-        .collect();
-    assert_eq!(parent_entries.len(), 2);
+        .filter(
+            |e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id),
+        )
+        .count();
+    assert_eq!(parent_count, 2);
 
-    // Filter for subflow events only
-    let subflow_entries: Vec<_> = all_entries
+    let subflow_count = all_entries
         .iter()
-        .filter(|e| e.involves_run(subflow_run_id))
-        .collect();
-    assert_eq!(subflow_entries.len(), 2);
+        .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == subflow_run_id))
+        .count();
+    assert_eq!(subflow_count, 2);
 
     // Verify list_active_roots only shows one root journal
     let active_roots = store.list_active_roots().await.unwrap();

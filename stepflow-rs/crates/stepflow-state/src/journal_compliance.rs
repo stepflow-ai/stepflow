@@ -562,19 +562,18 @@ impl JournalComplianceTests {
             "Should have 4 events in shared journal"
         );
 
-        // Filter for parent events
-        let parent_events: Vec<_> = all_events
+        // Verify events have expected run_ids (2 parent, 2 subflow)
+        let parent_count = all_events
             .iter()
-            .filter(|e| e.involves_run(parent_run_id))
-            .collect();
-        assert_eq!(parent_events.len(), 2, "Should have 2 parent events");
+            .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id))
+            .count();
+        assert_eq!(parent_count, 2, "Should have 2 parent events");
 
-        // Filter for subflow events
-        let subflow_events: Vec<_> = all_events
+        let subflow_count = all_events
             .iter()
-            .filter(|e| e.involves_run(subflow_run_id))
-            .collect();
-        assert_eq!(subflow_events.len(), 2, "Should have 2 subflow events");
+            .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == subflow_run_id))
+            .count();
+        assert_eq!(subflow_count, 2, "Should have 2 subflow events");
 
         // Verify list_active_roots only shows one root
         let roots = journal
@@ -604,7 +603,7 @@ impl JournalComplianceTests {
         let flow_id = BlobId::from_content(&ValueRef::new(json!({"test": "flow"}))).unwrap();
 
         let events = vec![
-            JournalEvent::RunCreated {
+            JournalEvent::RootRunCreated {
                 run_id,
                 flow_id: flow_id.clone(),
                 inputs: vec![
@@ -616,14 +615,16 @@ impl JournalComplianceTests {
                     vars.insert("key".to_string(), ValueRef::new(json!("value")));
                     vars
                 },
-                parent_run_id: None,
             },
-            JournalEvent::RunCreated {
-                run_id,
+            JournalEvent::SubRunCreated {
+                run_id: Uuid::now_v7(),
                 flow_id: flow_id.clone(),
                 inputs: vec![ValueRef::new(json!({"sub": true}))],
                 variables: HashMap::new(),
-                parent_run_id: Some(run_id),
+                parent_run_id: run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key: Uuid::now_v7(),
             },
             JournalEvent::RunInitialized {
                 run_id,
@@ -696,10 +697,16 @@ impl JournalComplianceTests {
         for (i, event) in read_events.iter().enumerate() {
             match (event, &events[i]) {
                 (
-                    JournalEvent::RunCreated { flow_id: f1, .. },
-                    JournalEvent::RunCreated { flow_id: f2, .. },
+                    JournalEvent::RootRunCreated { flow_id: f1, .. },
+                    JournalEvent::RootRunCreated { flow_id: f2, .. },
                 ) => {
-                    assert_eq!(f1, f2, "RunCreated flow_id should match");
+                    assert_eq!(f1, f2, "RootRunCreated flow_id should match");
+                }
+                (
+                    JournalEvent::SubRunCreated { flow_id: f1, .. },
+                    JournalEvent::SubRunCreated { flow_id: f2, .. },
+                ) => {
+                    assert_eq!(f1, f2, "SubRunCreated flow_id should match");
                 }
                 (
                     JournalEvent::RunInitialized {

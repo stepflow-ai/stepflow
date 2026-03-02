@@ -189,8 +189,8 @@ pub enum JournalEvent {
     // =========================================================================
     // Run Lifecycle
     // =========================================================================
-    /// Run created with initial configuration.
-    RunCreated {
+    /// Root run created with initial configuration.
+    RootRunCreated {
         /// The run this event belongs to.
         run_id: Uuid,
         /// The flow being executed.
@@ -199,8 +199,6 @@ pub enum JournalEvent {
         inputs: Vec<ValueRef>,
         /// Variables provided for execution.
         variables: HashMap<String, ValueRef>,
-        /// Parent run ID (for subflows).
-        parent_run_id: Option<Uuid>,
     },
 
     /// Run initialized after step discovery.
@@ -277,14 +275,22 @@ pub enum JournalEvent {
     // =========================================================================
     // Subflow Lifecycle
     // =========================================================================
-    /// A subflow was submitted by a parent step.
+    /// A sub-run was created and associated with its parent task.
     ///
-    /// Records the association between a parent task `(parent_run_id, item_index,
-    /// step_index, subflow_key)` and the `subflow_run_id` it created. During
-    /// recovery, this mapping allows the executor to match re-submitted subflows
-    /// to their pre-crash counterparts, avoiding duplicate execution.
-    SubflowSubmitted {
-        /// The parent run that submitted this subflow.
+    /// Combines the sub-run's creation data (flow_id, inputs, variables) with
+    /// the parent task association (item_index, step_index, subflow_key).
+    /// During recovery, this single event provides everything needed to both
+    /// reconstruct the sub-run's RunState AND populate the dedup map.
+    SubRunCreated {
+        /// The sub-run's run ID.
+        run_id: Uuid,
+        /// The flow being executed by the sub-run.
+        flow_id: BlobId,
+        /// Input data for each item in the sub-run.
+        inputs: Vec<ValueRef>,
+        /// Variables provided for the sub-run execution.
+        variables: HashMap<String, ValueRef>,
+        /// The parent run that created this sub-run.
         parent_run_id: Uuid,
         /// Item index within the parent run.
         item_index: u32,
@@ -292,28 +298,7 @@ pub enum JournalEvent {
         step_index: usize,
         /// Caller-provided deduplication key.
         subflow_key: Uuid,
-        /// The run ID assigned to the subflow.
-        subflow_run_id: Uuid,
     },
-}
-
-impl JournalEvent {
-    /// Check whether this event involves a specific run.
-    ///
-    /// For most events this is a simple run_id comparison. For `TasksStarted`,
-    /// which groups tasks by run, it checks all contained run groups.
-    pub fn involves_run(&self, target: Uuid) -> bool {
-        match self {
-            JournalEvent::RunCreated { run_id, .. }
-            | JournalEvent::RunInitialized { run_id, .. }
-            | JournalEvent::RunCompleted { run_id, .. }
-            | JournalEvent::TaskCompleted { run_id, .. }
-            | JournalEvent::StepsUnblocked { run_id, .. }
-            | JournalEvent::ItemCompleted { run_id, .. } => *run_id == target,
-            JournalEvent::TasksStarted { runs } => runs.iter().any(|r| r.run_id == target),
-            JournalEvent::SubflowSubmitted { parent_run_id, .. } => *parent_run_id == target,
-        }
-    }
 }
 
 /// Trait for write-ahead journalling of execution events.
@@ -366,7 +351,6 @@ pub trait ExecutionJournal: Send + Sync {
     /// Read journal events for a root run starting from a sequence number.
     ///
     /// Returns all events in the journal (across all runs in the tree).
-    /// Use [`JournalEvent::involves_run`] to filter for a specific run.
     ///
     /// # Arguments
     /// * `root_run_id` - The root run's journal to read from

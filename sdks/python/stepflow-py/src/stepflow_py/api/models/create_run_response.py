@@ -22,7 +22,7 @@ import json
 import pprint
 import re  # noqa: F401
 from datetime import datetime
-from typing import Any, ClassVar, Self
+from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 
@@ -62,6 +62,16 @@ class CreateRunResponse(BaseModel):
         description="The orchestrator currently managing this run.  None means the run is orphaned (no orchestrator owns it). Set when the run is created and updated during recovery.",
         alias="orchestratorId",
     )
+    created_at_seqno: Annotated[int, Field(strict=True, ge=0)] | None = Field(
+        default=None,
+        description="Journal sequence number of the event that created this run.  Records where in the journal this run was created, enabling efficient metadata queries during recovery (filter by offset range).",
+        alias="createdAtSeqno",
+    )
+    finished_at_seqno: Annotated[int, Field(strict=True, ge=0)] | None = Field(
+        default=None,
+        description="Journal sequence number of the RunCompleted event for this run.  Set when the run reaches a terminal state. `None` means the run is still in progress (or completed before this field was added).",
+        alias="finishedAtSeqno",
+    )
     results: list[ItemResult] | None = Field(
         default=None,
         description="Item results, only populated when `wait=true` and the run has completed. Each entry contains the item's index, status, and result.",
@@ -77,6 +87,8 @@ class CreateRunResponse(BaseModel):
         "rootRunId",
         "parentRunId",
         "orchestratorId",
+        "createdAtSeqno",
+        "finishedAtSeqno",
         "results",
     ]
 
@@ -147,6 +159,22 @@ class CreateRunResponse(BaseModel):
         if self.orchestrator_id is None and "orchestrator_id" in self.model_fields_set:
             _dict["orchestratorId"] = None
 
+        # set to None if created_at_seqno (nullable) is None
+        # and model_fields_set contains the field
+        if (
+            self.created_at_seqno is None
+            and "created_at_seqno" in self.model_fields_set
+        ):
+            _dict["createdAtSeqno"] = None
+
+        # set to None if finished_at_seqno (nullable) is None
+        # and model_fields_set contains the field
+        if (
+            self.finished_at_seqno is None
+            and "finished_at_seqno" in self.model_fields_set
+        ):
+            _dict["finishedAtSeqno"] = None
+
         # set to None if results (nullable) is None
         # and model_fields_set contains the field
         if self.results is None and "results" in self.model_fields_set:
@@ -177,6 +205,8 @@ class CreateRunResponse(BaseModel):
                 "rootRunId": obj.get("rootRunId"),
                 "parentRunId": obj.get("parentRunId"),
                 "orchestratorId": obj.get("orchestratorId"),
+                "createdAtSeqno": obj.get("createdAtSeqno"),
+                "finishedAtSeqno": obj.get("finishedAtSeqno"),
                 "results": [ItemResult.from_dict(_item) for _item in obj["results"]]
                 if obj.get("results") is not None
                 else None,

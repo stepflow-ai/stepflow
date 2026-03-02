@@ -76,18 +76,45 @@ pub async fn submit_run(
         .await
         .change_context(ExecutionError::StateStoreError)?;
 
-    // Create run record before spawning so it's immediately available
+    // Journal FIRST: Record run creation as the durable source of truth.
+    //
+    // The journal write must happen before the metadata store write so that
+    // the journal is authoritative. Crash window analysis:
+    //
+    // - Crash after journal write, before metadata write: the run exists only
+    //   in the journal. Recovery won't discover it (uses metadata for discovery),
+    //   but the caller never received a success response, so they know to retry.
+    //   The orphaned journal entry is inert (keyed by root_run_id, won't collide).
+    //
+    // - Crash after metadata write: both stores are consistent, recovery works.
+    //
+    // This ordering is preferable to metadata-first because a crash between
+    // metadata and journal would create a visible "Running" run with no journal
+    // to replay, which recovery would mark as Failed — noisy and confusing.
+    let journal = env.execution_journal();
+    let created_at_seqno = journal
+        .write(
+            run_id,
+            JournalEvent::RootRunCreated {
+                run_id,
+                flow_id: flow_id.clone(),
+                inputs: inputs.clone(),
+                variables: params.variables.clone().unwrap_or_default(),
+            },
+        )
+        .await
+        .change_context(ExecutionError::JournalError)?;
+
+    // Metadata store: Create run record with the journal offset.
     let mut run_params = CreateRunParams::new(run_id, flow_id.clone(), inputs.clone());
     run_params.workflow_name = flow.name().map(|s| s.to_string());
+    run_params.created_at_seqno = Some(created_at_seqno);
     if !params.overrides.is_empty() {
         run_params.overrides = params.overrides.clone();
     }
-
-    // Set orchestrator_id on the run record for distributed coordination
     if let Some(orch_id) = env.orchestrator_id() {
         run_params.orchestrator_id = Some(orch_id.as_str().to_string());
     }
-
     state_store
         .create_run(run_params)
         .await
@@ -103,30 +130,13 @@ pub async fn submit_run(
         log::warn!("Failed to acquire lease for run {run_id}: {e:?}");
     }
 
-    // Journal: Record run creation durably before execution.
-    // This ensures recovery can always find at least the RunCreated event.
-    let journal = env.execution_journal();
-    journal
-        .write(
-            run_id,
-            JournalEvent::RunCreated {
-                run_id,
-                flow_id: flow_id.clone(),
-                inputs: inputs.clone(),
-                variables: params.variables.clone().unwrap_or_default(),
-                parent_run_id: None,
-            },
-        )
-        .await
-        .change_context(ExecutionError::JournalError)?;
-
     // Apply overrides to the flow (returns unchanged if empty)
     let flow_with_overrides = match apply_overrides(flow.clone(), &params.overrides) {
         Ok(f) => f,
         Err(e) => {
             log::error!("Failed to apply overrides: {:?}", e);
             let _ = state_store
-                .update_run_status(run_id, ExecutionStatus::Failed)
+                .update_run_status(run_id, ExecutionStatus::Failed, None)
                 .await;
             return Err(e.change_context(ExecutionError::OverrideError));
         }
@@ -153,7 +163,7 @@ pub async fn submit_run(
         Err(e) => {
             log::error!("Failed to build FlowExecutor: {:?}", e);
             let _ = state_store
-                .update_run_status(run_id, ExecutionStatus::Failed)
+                .update_run_status(run_id, ExecutionStatus::Failed, None)
                 .await;
             return Err(e);
         }

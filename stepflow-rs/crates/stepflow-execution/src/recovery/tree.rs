@@ -25,8 +25,7 @@ use stepflow_state::{
     MetadataStoreExt as _,
 };
 
-use super::checkpoint_restore::restore_from_checkpoint;
-use super::journal_restore::restore_from_journal;
+use super::restore::{Recovery, sync_run_state_to_metadata};
 use crate::{ExecutionError, Result};
 
 /// Recover an execution tree by replaying its journal and resuming the root run.
@@ -37,24 +36,20 @@ use crate::{ExecutionError, Result};
 ///
 /// ## Subflow Recovery
 ///
-/// When `SubflowSubmitted` events are present in the journal, this function
+/// When `SubRunCreated` events are present in the journal, this function
 /// reconstructs subflow `RunState` objects and builds a deduplication map.
 /// When parent steps re-execute and re-submit subflows with the same deterministic
 /// key, the executor matches against the recovered subflow and returns the existing
 /// `run_id` instead of creating a duplicate. This avoids restarting completed or
 /// in-progress subflows from scratch.
-///
-/// Subflows without a `SubflowSubmitted` event (crash between `RunCreated` and
-/// `SubflowSubmitted`) are skipped — the parent step will re-create them.
 pub(super) async fn recover_execution_tree(
     env: &Arc<StepflowEnvironment>,
     journal: &Arc<dyn ExecutionJournal>,
     root_info: &stepflow_state::RunRecoveryInfo,
 ) -> Result<()> {
-    let run_id = root_info.run_id;
     let root_run_id = root_info.root_run_id;
     debug_assert_eq!(
-        run_id, root_run_id,
+        root_info.run_id, root_run_id,
         "recover_execution_tree expects root run"
     );
     let state_store = env.metadata_store();
@@ -72,7 +67,7 @@ pub(super) async fn recover_execution_tree(
 
     // Load and apply overrides (if any) to match original execution
     let overrides = state_store
-        .get_run_overrides(run_id)
+        .get_run_overrides(root_run_id)
         .await
         .change_context(ExecutionError::RecoveryFailed)?
         .unwrap_or_default();
@@ -99,35 +94,47 @@ pub(super) async fn recover_execution_tree(
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
 
+    let recovery = Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &flow,
+        blob_store.as_ref(),
+        state_store.as_ref(),
+    );
+
     let recovered = if let Some(ref stored_cp) = stored_checkpoint {
         // Checkpoint exists — restore from it. Errors are propagated as hard
         // failures because the full journal may have been truncated.
-        restore_from_checkpoint(
-            stored_cp,
-            run_id,
-            root_run_id,
-            &flow,
-            blob_store.as_ref(),
-            journal.as_ref(),
-        )
-        .await
-        .change_context(ExecutionError::RecoveryFailed)?
+        recovery
+            .restore_from_checkpoint(stored_cp)
+            .await
+            .change_context(ExecutionError::RecoveryFailed)?
     } else {
         // Full replay path (no checkpoint)
-        restore_from_journal(
-            journal,
-            root_run_id,
-            run_id,
-            root_info,
-            &flow,
-            blob_store.as_ref(),
-        )
-        .await?
+        recovery.restore_from_journal(root_info).await?
     };
 
-    // If the run is already complete, no need to resume
+    // If the run is already complete, sync metadata and return — no need to resume.
+    //
+    // Crash window: the journal recorded RunCompleted for the root run but the
+    // metadata store was not updated before the crash (journal-first ordering).
+    // Without this sync, the metadata store would remain "Running" and the run
+    // would be re-discovered on every recovery cycle.
     if recovered.run_state.is_complete() {
-        log::info!("Root run {} already complete after recovery", run_id);
+        log::info!(
+            "Root run {} already complete after recovery, syncing metadata",
+            root_run_id
+        );
+        if let Some(status) = recovered.root_terminal_status {
+            sync_run_state_to_metadata(
+                root_run_id,
+                &recovered.run_state,
+                status,
+                state_store.as_ref(),
+                || ExecutionError::RecoveryFailed,
+            )
+            .await?;
+        }
         return Ok(());
     }
 
