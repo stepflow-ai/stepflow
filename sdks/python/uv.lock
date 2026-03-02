@@ -1946,7 +1946,7 @@ wheels = [
 
 [[package]]
 name = "stepflow-orchestrator"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "stepflow-orchestrator" }
 dependencies = [
     { name = "msgspec" },
@@ -1973,7 +1973,7 @@ dev = [
 
 [[package]]
 name = "stepflow-py"
-version = "0.10.0"
+version = "0.11.0"
 source = { editable = "stepflow-py" }
 dependencies = [
     { name = "aiohttp" },
