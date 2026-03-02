@@ -1063,7 +1063,7 @@ impl ExecutionJournal for SqliteStateStore {
 
             loop {
                 let sql = r#"
-                    SELECT event_data
+                    SELECT sequence, event_data
                     FROM journal_entries
                     WHERE root_run_id = ? AND sequence >= ?
                     ORDER BY sequence
@@ -1084,9 +1084,11 @@ impl ExecutionJournal for SqliteStateStore {
                     }
                 };
 
-                let count = rows.len() as i64;
+                if rows.is_empty() {
+                    break;
+                }
 
-                for row in rows {
+                for row in &rows {
                     let event_data: String = row.get("event_data");
                     match serde_json::from_str::<JournalEvent>(&event_data) {
                         Ok(event) => yield Ok(event),
@@ -1097,10 +1099,13 @@ impl ExecutionJournal for SqliteStateStore {
                     }
                 }
 
-                if count < BATCH_SIZE {
+                if rows.len() < BATCH_SIZE as usize {
                     break;
                 }
-                cursor += count;
+
+                // Advance cursor past the last sequence seen, handling gaps.
+                let last_seq: i64 = rows.last().unwrap().get("sequence");
+                cursor = last_seq + 1;
             }
         })
     }

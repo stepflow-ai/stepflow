@@ -99,10 +99,10 @@ impl<'a> Recovery<'a> {
 
     /// Full journal replay path — no checkpoint available.
     ///
-    /// Streams the entire journal from sequence 0, extracts `RootRunCreated` as the
-    /// first event, then replays remaining events through
-    /// [`replay_events`](Self::replay_events) to reconstruct execution state for
-    /// both the root and any subflows.
+    /// Streams the journal from the root run's start sequence, extracts
+    /// `RootRunCreated` as the first event, then replays remaining events
+    /// through [`replay_events`](Self::replay_events) to reconstruct
+    /// execution state for both the root and any subflows.
     ///
     /// For completed subflows, checks the metadata store to determine whether
     /// results have been persisted. If the journal records a `RunCompleted` but
@@ -113,9 +113,8 @@ impl<'a> Recovery<'a> {
         &self,
         root_info: &stepflow_state::RunRecoveryInfo,
     ) -> Result<RecoveredState> {
-        let mut stream = self
-            .journal
-            .stream_from(self.root_run_id, SequenceNumber::new(0));
+        let start = root_info.start_sequence.unwrap_or(SequenceNumber::new(0));
+        let mut stream = self.journal.stream_from(self.root_run_id, start);
 
         // The first event must be RootRunCreated for the root run.
         let first_event = stream
@@ -159,7 +158,7 @@ impl<'a> Recovery<'a> {
         let mut inflight_subflow_run_ids: HashSet<uuid::Uuid> = HashSet::new();
         let mut root_terminal_status: Option<ExecutionStatus> = None;
 
-        // Full replay from beginning — no useful lower bound for pruning.
+        // Replay from the root run's start sequence.
         let event_count = self
             .replay_events(
                 stream,

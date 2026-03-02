@@ -15,7 +15,6 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use stepflow_core::BlobId;
@@ -146,14 +145,12 @@ pub struct RunRecoveryInfo {
     /// Variables provided for execution.
     pub variables: HashMap<String, ValueRef>,
 
-    /// Opaque journal offset for replay.
+    /// Journal sequence number to start replay from.
     ///
-    /// This is interpreted by the journal backend:
-    /// - SQLite: Typically the sequence number to start from
-    /// - NATS JetStream: Stream sequence or timestamp
-    ///
-    /// An empty `Bytes` indicates replay from the beginning.
-    pub journal_offset: Bytes,
+    /// When present, recovery streams from this sequence instead of the
+    /// beginning of the journal. `None` indicates replay from the first
+    /// available event.
+    pub start_sequence: Option<crate::SequenceNumber>,
 }
 
 #[cfg(test)]

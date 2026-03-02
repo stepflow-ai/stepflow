@@ -68,7 +68,6 @@ mod tests;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use error_stack::ResultExt as _;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_dtos::RunFilters;
@@ -391,7 +390,6 @@ async fn claim_for_recovery(
             // Note: inputs and variables here are placeholders. Recovery extracts
             // authoritative values from the RootRunCreated journal event, which contains
             // the exact inputs and variables used when the run was originally created.
-            // journal_offset is empty to replay from the beginning.
             recovery_infos.push(RunRecoveryInfo {
                 run_id: summary.run_id,
                 root_run_id: summary.root_run_id,
@@ -399,7 +397,7 @@ async fn claim_for_recovery(
                 flow_id: summary.flow_id,
                 inputs,
                 variables: HashMap::new(),
-                journal_offset: Bytes::new(),
+                start_sequence: None,
             });
         }
     }
