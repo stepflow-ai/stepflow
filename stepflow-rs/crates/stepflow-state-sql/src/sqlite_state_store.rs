@@ -1050,43 +1050,59 @@ impl ExecutionJournal for SqliteStateStore {
         .boxed()
     }
 
-    fn read_from(
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>> {
+    ) -> stepflow_state::JournalEventStream<'_> {
         let pool = self.pool.clone();
+        const BATCH_SIZE: i64 = 1000;
 
-        async move {
-            // Read all events for this root run's journal (across all runs in the tree)
-            let sql = r#"
-                SELECT event_data
-                FROM journal_entries
-                WHERE root_run_id = ? AND sequence >= ?
-                ORDER BY sequence
-                LIMIT ?
-            "#;
+        Box::pin(async_stream::stream! {
+            let mut cursor = from_sequence.value() as i64;
 
-            let rows = sqlx::query(sql)
-                .bind(root_run_id.to_string())
-                .bind(from_sequence.value() as i64)
-                .bind(limit as i64)
-                .fetch_all(&pool)
-                .await
-                .change_context(StateError::Internal)?;
+            loop {
+                let sql = r#"
+                    SELECT event_data
+                    FROM journal_entries
+                    WHERE root_run_id = ? AND sequence >= ?
+                    ORDER BY sequence
+                    LIMIT ?
+                "#;
 
-            let mut events = Vec::new();
-            for row in rows {
-                let event_data: String = row.get("event_data");
-                let event: JournalEvent =
-                    serde_json::from_str(&event_data).change_context(StateError::Serialization)?;
-                events.push(event);
+                let rows = match sqlx::query(sql)
+                    .bind(root_run_id.to_string())
+                    .bind(cursor)
+                    .bind(BATCH_SIZE)
+                    .fetch_all(&pool)
+                    .await
+                {
+                    Ok(rows) => rows,
+                    Err(e) => {
+                        yield Err(error_stack::report!(StateError::Internal).attach(e));
+                        return;
+                    }
+                };
+
+                let count = rows.len() as i64;
+
+                for row in rows {
+                    let event_data: String = row.get("event_data");
+                    match serde_json::from_str::<JournalEvent>(&event_data) {
+                        Ok(event) => yield Ok(event),
+                        Err(e) => {
+                            yield Err(error_stack::report!(StateError::Serialization).attach(e));
+                            return;
+                        }
+                    }
+                }
+
+                if count < BATCH_SIZE {
+                    break;
+                }
+                cursor += count;
             }
-
-            Ok(events)
-        }
-        .boxed()
+        })
     }
 
     fn latest_sequence(

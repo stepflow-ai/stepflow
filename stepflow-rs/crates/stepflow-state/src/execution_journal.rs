@@ -34,7 +34,10 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+use std::pin::Pin;
+
 use futures::future::{BoxFuture, FutureExt as _};
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::ValueRef;
@@ -42,6 +45,13 @@ use stepflow_core::{BlobId, FlowResult};
 use uuid::Uuid;
 
 use crate::StateError;
+
+/// A stream of journal events, used for iterating over journal contents.
+///
+/// Implementations yield events in sequence order. Errors are propagated
+/// as stream items, allowing the consumer to handle them inline.
+pub type JournalEventStream<'a> =
+    Pin<Box<dyn Stream<Item = error_stack::Result<JournalEvent, StateError>> + Send + 'a>>;
 
 /// Sequence number for journal entries.
 ///
@@ -348,23 +358,22 @@ pub trait ExecutionJournal: Send + Sync {
         event: JournalEvent,
     ) -> BoxFuture<'_, error_stack::Result<SequenceNumber, StateError>>;
 
-    /// Read journal events for a root run starting from a sequence number.
+    /// Stream journal events for a root run starting from a sequence number.
     ///
-    /// Returns all events in the journal (across all runs in the tree).
+    /// Returns a stream yielding all events in the journal (across all runs
+    /// in the tree) in sequence order, starting from `from_sequence`.
     ///
     /// # Arguments
     /// * `root_run_id` - The root run's journal to read from
     /// * `from_sequence` - Start reading from this sequence (inclusive)
-    /// * `limit` - Maximum number of events to return
     ///
     /// # Returns
-    /// Events in sequence order
-    fn read_from(
+    /// A stream of events in sequence order
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, StateError>>;
+    ) -> JournalEventStream<'_>;
 
     /// Get the latest sequence number for a root run's journal.
     ///

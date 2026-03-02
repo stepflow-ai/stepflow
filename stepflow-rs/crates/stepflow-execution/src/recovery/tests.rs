@@ -11,6 +11,7 @@
 // the License.
 
 use super::*;
+use futures::StreamExt as _;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -636,9 +637,12 @@ async fn test_recovery_preserves_attempt_counts() {
     assert_eq!(run.summary.status, ExecutionStatus::Completed);
 
     // Verify the journal now has a second TasksStarted with attempt=2
-    let all_entries = journal
-        .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+    let all_entries: Vec<_> = journal
+        .stream_from(run_id, SequenceNumber::new(0))
+        .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
         .expect("should read journal");
 
     let tasks_started_events: Vec<_> = all_entries
@@ -788,9 +792,12 @@ async fn test_recovery_batches_parallel_tasks() {
     assert_eq!(run.summary.status, ExecutionStatus::Completed);
 
     // Check journal for the recovery TasksStarted
-    let all_entries = journal
-        .read_from(run_id, SequenceNumber::new(0), usize::MAX)
+    let all_entries: Vec<_> = journal
+        .stream_from(run_id, SequenceNumber::new(0))
+        .collect::<Vec<_>>()
         .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
         .expect("should read journal");
 
     let tasks_started_events: Vec<_> = all_entries

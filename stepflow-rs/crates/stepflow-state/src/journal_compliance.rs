@@ -42,6 +42,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 
+use futures::StreamExt as _;
 use serde_json::json;
 use stepflow_core::workflow::ValueRef;
 use stepflow_core::{BlobId, FlowError, FlowResult};
@@ -64,10 +65,9 @@ impl JournalComplianceTests {
     /// Tests are run sequentially and will panic on the first failure.
     pub async fn run_all<J: ExecutionJournal>(journal: &J) {
         Self::test_append_returns_monotonic_sequence(journal).await;
-        Self::test_read_from_empty_journal(journal).await;
-        Self::test_read_from_returns_entries_in_order(journal).await;
-        Self::test_read_from_respects_from_sequence(journal).await;
-        Self::test_read_from_respects_limit(journal).await;
+        Self::test_stream_from_empty_journal(journal).await;
+        Self::test_stream_from_returns_entries_in_order(journal).await;
+        Self::test_stream_from_respects_from_sequence(journal).await;
         Self::test_latest_sequence_empty(journal).await;
         Self::test_latest_sequence_after_append(journal).await;
         Self::test_list_active_roots_empty(journal).await;
@@ -96,10 +96,9 @@ impl JournalComplianceTests {
         Fut: Future<Output = J>,
     {
         Self::test_append_returns_monotonic_sequence(&factory().await).await;
-        Self::test_read_from_empty_journal(&factory().await).await;
-        Self::test_read_from_returns_entries_in_order(&factory().await).await;
-        Self::test_read_from_respects_from_sequence(&factory().await).await;
-        Self::test_read_from_respects_limit(&factory().await).await;
+        Self::test_stream_from_empty_journal(&factory().await).await;
+        Self::test_stream_from_returns_entries_in_order(&factory().await).await;
+        Self::test_stream_from_respects_from_sequence(&factory().await).await;
         Self::test_latest_sequence_empty(&factory().await).await;
         Self::test_latest_sequence_after_append(&factory().await).await;
         Self::test_list_active_roots_empty(&factory().await).await;
@@ -148,28 +147,25 @@ impl JournalComplianceTests {
     }
 
     // =========================================================================
-    // read_from() tests
+    // stream_from() tests
     // =========================================================================
 
-    /// Test that read_from() returns empty vec for non-existent journal.
+    /// Test that stream_from() yields nothing for non-existent journal.
     ///
-    /// Contract: Reading from a root_run_id with no entries returns an empty vec.
-    pub async fn test_read_from_empty_journal<J: ExecutionJournal>(journal: &J) {
+    /// Contract: Streaming from a root_run_id with no entries yields no events.
+    pub async fn test_stream_from_empty_journal<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
-        let events = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
-            .await
-            .expect("read_from should succeed");
+        let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
         assert!(
-            events.is_empty(),
-            "read_from non-existent journal should return empty vec"
+            stream.next().await.is_none(),
+            "stream_from non-existent journal should yield nothing"
         );
     }
 
-    /// Test that read_from() returns events in sequence order.
+    /// Test that stream_from() yields events in sequence order.
     ///
-    /// Contract: Events are returned in ascending sequence number order.
-    pub async fn test_read_from_returns_entries_in_order<J: ExecutionJournal>(journal: &J) {
+    /// Contract: Events are yielded in ascending sequence number order.
+    pub async fn test_stream_from_returns_entries_in_order<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
@@ -191,29 +187,28 @@ impl JournalComplianceTests {
             appended_seqs.push(seq);
         }
 
-        // Read all events starting from the first appended sequence
-        let events = journal
-            .read_from(root_run_id, appended_seqs[0], 100)
-            .await
-            .expect("read_from should succeed");
-
-        assert_eq!(events.len(), 5, "Should have 5 events");
-
-        // Verify events are in correct order by checking step_index
-        for (i, event) in events.iter().enumerate() {
+        // Stream all events and verify each one in order
+        let mut stream = journal.stream_from(root_run_id, appended_seqs[0]);
+        for i in 0..5 {
+            let event = stream
+                .next()
+                .await
+                .unwrap_or_else(|| panic!("Expected event at position {i}"))
+                .expect("stream should not error");
             match event {
                 JournalEvent::TaskCompleted { step_index, .. } => {
-                    assert_eq!(*step_index, i, "Event {i} should have step_index {i}");
+                    assert_eq!(step_index, i, "Event {i} should have step_index {i}");
                 }
-                _ => panic!("Expected TaskCompleted event"),
+                _ => panic!("Expected TaskCompleted event at position {i}"),
             }
         }
+        assert!(stream.next().await.is_none(), "Stream should be exhausted");
     }
 
-    /// Test that read_from() respects the from_sequence parameter.
+    /// Test that stream_from() respects the from_sequence parameter.
     ///
-    /// Contract: Only events with sequence >= from_sequence are returned.
-    pub async fn test_read_from_respects_from_sequence<J: ExecutionJournal>(journal: &J) {
+    /// Contract: Only events with sequence >= from_sequence are yielded.
+    pub async fn test_stream_from_respects_from_sequence<J: ExecutionJournal>(journal: &J) {
         let root_run_id = Uuid::now_v7();
         let run_id = root_run_id;
 
@@ -235,61 +230,25 @@ impl JournalComplianceTests {
             appended_seqs.push(seq);
         }
 
-        // Read from the 6th sequence (index 5)
-        let events = journal
-            .read_from(root_run_id, appended_seqs[5], 100)
-            .await
-            .expect("read_from should succeed");
-
-        assert_eq!(events.len(), 5, "Should have 5 events (indices 5-9)");
-        // Verify the first event has step_index 5
-        match &events[0] {
-            JournalEvent::TaskCompleted { step_index, .. } => {
-                assert_eq!(*step_index, 5, "First event should have step_index 5");
-            }
-            _ => panic!("Expected TaskCompleted event"),
-        }
-    }
-
-    /// Test that read_from() respects the limit parameter.
-    ///
-    /// Contract: At most `limit` events are returned.
-    pub async fn test_read_from_respects_limit<J: ExecutionJournal>(journal: &J) {
-        let root_run_id = Uuid::now_v7();
-        let run_id = root_run_id;
-
-        // Append 10 events
-        let mut appended_seqs = Vec::new();
-        for i in 0..10 {
-            let seq = journal
-                .write(
-                    root_run_id,
-                    JournalEvent::TaskCompleted {
-                        run_id,
-                        item_index: 0,
-                        step_index: i,
-                        result: FlowResult::Success(ValueRef::new(json!({}))),
-                    },
-                )
+        // Stream from the 6th sequence (index 5) and verify each element
+        let mut stream = journal.stream_from(root_run_id, appended_seqs[5]);
+        for expected_step in 5..10 {
+            let event = stream
+                .next()
                 .await
-                .expect("write should succeed");
-            appended_seqs.push(seq);
+                .unwrap_or_else(|| panic!("Expected event with step_index {expected_step}"))
+                .expect("stream should not error");
+            match event {
+                JournalEvent::TaskCompleted { step_index, .. } => {
+                    assert_eq!(
+                        step_index, expected_step,
+                        "Event should have step_index {expected_step}"
+                    );
+                }
+                _ => panic!("Expected TaskCompleted event"),
+            }
         }
-
-        // Read with limit of 3
-        let events = journal
-            .read_from(root_run_id, appended_seqs[0], 3)
-            .await
-            .expect("read_from should succeed");
-
-        assert_eq!(events.len(), 3, "Should have exactly 3 events");
-
-        // Read with limit of 0
-        let events = journal
-            .read_from(root_run_id, appended_seqs[0], 0)
-            .await
-            .expect("read_from should succeed");
-        assert!(events.is_empty(), "Limit 0 should return empty vec");
+        assert!(stream.next().await.is_none(), "Stream should be exhausted");
     }
 
     // =========================================================================
@@ -551,29 +510,26 @@ impl JournalComplianceTests {
             .await
             .expect("write should succeed");
 
-        // Read all events from the shared journal
-        let all_events = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
-            .await
-            .expect("read_from should succeed");
-        assert_eq!(
-            all_events.len(),
-            4,
-            "Should have 4 events in shared journal"
-        );
+        // Stream events and verify the interleaved order element-by-element
+        let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
 
-        // Verify events have expected run_ids (2 parent, 2 subflow)
-        let parent_count = all_events
-            .iter()
-            .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == parent_run_id))
-            .count();
-        assert_eq!(parent_count, 2, "Should have 2 parent events");
+        // Event 1: parent
+        let event = stream.next().await.unwrap().expect("stream should not error");
+        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id));
 
-        let subflow_count = all_events
-            .iter()
-            .filter(|e| matches!(e, JournalEvent::TaskCompleted { run_id, .. } if *run_id == subflow_run_id))
-            .count();
-        assert_eq!(subflow_count, 2, "Should have 2 subflow events");
+        // Event 2: subflow
+        let event = stream.next().await.unwrap().expect("stream should not error");
+        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id));
+
+        // Event 3: subflow
+        let event = stream.next().await.unwrap().expect("stream should not error");
+        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id));
+
+        // Event 4: parent
+        let event = stream.next().await.unwrap().expect("stream should not error");
+        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id));
+
+        assert!(stream.next().await.is_none(), "Stream should be exhausted");
 
         // Verify list_active_roots only shows one root
         let roots = journal
@@ -594,7 +550,7 @@ impl JournalComplianceTests {
     // Event serialization tests
     // =========================================================================
 
-    /// Test that all event types can be appended and read correctly.
+    /// Test that all event types can be appended and streamed correctly.
     ///
     /// Contract: All JournalEvent variants can be serialized, stored, and deserialized.
     pub async fn test_all_event_types_serialization<J: ExecutionJournal>(journal: &J) {
@@ -685,17 +641,15 @@ impl JournalComplianceTests {
                 .expect("write should succeed");
         }
 
-        // Read all events back
-        let read_events = journal
-            .read_from(root_run_id, SequenceNumber::new(0), 100)
-            .await
-            .expect("read_from should succeed");
-
-        assert_eq!(read_events.len(), events.len(), "Should have all events");
-
-        // Verify each event type was preserved
-        for (i, event) in read_events.iter().enumerate() {
-            match (event, &events[i]) {
+        // Stream events back and verify each one element-by-element
+        let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
+        for (i, expected) in events.iter().enumerate() {
+            let event = stream
+                .next()
+                .await
+                .unwrap_or_else(|| panic!("Expected event at position {i}"))
+                .expect("stream should not error");
+            match (&event, expected) {
                 (
                     JournalEvent::RootRunCreated { flow_id: f1, .. },
                     JournalEvent::RootRunCreated { flow_id: f2, .. },
@@ -772,10 +726,11 @@ impl JournalComplianceTests {
                 }
                 _ => panic!(
                     "Event type mismatch at index {}: got {:?}, expected {:?}",
-                    i, event, events[i]
+                    i, event, expected
                 ),
             }
         }
+        assert!(stream.next().await.is_none(), "Stream should be exhausted");
     }
 }
 

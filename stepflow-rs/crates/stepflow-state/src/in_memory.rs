@@ -661,31 +661,23 @@ impl ExecutionJournal for InMemoryStateStore {
         .boxed()
     }
 
-    fn read_from(
+    fn stream_from(
         &self,
         root_run_id: Uuid,
         from_sequence: SequenceNumber,
-        limit: usize,
-    ) -> BoxFuture<'_, error_stack::Result<Vec<JournalEvent>, crate::StateError>> {
-        async move {
-            let journal = match self.journals.get(&root_run_id) {
-                Some(j) => j,
-                None => return Ok(Vec::new()),
-            };
+    ) -> crate::JournalEventStream<'_> {
+        // Clone events out while holding the DashMap guard, then yield them.
+        // The guard cannot be held across yield points.
+        let events: Vec<_> = self
+            .journals
+            .get(&root_run_id)
+            .map(|journal| {
+                let start_idx = from_sequence.value() as usize;
+                journal.events.iter().skip(start_idx).cloned().collect()
+            })
+            .unwrap_or_default();
 
-            let start_idx = from_sequence.value() as usize;
-
-            let events: Vec<_> = journal
-                .events
-                .iter()
-                .skip(start_idx)
-                .take(limit)
-                .cloned()
-                .collect();
-
-            Ok(events)
-        }
-        .boxed()
+        Box::pin(futures::stream::iter(events.into_iter().map(Ok)))
     }
 
     fn latest_sequence(
