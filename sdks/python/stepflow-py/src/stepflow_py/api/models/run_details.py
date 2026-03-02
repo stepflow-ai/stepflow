@@ -63,8 +63,7 @@ class RunDetails(BaseModel):
         description="The orchestrator currently managing this run.  None means the run is orphaned (no orchestrator owns it). Set when the run is created and updated during recovery.",
         alias="orchestratorId",
     )
-    created_at_seqno: Annotated[int, Field(strict=True, ge=0)] | None = Field(
-        default=None,
+    created_at_seqno: Annotated[int, Field(strict=True, ge=0)] = Field(
         description="Journal sequence number of the event that created this run.  Records where in the journal this run was created, enabling efficient metadata queries during recovery (filter by offset range).",
         alias="createdAtSeqno",
     )
@@ -165,14 +164,6 @@ class RunDetails(BaseModel):
         # and model_fields_set contains the field
         if self.orchestrator_id is None and "orchestrator_id" in self.model_fields_set:
             _dict["orchestratorId"] = None
-
-        # set to None if created_at_seqno (nullable) is None
-        # and model_fields_set contains the field
-        if (
-            self.created_at_seqno is None
-            and "created_at_seqno" in self.model_fields_set
-        ):
-            _dict["createdAtSeqno"] = None
 
         # set to None if finished_at_seqno (nullable) is None
         # and model_fields_set contains the field
