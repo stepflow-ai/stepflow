@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.11.0"></a> [Stepflow 0.11.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.11.0) - 2026-03-02
+### Bug Fixes
+
+- Use exclusive transactions for SQLite migrations ([#685](https://github.com/stepflow-ai/stepflow/pull/685))
+
+### Features
+
+- Add execution checkpointing for faster recovery ([#671](https://github.com/stepflow-ai/stepflow/pull/671))
+- Evict completed subflows from executor state ([#681](https://github.com/stepflow-ai/stepflow/pull/681))
+- Populate flow variables from environment ([#679](https://github.com/stepflow-ai/stepflow/pull/679))
+- Add delay-control API to recovery test worker ([#686](https://github.com/stepflow-ai/stepflow/pull/686))
+- Resume in-flight subflows during recovery ([#694](https://github.com/stepflow-ai/stepflow/pull/694))
+- Unify retry counters into orchestrator with separate budgets ([#692](https://github.com/stepflow-ai/stepflow/pull/692))
+- Merge RunCreated+SubflowSubmitted into SubflowCreated ([#696](https://github.com/stepflow-ai/stepflow/pull/696))
+- Replace batch read_from with streaming stream_from + recovery fixes ([#702](https://github.com/stepflow-ai/stepflow/pull/702))
+
+### Miscellaneous Tasks
+
+- Fix rust-cache and unify toolchain action
+
 ## <a id="0.10.0"></a> [Stepflow 0.10.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.10.0) - 2026-02-24
 ### Bug Fixes
 
