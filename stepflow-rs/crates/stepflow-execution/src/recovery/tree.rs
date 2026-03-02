@@ -48,10 +48,6 @@ pub(super) async fn recover_execution_tree(
     root_info: &stepflow_state::RunRecoveryInfo,
 ) -> Result<()> {
     let root_run_id = root_info.root_run_id;
-    debug_assert_eq!(
-        root_info.run_id, root_run_id,
-        "recover_execution_tree expects root run"
-    );
     let state_store = env.metadata_store();
     let blob_store = env.blob_store();
 

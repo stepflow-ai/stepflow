@@ -113,7 +113,7 @@ impl<'a> Recovery<'a> {
         &self,
         root_info: &stepflow_state::RunRecoveryInfo,
     ) -> Result<RecoveredState> {
-        let start = root_info.start_sequence.unwrap_or(SequenceNumber::new(0));
+        let start = root_info.start_sequence;
         let mut stream = self.journal.stream_from(self.root_run_id, start);
 
         // The first event must be RootRunCreated for the root run.
