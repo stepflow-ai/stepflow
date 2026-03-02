@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.11.0"></a> [stepflow-py 0.11.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.11.0) - 2026-03-02
+### Features
+
+- Add execution checkpointing for faster recovery ([#671](https://github.com/stepflow-ai/stepflow/pull/671))
+- Only use SSE when bidirectional communication is needed ([#677](https://github.com/stepflow-ai/stepflow/pull/677))
+- Populate flow variables from environment ([#679](https://github.com/stepflow-ai/stepflow/pull/679))
+- Unify retry counters into orchestrator with separate budgets ([#692](https://github.com/stepflow-ai/stepflow/pull/692))
+- Merge RunCreated+SubflowSubmitted into SubflowCreated ([#696](https://github.com/stepflow-ai/stepflow/pull/696))
+- Replace batch read_from with streaming stream_from + recovery fixes ([#702](https://github.com/stepflow-ai/stepflow/pull/702))
+
+### Miscellaneous Tasks
+
+- Release stepflow v0.11.0 ([#703](https://github.com/stepflow-ai/stepflow/pull/703))
+
 ## <a id="0.10.0"></a> [stepflow-py 0.10.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.10.0) - 2026-02-23
 ### Features
 
