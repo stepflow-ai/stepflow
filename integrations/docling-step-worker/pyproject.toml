@@ -50,6 +50,12 @@ dependencies = [
 ocr = [
     "docling[ocr]",
 ]
+facade = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.24.0",
+    "httpx>=0.25.0",
+    "pyyaml>=6.0",
+]
 
 [dependency-groups]
 dev = [
@@ -74,6 +80,7 @@ Repository = "https://github.com/stepflow-ai/stepflow"
 [project.scripts]
 docling-step-worker = "docling_step_worker.cli.main:main"
 docling-step-worker-server = "docling_step_worker.standalone_server:main"
+docling-step-worker-facade = "docling_step_worker.facade.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -170,6 +177,7 @@ python-dotenv = ["dotenv"]
 stepflow-py = ["stepflow_py"]
 nest-asyncio = ["nest_asyncio"]
 docling-core = ["docling_core"]
+pyyaml = ["yaml"]
 
 [tool.mypy]
 python_version = "3.11"

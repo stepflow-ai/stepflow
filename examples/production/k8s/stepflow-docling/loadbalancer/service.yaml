@@ -12,24 +12,25 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Base on docling-serve which has docling + models pre-installed
-FROM quay.io/docling-project/docling-serve-cpu:v1.14.0
-
-USER 0
-
-# Install stepflow-py and remaining deps not in the base image
-RUN pip install --no-cache-dir \
-    "stepflow-py[http]>=0.8.0" \
-    "click>=8.0" \
-    "python-dotenv>=1.0.0" \
-    "nest-asyncio>=1.6.0"
-
-WORKDIR /app
-COPY --chown=1001:0 src/ /app/src/
-ENV PYTHONPATH=/app/src
-
-USER 1001
-
-EXPOSE 8080
-
-ENTRYPOINT ["python", "-m", "docling_step_worker.cli.main", "serve", "--host", "0.0.0.0", "--port", "8080"]
+apiVersion: v1
+kind: Service
+metadata:
+  name: docling-lb
+  namespace: stepflow-docling
+  labels:
+    app: docling-lb
+    component: load-balancer
+spec:
+  type: ClusterIP
+  selector:
+    app: docling-lb
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: metrics
+    protocol: TCP
+  sessionAffinity: None

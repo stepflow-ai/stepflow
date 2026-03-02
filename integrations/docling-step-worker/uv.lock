@@ -652,6 +652,12 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+facade = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
+]
 ocr = [
     { name = "docling" },
 ]
@@ -675,11 +681,15 @@ requires-dist = [
     { name = "docling", specifier = ">=2.70.0" },
     { name = "docling", extras = ["ocr"], marker = "extra == 'ocr'" },
     { name = "docling-core", specifier = ">=2.60.0" },
+    { name = "fastapi", marker = "extra == 'facade'", specifier = ">=0.100.0" },
+    { name = "httpx", marker = "extra == 'facade'", specifier = ">=0.25.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "pyyaml", marker = "extra == 'facade'", specifier = ">=6.0" },
     { name = "stepflow-py", extras = ["http"], editable = "../../sdks/python/stepflow-py" },
+    { name = "uvicorn", marker = "extra == 'facade'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["ocr"]
+provides-extras = ["ocr", "facade"]
 
 [package.metadata.requires-dev]
 dev = [
