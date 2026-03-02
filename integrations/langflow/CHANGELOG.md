@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.3.0"></a> [stepflow-langflow-integration 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.0) - 2026-03-02
+### Bug Fixes
+
+- Handle plain pandas DataFrame serialization in Langflow executor ([#674](https://github.com/stepflow-ai/stepflow/pull/674))
+
+### Features
+
+- Populate flow variables from environment ([#679](https://github.com/stepflow-ai/stepflow/pull/679))
+
 ## <a id="0.2.0"></a> [stepflow-langflow-integration 0.2.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.2.0) - 2026-02-24
 ### Bug Fixes
 
