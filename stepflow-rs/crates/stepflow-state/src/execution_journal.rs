@@ -36,8 +36,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use std::pin::Pin;
 
-use futures::future::{BoxFuture, FutureExt as _};
 use futures::Stream;
+use futures::future::{BoxFuture, FutureExt as _};
 use serde::{Deserialize, Serialize};
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::ValueRef;

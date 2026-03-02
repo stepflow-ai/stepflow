@@ -16,7 +16,6 @@ workspace = true
 doctest = false
 
 [dependencies]
-async-stream.workspace = true
 bytes.workspace = true
 chrono.workspace = true
 dashmap.workspace = true

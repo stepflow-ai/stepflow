@@ -13,10 +13,10 @@
 //! Tests for the SQL state store implementation.
 
 use crate::SqliteStateStore;
+use futures::StreamExt as _;
 use serde_json::json;
 use std::collections::HashMap;
 use stepflow_core::{BlobId, FlowResult, workflow::ValueRef};
-use futures::StreamExt as _;
 use stepflow_state::{BlobStore as _, ExecutionJournal as _, JournalEvent, SequenceNumber};
 use uuid::Uuid;
 
@@ -353,19 +353,27 @@ async fn test_journal_subflow_shared_journal() {
 
     // Event 1: parent step 0
     let event = stream.next().await.unwrap().unwrap();
-    assert!(matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == parent_run_id));
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == parent_run_id)
+    );
 
     // Event 2: subflow step 0
     let event = stream.next().await.unwrap().unwrap();
-    assert!(matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == subflow_run_id));
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == subflow_run_id)
+    );
 
     // Event 3: subflow step 1
     let event = stream.next().await.unwrap().unwrap();
-    assert!(matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == subflow_run_id));
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == subflow_run_id)
+    );
 
     // Event 4: parent step 1
     let event = stream.next().await.unwrap().unwrap();
-    assert!(matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == parent_run_id));
+    assert!(
+        matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == parent_run_id)
+    );
 
     assert!(stream.next().await.is_none());
 

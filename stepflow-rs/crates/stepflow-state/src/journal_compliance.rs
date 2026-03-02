@@ -514,20 +514,44 @@ impl JournalComplianceTests {
         let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
 
         // Event 1: parent
-        let event = stream.next().await.unwrap().expect("stream should not error");
-        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id));
+        let event = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("stream should not error");
+        assert!(
+            matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id)
+        );
 
         // Event 2: subflow
-        let event = stream.next().await.unwrap().expect("stream should not error");
-        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id));
+        let event = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("stream should not error");
+        assert!(
+            matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id)
+        );
 
         // Event 3: subflow
-        let event = stream.next().await.unwrap().expect("stream should not error");
-        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id));
+        let event = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("stream should not error");
+        assert!(
+            matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == subflow_run_id)
+        );
 
         // Event 4: parent
-        let event = stream.next().await.unwrap().expect("stream should not error");
-        assert!(matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id));
+        let event = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("stream should not error");
+        assert!(
+            matches!(event, JournalEvent::TaskCompleted { run_id, .. } if run_id == parent_run_id)
+        );
 
         assert!(stream.next().await.is_none(), "Stream should be exhausted");
 
