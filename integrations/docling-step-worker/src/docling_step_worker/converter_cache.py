@@ -76,6 +76,9 @@ def build_pipeline_options(request_options: dict[str, Any]) -> PdfPipelineOption
 
     Maps docling-serve's flat option names to docling's nested options hierarchy.
     Only sets values that are explicitly provided; unset values use docling defaults.
+
+    Note: ``generate_picture_images`` defaults to ``True`` to match docling-serve
+    behaviour (docling's own default is ``False``).
     """
     kwargs: dict[str, Any] = {}
 
@@ -99,8 +102,10 @@ def build_pipeline_options(request_options: dict[str, Any]) -> PdfPipelineOption
         kwargs["document_timeout"] = request_options["document_timeout"]
     if "images_scale" in request_options:
         kwargs["images_scale"] = request_options["images_scale"]
-    if "include_images" in request_options:
-        kwargs["generate_picture_images"] = request_options["include_images"]
+
+    # Default to True to match docling-serve (docling's default is False).
+    # Callers can explicitly disable via include_images=false.
+    kwargs["generate_picture_images"] = request_options.get("include_images", True)
 
     if "abort_on_error" in request_options:
         # abort_on_error may not be available in all docling versions

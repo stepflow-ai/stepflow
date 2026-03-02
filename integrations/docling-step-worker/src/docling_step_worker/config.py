@@ -29,19 +29,23 @@ PIPELINE_CONFIGS: dict[str, PdfPipelineOptions] = {
     "born_digital": PdfPipelineOptions(
         do_ocr=False,
         do_table_structure=False,
+        generate_picture_images=True,  # match docling-serve default
     ),
     "born_digital_with_tables": PdfPipelineOptions(
         do_ocr=False,
         do_table_structure=True,
+        generate_picture_images=True,  # match docling-serve default
         table_structure_options=TableStructureOptions(mode=TableFormerMode.ACCURATE),
     ),
     "scanned": PdfPipelineOptions(
         do_ocr=True,
         do_table_structure=True,
+        generate_picture_images=True,  # match docling-serve default
         table_structure_options=TableStructureOptions(mode=TableFormerMode.FAST),
     ),
     "default": PdfPipelineOptions(
         do_table_structure=True,
+        generate_picture_images=True,  # match docling-serve default
         table_structure_options=TableStructureOptions(mode=TableFormerMode.FAST),
     ),
 }

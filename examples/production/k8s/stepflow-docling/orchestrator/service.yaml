@@ -12,24 +12,29 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Base on docling-serve which has docling + models pre-installed
-FROM quay.io/docling-project/docling-serve-cpu:v1.14.0
+# Orchestrator service — exposes facade (5001) and server (7840).
+# NodePort 30501 maps to facade port for kind cluster access at localhost:5001.
 
-USER 0
-
-# Install stepflow-py and remaining deps not in the base image
-RUN pip install --no-cache-dir \
-    "stepflow-py[http]>=0.8.0" \
-    "click>=8.0" \
-    "python-dotenv>=1.0.0" \
-    "nest-asyncio>=1.6.0"
-
-WORKDIR /app
-COPY --chown=1001:0 src/ /app/src/
-ENV PYTHONPATH=/app/src
-
-USER 1001
-
-EXPOSE 8080
-
-ENTRYPOINT ["python", "-m", "docling_step_worker.cli.main", "serve", "--host", "0.0.0.0", "--port", "8080"]
+apiVersion: v1
+kind: Service
+metadata:
+  name: docling-orchestrator
+  namespace: stepflow-docling
+  labels:
+    app: docling-orchestrator
+    component: orchestration
+spec:
+  type: NodePort
+  selector:
+    app: docling-orchestrator
+  ports:
+  - name: facade
+    port: 5001
+    targetPort: facade
+    protocol: TCP
+    nodePort: 30501
+  - name: http
+    port: 7840
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: None
