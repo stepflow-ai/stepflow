@@ -61,7 +61,7 @@ pub struct CreateRunParams {
     /// Records where in the journal this run was created, enabling efficient
     /// metadata store queries during recovery (filter by offset range instead
     /// of scanning all sub-runs).
-    pub created_at_seqno: Option<SequenceNumber>,
+    pub created_at_seqno: SequenceNumber,
 }
 
 impl CreateRunParams {
@@ -69,7 +69,12 @@ impl CreateRunParams {
     ///
     /// For single-item runs, pass `vec![input]`.
     /// Sets `root_run_id` equal to `run_id` and `parent_run_id` to None.
-    pub fn new(run_id: Uuid, flow_id: BlobId, inputs: Vec<ValueRef>) -> Self {
+    pub fn new(
+        run_id: Uuid,
+        flow_id: BlobId,
+        inputs: Vec<ValueRef>,
+        created_at_seqno: SequenceNumber,
+    ) -> Self {
         Self {
             run_id,
             flow_id,
@@ -80,7 +85,7 @@ impl CreateRunParams {
             root_run_id: run_id,
             parent_run_id: None,
             orchestrator_id: None,
-            created_at_seqno: None,
+            created_at_seqno,
         }
     }
 
@@ -94,6 +99,7 @@ impl CreateRunParams {
         inputs: Vec<ValueRef>,
         root_run_id: Uuid,
         parent_run_id: Uuid,
+        created_at_seqno: SequenceNumber,
     ) -> Self {
         Self {
             run_id,
@@ -105,7 +111,7 @@ impl CreateRunParams {
             root_run_id,
             parent_run_id: Some(parent_run_id),
             orchestrator_id: None,
-            created_at_seqno: None,
+            created_at_seqno,
         }
     }
 

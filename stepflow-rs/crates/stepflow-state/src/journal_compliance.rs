@@ -187,14 +187,19 @@ impl JournalComplianceTests {
             appended_seqs.push(seq);
         }
 
-        // Stream all events and verify each one in order
+        // Stream all events and verify each one in order with correct sequence numbers
         let mut stream = journal.stream_from(root_run_id, appended_seqs[0]);
         for i in 0..5 {
-            let event = stream
+            let (seq, event) = stream
                 .next()
                 .await
                 .unwrap_or_else(|| panic!("Expected event at position {i}"))
                 .expect("stream should not error");
+            assert_eq!(
+                seq, appended_seqs[i],
+                "Event {i} should have sequence {:?}",
+                appended_seqs[i]
+            );
             match event {
                 JournalEvent::TaskCompleted { step_index, .. } => {
                     assert_eq!(step_index, i, "Event {i} should have step_index {i}");
@@ -233,11 +238,16 @@ impl JournalComplianceTests {
         // Stream from the 6th sequence (index 5) and verify each element
         let mut stream = journal.stream_from(root_run_id, appended_seqs[5]);
         for expected_step in 5..10 {
-            let event = stream
+            let (seq, event) = stream
                 .next()
                 .await
                 .unwrap_or_else(|| panic!("Expected event with step_index {expected_step}"))
                 .expect("stream should not error");
+            assert_eq!(
+                seq, appended_seqs[expected_step],
+                "Event should have sequence {:?}",
+                appended_seqs[expected_step]
+            );
             match event {
                 JournalEvent::TaskCompleted { step_index, .. } => {
                     assert_eq!(
@@ -514,7 +524,7 @@ impl JournalComplianceTests {
         let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
 
         // Event 1: parent
-        let event = stream
+        let (_seq, event) = stream
             .next()
             .await
             .unwrap()
@@ -524,7 +534,7 @@ impl JournalComplianceTests {
         );
 
         // Event 2: subflow
-        let event = stream
+        let (_seq, event) = stream
             .next()
             .await
             .unwrap()
@@ -534,7 +544,7 @@ impl JournalComplianceTests {
         );
 
         // Event 3: subflow
-        let event = stream
+        let (_seq, event) = stream
             .next()
             .await
             .unwrap()
@@ -544,7 +554,7 @@ impl JournalComplianceTests {
         );
 
         // Event 4: parent
-        let event = stream
+        let (_seq, event) = stream
             .next()
             .await
             .unwrap()
@@ -668,7 +678,7 @@ impl JournalComplianceTests {
         // Stream events back and verify each one element-by-element
         let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
         for (i, expected) in events.iter().enumerate() {
-            let event = stream
+            let (_seq, event) = stream
                 .next()
                 .await
                 .unwrap_or_else(|| panic!("Expected event at position {i}"))

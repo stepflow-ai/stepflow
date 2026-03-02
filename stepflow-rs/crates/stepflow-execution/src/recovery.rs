@@ -30,9 +30,9 @@
 //!
 //! Journals are keyed by `root_run_id`, meaning all events for an execution tree
 //! (parent flow + all subflows) are stored in a single journal. During recovery,
-//! we load the entire journal and apply all events to the root run's `RunState`.
-//! Each `RunState` internally filters events by `run_id`, so subflow events are
-//! silently ignored when applied to the root.
+//! we stream the journal from the run's creation sequence and apply events to
+//! the affected `RunState`s using targeted dispatch via
+//! [`JournalEvent::affected_run_ids`](stepflow_state::JournalEvent::affected_run_ids).
 //!
 //! ## Execution Tree Recovery
 //!
@@ -344,16 +344,10 @@ async fn claim_for_recovery(
             }
         }
 
-        let start_sequence = SequenceNumber::new(
-            summary
-                .created_at_seqno
-                .expect("created_at_seqno must be set"),
-        );
-
         recovery_infos.push(RunRecoveryInfo {
             root_run_id: summary.root_run_id,
             flow_id: summary.flow_id,
-            start_sequence,
+            start_sequence: SequenceNumber::new(summary.created_at_seqno),
         });
     }
 

@@ -46,12 +46,19 @@ use uuid::Uuid;
 
 use crate::StateError;
 
-/// A stream of journal events, used for iterating over journal contents.
+/// A stream of journal events with their sequence numbers, used for iterating
+/// over journal contents during recovery.
 ///
-/// Implementations yield events in sequence order. Errors are propagated
-/// as stream items, allowing the consumer to handle them inline.
-pub type JournalEventStream<'a> =
-    Pin<Box<dyn Stream<Item = error_stack::Result<JournalEvent, StateError>> + Send + 'a>>;
+/// Implementations yield `(SequenceNumber, JournalEvent)` pairs in sequence
+/// order. Errors are propagated as stream items, allowing the consumer to
+/// handle them inline.
+pub type JournalEventStream<'a> = Pin<
+    Box<
+        dyn Stream<Item = error_stack::Result<(SequenceNumber, JournalEvent), StateError>>
+            + Send
+            + 'a,
+    >,
+>;
 
 /// Sequence number for journal entries.
 ///
@@ -309,6 +316,22 @@ pub enum JournalEvent {
         /// Caller-provided deduplication key.
         subflow_key: Uuid,
     },
+}
+
+impl JournalEvent {
+    /// Returns the run IDs whose `RunState` is modified by this event.
+    ///
+    /// Only events that mutate `RunState` are included: `RunInitialized`,
+    /// `TasksStarted`, `TaskCompleted`. All others are either informational
+    /// or handled separately by the recovery loop.
+    pub fn affected_run_ids(&self) -> Vec<&Uuid> {
+        match self {
+            JournalEvent::RunInitialized { run_id, .. }
+            | JournalEvent::TaskCompleted { run_id, .. } => vec![run_id],
+            JournalEvent::TasksStarted { runs } => runs.iter().map(|r| &r.run_id).collect(),
+            _ => vec![],
+        }
+    }
 }
 
 /// Trait for write-ahead journalling of execution events.

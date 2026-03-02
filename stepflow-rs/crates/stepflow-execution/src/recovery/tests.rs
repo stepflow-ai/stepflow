@@ -77,8 +77,12 @@ async fn create_test_run(
         .expect("should write RootRunCreated");
 
     // Metadata second, with the journal sequence
-    let mut params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({}))]);
-    params.created_at_seqno = Some(created_at_seqno);
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id,
+        vec![ValueRef::new(json!({}))],
+        created_at_seqno,
+    );
     metadata_store
         .create_run(params)
         .await
@@ -149,8 +153,12 @@ async fn test_recovery_missing_journal_entries_marks_run_failed() {
     // In practice created_at_seqno is set from the journal write, but here
     // there is no journal — we still need a value for discovery to work.
     let run_id = uuid::Uuid::now_v7();
-    let mut params = CreateRunParams::new(run_id, flow_id, vec![ValueRef::new(json!({}))]);
-    params.created_at_seqno = Some(SequenceNumber::new(0));
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id,
+        vec![ValueRef::new(json!({}))],
+        SequenceNumber::new(0),
+    );
     metadata_store
         .create_run(params)
         .await
@@ -206,8 +214,12 @@ async fn test_recovery_missing_root_run_created_event_marks_run_failed() {
         .expect("should write");
 
     // Create metadata record
-    let mut params = CreateRunParams::new(run_id, flow_id.clone(), vec![ValueRef::new(json!({}))]);
-    params.created_at_seqno = Some(created_at_seqno);
+    let params = CreateRunParams::new(
+        run_id,
+        flow_id.clone(),
+        vec![ValueRef::new(json!({}))],
+        created_at_seqno,
+    );
     metadata_store
         .create_run(params)
         .await
@@ -597,7 +609,7 @@ async fn test_recovery_preserves_attempt_counts() {
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|(_seq, event)| match event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })
@@ -736,7 +748,7 @@ async fn test_recovery_batches_parallel_tasks() {
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|event| match event {
+        .filter_map(|(_seq, event)| match event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })
@@ -812,6 +824,7 @@ async fn test_recovery_groups_by_root_run_id() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id, // parent is the root
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -945,6 +958,7 @@ async fn test_recovery_ignores_orphaned_subflows() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -1556,6 +1570,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     subflow_params.workflow_name = Some("subflow".to_string());
     metadata_store
@@ -1705,6 +1720,7 @@ async fn test_recovery_resumes_inflight_subflow() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)
@@ -1885,6 +1901,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         vec![ValueRef::new(json!({}))],
         root_run_id,
         root_run_id,
+        SequenceNumber::new(0),
     );
     metadata_store
         .create_run(subflow_params)

@@ -109,16 +109,19 @@ async fn test_journal_write_and_read() {
 
     // Stream entries from the beginning, checking each element
     let mut stream = store.stream_from(run_id, SequenceNumber::new(0));
-    let first = stream.next().await.unwrap().unwrap();
+    let (seq, first) = stream.next().await.unwrap().unwrap();
     assert!(matches!(first, JournalEvent::RootRunCreated { .. }));
-    let second = stream.next().await.unwrap().unwrap();
+    assert_eq!(seq, seq1);
+    let (seq, second) = stream.next().await.unwrap().unwrap();
     assert!(matches!(second, JournalEvent::TaskCompleted { .. }));
+    assert_eq!(seq, seq2);
     assert!(stream.next().await.is_none());
 
     // Stream from a specific sequence
     let mut stream = store.stream_from(run_id, SequenceNumber::new(1));
-    let first = stream.next().await.unwrap().unwrap();
+    let (seq, first) = stream.next().await.unwrap().unwrap();
     assert!(matches!(first, JournalEvent::TaskCompleted { .. }));
+    assert_eq!(seq, seq2);
     assert!(stream.next().await.is_none());
 }
 
@@ -251,7 +254,7 @@ async fn test_journal_stream_from_sequence() {
     // Stream all entries, verify count and first/last
     let mut stream = store.stream_from(run_id, SequenceNumber::new(0));
     for expected_step in 0..10 {
-        let event = stream.next().await.unwrap().unwrap();
+        let (_seq, event) = stream.next().await.unwrap().unwrap();
         match event {
             JournalEvent::TaskCompleted { step_index, .. } => {
                 assert_eq!(step_index, expected_step);
@@ -264,7 +267,7 @@ async fn test_journal_stream_from_sequence() {
     // Stream starting from sequence 5
     let mut stream = store.stream_from(run_id, SequenceNumber::new(5));
     for expected_step in 5..10 {
-        let event = stream.next().await.unwrap().unwrap();
+        let (_seq, event) = stream.next().await.unwrap().unwrap();
         match event {
             JournalEvent::TaskCompleted { step_index, .. } => {
                 assert_eq!(step_index, expected_step);
@@ -352,25 +355,25 @@ async fn test_journal_subflow_shared_journal() {
     let mut stream = store.stream_from(root_run_id, SequenceNumber::new(0));
 
     // Event 1: parent step 0
-    let event = stream.next().await.unwrap().unwrap();
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
     assert!(
         matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == parent_run_id)
     );
 
     // Event 2: subflow step 0
-    let event = stream.next().await.unwrap().unwrap();
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
     assert!(
         matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 0, .. } if run_id == subflow_run_id)
     );
 
     // Event 3: subflow step 1
-    let event = stream.next().await.unwrap().unwrap();
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
     assert!(
         matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == subflow_run_id)
     );
 
     // Event 4: parent step 1
-    let event = stream.next().await.unwrap().unwrap();
+    let (_seq, event) = stream.next().await.unwrap().unwrap();
     assert!(
         matches!(event, JournalEvent::TaskCompleted { run_id, step_index: 1, .. } if run_id == parent_run_id)
     );

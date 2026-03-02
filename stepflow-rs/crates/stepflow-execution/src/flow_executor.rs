@@ -440,10 +440,10 @@ impl FlowExecutor {
             request.inputs,
             self.root_run_id,
             parent_run_id,
+            created_at_seqno,
         );
         run_params.workflow_name = request.flow.name().map(|s| s.to_string());
         run_params.orchestrator_id = self.env.orchestrator_id().map(|id| id.as_str().to_string());
-        run_params.created_at_seqno = Some(created_at_seqno);
         if let Err(e) = self.metadata_store.create_run(run_params).await {
             log::error!(
                 "Failed to create subflow run record for {}: {:?}",

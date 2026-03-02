@@ -103,7 +103,7 @@ impl From<RunStatus> for CreateRunResponse {
                 root_run_id: status.root_run_id,
                 parent_run_id: status.parent_run_id,
                 orchestrator_id: None,
-                created_at_seqno: None,
+                created_at_seqno: 0,
                 finished_at_seqno: None,
             },
             results: status.results,

@@ -138,8 +138,7 @@ pub struct RunSummary {
     ///
     /// Records where in the journal this run was created, enabling efficient
     /// metadata queries during recovery (filter by offset range).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_at_seqno: Option<u64>,
+    pub created_at_seqno: u64,
     /// Journal sequence number of the RunCompleted event for this run.
     ///
     /// Set when the run reaches a terminal state. `None` means the run is
@@ -403,7 +402,7 @@ mod tests {
                 root_run_id: run_id,
                 parent_run_id: None,
                 orchestrator_id: None,
-                created_at_seqno: None,
+                created_at_seqno: 0,
                 finished_at_seqno: None,
             },
             item_details: Some(vec![ItemDetails {
