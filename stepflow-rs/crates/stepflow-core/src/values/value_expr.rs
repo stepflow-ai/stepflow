@@ -478,108 +478,13 @@ impl schemars::JsonSchema for ValueExpr {
         "ValueExpr".into()
     }
 
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // Build self-ref using the generator's definitions_path so refs are correct
-        // for both JSON Schema (#/$defs/ValueExpr) and OpenAPI (#/components/schemas/ValueExpr).
-        let defs_path = generator.settings().definitions_path.trim_matches('/');
-        let self_ref = if defs_path.starts_with('#') {
-            format!("{defs_path}/ValueExpr")
-        } else {
-            format!("#/{defs_path}/ValueExpr")
-        };
-
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         serde_json::json!({
-            "oneOf": [
-                {
-                    "title": "StepRef",
-                    "type": "object",
-                    "description": "Step reference: { $step: \"step_id\", path?: \"...\" }",
-                    "properties": {
-                        "$step": { "type": "string" },
-                        "path": { "type": "string", "description": "JSONPath expression" }
-                    },
-                    "required": ["$step"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "InputRef",
-                    "type": "object",
-                    "description": "Workflow input reference: { $input: \"path\" }",
-                    "properties": {
-                        "$input": { "type": "string", "description": "JSONPath expression" }
-                    },
-                    "required": ["$input"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "VariableRef",
-                    "type": "object",
-                    "description": "Variable reference: { $variable: \"path\", default?: ValueExpr }",
-                    "properties": {
-                        "$variable": { "type": "string", "description": "JSONPath expression including variable name" },
-                        "default": { "$ref": self_ref }
-                    },
-                    "required": ["$variable"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "LiteralExpr",
-                    "type": "object",
-                    "description": "Escaped literal: { $literal: any }",
-                    "properties": {
-                        "$literal": {}
-                    },
-                    "required": ["$literal"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "If",
-                    "type": "object",
-                    "description": "Conditional: { $if: condition, then: expr, else?: expr }",
-                    "properties": {
-                        "$if": { "$ref": self_ref },
-                        "then": { "$ref": self_ref },
-                        "else": { "$ref": self_ref }
-                    },
-                    "required": ["$if", "then"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "Coalesce",
-                    "type": "object",
-                    "description": "Coalesce: { $coalesce: [expr, ...] }",
-                    "properties": {
-                        "$coalesce": {
-                            "type": "array",
-                            "items": { "$ref": self_ref }
-                        }
-                    },
-                    "required": ["$coalesce"],
-                    "additionalProperties": false
-                },
-                {
-                    "title": "ArrayExpr",
-                    "type": "array",
-                    "description": "Array with expressions as elements",
-                    "items": { "$ref": self_ref }
-                },
-                {
-                    "title": "ObjectExpr",
-                    "type": "object",
-                    "description": "Object with expressions as values",
-                    "additionalProperties": { "$ref": self_ref }
-                },
-                {
-                    "title": "Literal",
-                    "description": "A literal JSON value (string, number, boolean, or null)",
-                    "oneOf": [
-                        { "type": "null" },
-                        { "type": "boolean" },
-                        { "type": "number" },
-                        { "type": "string" }
-                    ]
-                }
-            ]
+            "description": "A value expression: any JSON value (null, boolean, number, string, array, or object). Objects with reserved $-prefixed keys are interpreted as expression references: {\"$step\": \"id\", \"path\"?: \"...\"}, {\"$input\": \"path\"}, {\"$variable\": \"path\", \"default\"?: ValueExpr}, {\"$literal\": value}, {\"$if\": cond, \"then\": expr, \"else\"?: expr}, {\"$coalesce\": [expr, ...]}. See https://stepflow.org/docs/flows/expressions for details.",
+            "externalDocs": {
+                "description": "Expressions documentation",
+                "url": "https://stepflow.org/docs/flows/expressions"
+            }
         })
         .try_into()
         .expect("ValueExpr schema is valid")

@@ -234,11 +234,9 @@ def test_build_requires_output():
     # After setting output, build() should succeed
     builder.set_output({"result": "success"})
     flow = builder.build()
-    # Verify the output serializes correctly to JSON
+    # Verify the output is the plain JSON value
     assert flow.output is not None
-    # Use model_dump() to get the serialized form
-    output_dict = flow.output.model_dump(by_alias=True, exclude_unset=True)
-    assert output_dict == {"result": {"$literal": "success"}}
+    assert flow.output == {"result": "success"}
 
 
 def test_step_ids():
@@ -549,17 +547,13 @@ def test_flow_json_serialization():
     assert step1_dict["component"] == "/test/component"
 
     step1_input = step1_dict["input"]
-    assert step1_input["string_literal"] == {"$literal": "hello"}
-    assert step1_input["number_literal"] == {"$literal": 42}
-    assert step1_input["bool_literal"] == {"$literal": True}
+    assert step1_input["string_literal"] == "hello"
+    assert step1_input["number_literal"] == 42
+    assert step1_input["bool_literal"] == True
     assert step1_input["input_ref"] == {"$input": "$.config"}
-    assert step1_input["nested_dict"]["key"] == {"$literal": "value"}
+    assert step1_input["nested_dict"]["key"] == "value"
     assert step1_input["nested_dict"]["nested_ref"] == {"$input": "$.data"}
-    assert step1_input["array"] == [
-        {"$literal": 1},
-        {"$literal": 2},
-        {"$input": "$.item"},
-    ]
+    assert step1_input["array"] == [1, 2, {"$input": "$.item"}]
 
     # Check step2 input serialization
     step2_dict = flow_dict["steps"][1]
@@ -596,52 +590,8 @@ def test_flow_json_round_trip():
     assert parsed["name"] == "round_trip_test"
     assert parsed["steps"][0]["id"] == "step1"
     assert parsed["steps"][0]["input"]["value"] == {"$input": "$.data"}
-    assert parsed["steps"][0]["input"]["config"] == {"nested": {"$literal": "value"}}
+    assert parsed["steps"][0]["input"]["config"] == {"nested": "value"}
     assert parsed["output"] == {"result": {"$step": "step1", "path": "$.output"}}
-
-
-def test_valueexpr_model_dump_handles_nested_dicts():
-    """Test that ValueExpr.model_dump() handles nested dict[str, ValueExpr].
-
-    This shows that model_dump() works correctly for nested dicts because
-    the @model_serializer returns actual_instance, and Pydantic recursively
-    serializes nested models.
-    """
-    from stepflow_py.api.models import InputRef, LiteralExpr, ValueExpr
-
-    nested_dict = {
-        "literal": ValueExpr(LiteralExpr(literal="hello")),
-        "input_ref": ValueExpr(InputRef(input="$.data")),
-    }
-    value_expr = ValueExpr(nested_dict)
-
-    # model_dump() correctly serializes nested ValueExprs
-    result = value_expr.model_dump(by_alias=True, exclude_unset=True)
-
-    assert result == {
-        "literal": {"$literal": "hello"},
-        "input_ref": {"$input": "$.data"},
-    }
-
-
-def test_valueexpr_model_dump_handles_nested_lists():
-    """Test that ValueExpr.model_dump() handles list[ValueExpr].
-
-    Similar to test_valueexpr_model_dump_handles_nested_dicts, this shows
-    that model_dump() correctly handles nested lists.
-    """
-    from stepflow_py.api.models import LiteralExpr, ValueExpr
-
-    nested_list = [
-        ValueExpr(LiteralExpr(literal=1)),
-        ValueExpr(LiteralExpr(literal=2)),
-        ValueExpr(LiteralExpr(literal="three")),
-    ]
-    value_expr = ValueExpr(nested_list)
-
-    result = value_expr.model_dump(by_alias=True, exclude_unset=True)
-
-    assert result == [{"$literal": 1}, {"$literal": 2}, {"$literal": "three"}]
 
 
 def test_flow_serialization_uses_model_dump():
@@ -688,16 +638,12 @@ def test_flow_serialization_uses_model_dump():
 
     # Verify the structure is correct
     step1_input = parsed["steps"][0]["input"]
-    assert step1_input["primitive_str"] == {"$literal": "hello"}
-    assert step1_input["primitive_int"] == {"$literal": 42}
-    assert step1_input["primitive_bool"] == {"$literal": True}
+    assert step1_input["primitive_str"] == "hello"
+    assert step1_input["primitive_int"] == 42
+    assert step1_input["primitive_bool"] == True
     assert step1_input["input_ref"] == {"$input": "$.data"}
     assert step1_input["nested"]["key"] == {"$input": "$.nested.value"}
-    assert step1_input["array"] == [
-        {"$literal": 1},
-        {"$input": "$.items"},
-        {"$literal": "literal"},
-    ]
+    assert step1_input["array"] == [1, {"$input": "$.items"}, "literal"]
 
     # Step references should serialize correctly
     assert parsed["steps"][1]["input"]["prev"] == {"$step": "step1", "path": "$.result"}

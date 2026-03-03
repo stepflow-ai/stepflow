@@ -26,7 +26,6 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 
 from stepflow_py.api.models.error_action import ErrorAction
-from stepflow_py.api.models.value_expr import ValueExpr
 
 
 class Step(BaseModel):
@@ -37,7 +36,7 @@ class Step(BaseModel):
     id: StrictStr = Field(description="Identifier for the step")
     component: StrictStr = Field(description="The component to execute in this step")
     on_error: ErrorAction | None = Field(default=None, alias="onError")
-    input: ValueExpr | None = Field(
+    input: Any | None = Field(
         default=None, description="Arguments to pass to the component for this step"
     )
     must_execute: StrictBool | None = Field(
@@ -98,13 +97,15 @@ class Step(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of on_error
         if self.on_error:
             _dict["onError"] = self.on_error.to_dict()
-        # override the default output from pydantic by calling `to_dict()` of input
-        if self.input:
-            _dict["input"] = self.input.to_dict()
         # set to None if on_error (nullable) is None
         # and model_fields_set contains the field
         if self.on_error is None and "on_error" in self.model_fields_set:
             _dict["onError"] = None
+
+        # set to None if input (nullable) is None
+        # and model_fields_set contains the field
+        if self.input is None and "input" in self.model_fields_set:
+            _dict["input"] = None
 
         # set to None if must_execute (nullable) is None
         # and model_fields_set contains the field
@@ -129,9 +130,7 @@ class Step(BaseModel):
                 "onError": ErrorAction.from_dict(obj["onError"])
                 if obj.get("onError") is not None
                 else None,
-                "input": ValueExpr.from_dict(obj["input"])
-                if obj.get("input") is not None
-                else None,
+                "input": obj.get("input"),
                 "mustExecute": obj.get("mustExecute"),
                 "metadata": obj.get("metadata"),
             }

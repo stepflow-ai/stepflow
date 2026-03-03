@@ -12,10 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Builder for creating ValueExpr instances with a clean API.
+"""Builder for creating ValueExpr dicts with a clean API.
 
 This module provides a convenient builder class for creating Stepflow value expressions
-without having to directly instantiate the generated ValueExpr types.
+as plain JSON-compatible dicts, matching the wire format expected by the Stepflow
+engine.
 
 Example:
     >>> from stepflow_py.worker.expressions import ValueExpr
@@ -40,48 +41,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from stepflow_py.api.models import (
-    Coalesce,
-    InputRef,
-    LiteralExpr,
-    ModelIf,
-    StepRef,
-    VariableRef,
-)
-from stepflow_py.api.models import (
-    ValueExpr as GenValueExpr,
-)
-
-
-def _wrap_value_expr(value: Any) -> GenValueExpr:
-    """Wrap a value in a ValueExpr if not already wrapped.
-
-    The generated Pydantic models use a oneOf pattern where composite expressions
-    like ModelIf, Coalesce, etc. expect their nested values to be wrapped in
-    a ValueExpr container.
-
-    Args:
-        value: The value to wrap (StepRef, InputRef, LiteralExpr, etc.)
-
-    Returns:
-        A properly wrapped GenValueExpr instance
-    """
-    # Already a ValueExpr wrapper - return as-is
-    if isinstance(value, GenValueExpr):
-        return value
-    # Wrap the specific type in a ValueExpr
-    return GenValueExpr(actual_instance=value)
-
 
 class ValueExpr:
-    """Builder for creating ValueExpr instances with a clean API.
+    """Builder for creating value expression dicts with a clean API.
 
-    This class provides static factory methods for creating value expressions
-    using the new syntax with $step, $input, and $variable.
+    Each factory method returns a plain dict in the wire format expected by the
+    Stepflow engine. See https://stepflow.org/docs/flows/expressions for details.
     """
 
     @staticmethod
-    def step(step_id: str, path: str = "") -> StepRef:
+    def step(step_id: str, path: str = "") -> dict:
         """Create a step output reference expression.
 
         Args:
@@ -89,38 +58,39 @@ class ValueExpr:
             path: Optional JSONPath expression to access nested fields
 
         Returns:
-            A StepRef that references the step's output
+            A dict like {"$step": "id"} or {"$step": "id", "path": "..."}
 
         Example:
-            >>> # Reference entire step output
             >>> ValueExpr.step("my_step")
-            >>>
-            >>> # Reference nested field
+            {"$step": "my_step"}
             >>> ValueExpr.step("my_step", "result.data")
+            {"$step": "my_step", "path": "result.data"}
         """
-        return StepRef(step=step_id, path=path if path else None)
+        result: dict = {"$step": step_id}
+        if path:
+            result["path"] = path
+        return result
 
     @staticmethod
-    def input(path: str) -> InputRef:
+    def input(path: str = "") -> dict:
         """Create a workflow input reference expression.
 
         Args:
             path: JSONPath expression to access workflow input fields
 
         Returns:
-            An InputRef that references the workflow input
+            A dict like {"$input": "path"}
 
         Example:
-            >>> # Reference entire input
             >>> ValueExpr.input("")
-            >>>
-            >>> # Reference specific field
+            {"$input": ""}
             >>> ValueExpr.input("user.name")
+            {"$input": "user.name"}
         """
-        return InputRef(input=path)
+        return {"$input": path}
 
     @staticmethod
-    def variable(name: str, path: str = "", default: Any = None) -> VariableRef:
+    def variable(name: str, path: str = "", default: Any = None) -> dict:
         """Create a variable reference expression.
 
         Args:
@@ -129,52 +99,54 @@ class ValueExpr:
             default: Optional default value if variable is not defined
 
         Returns:
-            A VariableRef that references the variable
+            A dict like ``{"$variable": "name"}`` or
+            ``{"$variable": "$.name.sub.path", "default": ...}``
 
         Example:
-            >>> # Simple variable reference
             >>> ValueExpr.variable("api_key")
-            >>>
-            >>> # Variable with default value
+            {"$variable": "api_key"}
             >>> ValueExpr.variable("timeout", default=ValueExpr.literal(30))
-            >>>
-            >>> # Nested variable field
-            >>> ValueExpr.variable("config.api.timeout")
+            {"$variable": "timeout", "default": {"$literal": 30}}
         """
-        # Combine name and path for the variable field
-        variable_path = f"{name}.{path}" if path else name
-        # Wrap the default value in ValueExpr if provided
-        wrapped_default = _wrap_value_expr(default) if default is not None else None
-        return VariableRef(variable=variable_path, default=wrapped_default)
+        variable_path = f"$.{name}.{path}" if path else name
+        result: dict = {"$variable": variable_path}
+        if default is not None:
+            result["default"] = default
+        return result
 
     @staticmethod
-    def literal(value: Any) -> LiteralExpr:
-        """Create a literal value expression.
+    def literal(value: Any) -> dict:
+        """Create a literal value expression (escaped from expression evaluation).
+
+        Use this when the value contains $-prefixed keys that should NOT be
+        interpreted as expression references.
 
         Args:
             value: Any JSON-serializable value
 
         Returns:
-            A LiteralExpr that represents a literal value
+            A dict like {"$literal": value}
 
         Example:
             >>> ValueExpr.literal({"key": "value"})
+            {"$literal": {"key": "value"}}
             >>> ValueExpr.literal([1, 2, 3])
-            >>> ValueExpr.literal("hello")
+            {"$literal": [1, 2, 3]}
         """
-        return LiteralExpr(literal=value)
+        return {"$literal": value}
 
     @staticmethod
-    def if_(condition: Any, then: Any, else_: Any = None) -> ModelIf:
+    def if_(condition: Any, then: Any, else_: Any = None) -> dict:
         """Create a conditional expression.
 
         Args:
             condition: Expression that evaluates to a boolean
             then: Value to use if condition is truthy
-            else_: Optional value to use if condition is falsy
+            else_: Optional value to use if condition is falsy (defaults to null)
 
         Returns:
-            A ModelIf that represents a conditional
+            A dict like ``{"$if": cond, "then": expr}`` or
+            ``{"$if": cond, "then": expr, "else": expr}``
 
         Example:
             >>> ValueExpr.if_(
@@ -183,22 +155,20 @@ class ValueExpr:
             ...     else_=ValueExpr.literal({"log_level": "info"}),
             ... )
         """
-        wrapped_else = _wrap_value_expr(else_) if else_ is not None else None
-        return ModelIf(
-            var_if=_wrap_value_expr(condition),
-            then=_wrap_value_expr(then),
-            var_else=wrapped_else,
-        )
+        result: dict = {"$if": condition, "then": then}
+        if else_ is not None:
+            result["else"] = else_
+        return result
 
     @staticmethod
-    def coalesce(*values: Any) -> Coalesce:
+    def coalesce(*values: Any) -> dict:
         """Create a coalesce expression that returns the first non-null value.
 
         Args:
             *values: One or more expressions to evaluate in order
 
         Returns:
-            A Coalesce that represents a coalesce operation
+            A dict like {"$coalesce": [expr, ...]}
 
         Example:
             >>> ValueExpr.coalesce(
@@ -207,5 +177,4 @@ class ValueExpr:
             ...     ValueExpr.literal({"timeout": 30}),
             ... )
         """
-        wrapped_values: list[GenValueExpr] = [_wrap_value_expr(v) for v in values]
-        return Coalesce(coalesce=wrapped_values)
+        return {"$coalesce": list(values)}

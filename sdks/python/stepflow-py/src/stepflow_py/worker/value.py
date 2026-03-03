@@ -19,14 +19,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from stepflow_py.api.models import (
-    InputRef,
-    LiteralExpr,
-    StepRef,
-    ValueExpr,  # Used in variable() method
-    VariableRef,
-)
-
 
 class JsonPath:
     """Base class for handling JSON Path syntax across all reference types."""
@@ -197,7 +189,6 @@ class Value:
             value: The value to wrap. Can be:
                 - A literal value (str, int, float, bool, None, dict, list)
                 - A StepReference or WorkflowInput
-                - An EscapedLiteral
                 - Another Value (will be unwrapped)
         """
         self._value = self._unwrap_value(value)
@@ -219,17 +210,11 @@ class Value:
         Returns:
             Value representing the variable reference
         """
-        # Create VariableRef with $variable field
-        # Note: Using Python name 'variable' instead of alias '$variable'
-        # Works at runtime due to populate_by_name=True in model config
         if default is NO_DEFAULT:
-            return Value(VariableRef(variable=name))
+            return Value({"$variable": name})
         else:
-            # Convert default to ValueExpr
-            # First convert to a value expression type (LiteralExpr, etc.)
-            # Cast needed since mypy can't narrow out NoDefault in else branch
             default_expr = Value._convert_to_value_expr(cast("Valuable", default))
-            return Value(VariableRef(variable=name, default=default_expr))
+            return Value({"$variable": name, "default": default_expr})
 
     @staticmethod
     def literal(value: Any) -> Value:
@@ -237,7 +222,7 @@ class Value:
 
         This is equivalent to using $literal in the workflow definition.
         """
-        return Value(LiteralExpr(literal=value))
+        return Value({"$literal": value})
 
     @staticmethod
     def step(step_id: str, path: str | None = None) -> Value:
@@ -250,45 +235,44 @@ class Value:
             json_path.fragments = [path]
         return Value(StepReference(step_id, json_path))
 
-    def to_value_expr(self) -> ValueExpr:
-        """Convert this Value to a ValueExpr for use in flow definitions."""
+    def to_value_expr(self) -> Any:
+        """Convert this Value to a JSON-compatible value for use in flow definitions."""
         return Value._convert_to_value_expr(self._value)
 
     @staticmethod
-    def _convert_to_value_expr(data: Valuable) -> ValueExpr:
-        """Convert arbitrary data to a value expression type.
+    def _convert_to_value_expr(data: Valuable) -> Any:
+        """Convert arbitrary data to a JSON-compatible value expression.
 
-        Returns primitives, StepRef, InputRef, VariableRef, LiteralExpr,
-        or nested dict/list structures containing these types.
+        Returns plain JSON-compatible values (dicts, lists, primitives).
+        StepReference and WorkflowInput objects are converted to their wire format.
         """
-        # None needs LiteralExpr
         if data is None:
-            return ValueExpr(LiteralExpr(literal=None))
+            return None
 
-        # For primitive types (str, int, float, bool), wrap in LiteralExpr
         if isinstance(data, bool | float | str | int):
-            return ValueExpr(LiteralExpr(literal=data))
+            return data
 
         if isinstance(data, Value):
             return Value._convert_to_value_expr(data._value)
-        # If already a ValueExpr, return as-is to avoid double-wrapping
-        if isinstance(data, ValueExpr):
-            return data
+
         if isinstance(data, StepReference):
             path_str = str(data.path) if str(data.path) != "$" else None
-            return ValueExpr(StepRef(step=data.step_id, path=path_str))
+            result: dict = {"$step": data.step_id}
+            if path_str is not None:
+                result["path"] = path_str
+            return result
+
         if isinstance(data, WorkflowInput):
-            path_str = str(data.path) if str(data.path) != "$" else "$"
-            return ValueExpr(InputRef(input=path_str))
-        if isinstance(data, StepRef | InputRef | VariableRef | LiteralExpr):
-            return ValueExpr(data)
+            return {"$input": str(data.path)}
+
         if isinstance(data, dict):
-            converted: dict[str, ValueExpr] = {}
-            for key, val in data.items():
-                converted[key] = Value._convert_to_value_expr(val)
-            return ValueExpr(converted)
+            # Literal expressions are already in wire format — don't recurse
+            if "$literal" in data:
+                return data
+            return {k: Value._convert_to_value_expr(v) for k, v in data.items()}
+
         if isinstance(data, list):
-            return ValueExpr([Value._convert_to_value_expr(item) for item in data])
+            return [Value._convert_to_value_expr(item) for item in data]
 
         raise ValueError(f"Unsupported value: {data}")
 
@@ -337,10 +321,6 @@ Valuable = (
     Value
     | StepReference
     | WorkflowInput
-    | StepRef
-    | InputRef
-    | VariableRef
-    | LiteralExpr
     | str
     | int
     | float

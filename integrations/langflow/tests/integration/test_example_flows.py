@@ -728,3 +728,21 @@ async def test_simple_agent(test_executor):
     assert "100" in response_text, (
         f"Response should contain '100' (25*4). Got: {response_text}"
     )
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_poc_flow_store(converter, stepflow_client):
+    """Regression: poc flow must store without 'Multiple matches' deserialization error.
+
+    This test exercises the exact code path that triggered the bug:
+    1. LangflowConverter converts the poc flow JSON to a Flow object
+    2. StepflowClient.store_flow serializes the flow and sends it to the orchestrator
+    3. The orchestrator deserializes the flow — previously this caused
+       "Multiple matches found when deserializing ValueExpr"
+    """
+    langflow_data = load_flow_fixture("poc_flow")
+    flow = converter.convert(langflow_data)
+    store_response = await stepflow_client.store_flow(flow)
+    assert store_response.stored, (
+        f"Failed to store poc flow: {store_response.diagnostics}"
+    )

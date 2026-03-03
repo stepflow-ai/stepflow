@@ -12,158 +12,154 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Tests for ValueExpr builder class."""
+"""Tests for ValueExpr builder class.
+
+All ValueExpr factory methods return plain dicts in the wire format expected
+by the Stepflow engine, with no wrapper objects.
+"""
 
 import json
 
-from stepflow_py.api.models import (
-    Coalesce,
-    InputRef,
-    LiteralExpr,
-    ModelIf,
-    StepRef,
-    VariableRef,
-)
 from stepflow_py.worker import ValueExpr
 
 
 def test_step_reference():
-    """Test creating step output references."""
+    """Test creating step output references returns plain dicts."""
     # Simple step reference
     expr = ValueExpr.step("my_step")
-    assert isinstance(expr, StepRef)
-    assert expr.step == "my_step"
-    assert expr.path is None
+    assert expr == {"$step": "my_step"}
 
-    # Step reference with path
-    expr_with_path = ValueExpr.step("my_step", "result.data")
-    assert isinstance(expr_with_path, StepRef)
-    assert expr_with_path.step == "my_step"
-    assert expr_with_path.path == "result.data"
+    # Step reference with path (use JSONPath for nested fields)
+    expr_with_path = ValueExpr.step("my_step", "$.result.data")
+    assert expr_with_path == {"$step": "my_step", "path": "$.result.data"}
+
+
+def test_step_reference_no_path_omitted():
+    """Test that empty path is omitted from step reference."""
+    expr = ValueExpr.step("my_step", "")
+    assert expr == {"$step": "my_step"}
+    assert "path" not in expr
 
 
 def test_input_reference():
-    """Test creating workflow input references."""
+    """Test creating workflow input references returns plain dicts."""
     # Empty path (root)
     expr = ValueExpr.input("")
-    assert isinstance(expr, InputRef)
-    assert expr.input == ""
+    assert expr == {"$input": ""}
 
-    # Nested field reference
-    expr_nested = ValueExpr.input("user.name")
-    assert isinstance(expr_nested, InputRef)
-    assert expr_nested.input == "user.name"
+    # Nested field reference (use JSONPath for nested access)
+    expr_nested = ValueExpr.input("$.user.name")
+    assert expr_nested == {"$input": "$.user.name"}
+
+    # JSONPath reference
+    expr_jsonpath = ValueExpr.input("$.user.name")
+    assert expr_jsonpath == {"$input": "$.user.name"}
 
 
 def test_variable_reference():
-    """Test creating variable references."""
+    """Test creating variable references returns plain dicts."""
     # Simple variable
     expr = ValueExpr.variable("api_key")
-    assert isinstance(expr, VariableRef)
-    assert expr.variable == "api_key"
-    assert expr.default is None
+    assert expr == {"$variable": "api_key"}
+
+    # Variable with nested path (produces JSONPath: $.name.sub.path)
+    expr_nested = ValueExpr.variable("config", path="api.timeout")
+    assert expr_nested == {"$variable": "$.config.api.timeout"}
 
     # Variable with default
     default_val = ValueExpr.literal("default-key")
     expr_with_default = ValueExpr.variable("api_key", default=default_val)
-    assert isinstance(expr_with_default, VariableRef)
-    assert expr_with_default.variable == "api_key"
-    # Default is now wrapped in ValueExpr, check the actual_instance
-    assert expr_with_default.default.actual_instance == default_val
-
-    # Variable with nested path
-    expr_nested = ValueExpr.variable("config", path="api.timeout")
-    assert isinstance(expr_nested, VariableRef)
-    assert expr_nested.variable == "config.api.timeout"
+    assert expr_with_default == {
+        "$variable": "api_key",
+        "default": {"$literal": "default-key"},
+    }
 
 
 def test_literal():
-    """Test creating literal values."""
+    """Test creating literal values returns plain dicts."""
     # String literal
     expr_str = ValueExpr.literal("hello")
-    assert isinstance(expr_str, LiteralExpr)
-    assert expr_str.literal == "hello"
+    assert expr_str == {"$literal": "hello"}
 
     # Number literal
     expr_num = ValueExpr.literal(42)
-    assert isinstance(expr_num, LiteralExpr)
-    assert expr_num.literal == 42
+    assert expr_num == {"$literal": 42}
 
     # Object literal
     expr_obj = ValueExpr.literal({"key": "value"})
-    assert isinstance(expr_obj, LiteralExpr)
-    assert expr_obj.literal == {"key": "value"}
+    assert expr_obj == {"$literal": {"key": "value"}}
+
+    # List literal
+    expr_list = ValueExpr.literal([1, 2, 3])
+    assert expr_list == {"$literal": [1, 2, 3]}
 
 
 def test_conditional():
-    """Test creating conditional expressions."""
+    """Test creating conditional expressions returns plain dicts."""
     condition = ValueExpr.variable("debug_mode")
     then_val = ValueExpr.literal({"verbose": True})
     else_val = ValueExpr.literal({"verbose": False})
 
     # With else clause
     expr = ValueExpr.if_(condition, then_val, else_val)
-    assert isinstance(expr, ModelIf)
-    # Fields are wrapped in ValueExpr, check actual_instance
-    assert expr.var_if.actual_instance == condition
-    assert expr.then.actual_instance == then_val
-    assert expr.var_else.actual_instance == else_val
+    assert expr == {
+        "$if": {"$variable": "debug_mode"},
+        "then": {"$literal": {"verbose": True}},
+        "else": {"$literal": {"verbose": False}},
+    }
 
     # Without else clause
     expr_no_else = ValueExpr.if_(condition, then_val)
-    assert isinstance(expr_no_else, ModelIf)
-    assert expr_no_else.var_if.actual_instance == condition
-    assert expr_no_else.then.actual_instance == then_val
-    assert expr_no_else.var_else is None
+    assert expr_no_else == {
+        "$if": {"$variable": "debug_mode"},
+        "then": {"$literal": {"verbose": True}},
+    }
+    assert "else" not in expr_no_else
 
 
 def test_coalesce():
-    """Test creating coalesce expressions."""
+    """Test creating coalesce expressions returns plain dicts."""
     val1 = ValueExpr.variable("user_config")
     val2 = ValueExpr.variable("default_config")
     val3 = ValueExpr.literal({"timeout": 30})
 
     expr = ValueExpr.coalesce(val1, val2, val3)
-    assert isinstance(expr, Coalesce)
-    assert len(expr.coalesce) == 3
-    # Values are wrapped in ValueExpr, check actual_instance
-    assert expr.coalesce[0].actual_instance == val1
-    assert expr.coalesce[1].actual_instance == val2
-    assert expr.coalesce[2].actual_instance == val3
+    assert expr == {
+        "$coalesce": [
+            {"$variable": "user_config"},
+            {"$variable": "default_config"},
+            {"$literal": {"timeout": 30}},
+        ]
+    }
 
 
 def test_serialization():
-    """Test that expressions serialize correctly."""
+    """Test that expressions serialize correctly to JSON."""
     # Step reference
     step_expr = ValueExpr.step("my_step", "result")
-    serialized = step_expr.to_json()
-    data = json.loads(serialized)
+    data = json.loads(json.dumps(step_expr))
     assert data["$step"] == "my_step"
     assert data["path"] == "result"
 
     # Input reference
-    input_expr = ValueExpr.input("user.name")
-    serialized = input_expr.to_json()
-    data = json.loads(serialized)
-    assert data["$input"] == "user.name"
+    input_expr = ValueExpr.input("$.user.name")
+    data = json.loads(json.dumps(input_expr))
+    assert data["$input"] == "$.user.name"
 
     # Variable reference
     var_expr = ValueExpr.variable("api_key")
-    serialized = var_expr.to_json()
-    data = json.loads(serialized)
+    data = json.loads(json.dumps(var_expr))
     assert data["$variable"] == "api_key"
 
     # Literal
     literal_expr = ValueExpr.literal({"key": "value"})
-    serialized = literal_expr.to_json()
-    data = json.loads(serialized)
+    data = json.loads(json.dumps(literal_expr))
     assert "$literal" in data
     assert data["$literal"] == {"key": "value"}
 
 
 def test_complex_expression():
     """Test creating and serializing a complex nested expression."""
-    # Create a complex expression with nested references
     complex_expr = ValueExpr.if_(
         condition=ValueExpr.variable("debug_mode"),
         then=ValueExpr.step("debug_step", "result"),
@@ -173,15 +169,14 @@ def test_complex_expression():
         ),
     )
 
-    # Verify structure - fields are wrapped in ValueExpr
-    assert isinstance(complex_expr, ModelIf)
-    assert isinstance(complex_expr.var_if.actual_instance, VariableRef)
-    assert isinstance(complex_expr.then.actual_instance, StepRef)
-    assert isinstance(complex_expr.var_else.actual_instance, Coalesce)
+    # Verify structure
+    assert "$if" in complex_expr
+    assert complex_expr["$if"] == {"$variable": "debug_mode"}
+    assert complex_expr["then"] == {"$step": "debug_step", "path": "result"}
+    assert "$coalesce" in complex_expr["else"]
 
     # Verify serialization works
-    serialized = complex_expr.to_json()
-    data = json.loads(serialized)
+    data = json.loads(json.dumps(complex_expr))
     assert "$if" in data
     assert data["$if"]["$variable"] == "debug_mode"
     assert data["then"]["$step"] == "debug_step"
