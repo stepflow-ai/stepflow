@@ -100,7 +100,7 @@ class ValueExpr:
 
         Returns:
             A dict like ``{"$variable": "name"}`` or
-            ``{"$variable": "name.path", "default": ...}``
+            ``{"$variable": "$.name.sub.path", "default": ...}``
 
         Example:
             >>> ValueExpr.variable("api_key")
@@ -108,7 +108,7 @@ class ValueExpr:
             >>> ValueExpr.variable("timeout", default=ValueExpr.literal(30))
             {"$variable": "timeout", "default": {"$literal": 30}}
         """
-        variable_path = f"{name}.{path}" if path else name
+        variable_path = f"$.{name}.{path}" if path else name
         result: dict = {"$variable": variable_path}
         if default is not None:
             result["default"] = default

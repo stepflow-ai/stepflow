@@ -29,9 +29,9 @@ def test_step_reference():
     expr = ValueExpr.step("my_step")
     assert expr == {"$step": "my_step"}
 
-    # Step reference with path
-    expr_with_path = ValueExpr.step("my_step", "result.data")
-    assert expr_with_path == {"$step": "my_step", "path": "result.data"}
+    # Step reference with path (use JSONPath for nested fields)
+    expr_with_path = ValueExpr.step("my_step", "$.result.data")
+    assert expr_with_path == {"$step": "my_step", "path": "$.result.data"}
 
 
 def test_step_reference_no_path_omitted():
@@ -47,9 +47,9 @@ def test_input_reference():
     expr = ValueExpr.input("")
     assert expr == {"$input": ""}
 
-    # Nested field reference
-    expr_nested = ValueExpr.input("user.name")
-    assert expr_nested == {"$input": "user.name"}
+    # Nested field reference (use JSONPath for nested access)
+    expr_nested = ValueExpr.input("$.user.name")
+    assert expr_nested == {"$input": "$.user.name"}
 
     # JSONPath reference
     expr_jsonpath = ValueExpr.input("$.user.name")
@@ -62,9 +62,9 @@ def test_variable_reference():
     expr = ValueExpr.variable("api_key")
     assert expr == {"$variable": "api_key"}
 
-    # Variable with nested path
+    # Variable with nested path (produces JSONPath: $.name.sub.path)
     expr_nested = ValueExpr.variable("config", path="api.timeout")
-    assert expr_nested == {"$variable": "config.api.timeout"}
+    assert expr_nested == {"$variable": "$.config.api.timeout"}
 
     # Variable with default
     default_val = ValueExpr.literal("default-key")
@@ -142,9 +142,9 @@ def test_serialization():
     assert data["path"] == "result"
 
     # Input reference
-    input_expr = ValueExpr.input("user.name")
+    input_expr = ValueExpr.input("$.user.name")
     data = json.loads(json.dumps(input_expr))
-    assert data["$input"] == "user.name"
+    assert data["$input"] == "$.user.name"
 
     # Variable reference
     var_expr = ValueExpr.variable("api_key")

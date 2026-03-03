@@ -422,9 +422,7 @@ class CustomComponent(Component):
         code_value = blob_data["code"]
         # Primitives are passed through as plain JSON values
         assert isinstance(code_value, str), "code should be a plain string"
-        assert "CustomComponent" in code_value, (
-            "Should contain custom component class"
-        )
+        assert "CustomComponent" in code_value, "Should contain custom component class"
 
     def test_component_routing_strategy_rejects_incomplete_components(self):
         """Test that components without custom code are rejected (unified approach)."""
@@ -469,7 +467,7 @@ class TestPocFlowRegressions:
     """
 
     def test_poc_flow_convert_and_roundtrip(self):
-        """Regression: poc flow conversion must not raise 'Multiple matches' from ValueExpr."""
+        """Regression: poc flow dict round-trip must not raise 'Multiple matches'."""
         import json
         from pathlib import Path
 

@@ -479,10 +479,8 @@ class FlowBuilder:
                 # Variable reference - no step/input refs to extract
                 pass
             elif "$literal" in value_expr:
-                # Escaped literal - recurse into the inner value
-                references.extend(
-                    self.get_value_expr_references(value_expr["$literal"])
-                )
+                # Escaped literal — opaque leaf, inner value is never evaluated
+                pass
             elif "$if" in value_expr:
                 # Conditional - recurse into condition, then, else
                 references.extend(self.get_value_expr_references(value_expr["$if"]))

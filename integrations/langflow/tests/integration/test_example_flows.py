@@ -729,6 +729,7 @@ async def test_simple_agent(test_executor):
         f"Response should contain '100' (25*4). Got: {response_text}"
     )
 
+
 @pytest.mark.asyncio(loop_scope="module")
 async def test_poc_flow_store(converter, stepflow_client):
     """Regression: poc flow must store without 'Multiple matches' deserialization error.
@@ -742,4 +743,6 @@ async def test_poc_flow_store(converter, stepflow_client):
     langflow_data = load_flow_fixture("poc_flow")
     flow = converter.convert(langflow_data)
     store_response = await stepflow_client.store_flow(flow)
-    assert store_response.stored, f"Failed to store poc flow: {store_response.diagnostics}"
+    assert store_response.stored, (
+        f"Failed to store poc flow: {store_response.diagnostics}"
+    )
