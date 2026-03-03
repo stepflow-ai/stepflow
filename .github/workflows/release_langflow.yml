@@ -166,7 +166,7 @@ jobs:
   publish-to-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-and-test]
+    needs: [determine-version, build-and-test, build-docker]
     if: needs.determine-version.outputs.skip_tag == 'false'
     environment:
       name: pypi

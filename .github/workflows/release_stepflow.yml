@@ -282,7 +282,7 @@ jobs:
   publish-stepflow-wheels:
     name: Publish Wheels to PyPI
     runs-on: ubuntu-22.04
-    needs: [determine-version, build-stepflow-wheels, verify-stepflow-wheels]
+    needs: [determine-version, build-docker, build-stepflow-wheels, verify-stepflow-wheels]
     if: needs.determine-version.outputs.skip_tag == 'false'
     environment:
       name: pypi
