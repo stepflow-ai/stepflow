@@ -28,7 +28,6 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from stepflow_py.api.models.example_input import ExampleInput
 from stepflow_py.api.models.step import Step
 from stepflow_py.api.models.test_config import TestConfig
-from stepflow_py.api.models.value_expr import ValueExpr
 
 
 class Flow(BaseModel):
@@ -50,7 +49,7 @@ class Flow(BaseModel):
     steps: list[Step] | None = Field(
         default=None, description="The steps to execute for the flow."
     )
-    output: ValueExpr | None = Field(
+    output: Any | None = Field(
         default=None,
         description="The outputs of the flow, mapping output names to their values.",
     )
@@ -119,9 +118,6 @@ class Flow(BaseModel):
                 if _item_steps:
                     _items.append(_item_steps.to_dict())
             _dict["steps"] = _items
-        # override the default output from pydantic by calling `to_dict()` of output
-        if self.output:
-            _dict["output"] = self.output.to_dict()
         # override the default output from pydantic by calling `to_dict()` of test
         if self.test:
             _dict["test"] = self.test.to_dict()
@@ -146,6 +142,11 @@ class Flow(BaseModel):
         # and model_fields_set contains the field
         if self.version is None and "version" in self.model_fields_set:
             _dict["version"] = None
+
+        # set to None if output (nullable) is None
+        # and model_fields_set contains the field
+        if self.output is None and "output" in self.model_fields_set:
+            _dict["output"] = None
 
         # set to None if test (nullable) is None
         # and model_fields_set contains the field
@@ -177,9 +178,7 @@ class Flow(BaseModel):
                 "steps": [Step.from_dict(_item) for _item in obj["steps"]]
                 if obj.get("steps") is not None
                 else None,
-                "output": ValueExpr.from_dict(obj["output"])
-                if obj.get("output") is not None
-                else None,
+                "output": obj.get("output"),
                 "test": TestConfig.from_dict(obj["test"])
                 if obj.get("test") is not None
                 else None,

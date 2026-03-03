@@ -192,7 +192,6 @@ ONEOF_SERIALIZER_CODE = '''
 
 # Models that need the custom serializer (oneOf wrapper types)
 ONEOF_MODELS = [
-    "value_expr.py",
     "primitive_value.py",
     "error_action.py",
     "flow_result.py",
@@ -304,6 +303,7 @@ def fix_any_type_from_dict(directory: Path) -> None:
             count += 1
 
     print(f"    Fixed {count} model files")
+
 
 
 def fix_sanitize_for_serialization(directory: Path) -> None:

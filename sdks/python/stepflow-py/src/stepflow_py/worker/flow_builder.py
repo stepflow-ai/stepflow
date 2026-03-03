@@ -24,15 +24,10 @@ import msgspec
 from stepflow_py.api.models import (
     ErrorAction,
     Flow,
-    InputRef,
-    LiteralExpr,
     OnErrorDefault,
     OnErrorFail,
     OnErrorRetry,
     Step,
-    StepRef,
-    ValueExpr,
-    VariableRef,
 )
 
 from .value import (
@@ -60,50 +55,6 @@ def _wrap_error_action(on_error: OnErrorType) -> ErrorAction | None:
     if isinstance(on_error, OnErrorFail | OnErrorDefault | OnErrorRetry):
         return ErrorAction(actual_instance=on_error)
     raise ValueError(f"Unsupported on_error type: {type(on_error)}")
-
-
-# Type for values that can be wrapped in ValueExpr
-ValueExprInput = (
-    ValueExpr
-    | StepRef
-    | InputRef
-    | VariableRef
-    | LiteralExpr
-    | dict[str, "ValueExprInput"]
-    | list["ValueExprInput"]
-    | str
-    | int
-    | float
-    | bool
-    | None
-)
-
-
-def _wrap_value_expr(value: ValueExprInput) -> ValueExpr | None:
-    """Wrap a value in a ValueExpr wrapper if needed.
-
-    The generated Pydantic models use a oneOf pattern where the Step.input
-    field expects a ValueExpr wrapper. This function recursively wraps nested
-    dict values to ensure proper validation.
-    """
-    if value is None:
-        return None
-    if isinstance(value, ValueExpr):
-        return value
-    if isinstance(value, StepRef | InputRef | VariableRef | LiteralExpr):
-        return ValueExpr(actual_instance=value)
-    # For dicts, recursively wrap each value and pass as Dict[str, ValueExpr]
-    if isinstance(value, dict):
-        wrapped_dict = {k: _wrap_value_expr(v) for k, v in value.items()}
-        return ValueExpr(actual_instance=wrapped_dict)
-    # For lists, recursively wrap each item and pass as List[ValueExpr]
-    if isinstance(value, list):
-        wrapped_list = [_wrap_value_expr(item) for item in value]
-        return ValueExpr(actual_instance=wrapped_list)
-    # For primitives, wrap in LiteralExpr then ValueExpr
-    if isinstance(value, str | int | float | bool):
-        return ValueExpr(actual_instance=LiteralExpr(literal=value))
-    raise ValueError(f"Unsupported value type for wrapping: {type(value)}")
 
 
 # Type alias for component (just a string in the API)
@@ -194,7 +145,7 @@ class FlowBuilder:
         self.variables_schema: dict[str, Any] | None = None
         self.steps: dict[str, Step] = {}
         self._step_handles: dict[str, StepHandle] = {}
-        self._output: ValueExpr | None = None
+        self._output: Any | None = None
         self._output_fields: dict[str, Valuable] = {}  # For incremental output building
 
     @classmethod
@@ -312,7 +263,7 @@ class FlowBuilder:
         1. Ensures step ID is unique by adding suffix if needed
         2. Converts dataclasses/msgspec structs to JSON
         3. Handles step references properly
-        4. Wraps on_error and input in their respective oneOf wrapper types
+        4. Wraps on_error in its oneOf wrapper type
         """
         # Ensure step ID is unique
         unique_id = self._ensure_unique_step_id(id)
@@ -320,9 +271,8 @@ class FlowBuilder:
         # Auto-convert input data
         converted_input = self._auto_convert_input(input_data)
 
-        # Convert input data to ValueExpr and wrap
+        # Convert input data to JSON-compatible value
         input_expr = self._convert_to_value_expr(converted_input)
-        wrapped_input = _wrap_value_expr(input_expr)
 
         # Wrap on_error in ErrorAction if needed
         wrapped_on_error = _wrap_error_action(on_error)
@@ -333,7 +283,7 @@ class FlowBuilder:
         step = Step(
             id=unique_id,
             component=component,
-            input=wrapped_input,
+            input=input_expr,
             on_error=wrapped_on_error,
             must_execute=must_execute,
             metadata=metadata or {},
@@ -391,10 +341,6 @@ class FlowBuilder:
             Value
             | StepReference
             | WorkflowInput
-            | StepRef
-            | InputRef
-            | VariableRef
-            | LiteralExpr
             | str
             | int
             | float
@@ -448,9 +394,6 @@ class FlowBuilder:
                 "add_output_field() to specify the flow output."
             )
 
-        # Wrap output in ValueExpr for Pydantic model
-        wrapped_output = _wrap_value_expr(output_to_use)
-
         # Build schemas dict in JSON Schema format if any schemas are set
         schemas: dict[str, Any] | None = None
         if (
@@ -475,12 +418,12 @@ class FlowBuilder:
             version=self.version,
             schemas=schemas,
             steps=list(self.steps.values()),
-            output=wrapped_output,
+            output=output_to_use,
             metadata=self.metadata,
         )
 
-    def _convert_to_value_expr(self, data: Valuable) -> ValueExpr:
-        """Convert arbitrary data to a value expression type."""
+    def _convert_to_value_expr(self, data: Valuable) -> Any:
+        """Convert arbitrary data to a JSON-compatible value expression."""
         return Value._convert_to_value_expr(data)
 
     def get_references(self) -> list[StepReference | WorkflowInput]:
@@ -518,46 +461,50 @@ class FlowBuilder:
         return references
 
     def get_value_expr_references(
-        self, value_expr: ValueExpr | Any
+        self, value_expr: Any
     ) -> list[StepReference | WorkflowInput]:
-        """Extract all references from a ValueExpr."""
+        """Extract all references from a value expression (plain JSON dict/list/primitive)."""
         references: list[StepReference | WorkflowInput] = []
 
-        # Handle Pydantic ValueExpr wrapper (oneOf type)
-        if (
-            hasattr(value_expr, "actual_instance")
-            and value_expr.actual_instance is not None
-        ):
-            return self.get_value_expr_references(value_expr.actual_instance)
-
-        if isinstance(value_expr, StepRef):
-            # Step reference - Pydantic uses .step instead of .field_step
-            json_path = JsonPath()
-            if value_expr.path is not None and value_expr.path != "$":
-                json_path.fragments = [value_expr.path]
-            references.append(StepReference(value_expr.step, json_path))
-        elif isinstance(value_expr, InputRef):
-            # Input reference - Pydantic uses .input instead of .field_input
-            json_path = JsonPath()
-            if value_expr.input is not None and value_expr.input != "$":
-                json_path.fragments = [value_expr.input]
-            references.append(WorkflowInput(json_path))
-        elif isinstance(value_expr, VariableRef):
-            # Variable reference - variables don't appear in step/input references
-            pass
-        elif isinstance(value_expr, LiteralExpr):
-            # Escaped literal - check if it contains nested references
-            # Pydantic uses .literal instead of .field_literal
-            if isinstance(value_expr.literal, dict | list):
-                references.extend(self.get_value_expr_references(value_expr.literal))
-        elif isinstance(value_expr, dict):
-            # Recursively process dictionary values
-            for v in value_expr.values():
-                references.extend(self.get_value_expr_references(v))
+        if isinstance(value_expr, dict):
+            if "$step" in value_expr:
+                # Step reference: {"$step": "step_id", "path"?: "..."}
+                json_path = JsonPath()
+                path = value_expr.get("path")
+                if path is not None and path != "$":
+                    json_path.fragments = [path]
+                references.append(StepReference(value_expr["$step"], json_path))
+            elif "$input" in value_expr:
+                # Input reference: {"$input": "path"}
+                json_path = JsonPath()
+                input_path = value_expr["$input"]
+                if input_path is not None and input_path != "$":
+                    json_path.fragments = [input_path]
+                references.append(WorkflowInput(json_path))
+            elif "$variable" in value_expr:
+                # Variable reference - no step/input refs to extract
+                pass
+            elif "$literal" in value_expr:
+                # Escaped literal - recurse into the inner value
+                references.extend(self.get_value_expr_references(value_expr["$literal"]))
+            elif "$if" in value_expr:
+                # Conditional - recurse into condition, then, else
+                references.extend(self.get_value_expr_references(value_expr["$if"]))
+                if "then" in value_expr:
+                    references.extend(self.get_value_expr_references(value_expr["then"]))
+                if "else" in value_expr:
+                    references.extend(self.get_value_expr_references(value_expr["else"]))
+            elif "$coalesce" in value_expr:
+                # Coalesce - recurse into each item
+                for item in value_expr.get("$coalesce", []):
+                    references.extend(self.get_value_expr_references(item))
+            else:
+                # Regular dict - recurse into all values
+                for v in value_expr.values():
+                    references.extend(self.get_value_expr_references(v))
         elif isinstance(value_expr, list):
-            # Recursively process list items
             for item in value_expr:
                 references.extend(self.get_value_expr_references(item))
-        # For primitive types (str, int, float, bool, None), no references
+        # For primitives (str, int, float, bool, None), no references
 
         return references

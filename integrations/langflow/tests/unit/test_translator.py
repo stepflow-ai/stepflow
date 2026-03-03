@@ -420,9 +420,9 @@ class CustomComponent(Component):
         blob_data = blob_input.get("data", {})
         assert "code" in blob_data, "Blob should contain component code"
         code_value = blob_data["code"]
-        # Primitives are wrapped in LiteralExpr by the flow builder
-        assert hasattr(code_value, "literal"), "code should be a LiteralExpr"
-        assert "CustomComponent" in code_value.literal, (
+        # Primitives are passed through as plain JSON values
+        assert isinstance(code_value, str), "code should be a plain string"
+        assert "CustomComponent" in code_value, (
             "Should contain custom component class"
         )
 
@@ -459,3 +459,38 @@ class CustomComponent(Component):
         # Should raise ConversionError for components without custom code
         with pytest.raises(ConversionError, match="has no custom code"):
             converter.convert(workflow_data)
+
+
+class TestPocFlowRegressions:
+    """Regression tests for the Langflow POC flow conversion.
+
+    The POC flow revealed "Multiple matches found when deserializing ValueExpr"
+    errors. These tests ensure the POC flow converts and round-trips correctly.
+    """
+
+    def test_poc_flow_convert_and_roundtrip(self):
+        """Regression: poc flow conversion must not raise 'Multiple matches' from ValueExpr."""
+        import json
+        from pathlib import Path
+
+        from stepflow_py.api.models.flow import Flow
+
+        converter = LangflowConverter()
+        flow_path = (
+            Path(__file__).parent.parent / "fixtures" / "langflow" / "poc_flow.json"
+        )
+        if not flow_path.exists():
+            pytest.skip(f"poc_flow.json fixture not found at {flow_path}")
+
+        with open(flow_path) as f:
+            langflow_data = json.load(f)
+
+        # Convert
+        flow = converter.convert(langflow_data)
+        assert flow is not None
+
+        # Round-trip through dict (this is the CLI code path that triggered the bug)
+        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
+        reconstructed = Flow.from_dict(flow_dict)
+        assert reconstructed is not None
+        assert len(reconstructed.steps or []) > 0
