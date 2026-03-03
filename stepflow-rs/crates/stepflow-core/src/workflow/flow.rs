@@ -52,6 +52,7 @@ pub struct Flow {
 
     /// The steps to execute for the flow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub steps: Vec<Step>,
 
     /// The outputs of the flow, mapping output names to their values.
@@ -68,6 +69,7 @@ pub struct Flow {
 
     /// Extensible metadata for the flow that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
@@ -295,6 +297,7 @@ impl<'de> serde::Deserialize<'de> for FlowRef {
 }
 
 /// Configuration for testing a workflow.
+#[serde_as]
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestConfig {
@@ -315,6 +318,7 @@ pub struct TestConfig {
 
     /// Test cases for the workflow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub cases: Vec<TestCase>,
 }
 
@@ -521,6 +525,75 @@ mod tests {
             all_examples[1].description,
             Some("Test case as example".to_string())
         );
+    }
+
+    #[test]
+    fn test_flow_all_optional_null() {
+        // All optional/defaulted fields sent as explicit null — the worst case from
+        // a Python client calling model_dump() without exclude_none=True.
+        let json = serde_json::json!({
+            "name": null,
+            "description": null,
+            "version": null,
+            "schemas": null,
+            "steps": null,
+            "output": null,
+            "test": null,
+            "examples": null,
+            "metadata": null,
+        });
+        let flow: Flow = serde_json::from_value(json).unwrap();
+        assert!(flow.name.is_none());
+        assert!(flow.description.is_none());
+        assert!(flow.version.is_none());
+        assert!(flow.schemas.is_empty());
+        assert!(flow.steps.is_empty());
+        assert!(flow.output.is_null());
+        assert!(flow.test.is_none());
+        assert!(flow.examples.is_none());
+        assert!(flow.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_test_config_all_optional_null() {
+        // All optional/defaulted fields as explicit null
+        let json = serde_json::json!({
+            "configFile": null,
+            "config": null,
+            "cases": null,
+        });
+        let config: TestConfig = serde_json::from_value(json).unwrap();
+        assert!(config.config_file.is_none());
+        assert!(config.config.is_none());
+        assert!(config.cases.is_empty());
+    }
+
+    #[test]
+    fn test_test_case_optional_null() {
+        // Optional fields in TestCase as explicit null
+        let json = serde_json::json!({
+            "name": "my_test",
+            "input": {"key": "value"},
+            "description": null,
+            "output": null,
+        });
+        let case: TestCase = serde_json::from_value(json).unwrap();
+        assert_eq!(case.name, "my_test");
+        assert!(case.description.is_none());
+        assert!(case.output.is_none());
+    }
+
+    #[test]
+    fn test_example_input_optional_null() {
+        // Optional fields in ExampleInput as explicit null
+        let json = serde_json::json!({
+            "name": "my_example",
+            "input": 42,
+            "description": null,
+        });
+        let example: ExampleInput = serde_json::from_value(json).unwrap();
+        assert_eq!(example.name, "my_example");
+        assert!(example.description.is_none());
     }
 
     #[test]

@@ -1447,15 +1447,21 @@
           },
           "overrides": {
             "description": "Optional workflow overrides to apply before execution",
-            "allOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/WorkflowOverrides"
+              },
+              {
+                "type": "null"
               }
             ]
           },
           "variables": {
             "description": "Optional variables to provide for variable references in the workflow",
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": {
               "$ref": "#/components/schemas/Value"
             }
@@ -1471,7 +1477,10 @@
           },
           "wait": {
             "description": "If true, block until the run completes and return the result (200 OK).\nIf false (default), return immediately with status Running (202 Accepted).",
-            "type": "boolean",
+            "type": [
+              "boolean",
+              "null"
+            ],
             "default": false
           },
           "timeoutSecs": {
@@ -2083,7 +2092,10 @@
           },
           "steps": {
             "description": "The steps to execute for the flow.",
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/Step"
             }
@@ -2119,7 +2131,10 @@
           },
           "metadata": {
             "description": "Extensible metadata for the flow that can be used by tools and frameworks.",
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": true
           }
         }
@@ -2172,7 +2187,10 @@
           },
           "metadata": {
             "description": "Extensible metadata for the step that can be used by tools and frameworks.",
-            "type": "object",
+            "type": [
+              "object",
+              "null"
+            ],
             "additionalProperties": true
           }
         },
@@ -2226,7 +2244,10 @@
           },
           "cases": {
             "description": "Test cases for the workflow.",
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/TestCase"
             }

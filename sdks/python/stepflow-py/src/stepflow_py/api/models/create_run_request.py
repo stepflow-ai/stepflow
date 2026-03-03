@@ -37,10 +37,7 @@ class CreateRunRequest(BaseModel):
     input: list[Any] = Field(
         description="Input data for the flow - always an array (one element per run)"
     )
-    overrides: WorkflowOverrides | None = Field(
-        default=None,
-        description="Optional workflow overrides to apply before execution",
-    )
+    overrides: WorkflowOverrides | None = None
     variables: dict[str, Any] | None = Field(
         default=None,
         description="Optional variables to provide for variable references in the workflow",
@@ -109,10 +106,20 @@ class CreateRunRequest(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of overrides
         if self.overrides:
             _dict["overrides"] = self.overrides.to_dict()
+        # set to None if overrides (nullable) is None
+        # and model_fields_set contains the field
+        if self.overrides is None and "overrides" in self.model_fields_set:
+            _dict["overrides"] = None
+
         # set to None if max_concurrency (nullable) is None
         # and model_fields_set contains the field
         if self.max_concurrency is None and "max_concurrency" in self.model_fields_set:
             _dict["maxConcurrency"] = None
+
+        # set to None if wait (nullable) is None
+        # and model_fields_set contains the field
+        if self.wait is None and "wait" in self.model_fields_set:
+            _dict["wait"] = None
 
         # set to None if timeout_secs (nullable) is None
         # and model_fields_set contains the field
