@@ -143,6 +143,11 @@ class Flow(BaseModel):
         if self.version is None and "version" in self.model_fields_set:
             _dict["version"] = None
 
+        # set to None if steps (nullable) is None
+        # and model_fields_set contains the field
+        if self.steps is None and "steps" in self.model_fields_set:
+            _dict["steps"] = None
+
         # set to None if output (nullable) is None
         # and model_fields_set contains the field
         if self.output is None and "output" in self.model_fields_set:
@@ -157,6 +162,11 @@ class Flow(BaseModel):
         # and model_fields_set contains the field
         if self.examples is None and "examples" in self.model_fields_set:
             _dict["examples"] = None
+
+        # set to None if metadata (nullable) is None
+        # and model_fields_set contains the field
+        if self.metadata is None and "metadata" in self.model_fields_set:
+            _dict["metadata"] = None
 
         return _dict
 

@@ -272,7 +272,12 @@ mod tests {
         // defaultValue: null means "no default value" (use null as the step output)
         let json = serde_json::json!({"action": "useDefault", "defaultValue": null});
         let action: ErrorAction = serde_json::from_value(json).unwrap();
-        assert!(matches!(action, ErrorAction::UseDefault { default_value: None }));
+        assert!(matches!(
+            action,
+            ErrorAction::UseDefault {
+                default_value: None
+            }
+        ));
     }
 
     #[test]

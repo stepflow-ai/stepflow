@@ -98,6 +98,11 @@ class TestConfig(BaseModel):
         if self.config is None and "config" in self.model_fields_set:
             _dict["config"] = None
 
+        # set to None if cases (nullable) is None
+        # and model_fields_set contains the field
+        if self.cases is None and "cases" in self.model_fields_set:
+            _dict["cases"] = None
+
         return _dict
 
     @classmethod
