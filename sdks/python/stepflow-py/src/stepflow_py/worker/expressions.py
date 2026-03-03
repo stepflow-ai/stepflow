@@ -15,7 +15,8 @@
 """Builder for creating ValueExpr dicts with a clean API.
 
 This module provides a convenient builder class for creating Stepflow value expressions
-as plain JSON-compatible dicts, matching the wire format expected by the Stepflow engine.
+as plain JSON-compatible dicts, matching the wire format expected by the Stepflow
+engine.
 
 Example:
     >>> from stepflow_py.worker.expressions import ValueExpr
@@ -98,7 +99,8 @@ class ValueExpr:
             default: Optional default value if variable is not defined
 
         Returns:
-            A dict like {"$variable": "name"} or {"$variable": "name.path", "default": ...}
+            A dict like ``{"$variable": "name"}`` or
+            ``{"$variable": "name.path", "default": ...}``
 
         Example:
             >>> ValueExpr.variable("api_key")
@@ -143,7 +145,8 @@ class ValueExpr:
             else_: Optional value to use if condition is falsy (defaults to null)
 
         Returns:
-            A dict like {"$if": cond, "then": expr} or {"$if": cond, "then": expr, "else": expr}
+            A dict like ``{"$if": cond, "then": expr}`` or
+            ``{"$if": cond, "then": expr, "else": expr}``
 
         Example:
             >>> ValueExpr.if_(

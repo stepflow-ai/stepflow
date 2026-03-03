@@ -266,7 +266,7 @@ class Value:
             return {"$input": str(data.path)}
 
         if isinstance(data, dict):
-            # Literal expressions are already in wire format — don't recurse into the value
+            # Literal expressions are already in wire format — don't recurse
             if "$literal" in data:
                 return data
             return {k: Value._convert_to_value_expr(v) for k, v in data.items()}

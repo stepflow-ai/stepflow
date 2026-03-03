@@ -338,13 +338,7 @@ class FlowBuilder:
         # Already a Valuable type - pass through
         if isinstance(
             input_data,
-            Value
-            | StepReference
-            | WorkflowInput
-            | str
-            | int
-            | float
-            | bool,
+            Value | StepReference | WorkflowInput | str | int | float | bool,
         ):
             return input_data
 
@@ -463,7 +457,7 @@ class FlowBuilder:
     def get_value_expr_references(
         self, value_expr: Any
     ) -> list[StepReference | WorkflowInput]:
-        """Extract all references from a value expression (plain JSON dict/list/primitive)."""
+        """Extract all step/input references from a plain JSON value expression."""
         references: list[StepReference | WorkflowInput] = []
 
         if isinstance(value_expr, dict):
@@ -486,14 +480,20 @@ class FlowBuilder:
                 pass
             elif "$literal" in value_expr:
                 # Escaped literal - recurse into the inner value
-                references.extend(self.get_value_expr_references(value_expr["$literal"]))
+                references.extend(
+                    self.get_value_expr_references(value_expr["$literal"])
+                )
             elif "$if" in value_expr:
                 # Conditional - recurse into condition, then, else
                 references.extend(self.get_value_expr_references(value_expr["$if"]))
                 if "then" in value_expr:
-                    references.extend(self.get_value_expr_references(value_expr["then"]))
+                    references.extend(
+                        self.get_value_expr_references(value_expr["then"])
+                    )
                 if "else" in value_expr:
-                    references.extend(self.get_value_expr_references(value_expr["else"]))
+                    references.extend(
+                        self.get_value_expr_references(value_expr["else"])
+                    )
             elif "$coalesce" in value_expr:
                 # Coalesce - recurse into each item
                 for item in value_expr.get("$coalesce", []):
