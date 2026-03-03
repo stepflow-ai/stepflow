@@ -706,7 +706,7 @@ mod tests {
         // All optional/defaulted fields as explicit null — simulates a Python client
         // calling model_dump() without exclude_none=True.
         let json = serde_json::json!({
-            "flowId": "sha256:abc123",
+            "flowId": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
             "input": [{"key": "value"}],
             "overrides": null,
             "variables": null,
