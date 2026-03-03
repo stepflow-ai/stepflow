@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use serde_with::{DefaultOnNull, serde_as};
+
 use super::Component;
 use crate::ValueExpr;
 
@@ -19,6 +21,7 @@ use crate::ValueExpr;
 ///
 /// Note: Step output schemas are stored in the flow's `types.steps` field,
 /// not on individual steps. This allows for shared `$defs` and avoids duplication.
+#[serde_as]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
@@ -42,6 +45,7 @@ pub struct Step {
 
     /// Extensible metadata for the step that can be used by tools and frameworks.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
@@ -243,17 +247,39 @@ mod tests {
     }
 
     #[test]
-    fn test_on_error_null() {
-        let yaml_with_null = r#"
-id: test_step
-component: /mock/test_component
-onError: null
-input: {}
-metadata: {}
-        "#;
-
-        let step: Step = serde_yaml_ng::from_str(yaml_with_null.trim()).unwrap();
-        assert_eq!(step.on_error, None);
+    fn test_step_all_optional_null() {
+        // All optional/defaulted Step fields as explicit null — simulates a Python
+        // client calling model_dump() without exclude_none=True.
+        let json = serde_json::json!({
+            "id": "test_step",
+            "component": "/mock/test_component",
+            "onError": null,
+            "input": null,
+            "mustExecute": null,
+            "metadata": null,
+        });
+        let step: Step = serde_json::from_value(json).unwrap();
+        assert_eq!(step.id, "test_step");
+        assert!(step.on_error.is_none());
         assert_eq!(step.on_error_or_default(), ErrorAction::Fail);
+        assert!(step.input.is_null());
+        assert!(step.must_execute.is_none());
+        assert!(step.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_error_action_use_default_null_value() {
+        // defaultValue: null means "no default value" (use null as the step output)
+        let json = serde_json::json!({"action": "useDefault", "defaultValue": null});
+        let action: ErrorAction = serde_json::from_value(json).unwrap();
+        assert!(matches!(action, ErrorAction::UseDefault { default_value: None }));
+    }
+
+    #[test]
+    fn test_error_action_retry_null_max_retries() {
+        // maxRetries: null means "use the built-in default"
+        let json = serde_json::json!({"action": "retry", "maxRetries": null});
+        let action: ErrorAction = serde_json::from_value(json).unwrap();
+        assert!(matches!(action, ErrorAction::Retry { max_retries: None }));
     }
 }

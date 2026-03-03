@@ -18,6 +18,7 @@ use axum::{
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 use std::collections::HashMap;
 use std::sync::Arc;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
@@ -47,6 +48,7 @@ pub struct RunPath {
 ///
 /// This design avoids ambiguity: to run a workflow with an array as input,
 /// wrap it in another array: `[[1, 2, 3]]` runs once with input `[1, 2, 3]`.
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRunRequest {
@@ -56,9 +58,11 @@ pub struct CreateRunRequest {
     pub input: Vec<ValueRef>,
     /// Optional workflow overrides to apply before execution
     #[serde(default, skip_serializing_if = "WorkflowOverrides::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub overrides: WorkflowOverrides,
     /// Optional variables to provide for variable references in the workflow
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
     pub variables: HashMap<String, ValueRef>,
     /// Maximum concurrency for batch execution (only used when input is an array)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,6 +70,7 @@ pub struct CreateRunRequest {
     /// If true, block until the run completes and return the result (200 OK).
     /// If false (default), return immediately with status Running (202 Accepted).
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub wait: bool,
     /// Maximum seconds to wait when wait=true (default 300). If the timeout elapses,
     /// returns the current run status rather than an error.
@@ -690,4 +695,30 @@ pub async fn delete_run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_run_request_all_optional_null() {
+        // All optional/defaulted fields as explicit null — simulates a Python client
+        // calling model_dump() without exclude_none=True.
+        let json = serde_json::json!({
+            "flowId": "sha256:abc123",
+            "input": [{"key": "value"}],
+            "overrides": null,
+            "variables": null,
+            "maxConcurrency": null,
+            "wait": null,
+            "timeoutSecs": null,
+        });
+        let req: CreateRunRequest = serde_json::from_value(json).unwrap();
+        assert!(req.overrides.is_empty());
+        assert!(req.variables.is_empty());
+        assert!(req.max_concurrency.is_none());
+        assert!(!req.wait);
+        assert!(req.timeout_secs.is_none());
+    }
 }
