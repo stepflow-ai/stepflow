@@ -1,7 +1,7 @@
 ---
 date: 2026-03-02
-title: "From Sidecar to Orchestration: How Stepflow Transforms Docling into a Scalable Document Processing Pipeline"
-description: "Stepflow's orchestration architecture turns docling's document processing into a distributed, observable, and recoverable pipeline — eliminating the sidecar, adding horizontal scaling, and laying the groundwork for per-page fan-out"
+title: "Using Stepflow to Transforms Docling into a Scalable Document Processing Pipeline"
+description: "Stepflow's orchestration architecture turns docling's document processing into a distributed, observable, and recoverable pipeline, allowing for additional observability, true horizontal scaling, and laying the groundwork for per-page fan-out"
 slug: docling-step-worker-deploy
 authors:
   - natemccall
@@ -9,37 +9,37 @@ tags: [production, kubernetes, docling]
 draft: true
 ---
 
-# From Sidecar to Orchestration: How Stepflow Transforms Docling into a Scalable Document Processing Pipeline
+# How Stepflow Transforms Docling into a Scalable Document Processing Pipeline
 
 [Docling](https://github.com/docling-project/docling) is a powerful document processing library. It handles PDF parsing, layout analysis, table extraction, OCR, and multi-format export. It's the kind of specialized AI pipeline that does one thing very well. But scaling it in production means running [docling-serve](https://github.com/docling-project/docling-serve), which brings its own set of architectural constraints: async task state pinned to a single process, no horizontal scaling path, and the common workaround of running it as a sidecar next to whatever system needs document processing.
 
-Stepflow is designed to solve exactly this class of problem. Its orchestration architecture provides distributed execution state, load-balanced routing to worker pools, persistent result storage, and full observability out of the box. The question we asked ourselves: *how hard would it be to take a sophisticated AI pipeline like docling and run it through Stepflow instead?*
+Stepflow is a general purpose AI workflow system designed to solve exactly this class of problem. Its orchestration architecture provides resilient distributed execution state, HTTP SSE-aware load-balanced routing to worker pools, persistent result storage, and full observability out of the box. After initial success with scaling Langflow throughput, we started looking for other high-value integration projects. After looking through docling throughput as part of some day-job work with [OpenRAG](https://www.openr.ag/), we started to wonder: *how hard would it be to take a sophisticated AI pipeline like docling and run it entirely on Stepflow?*
 
-The answer: two days of work, three deployment bugs, and six passing parity tests. This post walks through how Stepflow's architecture made that possible and what it means for scaling document processing in production.
+The answer was a lot simpler than we though: some quick work shaping requests and responses for API parity via a simple proxy and setting up a basic Stepflow flow to define the workflow. This post walks through how Stepflow's architecture made that possible and what it means for scaling AI related pipeline tasks like document processing in production.
 
 <!-- truncate -->
 
 ## What Stepflow Brings to the Table
 
-Before diving into the docling integration, it's worth understanding what Stepflow provides as an execution platform. These are the properties that make porting an AI pipeline straightforward rather than a months-long rewrite:
+Before diving into the Docling integration, it's worth understanding what Stepflow provides as an execution platform. These are the properties that make porting an AI pipeline straightforward rather than a months-long rewrite:
 
 **Declarative flow definitions.** Workflows are YAML files with typed inputs, outputs, and step dependencies. A new pipeline is a new YAML file, not new application code.
 
-**Load-balanced worker pools.** Stepflow's built-in load balancer discovers worker pods via Kubernetes headless services and routes component executions using least-connections balancing. Adding capacity means scaling a deployment, not re-architecting.
+**Load-balanced worker pools.** Stepflow's built-in load balancer routes executions to component-specific workers using least-connections balancing. Adding capacity means scaling a deployment, not re-architecting. Unit economics become a lot more manageable as we can right size instances to specifc types of tasks, like model execution or calculating embedding vs document parsing.
 
-**Distributed execution state.** All run state lives in the orchestrator's storage backend (SQLite or external), not in worker memory. Any pod can serve status queries. Runs survive pod restarts.
+**Distributed execution state.** All run state lives in the orchestrator's storage backend (SQLite or external), not in worker memory. Any pod can serve status queries. Runs survive pod restarts, picking up where they left off. 
 
-**Persistent result storage.** Flow outputs are stored in Stepflow's content-addressed blob store. Results are retrievable by ID from any pod, indefinitely.
+**Persistent result storage.** Flow outputs are stored in Stepflow's content-addressed blob store. Results are retrievable by ID from any pod that with the correct credentials. 
 
 **Built-in observability.** Every component execution emits OpenTelemetry traces, metrics, and logs. The production deployment includes a full o11y stack: Jaeger for traces, Prometheus for metrics, Loki for logs, and Grafana dashboards.
 
 **Recovery.** In-flight subflows are resumed during recovery. Execution checkpoints allow faster restart after failures.
 
-These aren't docling-specific features. They're what Stepflow provides to *any* pipeline that plugs into it. Docling just happens to be a great example of why they matter.
+These aren't docling-specific features. They're what Stepflow provides to *any* pipeline that plugs into it. Running Docling this way just happens to be a great example of why they matter!
 
 ## The Integration Architecture
 
-The deployment runs in the `stepflow-docling` namespace with three pods:
+The example in this post showcases a simple setup of three worker pods running docling. While lightweight enough to run on a laptop, nothing is stopping you from adding instances, turning up the CPU and scaling this out. That said, our initial deployment runs in the `stepflow-docling` namespace with three pods:
 
 ```mermaid
 flowchart TB
@@ -79,9 +79,9 @@ flowchart TB
     workers -.->|"traces/metrics"| OT
 ```
 
-The key insight: **the facade is just a translator.** It accepts docling-serve's v1 HTTP API, translates the request into a Stepflow flow input, and submits it. Everything else, scheduling, routing, state management, result storage, observability, is handled by the Stepflow infrastructure that already exists.
+For this achictecture, the facade is just a simple proxy. It accepts docling-serve's v1 HTTP API, translates the request into a Stepflow flow input, and submits it. Everything else, scheduling, routing, state management, result storage, observability, is handled by the Stepflow infrastructure that already exists.
 
-The docling `DocumentConverter` library runs directly in the worker process. No sidecar, no localhost HTTP proxy, no double Python runtime. One process, one set of dependencies, direct function calls.
+The docling `DocumentConverter` library runs directly in the worker process using the Docling library directly for all funcitons. 
 
 ### The Flow Definition
 
@@ -112,13 +112,13 @@ steps:
       chunk_options: { $input: "chunk_options" }
 ```
 
-Three steps: classify, convert, chunk. Each step is a component that Stepflow routes to available workers through the load balancer. The flow is registered once at startup; every document submission reuses the same flow definition with different inputs.
+This workflow uses three steps: classify, convert, chunk. Each step is a component that Stepflow routes to available workers through the load balancer. The flow is registered once at startup, then every document submission reuses the same flow definition with different inputs.
 
-This is the same pattern that makes Stepflow's Langflow integration work. Define the pipeline declaratively, let the orchestrator handle execution. The difference is that here we're integrating a purpose-built document processing library rather than a visual workflow builder. The integration surface is the same.
+This is the same pattern that makes Stepflow's Langflow integration work. Define the pipeline declaratively and let the orchestrator handle execution. The difference is that here we're integrating a purpose-built document processing library rather than a visual workflow builder, but the integration surface is basically the same.
 
 ## Scaling: Load Balancers and Worker Pools
 
-This is where Stepflow's architecture pays off most directly. docling-serve's scaling story has been a known limitation: async task state is stored in an in-memory dict, multiple Uvicorn workers see inconsistent state, and the project advises running with `UVICORN_WORKERS=1`.
+This is where Stepflow's architecture pays off most directly. docling-serve's scaling story has had some known limitations: async task state is stored in an in-memory dict, multiple Uvicorn workers see inconsistent state, and the project advises running with `UVICORN_WORKERS=1`.
 
 With Stepflow, scaling is a deployment change:
 
@@ -126,7 +126,7 @@ With Stepflow, scaling is a deployment change:
 kubectl scale deployment/docling-worker -n stepflow-docling --replicas=5
 ```
 
-The load balancer discovers new worker pods automatically via the Kubernetes headless service. It uses least-connections routing, so work naturally flows to pods that have capacity. No sticky sessions, no shared-nothing state management, no application-level changes.
+The load balancer discovers new worker pods automatically via the Kubernetes headless service as they are spun up. It uses least-connections routing, so work naturally flows to pods that have capacity. 
 
 ```mermaid
 flowchart LR
@@ -151,7 +151,7 @@ From parity testing against the Docling technical paper (arXiv 2501.17887, ~37K 
 - **Subsequent conversions**: ~10s (LRU converter cache hit, same options hash)
 - **File upload vs URL**: File upload slightly faster (no download step)
 
-These timings are per-document. The scaling advantage comes from concurrent processing: while one worker is doing layout analysis on a 50-page PDF, other workers handle incoming requests. docling-serve can't do this because all state is pinned to the process that received the request.
+These timings are per-document. The scaling advantage comes from concurrent processing: while one worker is doing layout analysis on a 50-page PDF, other workers handle incoming requests. docling-serve can't do this because all state is pinned to the process that received the request. In the case of large batch submissions, Stepflow excels as the document is the unit of parallelism, and can therefore be spread accross an arbitrarily large pool of workers. 
 
 ## Observability: See Everything
 
@@ -183,7 +183,7 @@ This is infrastructure that docling-serve simply doesn't have. Async task state 
 
 ## What's Coming Next: Per-Page Fan-Out
 
-The current flow processes documents sequentially: classify, convert, chunk. This is the correct starting point because it validates parity with docling-serve's behavior. But Stepflow's flow model is designed for exactly the kind of disaggregation that document processing needs.
+The current flow processes documents sequentially through the classify, convert, and chunk steps. This is the correct starting point because it validates parity with docling-serve's behavior. But Stepflow's flow model is designed for exactly the kind of disaggregation that document processing needs.
 
 The `convert` step is where most time is spent. Inside `DocumentConverter`, layout analysis runs per-page using `ThreadedStandardPdfPipeline`. That threading is limited by Python's GIL, which is why docling users report that setting `concurrency=10` only achieves ~2x speedup.
 
@@ -210,7 +210,7 @@ This isn't speculative; it's how Stepflow's `/map` component already works for L
 
 ## Building and Deploying
 
-Four images, built in order. All commands run from the repository root.
+For this `stepflow-docling` namespace, we'll be building four images in order. All commands below are run from the `stepflow` repository root.
 
 ### 1. Build stepflow-server from source (~5 min)
 
