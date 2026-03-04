@@ -21,6 +21,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -63,6 +64,10 @@ class OrchestratorConfig:
 
     # Environment variables to pass to subprocess
     env: dict[str, str] = field(default_factory=dict)
+
+    # If True, pipe orchestrator stdout/stderr directly to the terminal.
+    # Useful for debugging: server logs appear inline with CLI output.
+    pipe_output: bool = False
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -195,7 +200,7 @@ class StepflowOrchestrator:
             cmd,
             stdin=subprocess.PIPE if stdin_input else None,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=sys.stderr if self._config.pipe_output else subprocess.PIPE,
             env=env,
         )
 
@@ -206,6 +211,17 @@ class StepflowOrchestrator:
 
         # Read the port announcement from stdout
         await self._read_port_announcement()
+
+        # Forward any remaining stdout lines to the terminal when pipe_output is set.
+        # (Server logs go to stderr; stdout is mostly quiet after the port line.)
+        if self._config.pipe_output and self._process.stdout:
+            stdout_pipe = self._process.stdout
+            t = threading.Thread(
+                target=_forward_pipe,
+                args=(stdout_pipe, sys.stdout),
+                daemon=True,
+            )
+            t.start()
 
         # Wait for health check
         await self._wait_for_health()
@@ -378,3 +394,19 @@ class StepflowOrchestrator:
                 return  # Health check passed
             except (urllib.error.URLError, TimeoutError, OSError):
                 await asyncio.sleep(self._config.health_check_interval)
+
+
+def _forward_pipe(pipe: Any, dest: Any) -> None:
+    """Read lines from *pipe* and write them to *dest* until EOF.
+
+    Used by ``pipe_output=True`` to forward orchestrator stdout to the terminal
+    after the port announcement has been consumed.  Runs in a daemon thread.
+    """
+    try:
+        for line in pipe:
+            text = line.decode("utf-8", errors="replace").rstrip()
+            if text:
+                dest.write(text + "\n")
+                dest.flush()
+    except Exception:
+        pass

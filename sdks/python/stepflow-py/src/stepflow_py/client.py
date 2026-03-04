@@ -350,10 +350,10 @@ class StepflowClient:
         response = await self._flow_api.get_flow_variables(flow_id)
 
         if not response.env_vars:
-            logger.info("No env_var annotations found for flow %s", flow_id)
+            logger.debug("No env_var annotations found for flow %s", flow_id)
             return explicit_variables
 
-        logger.info(
+        logger.debug(
             "Flow %s env_var annotations: %s",
             flow_id,
             list(response.env_vars.items()),
@@ -364,7 +364,7 @@ class StepflowClient:
             env_value = os.environ.get(env_var_name)
             if env_value is not None:
                 env_variables[var_name] = _parse_env_value(env_value)
-                logger.info(
+                logger.debug(
                     "Populated variable %r from env %r",
                     var_name,
                     env_var_name,
@@ -376,7 +376,7 @@ class StepflowClient:
                     var_name,
                 )
 
-        logger.info(
+        logger.debug(
             "Merged variables for flow %s: %s (from env: %s, explicit: %s)",
             flow_id,
             list(env_variables.keys()),

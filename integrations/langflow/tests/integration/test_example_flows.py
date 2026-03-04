@@ -746,3 +746,32 @@ async def test_poc_flow_store(converter, stepflow_client):
     assert store_response.stored, (
         f"Failed to store poc flow: {store_response.diagnostics}"
     )
+
+
+@pytest.mark.asyncio(loop_scope="module")
+async def test_poc_flow_execution(test_executor):
+    """Test POC flow: full blog post generation pipeline.
+
+    The POC flow is a multi-step content generation pipeline from the Stepflow
+    documentation. It requires OPENAI_API_KEY, which is populated from the
+    environment via env_var annotations in the flow's variable schema
+    (using ``populate_variables_from_env=True``).
+
+    This exercises the same code path as ``stepflow-langflow run --local``.
+    """
+    result = await test_executor.execute_flow(
+        flow_name="poc_flow",
+        input_data={},
+        timeout=300.0,
+        populate_variables_from_env=True,
+    )
+
+    # Should return a Langflow Message with substantial text content
+    message_result = result["result"]
+    assert isinstance(message_result, dict)
+    assert "text" in message_result
+    # The flow produces a blog post — verify we got non-trivial text
+    text = message_result["text"]
+    assert len(text) > 100, (
+        f"Expected substantial text output (blog post), got: {text!r:.200}"
+    )
