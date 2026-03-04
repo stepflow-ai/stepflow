@@ -263,6 +263,18 @@ kubectl logs -n stepflow-docling deployment/docling-lb
 
 Requires NodePort mappings (Option A) or additional port-forwards.
 
+### Observability debugging
+
+For metrics naming conventions (`exported_job` vs `job`), label scoping, OTel Collector
+diagnostics, and Grafana dashboard query patterns, see the shared guide in
+`examples/production/k8s/CLAUDE.md` → **Metrics Naming & Label Scoping** and
+**Observability Debugging** sections.
+
+Key docling-specific values:
+- Worker metrics filter: `exported_job=~".*docling-step-worker.*"`
+- LB metrics filter: `app="docling-lb"`
+- Worker image: `localhost/stepflow-docling-worker:o11y-fix-v4` (includes MeterProvider + health exclusion)
+
 ## Files
 
 ```
