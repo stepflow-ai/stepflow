@@ -492,6 +492,61 @@ Doc comments on struct fields become OpenAPI parameter descriptions. The
 `Deserialize` derive is required for axum's path extraction at runtime;
 `JsonSchema` is required for aide's OpenAPI generation at build time.
 
+## Handling Explicit Null in JSON (DefaultOnNull)
+
+Structs deserialized from JSON/YAML must tolerate explicit `null` for fields that have `#[serde(default)]`. This is critical because Python clients (Pydantic `model_dump()`, msgspec `to_builtins()`) routinely serialize optional fields as `null` rather than omitting them.
+
+Plain `#[serde(default)]` handles *absent* fields but rejects `null` for non-`Option` types like `Vec`, `HashMap`, and `bool`. Use `serde_with::DefaultOnNull` to treat `null` the same as absent:
+
+```rust
+use serde_with::{DefaultOnNull, serde_as};
+
+#[serde_as]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyStruct {
+    // Option<T> fields handle null natively — no annotation needed
+    pub name: Option<String>,
+
+    // Non-Option fields with defaults MUST use DefaultOnNull
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
+    pub items: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
+    pub metadata: HashMap<String, Value>,
+
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub enabled: bool,
+}
+```
+
+### Testing Null Fields
+
+Every struct that is deserialized from external JSON should have a test verifying that all optional/defaulted fields accept explicit `null`. This catches regressions and documents the contract with SDK clients:
+
+```rust
+#[test]
+fn test_my_struct_all_optional_null() {
+    // Simulates Python client sending explicit nulls for all optional fields
+    let json = serde_json::json!({
+        "name": null,
+        "items": null,
+        "metadata": null,
+        "enabled": null,
+    });
+    let s: MyStruct = serde_json::from_value(json).unwrap();
+    assert!(s.name.is_none());
+    assert!(s.items.is_empty());
+    assert!(s.metadata.is_empty());
+    assert!(!s.enabled);
+}
+```
+
+See `stepflow-core/src/workflow/flow.rs` (`test_flow_all_optional_null`) and `stepflow-server/src/api/runs.rs` (`test_create_run_request_all_optional_null`) for real examples.
+
 ## Project Dependencies
 
 - Keep dependencies minimal and well-documented

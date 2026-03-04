@@ -362,19 +362,25 @@ See `ICLA.md` and `scripts/` for complete details.
 
 ## Git Commit Messages
 
-Use conventional commit prefixes:
-- `feat:` for new features
-- `fix:` for bug fixes
-- `docs:` for documentation changes
-- `style:` for formatting changes
-- `refactor:` for code refactoring
-- `test:` for adding or modifying tests
-- `chore:` for maintenance tasks
+Follow the [Conventional Commits](https://www.conventionalcommits.org/) format:
+
+```
+<type>: <description>
+```
+
+Types:
+- `feat:` new features
+- `fix:` bug fixes
+- `docs:` documentation changes
+- `style:` formatting changes
+- `refactor:` code refactoring
+- `test:` adding or modifying tests
+- `chore:` maintenance tasks
 
 Guidelines:
 - Use present tense ("Add feature" not "Added feature")
-- Start with a capital letter
-- Keep first line under 50 characters
+- Description starts with a capital letter after the prefix
+- Keep first line under 72 characters
 
 ## Code References
 
