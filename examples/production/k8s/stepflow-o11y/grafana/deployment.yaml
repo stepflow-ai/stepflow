@@ -117,6 +117,9 @@ spec:
           - name: dashboard-docling
             mountPath: /etc/grafana/provisioning/dashboards/docling
             readOnly: true
+          - name: dashboard-docling-worker
+            mountPath: /etc/grafana/provisioning/dashboards/docling-worker
+            readOnly: true
           - name: data
             mountPath: /var/lib/grafana
         resources:
@@ -157,6 +160,9 @@ spec:
         - name: dashboard-docling
           configMap:
             name: grafana-dashboard-docling
+        - name: dashboard-docling-worker
+          configMap:
+            name: grafana-dashboard-docling-worker
         - name: data
           persistentVolumeClaim:
             claimName: grafana-data

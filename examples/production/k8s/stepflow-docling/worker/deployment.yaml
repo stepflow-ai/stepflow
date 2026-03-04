@@ -73,6 +73,10 @@ spec:
           value: "docling-step-worker"
         - name: STEPFLOW_TRACE_ENABLED
           value: "true"
+        # Blob store — explicit URL so workers can resolve $blob refs
+        # even when the LB proxies the initialization session
+        - name: STEPFLOW_BLOB_API_URL
+          value: "http://docling-orchestrator.stepflow-docling.svc.cluster.local:7840/api/v1/blobs"
         # OpenTelemetry
         - name: STEPFLOW_OTLP_ENDPOINT
           value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"

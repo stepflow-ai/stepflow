@@ -17,15 +17,17 @@ FROM quay.io/docling-project/docling-serve-cpu:v1.14.0
 
 USER 0
 
-# Install stepflow-py and remaining deps not in the base image
+# Install local stepflow-py SDK with http extras (includes FastAPI instrumentation)
+COPY sdks/python/stepflow-py/ /tmp/stepflow-py/
 RUN pip install --no-cache-dir \
-    "stepflow-py[http]>=0.8.0" \
+    "/tmp/stepflow-py[http]" \
     "click>=8.0" \
     "python-dotenv>=1.0.0" \
-    "nest-asyncio>=1.6.0"
+    "nest-asyncio>=1.6.0" && \
+    rm -rf /tmp/stepflow-py
 
 WORKDIR /app
-COPY --chown=1001:0 src/ /app/src/
+COPY --chown=1001:0 integrations/docling-step-worker/src/ /app/src/
 ENV PYTHONPATH=/app/src
 
 USER 1001
