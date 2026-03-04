@@ -199,7 +199,9 @@ def setup_observability(config: ObservabilityConfig | None = None) -> None:
         metric_exporter = OTLPMetricExporter(
             endpoint=config.otlp_endpoint, insecure=True
         )
-        metric_reader = PeriodicExportingMetricReader(metric_exporter)
+        metric_reader = PeriodicExportingMetricReader(
+            metric_exporter, export_interval_millis=10_000
+        )
         meter_provider = MeterProvider(
             resource=resource, metric_readers=[metric_reader]
         )
