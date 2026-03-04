@@ -15,6 +15,8 @@
 """Main CLI entry point for Langflow integration."""
 
 import json
+import logging
+import os
 import sys
 from pathlib import Path
 
@@ -228,6 +230,22 @@ def serve(
     type=click.Path(exists=True, path_type=Path),
     help="JSONL file with one input per line (replaces INPUT_JSON)",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show verbose output",
+)
+@click.option(
+    "--show-flow",
+    is_flag=True,
+    help="Display the translated Stepflow YAML before execution",
+)
+@click.option(
+    "--env-file",
+    type=click.Path(exists=True, path_type=Path),
+    help="Path to .env file for API keys and other secrets",
+)
 def run(
     input_file: Path,
     input_json: str,
@@ -237,6 +255,9 @@ def run(
     timeout: int,
     dry_run: bool,
     batch: Path | None,
+    verbose: bool,
+    show_flow: bool,
+    env_file: Path | None,
 ):
     """Convert and run a Langflow workflow on Stepflow.
 
@@ -264,10 +285,29 @@ def run(
         # With tweaks to override component settings
         stepflow-langflow run flow.json '{}' --local \\
             --tweaks '{"LanguageModelComponent-kBOja": {"model_name": "gpt-4o"}}'
+
+    \b
+        # Load API keys from a .env file
+        stepflow-langflow run flow.json '{}' --local --env-file path/to/.env
+
+    \b
+        # Debug env var resolution and see orchestrator logs
+        stepflow-langflow run flow.json '{}' --local --verbose --show-flow
     """
     import asyncio
 
     import yaml
+
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(levelname)s %(name)s: %(message)s",
+            stream=sys.stderr,
+        )
+
+    # Load explicit .env file if provided
+    if env_file:
+        load_dotenv(env_file)
 
     # Validate options
     if not local and not url:
@@ -339,9 +379,12 @@ def run(
                 click.echo(f"❌ Invalid tweaks JSON: {e}", err=True)
                 sys.exit(1)
 
-        if dry_run:
-            click.echo("\n📄 Converted workflow:")
+        if show_flow or dry_run:
+            click.echo("\n📄 Translated Stepflow flow:")
             click.echo(stepflow_yaml)
+            click.echo()
+
+        if dry_run:
             return
 
         # Parse flow for HTTP API submission
@@ -355,11 +398,15 @@ def run(
 
         if local:
             click.echo("🚀 Starting local orchestrator...")
-            result = asyncio.run(_run_local(flow_dict, inputs, timeout))
+            result = asyncio.run(
+                _run_local(flow_dict, inputs, timeout, verbose=verbose)
+            )
         else:
             assert url is not None
             click.echo(f"🚀 Submitting to {url}...")
-            result = asyncio.run(_run_remote(url, flow_dict, inputs, timeout))
+            result = asyncio.run(
+                _run_remote(url, flow_dict, inputs, timeout, verbose=verbose)
+            )
 
         # Display results
         _display_run_result(result)
@@ -377,6 +424,7 @@ async def _run_with_client(
     flow_dict: dict,
     inputs: list,
     timeout: int,
+    verbose: bool = False,
 ) -> dict:
     """Store a flow and execute it using a StepflowClient.
 
@@ -387,6 +435,9 @@ async def _run_with_client(
     store_response = await client.store_flow(flow_dict, timeout=float(timeout))
     flow_id = store_response.flow_id
     click.echo(f"✅ Flow stored (id: {flow_id[:12]}...)")
+
+    if verbose:
+        await _show_variable_resolution(client, flow_id)
 
     item_label = f"{len(inputs)} inputs" if len(inputs) > 1 else "1 input"
     click.echo(f"🎯 Executing {item_label}...")
@@ -400,10 +451,35 @@ async def _run_with_client(
     return response.model_dump(by_alias=True, exclude_unset=True)
 
 
+async def _show_variable_resolution(client: StepflowClient, flow_id: str) -> None:
+    """Print which variables the flow needs and whether they are set."""
+    try:
+        vars_response = await client._flow_api.get_flow_variables(flow_id)
+        env_vars = vars_response.env_vars or {}
+        if not env_vars:
+            click.echo("🔑 No environment variables required by this flow")
+            return
+        click.echo("🔑 Environment variables required by this flow:")
+        for var_name, env_var_name in sorted(env_vars.items()):
+            value = os.environ.get(env_var_name)
+            if value:
+                click.echo(
+                    f"   {var_name} ← ${env_var_name} ✅ (set, {len(value)} chars)"
+                )
+            else:
+                click.echo(
+                    f"   {var_name} ← ${env_var_name} ❌ NOT SET",
+                    err=True,
+                )
+    except Exception as e:
+        click.echo(f"⚠️  Could not retrieve flow variables: {e}", err=True)
+
+
 async def _run_local(
     flow_dict: dict,
     inputs: list,
     timeout: int,
+    verbose: bool = False,
 ) -> dict:
     """Run a flow using a local StepflowOrchestrator."""
     from stepflow_orchestrator import OrchestratorConfig, StepflowOrchestrator
@@ -435,13 +511,17 @@ async def _run_local(
             },
             "storageConfig": {"type": "inMemory"},
         },
+        log_level="debug" if verbose else "warn",
+        pipe_output=verbose,
     )
 
     async with StepflowOrchestrator.start(config) as orchestrator:
         click.echo(f"✅ Orchestrator running at {orchestrator.url}")
         client = StepflowClient.connect(orchestrator.url)
         async with client:
-            return await _run_with_client(client, flow_dict, inputs, timeout)
+            return await _run_with_client(
+                client, flow_dict, inputs, timeout, verbose=verbose
+            )
 
 
 async def _run_remote(
@@ -449,11 +529,14 @@ async def _run_remote(
     flow_dict: dict,
     inputs: list,
     timeout: int,
+    verbose: bool = False,
 ) -> dict:
     """Submit a flow to a remote Stepflow server and wait for results."""
     client = StepflowClient.connect(base_url)
     async with client:
-        return await _run_with_client(client, flow_dict, inputs, timeout)
+        return await _run_with_client(
+            client, flow_dict, inputs, timeout, verbose=verbose
+        )
 
 
 def _display_run_result(result: dict) -> None:
@@ -469,12 +552,12 @@ def _display_run_result(result: dict) -> None:
             item_result = item.get("result", {})
             outcome = item_result.get("outcome", "unknown")
             if outcome == "success":
-                output = item_result.get("output", {})
+                output = item_result.get("result", {})
                 click.echo("\n🎯 Output:")
                 click.echo(json.dumps(output, indent=2))
             else:
                 click.echo(f"\n❌ Item {item.get('itemIndex', '?')} failed: {outcome}")
-                error = item_result.get("error")
+                error = item_result.get("error") or item_result.get("message")
                 if error:
                     click.echo(f"   {error}")
     else:
