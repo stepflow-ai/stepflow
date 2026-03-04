@@ -70,7 +70,7 @@ langchain = [
     "langchain-core>=0.3",
 ]
 local = [
-    "stepflow-orchestrator~=0.11.0",
+    "stepflow-orchestrator~=0.11.1",
 ]
 
 [dependency-groups]
