@@ -10,8 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use axum::extract::DefaultBodyLimit;
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_config::{ConfigError, StepflowConfig};
