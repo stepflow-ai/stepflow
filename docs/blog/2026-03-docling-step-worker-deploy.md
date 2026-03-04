@@ -1,12 +1,12 @@
 ---
-date: 2026-03-02
+date: 2026-03-05
 title: "Using Stepflow to Make Docling a Scalable, Persistent Document Processing Pipeline"
 description: "Stepflow's orchestration architecture turns docling's document processing into a distributed, observable, and recoverable pipeline, allowing for true horizontal scaling, and laying the groundwork for per-page fan-out in future work."
 slug: docling-step-worker-deploy
 authors:
   - natemccall
 tags: [production, kubernetes, docling]
-draft: true
+draft: false
 ---
 
 # How Stepflow Transforms Docling into a Scalable Document Processing Pipeline
@@ -17,7 +17,7 @@ Stepflow is a general purpose AI workflow system designed to solve exactly this 
 
 After initial success with scaling Langflow throughput, we started looking for other high-value integration projects. After looking through docling throughput as part of some day-job work with [OpenRAG](https://www.openr.ag/), we started to wonder: *how hard would it be to take a sophisticated AI pipeline like docling and run it entirely on Stepflow?*
 
-The answer was a lot simpler than we though: some quick work shaping requests and responses for API parity via a simple proxy and setting up a basic Stepflow flow to define the workflow. This post walks through how Stepflow's architecture made that possible and what it means for scaling AI related pipeline tasks like document processing in production.
+The answer was a lot simpler than we though: some quick dev work shaping requests and responses for API parity via a simple proxy and setting up a basic Stepflow flow to define the workflow. This post walks through how Stepflow's architecture made that speed possible and what it means for scaling AI related pipeline tasks like document processing in production. We also introduced some enhanced, docling-specific observability facilitated by this architecture for which any administrator who has had to wrestle with AI workflow issues like token burn will find immediate value.
 
 <!-- truncate -->
 
@@ -43,7 +43,7 @@ These aren't docling-specific features. They're what Stepflow provides to *any* 
 
 The example in this demonstrates worker pods running Stepflow's [docling-step-worker integration](https://github.com/stepflow-ai/stepflow/tree/main/integrations/docling-step-worker). This worker worker implements the Stepflow protocol to provide the steps of the docling pipeline as Stepflow components. The docling `DocumentConverter` library runs directly in the worker process using the Docling library directly for all funcitons. To marshall this on the Stepflow runtime, we created a Stepflow flow (detailed below) describing the structure of the docling pipeline using these components. 
 
-While lightweight enough to run on a laptop, nothing is stopping you from adding instances, turning up the CPU and scaling this out. That said, our initial deployment runs in the `stepflow-docling` namespace with three docling-step-worker pods:
+While lightweight enough to run on a laptop, nothing is stopping you from adding instances, turning up the CPU and scaling this out. That said, our initial deployment runs in the `stepflow-docling` namespace with two docling-step-worker pods (5 CPU / 6Gi each — tuned to fit a Kind node's ~10 allocatable CPU):
 
 ```mermaid
 flowchart TB
@@ -64,7 +64,6 @@ flowchart TB
     subgraph workers["docling-step-worker pod(s)"]
         W1["Worker 1<br/>/classify, /convert, /chunk"]
         W2["Worker 2"]
-        W3["Worker 3"]
     end
 
     subgraph o11y["stepflow-o11y namespace"]
@@ -78,7 +77,7 @@ flowchart TB
 
     C --> F
     S -->|"route /docling/*"| LB
-    LB --> W1 & W2 & W3
+    LB --> W1 & W2
     orch -.->|"traces/metrics"| OT
     workers -.->|"traces/metrics"| OT
 ```
@@ -143,17 +142,18 @@ flowchart LR
     style W5 stroke:#2d8,stroke-width:2px
 ```
 
-Each worker pod runs the docling `DocumentConverter` with an LRU cache of converter instances keyed by options hash. First request to a pod takes ~30 seconds (model loading). Subsequent requests with the same options hit the cache and complete in ~10 seconds. As the worker pool warms up, the load balancer naturally routes new requests to warm pods.
+Each worker pod runs the docling `DocumentConverter` with an LRU cache of converter instances keyed by options hash. The first request to a pod takes ~30 seconds due to the requirements of model loading. Subsequent requests with the same options hit the cache and complete in ~10 seconds. As the worker pool warms up, the load balancer naturally routes new requests to warm pods.
 
 ### Performance Characteristics
 
-From parity testing against the Docling technical paper (arXiv 2501.17887, ~37K characters of markdown output):
+We validated scaling behavior by running a 10-paper ML corpus through the deployment (2 workers at 5 CPU / 6Gi each, concurrency 3):
 
-- **First conversion**: ~30s (model loading + LRU cache miss)
-- **Subsequent conversions**: ~10s (LRU converter cache hit, same options hash)
-- **File upload vs URL**: File upload slightly faster (no download step)
+- **Cold start**: ~30s per document (model loading + LRU cache miss on first request to a pod)
+- **Warm cache**: ~10s per document (LRU converter cache hit, same options hash)
+- **Large papers**: up to ~60s for dense, image-heavy PDFs
+- **Batch success rate**: 10/10 conversions succeeded for our docling-step-worker across the full corpus
 
-These timings are per-document. The scaling advantage comes from concurrent processing: while one worker is doing layout analysis on a 50-page PDF, other workers handle incoming requests. docling-serve can't do this because all state is pinned to the process that received the request. In the case of large batch submissions, Stepflow excels as the document is the unit of parallelism (for now), and can therefore be spread accross an arbitrarily large pool of workers. 
+These timings are per-document. The scaling advantage comes from concurrent processing: while one worker is doing layout analysis on a 50-page PDF, other workers handle incoming requests. docling-serve can't do this because all state is pinned to the process that received the request. In the case of large batch submissions, Stepflow excels as the document is the unit of parallelism (for now), and can therefore be spread accross an arbitrarily large pool of workers.
 
 ## Observability: See Everything
 
@@ -167,9 +167,20 @@ The deployment includes a complete observability stack in the `stepflow-o11y` na
 | Jaeger | `localhost:16686` | Distributed traces across facade, orchestrator, and workers |
 | Prometheus | `localhost:9090` | Metrics: request rates, processing times, queue depths |
 
-This is particularly valuable for document processing where the cost of each request varies dramatically. A 5-page memo and a 500-page technical manual hit the same endpoint but have very different resource profiles. Traces let you see exactly where time is spent: PDF parsing, layout analysis (typically the bottleneck), table extraction, OCR, assembly.
+This is particularly valuable for document processing where the cost of each request varies dramatically. A 5-page memo and a 500-page technical manual hit the same endpoint but have very different resource profiles. Traces let you see exactly where time is spent: PDF parsing, layout analysis (typically the bottleneck), table extraction, OCR, assembly. Stepflow uses this observability infrastructure to give you end-to-end distributed traces with per-step timing, automatically. Here are some examples from our testing with this stack:
 
-docling-serve provides basic request logging. Stepflow gives you end-to-end distributed traces with per-step timing, automatically.
+![Grafana dashboard showing docling step worker metrics](/img/grafana_docling_step_worker.png)
+
+![Jaeger trace view of a docling conversion](/img/jaeger_docling_step_worker.png)
+
+If you have spent any time with docling-serve before, a couple of things might jump out immediately. The level of observability has been augmented by stepflow to produce high value metrics for production scale deployment:
+
+- **Token and chunk usage**: valueable for controlling expenses and seeing token burn from embeddings
+- **Documents processed**: Details on how many documents are being processed over time and histograms of page count distribution
+- **Duration of conversions**: How long conversions are taking across the pipeline
+
+We'll continue to build on these as we operationalise this infrastructure further. [Any suggestions](https://github.com/stepflow-ai/stepflow/issues)?
+
 
 ## Persistence and Recovery
 
@@ -181,7 +192,7 @@ Stepflow's execution model handles this at two levels:
 
 **Execution recovery.** Stepflow checkpoints execution state. If the orchestrator restarts, in-flight subflows are resumed rather than restarted from scratch. A conversion that was 80% through layout analysis doesn't start over; it picks up from the last checkpoint.
 
-This is infrastructure that docling-serve simply doesn't have. Async task state lives in a Python dict. Pod restart means lost results. Stepflow makes persistence the default, not an afterthought.
+This is infrastructure that docling-serve simply doesn't have. Async task state lives in a Python dict, meaning pod restarts loose results. Stepflow makes persistence the default, making recovery straight-forward and much less resource intensive. 
 
 ## What's Coming Next: Per-Page Fan-Out
 
@@ -216,7 +227,7 @@ For this `stepflow-docling` namespace, we'll be building four images in order. A
 
 ### 1. Build stepflow-server from source (~5 min)
 
-Required because the published 0.9.0 images lack `runtimeProtocolVersion` in the initialize handshake, which stepflow-py 0.10.0 requires.
+Required to ensure we are using the latest protocol changes in Stepflow. Additionally, Axum's default 2 MiB body limit is too small for large base64-encoded PDFs in flow inputs. The source build includes a 250 MiB body limit.
 
 ```bash
 cd stepflow-rs
@@ -224,7 +235,7 @@ cargo build --release --target x86_64-unknown-linux-musl --bin stepflow-server
 
 cp target/x86_64-unknown-linux-musl/release/stepflow-server release/
 docker build -f release/Dockerfile.stepflow-server.alpine \
-  -t localhost/stepflow-server:alpine-0.10.0 release/
+  -t localhost/stepflow-server:bodylimit-v1 release/
 ```
 
 ### 2. Build docling-facade image (~10 sec)
@@ -234,7 +245,7 @@ Lightweight Python image with FastAPI, httpx, pyyaml. No docling library needed.
 ```bash
 cd integrations/docling-step-worker
 docker build --load -f docker/Dockerfile.facade \
-  -t localhost/docling-facade:parity-v1 .
+  -t localhost/docling-facade:parity-v2 .
 ```
 
 ### 3. Build docling-worker image (~2 min)
@@ -244,7 +255,7 @@ Based on `docling-serve-cpu:v1.14.0` (4GB, includes pre-loaded models). Adds ste
 ```bash
 cd integrations/docling-step-worker
 docker build --load -f docker/Dockerfile \
-  -t localhost/stepflow-docling-worker:parity-v1 .
+  -t localhost/stepflow-docling-worker:blob-fix-v4 .
 ```
 
 ### 4. Load into Kind and deploy
@@ -253,9 +264,9 @@ The load balancer uses the published image `ghcr.io/.../stepflow-load-balancer:a
 
 ```bash
 # Load images into Kind cluster
-kind load docker-image localhost/stepflow-server:alpine-0.10.0 --name stepflow
-kind load docker-image localhost/docling-facade:parity-v1 --name stepflow
-kind load docker-image localhost/stepflow-docling-worker:parity-v1 --name stepflow
+kind load docker-image localhost/stepflow-server:bodylimit-v1 --name stepflow
+kind load docker-image localhost/docling-facade:parity-v2 --name stepflow
+kind load docker-image localhost/stepflow-docling-worker:blob-fix-v4 --name stepflow
 
 # Deploy (dependency-ordered: namespaces -> o11y -> worker -> LB -> orchestrator)
 cd examples/production/k8s/stepflow-docling
@@ -273,31 +284,6 @@ kubectl get pods -n stepflow-docling
 kubectl get pods -n stepflow-o11y
 # Expected: all o11y pods 1/1
 ```
-
-## Three Deployment Blockers (and Their Fixes)
-
-Getting the architecture right was the easy part. Getting all the pods healthy took a day of debugging three issues that exposed real integration boundaries.
-
-### 1. Protocol version mismatch
-
-The published stepflow-server 0.9.0 doesn't include `runtimeProtocolVersion` in the initialize handshake. The worker runs stepflow-py 0.10.0, which requires it. Worker pods CrashLoopBackOff'd with `Object missing required field: runtimeProtocolVersion`. Fix: build the server from source at 0.10.0 (the 40MB Alpine image shown above).
-
-### 2. YAML quoting
-
-Flow description values containing colons (`"Image reference mode (default: embedded)"`) parsed as YAML mapping keys when unquoted. The facade crashed on startup trying to load the flow definition. Fix: quote all description strings in the flow YAML and ConfigMap.
-
-### 3. Missing optional flow inputs
-
-Stepflow's `$input` references error on absent keys, even for logically optional fields. Minimal requests missing `image_export_mode` or `chunk_options` caused runtime failures. Fix: the facade's translator now always populates every field the flow references with sensible defaults:
-
-```python
-flow_input["to_formats"] = to_formats or ["md"]
-flow_input["image_export_mode"] = image_export_mode or "embedded"
-flow_input["options"] = opts if opts else None
-flow_input["chunk_options"] = None
-```
-
-All three fixes landed in a single commit. The issues were integration-boundary problems, not architectural ones, which is exactly what you want when porting a new pipeline onto an orchestration platform.
 
 ## Parity Test Results
 
@@ -318,6 +304,23 @@ python test-parity.py --base-url http://localhost:5001 --timeout 300
 
 All six pass. Test 2 is the critical path: it exercises the full chain from facade through Stepflow server, load balancer, and worker, down to `DocumentConverter` and back.
 
+### Batch Parity: 10-Paper Corpus
+
+Beyond API contract testing, we validated output parity against stock docling-serve using `compare-batch.py` — a side-by-side comparison across 10 ML papers from arXiv, run at concurrency 3 against 2 workers (5 CPU / 6Gi each):
+
+```bash
+python compare-batch.py --facade-only --skip-download --concurrency 3 --timeout 300
+```
+
+| Metric | Result |
+|--------|--------|
+| Facade success rate | 10/10 |
+| Stock docling-serve success rate | 9/10 (1 transient timeout) |
+| Avg markdown similarity | 1.00 |
+| Avg text-only similarity (images stripped) | 0.99 |
+
+Markdown similarity of 1.00 means the facade produces byte-identical output to stock docling-serve for the same inputs. The text-only similarity of 0.99 accounts for minor whitespace differences after stripping embedded image data URIs. This validates that the Stepflow-orchestrated pipeline is a true drop-in replacement.
+
 ## Try It Yourself
 
 The complete deployment is at `examples/production/k8s/stepflow-docling/`. The CLAUDE.md in that directory covers Kind cluster setup, image builds, and teardown. The test script requires only Python 3.10+ and falls back to `urllib` if `httpx` isn't installed.
@@ -327,8 +330,14 @@ git clone https://github.com/stepflow-ai/stepflow.git
 cd stepflow/examples/production/k8s/stepflow-docling
 # See CLAUDE.md for Kind cluster setup and image builds
 ./apply.sh
+
+# API contract tests (single paper)
 python test-parity.py
+
+# Full parity comparison (10 papers, requires stock docling-serve for comparison)
+python compare-batch.py --facade-only --skip-download --concurrency 3 --timeout 300
+
 ./teardown.sh
 ```
 
-The tracking issue is [#683](https://github.com/stepflow-ai/stepflow/issues/683) and the full design proposal is at `docs/proposals/docling-step-worker.md` in the repository.
+
