@@ -347,7 +347,7 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
     # Instrument FastAPI for automatic HTTP server metrics and trace spans.
     # Health check endpoints are excluded to reduce trace noise from K8s probes.
     try:
-        from opentelemetry.instrumentation.fastapi import (  # type: ignore[import-not-found]
+        from opentelemetry.instrumentation.fastapi import ( 
             FastAPIInstrumentor,
         )
 
