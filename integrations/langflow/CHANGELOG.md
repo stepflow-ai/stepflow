@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.3.1"></a> [stepflow-langflow-integration 0.3.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.1) - 2026-03-04
+### Bug Fixes
+
+- Resolve ValueExpr 'Multiple matches' deserialization error ([#709](https://github.com/stepflow-ai/stepflow/pull/709))
+
+### Miscellaneous Tasks
+
+- Gate PyPI publish on Docker build success ([#711](https://github.com/stepflow-ai/stepflow/pull/711))
+
 ## <a id="0.3.0"></a> [stepflow-langflow-integration 0.3.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.0) - 2026-03-02
 ### Bug Fixes
 
