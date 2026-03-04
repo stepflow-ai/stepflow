@@ -39,7 +39,7 @@ spec:
         runAsUser: 1001
       containers:
       - name: docling-step-worker
-        image: localhost/stepflow-docling-worker:o11y-fix-v4
+        image: localhost/stepflow-docling-worker:metrics-v1
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false

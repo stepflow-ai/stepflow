@@ -42,6 +42,200 @@ data:
         {
           "collapsed": false,
           "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+          "id": 500,
+          "panels": [],
+          "title": "Chunking",
+          "type": "row"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 5, "w": 8, "x": 0, "y": 1},
+          "id": 51,
+          "options": {
+            "colorMode": "value", "graphMode": "area", "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_docling_chunk_chunks_per_document_bucket[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "A"
+            }
+          ],
+          "title": "Chunks per Document (p50)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
+                "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0,
+                "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1,
+                "pointSize": 5, "scaleDistribution": {"type": "linear"},
+                "showPoints": "never", "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 5, "w": 16, "x": 8, "y": 1},
+          "id": 52,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(rate(stepflow_docling_chunk_tokens_total[5m]))",
+              "legendFormat": "tokens/sec",
+              "refId": "A"
+            }
+          ],
+          "title": "Token Throughput",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 6},
+          "id": 600,
+          "panels": [],
+          "title": "Document Processing",
+          "type": "row"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 5, "w": 8, "x": 0, "y": 7},
+          "id": 53,
+          "options": {
+            "colorMode": "value", "graphMode": "area", "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "sum(increase(stepflow_docling_documents_processed_total[5m]))",
+              "refId": "A"
+            }
+          ],
+          "title": "Documents Processed (5m)",
+          "type": "stat"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
+                "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0,
+                "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1,
+                "pointSize": 5, "scaleDistribution": {"type": "linear"},
+                "showPoints": "never", "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 5, "w": 8, "x": 8, "y": 7},
+          "id": 54,
+          "options": {
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_docling_convert_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "A"
+            },
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_docling_convert_duration_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95",
+              "refId": "B"
+            }
+          ],
+          "title": "Conversion Duration",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {
+            "defaults": {
+              "color": {"mode": "thresholds"},
+              "mappings": [],
+              "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+              "unit": "short"
+            },
+            "overrides": []
+          },
+          "gridPos": {"h": 5, "w": 8, "x": 16, "y": 7},
+          "id": 55,
+          "options": {
+            "colorMode": "value", "graphMode": "area", "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.3.3",
+          "targets": [
+            {
+              "datasource": {"type": "prometheus", "uid": "prometheus"},
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_docling_classify_page_count_pages_bucket[5m])) by (le))",
+              "legendFormat": "p50",
+              "refId": "A"
+            }
+          ],
+          "title": "Page Count (p50)",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12},
           "id": 100,
           "panels": [],
           "title": "Worker HTTP Server",
@@ -65,7 +259,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 1},
+          "gridPos": {"h": 6, "w": 6, "x": 0, "y": 13},
           "id": 1,
           "options": {
             "colorMode": "value",
@@ -100,7 +294,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 1},
+          "gridPos": {"h": 6, "w": 6, "x": 6, "y": 13},
           "id": 2,
           "options": {
             "colorMode": "value",
@@ -135,7 +329,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 1},
+          "gridPos": {"h": 6, "w": 6, "x": 12, "y": 13},
           "id": 3,
           "options": {
             "colorMode": "value",
@@ -173,7 +367,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 1},
+          "gridPos": {"h": 6, "w": 6, "x": 18, "y": 13},
           "id": 4,
           "options": {
             "colorMode": "value",
@@ -229,7 +423,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 19},
           "id": 5,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -294,7 +488,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 19},
           "id": 6,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -347,7 +541,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 27},
           "id": 7,
           "options": {
             "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
@@ -412,7 +606,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 27},
           "id": 8,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -432,7 +626,7 @@ data:
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 23},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 35},
           "id": 200,
           "panels": [],
           "title": "Load Balancer (Docling)",
@@ -473,7 +667,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
           "id": 21,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -526,7 +720,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
           "id": 22,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -572,7 +766,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 32},
+          "gridPos": {"h": 6, "w": 12, "x": 0, "y": 44},
           "id": 23,
           "options": {
             "colorMode": "background",
@@ -629,7 +823,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 32},
+          "gridPos": {"h": 6, "w": 12, "x": 12, "y": 44},
           "id": 24,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -649,7 +843,7 @@ data:
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 38},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 50},
           "id": 300,
           "panels": [],
           "title": "Blob Storage",
@@ -690,7 +884,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 39},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 51},
           "id": 31,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -761,7 +955,7 @@ data:
             },
             "overrides": []
           },
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 39},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 51},
           "id": 32,
           "options": {
             "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true},
@@ -787,7 +981,7 @@ data:
         },
         {
           "collapsed": false,
-          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 47},
+          "gridPos": {"h": 1, "w": 24, "x": 0, "y": 59},
           "id": 400,
           "panels": [],
           "title": "Traces & Logs",
@@ -795,7 +989,7 @@ data:
         },
         {
           "datasource": {"type": "datasource", "uid": "-- Mixed --"},
-          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 48},
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 60},
           "id": 41,
           "options": {
             "mode": "markdown",
@@ -808,7 +1002,7 @@ data:
         },
         {
           "datasource": {"type": "loki", "uid": "loki"},
-          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 52},
+          "gridPos": {"h": 10, "w": 24, "x": 0, "y": 64},
           "id": 42,
           "options": {
             "showTime": true,

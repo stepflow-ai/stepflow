@@ -28,6 +28,7 @@ from stepflow_py.worker import StepflowContext
 
 from docling_step_worker.blob_utils import get_document_dict
 from docling_step_worker.exceptions import ChunkingError
+from docling_step_worker.metrics import chunk_tokens_total, chunks_per_document
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,16 @@ def _run_chunking(
                     chunk_data["metadata"]["page"] = sorted(page_numbers)
 
         chunks.append(chunk_data)
+
+    # Record chunking metrics
+    chunks_per_document.record(len(chunks))
+    total_tokens = sum(
+        chunker.tokenizer.count_tokens(text=c["text"])
+        for c in chunks
+        if c.get("text")
+    )
+    tokenizer_name = opts.get("tokenizer", "default")
+    chunk_tokens_total.add(total_tokens, {"tokenizer": tokenizer_name})
 
     return {
         "chunks": chunks,

@@ -36,6 +36,7 @@ from docling_step_worker.blob_utils import (
     put_document_blob,
 )
 from docling_step_worker.converter_cache import ConverterCache
+from docling_step_worker.metrics import convert_duration, documents_processed
 from docling_step_worker.response_builder import (
     _make_error_item,
     build_convert_response,
@@ -202,6 +203,10 @@ async def convert_document(
         )
     except Exception as e:
         logger.error("Document conversion failed: %s", e)
+        documents_processed.add(
+            1, {"format": filename.rsplit(".", 1)[-1] if "." in filename else "unknown",
+                "pipeline_config": pipeline_config, "status": "failure"}
+        )
         return {
             "document": None,
             "document_dict": None,
@@ -210,6 +215,16 @@ async def convert_document(
             "processing_time": 0.0,
             "timings": {},
         }
+
+    # Record conversion metrics
+    fmt = filename.rsplit(".", 1)[-1] if "." in filename else "unknown"
+    status = result.get("status", "unknown")
+    documents_processed.add(
+        1, {"format": fmt, "pipeline_config": pipeline_config, "status": status}
+    )
+    convert_duration.record(
+        result.get("processing_time", 0.0), {"pipeline_config": pipeline_config}
+    )
 
     # Store document_dict in blob store for downstream consumption
     try:

@@ -27,6 +27,7 @@ from typing import Any
 from stepflow_py.worker import StepflowContext
 
 from docling_step_worker.blob_utils import get_document_bytes
+from docling_step_worker.metrics import classify_page_count
 
 logger = logging.getLogger(__name__)
 
@@ -142,5 +143,7 @@ async def classify_document(
             "format": "pdf",
             "recommended_config": "default",
         }
+
+    classify_page_count.record(result["page_count"])
 
     return result
