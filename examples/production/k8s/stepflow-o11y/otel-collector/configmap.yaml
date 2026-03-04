@@ -88,6 +88,11 @@ data:
         namespace: stepflow
         send_timestamps: true
         metric_expiration: 5m
+        # NOTE: resource_to_telemetry_conversion is intentionally disabled.
+        # Enabling it causes the Prometheus exporter (v0.95.0) to silently
+        # drop OTLP-sourced metrics due to duplicate label conflicts between
+        # resource attributes promoted to labels and the resource processor's
+        # inserted attributes. Use exported_job label for service filtering.
 
       # Export logs to Loki
       loki:

@@ -39,7 +39,7 @@ spec:
         runAsUser: 1001
       containers:
       - name: docling-step-worker
-        image: localhost/stepflow-docling-worker:parity-v1
+        image: localhost/stepflow-docling-worker:o11y-fix-v4
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false
@@ -84,6 +84,8 @@ spec:
           value: "docling-step-worker"
         - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
           value: "true"
+        - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+          value: "health"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=kubernetes,service.namespace=stepflow-docling,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
         resources:

@@ -79,7 +79,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_http_server_active_requests{service_name=~\".*stepflow.*\"})",
+              "expr": "sum(stepflow_http_server_active_requests{exported_job=~\".*docling-step-worker.*\"})",
               "refId": "A"
             }
           ],
@@ -114,7 +114,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\"}[5m]))",
+              "expr": "sum(increase(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -149,7 +149,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\", http_response_status_code=~\"2..\"}[5m]))",
+              "expr": "sum(increase(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\", http_status_code=~\"2..\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -187,7 +187,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\", http_response_status_code!~\"2..\"}[5m]))",
+              "expr": "sum(increase(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\", http_status_code!~\"2..\"}[5m]))",
               "refId": "A"
             }
           ],
@@ -225,7 +225,7 @@ data:
                 "mode": "absolute",
                 "steps": [{"color": "green", "value": null}]
               },
-              "unit": "s"
+              "unit": "ms"
             },
             "overrides": []
           },
@@ -239,19 +239,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_http_server_request_duration_seconds_bucket{service_name=~\".*stepflow.*\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=~\".*docling-step-worker.*\"}[5m])) by (le))",
               "legendFormat": "p50",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(stepflow_http_server_request_duration_seconds_bucket{service_name=~\".*stepflow.*\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=~\".*docling-step-worker.*\"}[5m])) by (le))",
               "legendFormat": "p95",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.99, sum(rate(stepflow_http_server_request_duration_seconds_bucket{service_name=~\".*stepflow.*\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(stepflow_http_server_duration_milliseconds_bucket{exported_job=~\".*docling-step-worker.*\"}[5m])) by (le))",
               "legendFormat": "p99",
               "refId": "C"
             }
@@ -304,7 +304,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\"}[5m]))",
+              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\"}[5m]))",
               "legendFormat": "requests/sec",
               "refId": "A"
             }
@@ -357,19 +357,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\", http_response_status_code=~\"2..\"}[5m]))",
+              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\", http_status_code=~\"2..\"}[5m]))",
               "legendFormat": "success (2xx)",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\", http_response_status_code=~\"4..\"}[5m]))",
+              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\", http_status_code=~\"4..\"}[5m]))",
               "legendFormat": "client error (4xx)",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_http_server_request_duration_seconds_count{service_name=~\".*stepflow.*\", http_response_status_code=~\"5..\"}[5m]))",
+              "expr": "sum(rate(stepflow_http_server_duration_milliseconds_count{exported_job=~\".*docling-step-worker.*\", http_status_code=~\"5..\"}[5m]))",
               "legendFormat": "server error (5xx)",
               "refId": "C"
             }
@@ -422,8 +422,8 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_http_server_active_requests{service_name=~\".*stepflow.*\"}) by (http_request_method)",
-              "legendFormat": "{{http_request_method}}",
+              "expr": "sum(stepflow_http_server_active_requests{exported_job=~\".*docling-step-worker.*\"}) by (http_method)",
+              "legendFormat": "{{http_method}}",
               "refId": "A"
             }
           ],
@@ -483,7 +483,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(rate(stepflow_lb_requests_total{app=\"stepflow-load-balancer-docling\"}[5m])) by (backend)",
+              "expr": "sum(rate(stepflow_lb_requests_total{app=\"docling-lb\"}[5m])) by (backend)",
               "legendFormat": "{{backend}}",
               "refId": "A"
             }
@@ -536,19 +536,19 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"docling-lb\"}[5m])) by (le))",
               "legendFormat": "p50",
               "refId": "A"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.95, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"docling-lb\"}[5m])) by (le))",
               "legendFormat": "p95",
               "refId": "B"
             },
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.99, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"stepflow-load-balancer-docling\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(stepflow_lb_request_duration_ms_bucket{app=\"docling-lb\"}[5m])) by (le))",
               "legendFormat": "p99",
               "refId": "C"
             }
@@ -586,7 +586,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "stepflow_lb_backend_health{app=\"stepflow-load-balancer-docling\"}",
+              "expr": "stepflow_lb_backend_health{app=\"docling-lb\"}",
               "legendFormat": "{{backend}} ({{instance_id}})",
               "refId": "A"
             }
@@ -639,7 +639,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_lb_active_connections{app=\"stepflow-load-balancer-docling\"}) by (backend)",
+              "expr": "sum(stepflow_lb_active_connections{app=\"docling-lb\"}) by (backend)",
               "legendFormat": "{{backend}}",
               "refId": "A"
             }
@@ -799,7 +799,7 @@ data:
           "id": 41,
           "options": {
             "mode": "markdown",
-            "content": "## Docling Worker Traces\n\nView distributed traces for document processing:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=stepflow-python)\n- Traces show the full processing pipeline: Orchestrator \u2192 LB \u2192 Worker \u2192 Docling conversion\n\n**Tip**: Click on trace IDs in logs to view complete processing timelines."
+            "content": "## Docling Worker Traces\n\nView distributed traces for document processing:\n\n- [Browse traces in Jaeger UI](http://localhost:16686/search?service=docling-step-worker)\n- Traces show the full processing pipeline: Orchestrator \u2192 LB \u2192 Worker \u2192 Docling conversion\n\n**Tip**: Click on trace IDs in logs to view complete processing timelines."
           },
           "pluginVersion": "10.3.3",
           "targets": [],

@@ -344,14 +344,15 @@ def _create_app(ctx: _HttpServerContext) -> FastAPI:
     """Create FastAPI app with routes for the given server context."""
     app = FastAPI(title="Stepflow Streamable HTTP Server")
 
-    # Instrument FastAPI for automatic HTTP server metrics and trace spans
+    # Instrument FastAPI for automatic HTTP server metrics and trace spans.
+    # Health check endpoints are excluded to reduce trace noise from K8s probes.
     try:
         from opentelemetry.instrumentation.fastapi import (  # type: ignore[import-not-found]
             FastAPIInstrumentor,
         )
 
-        FastAPIInstrumentor.instrument_app(app)
-        logger.info("OpenTelemetry FastAPI instrumentation enabled")
+        FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
+        logger.info("OpenTelemetry FastAPI instrumentation enabled (health excluded)")
     except ImportError:
         logger.debug("OpenTelemetry FastAPI instrumentation not available")
 
