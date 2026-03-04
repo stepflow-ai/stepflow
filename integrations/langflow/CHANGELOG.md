@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.3.2"></a> [stepflow-langflow-integration 0.3.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.2) - 2026-03-04
+### Features
+
+- Add verbose/debug options to stepflow-langflow CLI and fix result display ([#718](https://github.com/stepflow-ai/stepflow/pull/718))
+
 ## <a id="0.3.1"></a> [stepflow-langflow-integration 0.3.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.1) - 2026-03-04
 ### Bug Fixes
 
