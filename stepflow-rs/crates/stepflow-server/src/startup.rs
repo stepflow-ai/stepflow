@@ -11,6 +11,7 @@
 // the License.
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_config::{ConfigError, StepflowConfig};
@@ -85,8 +86,12 @@ impl AppConfig {
         };
 
         // Apply the layers.
+        // The default body limit is set to 250 MiB to support large document
+        // uploads (e.g. PDFs sent as base64 in flow inputs).  The orchestrator
+        // may also receive large flow results containing embedded images.
         app = app.layer(
             ServiceBuilder::new()
+                .layer(DefaultBodyLimit::max(250 * 1024 * 1024))
                 .layer(TraceLayer::new_for_http())
                 .option_layer(cors_layer),
         );

@@ -106,6 +106,12 @@ def request_to_flow_input(
     to_formats = opts.pop("to_formats", None)
     image_export_mode = opts.pop("image_export_mode", None)
 
+    # Apply stock docling-serve defaults for missing options.
+    # images_scale defaults to 2.0 in stock docling-serve; without this the
+    # underlying docling library uses a lower default (~0.83) producing
+    # noticeably smaller embedded images.
+    opts.setdefault("images_scale", 2.0)
+
     flow_input["to_formats"] = to_formats or ["md"]
     flow_input["image_export_mode"] = image_export_mode or "embedded"
     flow_input["options"] = opts if opts else None

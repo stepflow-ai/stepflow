@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 from docling.datamodel.base_models import DocumentStream
 from stepflow_py.worker import blob_store
+from stepflow_py.worker.blob_ref import is_blob_ref
 
 from docling_step_worker.exceptions import BlobStoreError
 
@@ -35,13 +36,18 @@ logger = logging.getLogger(__name__)
 
 
 async def get_document_bytes(
-    source: str, source_kind: str, filename: str | None = None
+    source: str | dict[str, Any], source_kind: str, filename: str | None = None
 ) -> bytes:
-    """Retrieve document bytes from blob store or URL.
+    """Retrieve document bytes from blob store, URL, or base64 string.
+
+    Handles Stepflow's automatic blob externalization: when the orchestrator
+    replaces a large input value with a ``{"$blob": "<sha256>", "size": N}``
+    reference, this function transparently resolves it before processing.
 
     Args:
-        source: blob ref ("blob:sha256:...") or URL string
-        source_kind: "blob" or "url"
+        source: blob ref string ("blob:sha256:..."), URL string, base64 string,
+            or a Stepflow ``$blob`` reference dict.
+        source_kind: "blob", "url", or "base64"
         filename: Optional filename hint (unused for blob, used for logging)
 
     Returns:
@@ -51,6 +57,22 @@ async def get_document_bytes(
         BlobStoreError: If blob retrieval fails
         httpx.HTTPError: If URL download fails
     """
+    # Resolve Stepflow $blob references.  The orchestrator may blobify large
+    # input fields (e.g. base64-encoded PDFs) and replace them with
+    # {"$blob": "<sha256>", "size": N}.  We fetch the original value from the
+    # blob store before proceeding with the normal source_kind logic.
+    if is_blob_ref(source):
+        blob_id = source["$blob"]  # type: ignore[index]
+        logger.debug(
+            "Resolving $blob reference %s (source_kind=%s)", blob_id[:12], source_kind
+        )
+        try:
+            source = await blob_store.get_blob(blob_id)
+        except Exception as e:
+            raise BlobStoreError(
+                f"Failed to resolve $blob reference {blob_id}: {e}"
+            ) from e
+
     if source_kind == "blob":
         try:
             data = await blob_store.get_blob_binary(source)

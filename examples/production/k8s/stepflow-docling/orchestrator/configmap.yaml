@@ -40,6 +40,12 @@ data:
       "/builtin/{*component}":
         - plugin: builtin
 
+    # Blob API URL exposed to workers so they can resolve $blob references.
+    # The orchestrator auto-configures to 127.0.0.1 which is unreachable from
+    # worker pods; this overrides it with the cluster-internal service address.
+    blobApi:
+      url: "http://docling-orchestrator.stepflow-docling.svc.cluster.local:7840/api/v1/blobs"
+
     storageConfig:
       type: inMemory
 

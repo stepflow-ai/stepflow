@@ -84,10 +84,11 @@ data:
             namespaces:
               names:
                 - stepflow
+                - stepflow-docling
         relabel_configs:
           - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
-            regex: stepflow-load-balancer.*
+            regex: (stepflow-load-balancer.*|docling-lb)
           - source_labels: [__meta_kubernetes_pod_label_app]
             target_label: app
           - source_labels: [__meta_kubernetes_pod_ip]

@@ -65,6 +65,7 @@ http = [
     "fastapi>=0.104.1",
     "uvicorn>=0.24.0",
     "sse-starlette>=1.6.5",
+    "opentelemetry-instrumentation-fastapi>=0.44b0",
 ]
 langchain = [
     "langchain-core>=0.3",
