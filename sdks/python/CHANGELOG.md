@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.11.1"></a> [stepflow-py 0.11.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.11.1) - 2026-03-04
+### Bug Fixes
+
+- Resolve ValueExpr 'Multiple matches' deserialization error ([#709](https://github.com/stepflow-ai/stepflow/pull/709))
+- Treat explicit null same as absent for optional JSON fields ([#710](https://github.com/stepflow-ai/stepflow/pull/710))
+
+### Miscellaneous Tasks
+
+- Release stepflow v0.11.1 ([#712](https://github.com/stepflow-ai/stepflow/pull/712))
+
 ## <a id="0.11.0"></a> [stepflow-py 0.11.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.11.0) - 2026-03-02
 ### Features
 
