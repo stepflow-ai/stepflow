@@ -20,6 +20,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 
 /// Orchestrator-level retry configuration.
 ///
@@ -28,6 +29,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Component error retry limits are configured per-step via
 /// `onError: { action: retry, maxRetries }` and share this backoff config.
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RetryConfig {
@@ -37,12 +39,14 @@ pub struct RetryConfig {
     /// network timeouts, connection refused — where the component never ran or
     /// didn't complete.
     #[serde(default = "RetryConfig::default_transport_max_retries")]
+    #[serde_as(as = "DefaultOnNull")]
     pub transport_max_retries: u32,
     /// Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).
     ///
     /// This backoff applies to both transport error retries and component error
     /// retries. The same delay progression is used regardless of retry reason.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub backoff: BackoffConfig,
 }
 
@@ -232,5 +236,19 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let parsed: RetryConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.transport_max_retries, 3);
+    }
+
+    #[test]
+    fn test_retry_config_null_fields() {
+        // DefaultOnNull gives T::default() (0 for u32, Fibonacci for BackoffConfig),
+        // not the custom serde defaults. This is acceptable because Python never
+        // sends null for these fields (they're typed as `int | UnsetType`).
+        let json = serde_json::json!({
+            "transportMaxRetries": null,
+            "backoff": null,
+        });
+        let config: RetryConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(config.transport_max_retries, 0);
+        assert!(matches!(config.backoff, BackoffConfig::Fibonacci { .. }));
     }
 }

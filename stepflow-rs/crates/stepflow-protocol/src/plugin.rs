@@ -15,6 +15,7 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult,
@@ -47,6 +48,7 @@ pub struct StepflowPluginConfig {
 /// Either `command` or `url` must be provided (but not both):
 /// - `command`: Launch a subprocess HTTP server
 /// - `url`: Connect to an existing HTTP server
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum StepflowTransport {
@@ -56,10 +58,12 @@ pub enum StepflowTransport {
     Subprocess {
         command: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde_as(as = "DefaultOnNull")]
         args: Vec<String>,
         /// Environment variables to pass to the subprocess.
         /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
         #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+        #[serde_as(as = "DefaultOnNull")]
         env: IndexMap<String, String>,
         /// Health check configuration for the subprocess server.
         #[serde(
@@ -75,6 +79,7 @@ pub enum StepflowTransport {
 }
 
 /// Configuration for health check polling when launching subprocess servers.
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckConfig {
@@ -83,9 +88,11 @@ pub struct HealthCheckConfig {
     pub path: String,
     /// Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)
     #[serde(default = "default_health_timeout_ms")]
+    #[serde_as(as = "DefaultOnNull")]
     pub timeout_ms: u64,
     /// Delay between health check attempts in milliseconds. Default: 100
     #[serde(default = "default_health_retry_delay_ms")]
+    #[serde_as(as = "DefaultOnNull")]
     pub retry_delay_ms: u64,
 }
 
@@ -528,5 +535,50 @@ impl Plugin for StepflowPlugin {
         }
         // Remote mode: no-op — external orchestration (Docker/k8s) handles restart.
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subprocess_transport_null_fields() {
+        let json = serde_json::json!({
+            "command": "uv",
+            "args": null,
+            "env": null,
+            "healthCheck": null,
+        });
+        let transport: StepflowTransport = serde_json::from_value(json).unwrap();
+        match transport {
+            StepflowTransport::Subprocess {
+                command,
+                args,
+                env,
+                health_check,
+            } => {
+                assert_eq!(command, "uv");
+                assert!(args.is_empty());
+                assert!(env.is_empty());
+                assert!(health_check.is_none());
+            }
+            _ => panic!("Expected Subprocess variant"),
+        }
+    }
+
+    #[test]
+    fn test_health_check_config_null_fields() {
+        // DefaultOnNull gives T::default() for numeric fields (0), not the
+        // custom serde defaults. `path` is excluded since String::default()
+        // is "" rather than "/health". Python never sends null for these
+        // fields (they're typed as `int | UnsetType` / `str | UnsetType`).
+        let json = serde_json::json!({
+            "timeoutMs": null,
+            "retryDelayMs": null,
+        });
+        let config: HealthCheckConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(config.timeout_ms, 0);
+        assert_eq!(config.retry_delay_ms, 0);
     }
 }

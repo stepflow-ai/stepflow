@@ -28,6 +28,7 @@ use std::sync::Arc;
 use error_stack::{Report, ResultExt as _};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 use stepflow_builtins::BuiltinPluginConfig;
 use stepflow_plugin::routing::RoutingConfig;
 use thiserror::Error;
@@ -40,6 +41,7 @@ pub enum ConfigError {
 
 type Result<T> = std::result::Result<T, Report<ConfigError>>;
 
+#[serde_as]
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepflowConfig {
@@ -55,22 +57,27 @@ pub struct StepflowConfig {
     pub routing: RoutingConfig,
     /// Storage configuration. If not specified, uses in-memory storage.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub storage_config: StorageConfig,
     /// Lease manager configuration for distributed coordination.
     /// If not specified, uses no-op (single orchestrator mode).
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub lease_manager: LeaseManagerConfig,
     /// Recovery configuration for handling interrupted runs.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub recovery: RecoveryConfig,
     /// Blob API configuration.
     /// Controls whether the orchestrator serves blob endpoints and the URL workers use.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub blob_api: BlobApiConfig,
     /// Retry configuration.
     /// Controls backoff for all retries and the retry limit for transport errors
     /// (subprocess crash, network timeout, connection refused).
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub retry: stepflow_core::RetryConfig,
 }
 
@@ -247,5 +254,35 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_stepflow_config_null_optional_fields() {
+        // Simulates Python SDK sending config with explicit nulls for optional fields
+        let json = serde_json::json!({
+            "plugins": {
+                "builtin": { "type": "builtin" }
+            },
+            "routes": {
+                "/{*component}": [{ "plugin": "builtin" }]
+            },
+            "workingDirectory": null,
+            "storageConfig": null,
+            "leaseManager": null,
+            "recovery": null,
+            "blobApi": null,
+            "retry": null,
+        });
+        let config: StepflowConfig = serde_json::from_value(json).unwrap();
+        assert!(config.working_directory.is_none());
+        // All defaulted fields should use their defaults when null
+        assert!(matches!(
+            config.storage_config,
+            StorageConfig::Simple(StoreConfig::InMemory)
+        ));
+        assert!(matches!(config.lease_manager, LeaseManagerConfig::NoOp));
+        assert!(config.recovery.enabled);
+        assert!(config.blob_api.enabled);
+        assert_eq!(config.retry.transport_max_retries, 3);
     }
 }

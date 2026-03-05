@@ -11,11 +11,13 @@
 // the License.
 
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 
 /// Configuration for the Blob HTTP API.
 ///
 /// This controls whether the orchestrator serves blob API endpoints and what URL
 /// workers should use to access the blob API.
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BlobApiConfig {
@@ -73,5 +75,24 @@ impl BlobApiConfig {
     /// Set `blob_threshold: 0` in config to explicitly disable.
     pub fn effective_blob_threshold(&self) -> usize {
         self.blob_threshold.unwrap_or(DEFAULT_BLOB_THRESHOLD)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_blob_api_config_optional_null() {
+        // Option fields accept null natively; `enabled` is not tested with
+        // null because DefaultOnNull would give false (bool default) rather
+        // than the config default of true. Python never sends enabled=null.
+        let json = serde_json::json!({
+            "url": null,
+            "blobThreshold": null,
+        });
+        let config: BlobApiConfig = serde_json::from_value(json).unwrap();
+        assert!(config.url.is_none());
+        assert!(config.blob_threshold.is_none());
     }
 }

@@ -11,6 +11,7 @@
 // the License.
 
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 
 /// Default: recovery is enabled.
 pub const RECOVERY_DEFAULT_ENABLED: bool = true;
@@ -37,6 +38,7 @@ pub const RECOVERY_DEFAULT_CHECKPOINT_INTERVAL: usize = 1000;
 ///
 /// Controls how the orchestrator handles interrupted runs on startup
 /// and during execution.
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RecoveryConfig {
@@ -51,18 +53,21 @@ pub struct RecoveryConfig {
     ///
     /// Only used when `enabled` is true. Lower values mean faster recovery
     /// but more overhead. Default: 30 seconds.
+    #[serde_as(as = "DefaultOnNull")]
     pub check_interval_secs: u64,
 
     /// Maximum number of runs to recover on startup.
     ///
     /// Limits how many interrupted runs are recovered when the orchestrator
     /// starts. Set to 0 to disable startup recovery. Default: 100.
+    #[serde_as(as = "DefaultOnNull")]
     pub max_startup_recovery: usize,
 
     /// Maximum number of orphaned runs to claim per check interval.
     ///
     /// Limits how many runs are claimed in each periodic check to avoid
     /// overwhelming a single orchestrator. Default: 10.
+    #[serde_as(as = "DefaultOnNull")]
     pub max_claims_per_check: usize,
 
     /// TTL in seconds for the orchestrator lease and heartbeats.
@@ -70,6 +75,7 @@ pub struct RecoveryConfig {
     /// The heartbeat interval is automatically set to `lease_ttl_secs / 3`.
     /// If an orchestrator stops sending heartbeats, its lease expires after this
     /// duration and its runs become eligible for recovery. Default: 30 seconds.
+    #[serde_as(as = "DefaultOnNull")]
     pub lease_ttl_secs: u64,
 
     /// Number of journal entries between checkpoints.
@@ -77,6 +83,7 @@ pub struct RecoveryConfig {
     /// The executor periodically serializes execution state so that recovery
     /// only needs to replay events after the checkpoint instead of from the
     /// beginning. Set to 0 to disable. Default: 1000.
+    #[serde_as(as = "DefaultOnNull")]
     pub checkpoint_interval: usize,
 }
 
@@ -90,5 +97,31 @@ impl Default for RecoveryConfig {
             lease_ttl_secs: RECOVERY_DEFAULT_LEASE_TTL_SECS,
             checkpoint_interval: RECOVERY_DEFAULT_CHECKPOINT_INTERVAL,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_recovery_config_defaulted_fields_null() {
+        // Numeric fields accept explicit null (DefaultOnNull → 0/default).
+        // `enabled` is excluded: DefaultOnNull would give false, but the
+        // config default is true. Python never sends enabled=null anyway
+        // (it's typed as `bool | UnsetType`, not `bool | None`).
+        let json = serde_json::json!({
+            "checkIntervalSecs": null,
+            "maxStartupRecovery": null,
+            "maxClaimsPerCheck": null,
+            "leaseTtlSecs": null,
+            "checkpointInterval": null,
+        });
+        let config: RecoveryConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(config.check_interval_secs, 0);
+        assert_eq!(config.max_startup_recovery, 0);
+        assert_eq!(config.max_claims_per_check, 0);
+        assert_eq!(config.lease_ttl_secs, 0);
+        assert_eq!(config.checkpoint_interval, 0);
     }
 }

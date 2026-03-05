@@ -523,6 +523,8 @@ pub struct MyStruct {
 }
 ```
 
+**Caveat**: `DefaultOnNull` uses `T::default()`, not the custom serde default. For `bool` this means `null` → `false`, and for `u32` it means `null` → `0`. Do **not** use `DefaultOnNull` on fields where the custom default differs from `T::default()` (e.g., `enabled: bool` that defaults to `true`, or `max_retries: u32` that defaults to `3`). These fields won't receive `null` from Python anyway since the SDK types use `UnsetType` rather than `None`.
+
 ### Testing Null Fields
 
 Every struct that is deserialized from external JSON should have a test verifying that all optional/defaulted fields accept explicit `null`. This catches regressions and documents the contract with SDK clients:
