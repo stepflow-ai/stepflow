@@ -28,6 +28,7 @@ use std::sync::Arc;
 use error_stack::{Report, ResultExt as _};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 use stepflow_builtins::BuiltinPluginConfig;
 use stepflow_plugin::routing::RoutingConfig;
 use thiserror::Error;
@@ -40,6 +41,7 @@ pub enum ConfigError {
 
 type Result<T> = std::result::Result<T, Report<ConfigError>>;
 
+#[serde_as]
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StepflowConfig {
@@ -55,22 +57,27 @@ pub struct StepflowConfig {
     pub routing: RoutingConfig,
     /// Storage configuration. If not specified, uses in-memory storage.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub storage_config: StorageConfig,
     /// Lease manager configuration for distributed coordination.
     /// If not specified, uses no-op (single orchestrator mode).
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub lease_manager: LeaseManagerConfig,
     /// Recovery configuration for handling interrupted runs.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub recovery: RecoveryConfig,
     /// Blob API configuration.
     /// Controls whether the orchestrator serves blob endpoints and the URL workers use.
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub blob_api: BlobApiConfig,
     /// Retry configuration.
     /// Controls backoff for all retries and the retry limit for transport errors
     /// (subprocess crash, network timeout, connection refused).
     #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub retry: stepflow_core::RetryConfig,
 }
 
@@ -195,7 +202,6 @@ impl StepflowConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     /// This test generates the StepflowConfig JSON schema to schemas/stepflow-config.json.
     /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config --features etcd test_schema_generation
@@ -205,6 +211,8 @@ mod tests {
     #[test]
     #[cfg(feature = "etcd")]
     fn test_schema_generation() {
+        use std::env;
+
         use stepflow_core::json_schema::generate_json_schema_with_defs;
 
         // Generate schema using schemars
@@ -231,21 +239,54 @@ mod tests {
             // Try to read the existing schema for comparison
             match std::fs::read_to_string(schema_path) {
                 Ok(expected_schema_str) => {
-                    assert_eq!(
-                        generated_schema_str, expected_schema_str,
-                        "Generated schema does not match the reference schema at {}. \
-                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to update.",
-                        schema_path
-                    );
+                    if generated_schema_str != expected_schema_str {
+                        panic!(
+                            "Generated schema does not match the reference schema at {}.\n\
+                            Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features' \
+                            to update.",
+                            schema_path
+                        );
+                    }
                 }
                 Err(_) => {
                     panic!(
-                        "StepflowConfig schema file not found at {}. \
-                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to create it.",
+                        "StepflowConfig schema file not found at {}.\n\
+                        Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features' \
+                        to create it.",
                         schema_path
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_stepflow_config_null_optional_fields() {
+        // Simulates Python SDK sending config with explicit nulls for optional fields
+        let json = serde_json::json!({
+            "plugins": {
+                "builtin": { "type": "builtin" }
+            },
+            "routes": {
+                "/{*component}": [{ "plugin": "builtin" }]
+            },
+            "workingDirectory": null,
+            "storageConfig": null,
+            "leaseManager": null,
+            "recovery": null,
+            "blobApi": null,
+            "retry": null,
+        });
+        let config: StepflowConfig = serde_json::from_value(json).unwrap();
+        assert!(config.working_directory.is_none());
+        // All defaulted fields should use their defaults when null
+        assert!(matches!(
+            config.storage_config,
+            StorageConfig::Simple(StoreConfig::InMemory)
+        ));
+        assert!(matches!(config.lease_manager, LeaseManagerConfig::NoOp));
+        assert!(config.recovery.enabled);
+        assert!(config.blob_api.enabled);
+        assert_eq!(config.retry.transport_max_retries, 3);
     }
 }

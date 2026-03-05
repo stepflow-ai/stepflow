@@ -144,9 +144,7 @@ class StepflowClient:
                 env=env or {},
             )
         elif isinstance(config, StepflowConfigType):
-            # Convert StepflowConfig to dict, removing None values
             config_dict = msgspec.to_builtins(config)
-            config_dict = _remove_none_values(config_dict)
             orch_config = OrchestratorConfig(
                 config=config_dict,
                 startup_timeout=startup_timeout,
@@ -261,8 +259,7 @@ class StepflowClient:
         # Normalize input to list (API always expects array)
         inputs = [input_data] if isinstance(input_data, dict) else input_data
 
-        # Build request kwargs, only including non-None values
-        # This ensures exclude_unset=True works correctly (unset != set to None)
+        # Build request kwargs, only including values that are explicitly provided
         request_kwargs: dict[str, Any] = {
             "flowId": flow_id,
             "input": inputs,
@@ -436,19 +433,6 @@ class StepflowClient:
             item.model_dump(by_alias=True, exclude_unset=True)
             for item in response.items
         ]
-
-
-def _remove_none_values(obj: Any) -> Any:
-    """Recursively remove None values from a dict or list.
-
-    This is needed because Rust's serde untagged enum deserialization
-    can fail when explicit null values are present for optional fields.
-    """
-    if isinstance(obj, dict):
-        return {k: _remove_none_values(v) for k, v in obj.items() if v is not None}
-    elif isinstance(obj, list):
-        return [_remove_none_values(item) for item in obj]
-    return obj
 
 
 def _parse_env_value(value: str) -> Any:

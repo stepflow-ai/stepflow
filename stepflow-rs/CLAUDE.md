@@ -492,6 +492,65 @@ Doc comments on struct fields become OpenAPI parameter descriptions. The
 `Deserialize` derive is required for axum's path extraction at runtime;
 `JsonSchema` is required for aide's OpenAPI generation at build time.
 
+## Handling Explicit Null in JSON
+
+Structs deserialized from JSON/YAML must tolerate explicit `null` for fields that have `#[serde(default)]`. This is critical because Python clients (Pydantic `model_dump()`, msgspec `to_builtins()`) may serialize optional fields as `null` rather than omitting them.
+
+Plain `#[serde(default)]` handles *absent* fields but rejects `null` for non-`Option` types like `Vec`, `HashMap`, and `bool`. Two approaches handle this:
+
+### 1. `DefaultOnNull` — when `T::default()` is the correct default
+
+Use `serde_with::DefaultOnNull` for fields where `T::default()` matches the desired default (e.g., `Vec` → empty, `HashMap` → empty, enums with a `Default` impl):
+
+```rust
+use serde_with::{DefaultOnNull, serde_as};
+
+#[serde_as]
+#[derive(Serialize, Deserialize)]
+pub struct MyStruct {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde_as(as = "DefaultOnNull")]
+    pub items: Vec<String>,
+}
+```
+
+### 2. `deserialize_with` — when the custom default differs from `T::default()`
+
+`DefaultOnNull` uses `T::default()`, not the serde `#[serde(default = "...")]` value. For fields like `enabled: bool` (default `true`) or `max_retries: u32` (default `3`), use a `deserialize_with` function instead:
+
+```rust
+fn null_or_default_enabled<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or(true))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MyConfig {
+    #[serde(default = "default_enabled", deserialize_with = "null_or_default_enabled")]
+    pub enabled: bool,
+}
+```
+
+The pattern is: deserialize as `Option<T>`, then `unwrap_or` with the custom default.
+
+### Testing Null Fields
+
+Every struct deserialized from external JSON should have a test verifying that all fields accept explicit `null` and produce the correct custom default:
+
+```rust
+#[test]
+fn test_my_config_null_fields_use_custom_defaults() {
+    let json = serde_json::json!({
+        "enabled": null,
+        "items": null,
+    });
+    let c: MyConfig = serde_json::from_value(json).unwrap();
+    assert!(c.enabled);  // true, not false
+    assert!(c.items.is_empty());
+}
+```
+
+See `stepflow-config/src/recovery_config.rs` and `stepflow-protocol/src/plugin.rs` for real examples.
+
 ## Project Dependencies
 
 - Keep dependencies minimal and well-documented

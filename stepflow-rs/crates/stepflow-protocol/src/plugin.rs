@@ -14,7 +14,8 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_with::{DefaultOnNull, serde_as};
 use stepflow_core::workflow::StepId;
 use stepflow_core::{
     FlowResult,
@@ -47,6 +48,7 @@ pub struct StepflowPluginConfig {
 /// Either `command` or `url` must be provided (but not both):
 /// - `command`: Launch a subprocess HTTP server
 /// - `url`: Connect to an existing HTTP server
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum StepflowTransport {
@@ -56,10 +58,12 @@ pub enum StepflowTransport {
     Subprocess {
         command: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde_as(as = "DefaultOnNull")]
         args: Vec<String>,
         /// Environment variables to pass to the subprocess.
         /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
         #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+        #[serde_as(as = "DefaultOnNull")]
         env: IndexMap<String, String>,
         /// Health check configuration for the subprocess server.
         #[serde(
@@ -79,13 +83,22 @@ pub enum StepflowTransport {
 #[serde(rename_all = "camelCase")]
 pub struct HealthCheckConfig {
     /// Health check endpoint path. Default: "/health"
-    #[serde(default = "default_health_path")]
+    #[serde(
+        default = "default_health_path",
+        deserialize_with = "null_or_default_health_path"
+    )]
     pub path: String,
     /// Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)
-    #[serde(default = "default_health_timeout_ms")]
+    #[serde(
+        default = "default_health_timeout_ms",
+        deserialize_with = "null_or_default_health_timeout_ms"
+    )]
     pub timeout_ms: u64,
     /// Delay between health check attempts in milliseconds. Default: 100
-    #[serde(default = "default_health_retry_delay_ms")]
+    #[serde(
+        default = "default_health_retry_delay_ms",
+        deserialize_with = "null_or_default_health_retry_delay_ms"
+    )]
     pub retry_delay_ms: u64,
 }
 
@@ -109,6 +122,18 @@ fn default_health_timeout_ms() -> u64 {
 
 fn default_health_retry_delay_ms() -> u64 {
     100
+}
+
+fn null_or_default_health_path<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or_else(default_health_path))
+}
+
+fn null_or_default_health_timeout_ms<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or_else(default_health_timeout_ms))
+}
+
+fn null_or_default_health_retry_delay_ms<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or_else(default_health_retry_delay_ms))
 }
 
 impl PluginConfig for StepflowPluginConfig {
@@ -528,5 +553,48 @@ impl Plugin for StepflowPlugin {
         }
         // Remote mode: no-op — external orchestration (Docker/k8s) handles restart.
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_subprocess_transport_null_fields() {
+        let json = serde_json::json!({
+            "command": "uv",
+            "args": null,
+            "env": null,
+            "healthCheck": null,
+        });
+        let transport: StepflowTransport = serde_json::from_value(json).unwrap();
+        match transport {
+            StepflowTransport::Subprocess {
+                command,
+                args,
+                env,
+                health_check,
+            } => {
+                assert_eq!(command, "uv");
+                assert!(args.is_empty());
+                assert!(env.is_empty());
+                assert!(health_check.is_none());
+            }
+            _ => panic!("Expected Subprocess variant"),
+        }
+    }
+
+    #[test]
+    fn test_health_check_config_null_fields_use_custom_defaults() {
+        let json = serde_json::json!({
+            "path": null,
+            "timeoutMs": null,
+            "retryDelayMs": null,
+        });
+        let config: HealthCheckConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(config.path, "/health");
+        assert_eq!(config.timeout_ms, 60000);
+        assert_eq!(config.retry_delay_ms, 100);
     }
 }

@@ -186,12 +186,7 @@ class StepflowOrchestrator:
             cmd.extend(["--config", str(self._config.config_path)])
         elif self._config.config is not None:
             cmd.append("--config-stdin")
-            # Serialize config dict to JSON
-            # Note: We need to remove None values because Rust's serde untagged
-            # enum deserialization can fail with explicit null values for
-            # optional fields (e.g., StepflowTransport).
-            cleaned = self._remove_none_values(self._config.config)
-            stdin_input = json.dumps(cleaned).encode("utf-8")
+            stdin_input = json.dumps(self._config.config).encode("utf-8")
 
         env = os.environ.copy()
         env.update(self._config.env)
@@ -252,23 +247,6 @@ class StepflowOrchestrator:
         self._process = None
         self._actual_port = None
         self._url = None
-
-    @staticmethod
-    def _remove_none_values(obj: Any) -> Any:
-        """Recursively remove None values from a dict or list.
-
-        This is needed because Rust's serde untagged enum deserialization
-        can fail when explicit null values are present for optional fields.
-        """
-        if isinstance(obj, dict):
-            return {
-                k: StepflowOrchestrator._remove_none_values(v)
-                for k, v in obj.items()
-                if v is not None
-            }
-        elif isinstance(obj, list):
-            return [StepflowOrchestrator._remove_none_values(item) for item in obj]
-        return obj
 
     def _get_binary_path(self) -> Path:
         """Get the path to the stepflow-server binary.
