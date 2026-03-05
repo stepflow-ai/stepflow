@@ -21,14 +21,24 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from stepflow_py.api import ApiClient, Configuration
 from stepflow_py.api.api import FlowApi, HealthApi, RunApi
 from stepflow_py.api.models import Flow
 from stepflow_py.api.models.create_run_request import CreateRunRequest
+from stepflow_py.api.models.status_event import StatusEvent as _StatusEventOneOf
+from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
+from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
+from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
+from stepflow_py.api.models.status_event_run_initialized import (
+    StatusEventRunInitialized,
+)
+from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
+from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
+from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
+from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
 from stepflow_py.api.models.step_override import StepOverride
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
 
@@ -40,36 +50,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class StatusEvent:
-    """A status event from the SSE stream.
-
-    Attributes:
-        event: Event type name (e.g., "step_started", "run_completed").
-        data: Parsed JSON payload of the event.
-        id: Journal sequence number (string). Can be passed as ``since``
-            to resume the stream.
-    """
-
-    event: str
-    data: dict[str, Any]
-    id: str | None = None
-
-    @property
-    def run_id(self) -> str | None:
-        """Run ID associated with this event, if present."""
-        return self.data.get("runId")
-
-    @property
-    def sequence_number(self) -> int | None:
-        """Journal sequence number from the event payload."""
-        return self.data.get("sequenceNumber")
-
-    @property
-    def timestamp(self) -> str | None:
-        """ISO-8601 timestamp when the event was recorded."""
-        return self.data.get("timestamp")
+#: Union of all status event variant types yielded by
+#: :meth:`StepflowClient.status_events`.
+StatusEvent: TypeAlias = (
+    StatusEventRunCreated
+    | StatusEventRunInitialized
+    | StatusEventStepStarted
+    | StatusEventStepCompleted
+    | StatusEventStepReady
+    | StatusEventItemCompleted
+    | StatusEventRunCompleted
+    | StatusEventSubRunCreated
+)
 
 
 class StepflowClient:
@@ -459,12 +451,13 @@ class StepflowClient:
     ) -> AsyncIterator[StatusEvent]:
         """Stream execution events for a run via Server-Sent Events.
 
-        Yields ``StatusEvent`` objects in journal order. The stream
-        closes automatically after a ``run_completed`` event for
-        the requested run.
+        Yields typed status event objects (e.g., ``StatusEventRunCreated``,
+        ``StatusEventStepCompleted``) in journal order. The stream closes
+        automatically after a ``StatusEventRunCompleted`` for the requested
+        run.
 
-        Use ``since`` (a journal sequence number from a previous event's
-        ``id``) to resume from a specific point.
+        Each event has ``sequence_number`` and ``timestamp`` fields. Use
+        ``sequence_number`` to resume from a specific point via ``since``.
 
         Args:
             run_id: Run ID (UUID string).
@@ -475,7 +468,7 @@ class StepflowClient:
             include_results: Include result payloads in completion events.
 
         Yields:
-            StatusEvent for each execution event.
+            A typed status event variant for each execution event.
         """
         import httpx
 
@@ -517,6 +510,67 @@ class StepflowClient:
             item.model_dump(by_alias=True, exclude_unset=True)
             for item in response.items
         ]
+
+
+async def _parse_sse_stream(
+    lines: AsyncIterator[str],
+) -> AsyncIterator[StatusEvent]:
+    """Parse an SSE byte stream into typed status event objects.
+
+    Implements the subset of the SSE spec needed for Stepflow:
+    ``id``, ``event``, and ``data`` fields. Ignores comments
+    (lines starting with ``:``).
+
+    The ``data`` payload is deserialized into the appropriate generated
+    status event variant (e.g., ``StatusEventRunCreated``) using the
+    ``event`` discriminator field.
+    """
+    data_buf: list[str] = []
+
+    async for line in lines:
+        if line.startswith(":"):
+            continue
+
+        if line == "":
+            # Empty line = event boundary
+            if data_buf:
+                raw = "\n".join(data_buf)
+                event = _deserialize_status_event(raw)
+                if event is not None:
+                    yield event
+            data_buf = []
+            continue
+
+        if ":" in line:
+            field, _, value = line.partition(":")
+            value = value.lstrip(" ")  # SSE spec: strip single leading space
+        else:
+            field = line
+            value = ""
+
+        if field == "data":
+            data_buf.append(value)
+
+    # Flush any trailing event (stream closed without final blank line)
+    if data_buf:
+        raw = "\n".join(data_buf)
+        event = _deserialize_status_event(raw)
+        if event is not None:
+            yield event
+
+
+def _deserialize_status_event(json_str: str) -> StatusEvent | None:
+    """Deserialize a JSON string into a typed status event variant.
+
+    Returns ``None`` if the JSON cannot be parsed into a known variant.
+    """
+    try:
+        wrapper = _StatusEventOneOf.from_json(json_str)
+        return wrapper.actual_instance
+    except (ValueError, Exception):
+        logger.debug("Failed to deserialize status event: %s", json_str[:200])
+        return None
+
 
 
 def _parse_env_value(value: str) -> Any:

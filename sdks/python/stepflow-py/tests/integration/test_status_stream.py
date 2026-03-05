@@ -32,7 +32,13 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from stepflow_py import StatusEvent, StepflowClient
+from stepflow_py import (
+    StatusEvent,
+    StatusEventRunCompleted,
+    StatusEventRunCreated,
+    StatusEventStepCompleted,
+    StepflowClient,
+)
 from stepflow_py.config import (
     BuiltinPluginConfig,
     RouteRule,
@@ -102,9 +108,12 @@ async def test_stream_completed_run(client, completed_run):
     assert "run_created" in event_types
     assert "run_completed" in event_types
 
+    # Should have typed events
+    assert isinstance(events[0], StatusEventRunCreated)
+    assert isinstance(events[-1], StatusEventRunCompleted)
+
     # All events should have sequence numbers and timestamps
     for ev in events:
-        assert ev.id is not None, f"Event {ev.event} missing id"
         assert ev.sequence_number is not None, (
             f"Event {ev.event} missing sequenceNumber"
         )
@@ -140,7 +149,7 @@ async def test_stream_resume_with_since(client, completed_run):
     for ev in resumed:
         assert ev.sequence_number >= resume_from
     # Should still end with run_completed
-    assert resumed[-1].event == "run_completed"
+    assert isinstance(resumed[-1], StatusEventRunCompleted)
 
 
 @pytest.mark.asyncio
@@ -153,7 +162,7 @@ async def test_stream_event_type_filter(client, completed_run):
 
     assert len(events) >= 1
     for ev in events:
-        assert ev.event == "run_completed"
+        assert isinstance(ev, StatusEventRunCompleted)
 
 
 @pytest.mark.asyncio
@@ -166,21 +175,23 @@ async def test_stream_include_results(client, completed_run):
     async for ev in client.status_events(run_id, include_results=True):
         with_results.append(ev)
 
-    step_completed = [e for e in with_results if e.event == "step_completed"]
+    step_completed = [
+        e for e in with_results if isinstance(e, StatusEventStepCompleted)
+    ]
     assert len(step_completed) > 0, "Should have step_completed events"
     for ev in step_completed:
-        assert "result" in ev.data, "step_completed should include result"
+        assert ev.result is not None, "step_completed should include result"
 
     # Without results (default)
     without_results: list[StatusEvent] = []
     async for ev in client.status_events(run_id):
         without_results.append(ev)
 
-    step_completed = [e for e in without_results if e.event == "step_completed"]
+    step_completed = [
+        e for e in without_results if isinstance(e, StatusEventStepCompleted)
+    ]
     for ev in step_completed:
-        assert ev.data.get("result") is None, (
-            "step_completed should not include result by default"
-        )
+        assert ev.result is None, "step_completed should not include result by default"
 
 
 # =============================================================================
@@ -232,7 +243,9 @@ async def test_stream_after_restart():
         # Event types should match
         assert [e.event for e in replayed_events] == [e.event for e in original_events]
         # Sequence numbers should match
-        assert [e.id for e in replayed_events] == [e.id for e in original_events]
+        assert [e.sequence_number for e in replayed_events] == [
+            e.sequence_number for e in original_events
+        ]
 
 
 @pytest.mark.asyncio
@@ -279,4 +292,4 @@ async def test_stream_resume_after_restart():
         for ev in resumed:
             assert ev.sequence_number >= midpoint_seq
         # Should end with run_completed
-        assert resumed[-1].event == "run_completed"
+        assert isinstance(resumed[-1], StatusEventRunCompleted)
