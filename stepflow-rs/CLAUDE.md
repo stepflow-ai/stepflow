@@ -492,62 +492,64 @@ Doc comments on struct fields become OpenAPI parameter descriptions. The
 `Deserialize` derive is required for axum's path extraction at runtime;
 `JsonSchema` is required for aide's OpenAPI generation at build time.
 
-## Handling Explicit Null in JSON (DefaultOnNull)
+## Handling Explicit Null in JSON
 
-Structs deserialized from JSON/YAML must tolerate explicit `null` for fields that have `#[serde(default)]`. This is critical because Python clients (Pydantic `model_dump()`, msgspec `to_builtins()`) routinely serialize optional fields as `null` rather than omitting them.
+Structs deserialized from JSON/YAML must tolerate explicit `null` for fields that have `#[serde(default)]`. This is critical because Python clients (Pydantic `model_dump()`, msgspec `to_builtins()`) may serialize optional fields as `null` rather than omitting them.
 
-Plain `#[serde(default)]` handles *absent* fields but rejects `null` for non-`Option` types like `Vec`, `HashMap`, and `bool`. Use `serde_with::DefaultOnNull` to treat `null` the same as absent:
+Plain `#[serde(default)]` handles *absent* fields but rejects `null` for non-`Option` types like `Vec`, `HashMap`, and `bool`. Two approaches handle this:
+
+### 1. `DefaultOnNull` — when `T::default()` is the correct default
+
+Use `serde_with::DefaultOnNull` for fields where `T::default()` matches the desired default (e.g., `Vec` → empty, `HashMap` → empty, enums with a `Default` impl):
 
 ```rust
 use serde_with::{DefaultOnNull, serde_as};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct MyStruct {
-    // Option<T> fields handle null natively — no annotation needed
-    pub name: Option<String>,
-
-    // Non-Option fields with defaults MUST use DefaultOnNull
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde_as(as = "DefaultOnNull")]
     pub items: Vec<String>,
+}
+```
 
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    #[serde_as(as = "DefaultOnNull")]
-    pub metadata: HashMap<String, Value>,
+### 2. `deserialize_with` — when the custom default differs from `T::default()`
 
-    #[serde(default)]
-    #[serde_as(as = "DefaultOnNull")]
+`DefaultOnNull` uses `T::default()`, not the serde `#[serde(default = "...")]` value. For fields like `enabled: bool` (default `true`) or `max_retries: u32` (default `3`), use a `deserialize_with` function instead:
+
+```rust
+fn null_or_default_enabled<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or(true))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct MyConfig {
+    #[serde(default = "default_enabled", deserialize_with = "null_or_default_enabled")]
     pub enabled: bool,
 }
 ```
 
-**Caveat**: `DefaultOnNull` uses `T::default()`, not the custom serde default. For `bool` this means `null` → `false`, and for `u32` it means `null` → `0`. Do **not** use `DefaultOnNull` on fields where the custom default differs from `T::default()` (e.g., `enabled: bool` that defaults to `true`, or `max_retries: u32` that defaults to `3`). These fields won't receive `null` from Python anyway since the SDK types use `UnsetType` rather than `None`.
+The pattern is: deserialize as `Option<T>`, then `unwrap_or` with the custom default.
 
 ### Testing Null Fields
 
-Every struct that is deserialized from external JSON should have a test verifying that all optional/defaulted fields accept explicit `null`. This catches regressions and documents the contract with SDK clients:
+Every struct deserialized from external JSON should have a test verifying that all fields accept explicit `null` and produce the correct custom default:
 
 ```rust
 #[test]
-fn test_my_struct_all_optional_null() {
-    // Simulates Python client sending explicit nulls for all optional fields
+fn test_my_config_null_fields_use_custom_defaults() {
     let json = serde_json::json!({
-        "name": null,
-        "items": null,
-        "metadata": null,
         "enabled": null,
+        "items": null,
     });
-    let s: MyStruct = serde_json::from_value(json).unwrap();
-    assert!(s.name.is_none());
-    assert!(s.items.is_empty());
-    assert!(s.metadata.is_empty());
-    assert!(!s.enabled);
+    let c: MyConfig = serde_json::from_value(json).unwrap();
+    assert!(c.enabled);  // true, not false
+    assert!(c.items.is_empty());
 }
 ```
 
-See `stepflow-core/src/workflow/flow.rs` (`test_flow_all_optional_null`) and `stepflow-server/src/api/runs.rs` (`test_create_run_request_all_optional_null`) for real examples.
+See `stepflow-config/src/recovery_config.rs` and `stepflow-protocol/src/plugin.rs` for real examples.
 
 ## Project Dependencies
 

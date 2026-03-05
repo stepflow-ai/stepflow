@@ -19,7 +19,7 @@
 
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_with::{DefaultOnNull, serde_as};
 
 /// Orchestrator-level retry configuration.
@@ -38,8 +38,10 @@ pub struct RetryConfig {
     /// Transport errors are infrastructure-level failures — subprocess crashes,
     /// network timeouts, connection refused — where the component never ran or
     /// didn't complete.
-    #[serde(default = "RetryConfig::default_transport_max_retries")]
-    #[serde_as(as = "DefaultOnNull")]
+    #[serde(
+        default = "RetryConfig::default_transport_max_retries",
+        deserialize_with = "null_or_default_transport_max_retries"
+    )]
     pub transport_max_retries: u32,
     /// Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).
     ///
@@ -163,6 +165,12 @@ impl BackoffConfig {
     }
 }
 
+fn null_or_default_transport_max_retries<'de, D: Deserializer<'de>>(
+    d: D,
+) -> Result<u32, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or(RetryConfig::default_transport_max_retries()))
+}
+
 /// Compute the nth Fibonacci number (0-indexed: fib(0)=1, fib(1)=1, fib(2)=2, ...).
 fn fibonacci(n: u32) -> u64 {
     let (mut a, mut b) = (1u64, 1u64);
@@ -239,16 +247,13 @@ mod tests {
     }
 
     #[test]
-    fn test_retry_config_null_fields() {
-        // DefaultOnNull gives T::default() (0 for u32, Fibonacci for BackoffConfig),
-        // not the custom serde defaults. This is acceptable because Python never
-        // sends null for these fields (they're typed as `int | UnsetType`).
+    fn test_retry_config_null_fields_use_custom_defaults() {
         let json = serde_json::json!({
             "transportMaxRetries": null,
             "backoff": null,
         });
         let config: RetryConfig = serde_json::from_value(json).unwrap();
-        assert_eq!(config.transport_max_retries, 0);
+        assert_eq!(config.transport_max_retries, 3);
         assert!(matches!(config.backoff, BackoffConfig::Fibonacci { .. }));
     }
 }

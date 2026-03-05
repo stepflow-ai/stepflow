@@ -10,14 +10,12 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use serde::{Deserialize, Serialize};
-use serde_with::{DefaultOnNull, serde_as};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Configuration for the Blob HTTP API.
 ///
 /// This controls whether the orchestrator serves blob API endpoints and what URL
 /// workers should use to access the blob API.
-#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
 pub struct BlobApiConfig {
@@ -25,6 +23,7 @@ pub struct BlobApiConfig {
     ///
     /// Set to `false` when running a separate blob service.
     /// Default: `true`
+    #[serde(deserialize_with = "null_as_true")]
     pub enabled: bool,
 
     /// URL workers use to access the blob API.
@@ -78,20 +77,32 @@ impl BlobApiConfig {
     }
 }
 
+fn null_as_true<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    Ok(Option::deserialize(d)?.unwrap_or(true))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_blob_api_config_optional_null() {
-        // Option fields accept null natively; `enabled` is not tested with
-        // null because DefaultOnNull would give false (bool default) rather
-        // than the config default of true. Python never sends enabled=null.
+    fn test_blob_api_config_null_fields_use_defaults() {
         let json = serde_json::json!({
+            "enabled": null,
             "url": null,
             "blobThreshold": null,
         });
         let config: BlobApiConfig = serde_json::from_value(json).unwrap();
+        assert!(config.enabled);
+        assert!(config.url.is_none());
+        assert!(config.blob_threshold.is_none());
+    }
+
+    #[test]
+    fn test_blob_api_config_omitted_fields_use_defaults() {
+        let json = serde_json::json!({});
+        let config: BlobApiConfig = serde_json::from_value(json).unwrap();
+        assert!(config.enabled);
         assert!(config.url.is_none());
         assert!(config.blob_threshold.is_none());
     }
