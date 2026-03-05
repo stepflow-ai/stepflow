@@ -21,14 +21,15 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 
-class StatusEventOneOf4(BaseModel):
+class StatusEventStepStarted(BaseModel):
     """
-    A step's dependencies are satisfied and it is ready to execute.
+    A step has started executing.
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
@@ -37,20 +38,30 @@ class StatusEventOneOf4(BaseModel):
     step_id: StrictStr | None = Field(
         default=None, description="Step name/identifier.", alias="stepId"
     )
+    attempt: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Execution attempt number (1-based, >1 for retries)."
+    )
     event: StrictStr
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
     __properties: ClassVar[list[str]] = [
         "runId",
         "itemIndex",
         "stepIndex",
         "stepId",
+        "attempt",
         "event",
+        "sequenceNumber",
+        "timestamp",
     ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["step_ready"]):
-            raise ValueError("must be one of enum values ('step_ready')")
+        if value not in set(["step_started"]):
+            raise ValueError("must be one of enum values ('step_started')")
         return value
 
     model_config = ConfigDict(
@@ -70,7 +81,7 @@ class StatusEventOneOf4(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf4 from a JSON string"""
+        """Create an instance of StatusEventStepStarted from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -99,7 +110,7 @@ class StatusEventOneOf4(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf4 from a dict"""
+        """Create an instance of StatusEventStepStarted from a dict"""
         if obj is None:
             return None
 
@@ -112,7 +123,12 @@ class StatusEventOneOf4(BaseModel):
                 "itemIndex": obj.get("itemIndex"),
                 "stepIndex": obj.get("stepIndex"),
                 "stepId": obj.get("stepId"),
-                "event": obj.get("event"),
+                "attempt": obj.get("attempt"),
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "step_started",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

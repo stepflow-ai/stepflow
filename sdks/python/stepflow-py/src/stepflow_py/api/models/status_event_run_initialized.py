@@ -21,30 +21,40 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 
-class StatusEventOneOf(BaseModel):
+class StatusEventRunInitialized(BaseModel):
     """
-    A run was created with its initial configuration.
+    A run was initialized and its steps have been discovered.
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
-    flow_id: StrictStr = Field(
-        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
-        alias="flowId",
+    steps: list[list[StrictStr]] | None = Field(
+        default=None,
+        description="Step names needed per item (outer index = item_index).",
     )
-    item_count: Annotated[int, Field(strict=True, ge=0)] = Field(alias="itemCount")
     event: StrictStr
-    __properties: ClassVar[list[str]] = ["runId", "flowId", "itemCount", "event"]
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
+    __properties: ClassVar[list[str]] = [
+        "runId",
+        "steps",
+        "event",
+        "sequenceNumber",
+        "timestamp",
+    ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["run_created"]):
-            raise ValueError("must be one of enum values ('run_created')")
+        if value not in set(["run_initialized"]):
+            raise ValueError("must be one of enum values ('run_initialized')")
         return value
 
     model_config = ConfigDict(
@@ -64,7 +74,7 @@ class StatusEventOneOf(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf from a JSON string"""
+        """Create an instance of StatusEventRunInitialized from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -84,11 +94,16 @@ class StatusEventOneOf(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # set to None if steps (nullable) is None
+        # and model_fields_set contains the field
+        if self.steps is None and "steps" in self.model_fields_set:
+            _dict["steps"] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf from a dict"""
+        """Create an instance of StatusEventRunInitialized from a dict"""
         if obj is None:
             return None
 
@@ -98,9 +113,12 @@ class StatusEventOneOf(BaseModel):
         _obj = cls.model_validate(
             {
                 "runId": obj.get("runId"),
-                "flowId": obj.get("flowId"),
-                "itemCount": obj.get("itemCount"),
-                "event": obj.get("event"),
+                "steps": obj.get("steps"),
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "run_initialized",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

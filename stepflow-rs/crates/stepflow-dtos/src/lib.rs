@@ -68,6 +68,8 @@ pub struct StepStatusEntry {
     pub result: Option<FlowResult>,
     /// Journal sequence number of the event that produced this status.
     pub journal_seqno: u64,
+    /// When this status was last updated.
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Detailed information for a single item in a run.
@@ -428,8 +430,10 @@ impl StepInfo {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-pub enum StatusEvent {
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("event"))]
+pub enum StatusEventKind {
     /// A run was created with its initial configuration.
+    #[schemars(title = "StatusEventRunCreated")]
     RunCreated {
         run_id: Uuid,
         flow_id: BlobId,
@@ -437,6 +441,7 @@ pub enum StatusEvent {
     },
 
     /// A run was initialized and its steps have been discovered.
+    #[schemars(title = "StatusEventRunInitialized")]
     RunInitialized {
         run_id: Uuid,
         /// Step names needed per item (outer index = item_index).
@@ -445,6 +450,7 @@ pub enum StatusEvent {
     },
 
     /// A step has started executing.
+    #[schemars(title = "StatusEventStepStarted")]
     StepStarted {
         run_id: Uuid,
         item_index: u32,
@@ -457,6 +463,7 @@ pub enum StatusEvent {
     },
 
     /// A step has completed (successfully or with failure).
+    #[schemars(title = "StatusEventStepCompleted")]
     StepCompleted {
         run_id: Uuid,
         item_index: u32,
@@ -472,6 +479,7 @@ pub enum StatusEvent {
     },
 
     /// A step's dependencies are satisfied and it is ready to execute.
+    #[schemars(title = "StatusEventStepReady")]
     StepReady {
         run_id: Uuid,
         item_index: u32,
@@ -482,6 +490,7 @@ pub enum StatusEvent {
     },
 
     /// An individual item has completed.
+    #[schemars(title = "StatusEventItemCompleted")]
     ItemCompleted {
         run_id: Uuid,
         item_index: u32,
@@ -491,12 +500,14 @@ pub enum StatusEvent {
     },
 
     /// A run has completed (terminal state).
+    #[schemars(title = "StatusEventRunCompleted")]
     RunCompleted {
         run_id: Uuid,
         status: ExecutionStatus,
     },
 
     /// A sub-run was created.
+    #[schemars(title = "StatusEventSubRunCreated")]
     SubRunCreated {
         /// The sub-run's ID.
         run_id: Uuid,
@@ -509,32 +520,61 @@ pub enum StatusEvent {
     },
 }
 
+/// A status event with metadata from the execution journal.
+///
+/// Wraps a [`StatusEventKind`] with the journal sequence number and timestamp,
+/// providing a flat JSON structure via `#[serde(flatten)]`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::MergePropertiesIntoOneOf)]
+pub struct StatusEvent {
+    /// Journal sequence number for this event.
+    pub sequence_number: u64,
+    /// Timestamp when this event was recorded.
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// The event payload.
+    #[serde(flatten)]
+    pub kind: StatusEventKind,
+}
+
 impl StatusEvent {
     /// Get the run_id associated with this event.
     pub fn run_id(&self) -> Uuid {
+        self.kind.run_id()
+    }
+
+    /// Get the SSE event type name.
+    pub fn event_type(&self) -> &'static str {
+        self.kind.event_type()
+    }
+}
+
+impl StatusEventKind {
+    /// Get the run_id associated with this event.
+    pub fn run_id(&self) -> Uuid {
         match self {
-            StatusEvent::RunCreated { run_id, .. }
-            | StatusEvent::RunInitialized { run_id, .. }
-            | StatusEvent::StepStarted { run_id, .. }
-            | StatusEvent::StepCompleted { run_id, .. }
-            | StatusEvent::StepReady { run_id, .. }
-            | StatusEvent::ItemCompleted { run_id, .. }
-            | StatusEvent::RunCompleted { run_id, .. }
-            | StatusEvent::SubRunCreated { run_id, .. } => *run_id,
+            StatusEventKind::RunCreated { run_id, .. }
+            | StatusEventKind::RunInitialized { run_id, .. }
+            | StatusEventKind::StepStarted { run_id, .. }
+            | StatusEventKind::StepCompleted { run_id, .. }
+            | StatusEventKind::StepReady { run_id, .. }
+            | StatusEventKind::ItemCompleted { run_id, .. }
+            | StatusEventKind::RunCompleted { run_id, .. }
+            | StatusEventKind::SubRunCreated { run_id, .. } => *run_id,
         }
     }
 
     /// Get the SSE event type name.
     pub fn event_type(&self) -> &'static str {
         match self {
-            StatusEvent::RunCreated { .. } => "run_created",
-            StatusEvent::RunInitialized { .. } => "run_initialized",
-            StatusEvent::StepStarted { .. } => "step_started",
-            StatusEvent::StepCompleted { .. } => "step_completed",
-            StatusEvent::StepReady { .. } => "step_ready",
-            StatusEvent::ItemCompleted { .. } => "item_completed",
-            StatusEvent::RunCompleted { .. } => "run_completed",
-            StatusEvent::SubRunCreated { .. } => "sub_run_created",
+            StatusEventKind::RunCreated { .. } => "run_created",
+            StatusEventKind::RunInitialized { .. } => "run_initialized",
+            StatusEventKind::StepStarted { .. } => "step_started",
+            StatusEventKind::StepCompleted { .. } => "step_completed",
+            StatusEventKind::StepReady { .. } => "step_ready",
+            StatusEventKind::ItemCompleted { .. } => "item_completed",
+            StatusEventKind::RunCompleted { .. } => "run_completed",
+            StatusEventKind::SubRunCreated { .. } => "sub_run_created",
         }
     }
 }

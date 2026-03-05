@@ -46,19 +46,13 @@ use uuid::Uuid;
 
 use crate::StateError;
 
-/// A stream of journal events with their sequence numbers, used for iterating
-/// over journal contents during recovery.
+/// A stream of journal entries, used for iterating over journal contents
+/// during recovery and for SSE streaming.
 ///
-/// Implementations yield `(SequenceNumber, JournalEvent)` pairs in sequence
-/// order. Errors are propagated as stream items, allowing the consumer to
-/// handle them inline.
-pub type JournalEventStream<'a> = Pin<
-    Box<
-        dyn Stream<Item = error_stack::Result<(SequenceNumber, JournalEvent), StateError>>
-            + Send
-            + 'a,
-    >,
->;
+/// Implementations yield [`JournalEntry`] values in sequence order. Errors are
+/// propagated as stream items, allowing the consumer to handle them inline.
+pub type JournalEventStream<'a> =
+    Pin<Box<dyn Stream<Item = error_stack::Result<JournalEntry, StateError>> + Send + 'a>>;
 
 /// Sequence number for journal entries.
 ///
@@ -125,6 +119,8 @@ pub struct JournalEntry {
     pub run_id: Uuid,
     /// The root run ID (journal key, same for all entries in the tree).
     pub root_run_id: Uuid,
+    /// Journal sequence number assigned by the storage backend.
+    pub sequence: SequenceNumber,
     /// When this event occurred.
     pub timestamp: DateTime<Utc>,
     /// The execution event.
@@ -132,11 +128,15 @@ pub struct JournalEntry {
 }
 
 impl JournalEntry {
-    /// Create a new journal entry with the current timestamp.
+    /// Create a new journal entry with the current timestamp and a placeholder sequence.
+    ///
+    /// The `sequence` field is set to 0 here; the storage backend assigns the
+    /// real sequence number in [`ExecutionJournal::write`].
     pub fn new(run_id: Uuid, root_run_id: Uuid, event: JournalEvent) -> Self {
         Self {
             run_id,
             root_run_id,
+            sequence: SequenceNumber::new(0),
             timestamp: Utc::now(),
             event,
         }
@@ -474,10 +474,10 @@ pub trait ExecutionJournal: Send + Sync {
                 let mut batch = self.stream_from(root_run_id, cursor);
                 while let Some(item) = futures::StreamExt::next(&mut batch).await {
                     match item {
-                        Ok((seq, event)) => {
-                            cursor = seq.next();
+                        Ok(entry) => {
+                            cursor = entry.sequence.next();
                             got_any = true;
-                            yield Ok((seq, event));
+                            yield Ok(entry);
                         }
                         Err(e) => {
                             yield Err(e);

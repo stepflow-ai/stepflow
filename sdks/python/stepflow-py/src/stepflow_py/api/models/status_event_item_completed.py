@@ -21,40 +21,41 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
+from stepflow_py.api.models.flow_result import FlowResult
 
-class StatusEventOneOf7(BaseModel):
+
+class StatusEventItemCompleted(BaseModel):
     """
-    A sub-run was created.
+    An individual item has completed.
     """  # noqa: E501
 
-    run_id: StrictStr = Field(description="The sub-run's ID.", alias="runId")
-    parent_run_id: StrictStr = Field(
-        description="The parent run that spawned this sub-run.", alias="parentRunId"
-    )
-    flow_id: StrictStr = Field(
-        description="The flow being executed by the sub-run.", alias="flowId"
-    )
-    item_count: Annotated[int, Field(strict=True, ge=0)] = Field(
-        description="Number of items in the sub-run.", alias="itemCount"
-    )
+    run_id: StrictStr = Field(alias="runId")
+    item_index: Annotated[int, Field(strict=True, ge=0)] = Field(alias="itemIndex")
+    result: FlowResult | None = None
     event: StrictStr
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
     __properties: ClassVar[list[str]] = [
         "runId",
-        "parentRunId",
-        "flowId",
-        "itemCount",
+        "itemIndex",
+        "result",
         "event",
+        "sequenceNumber",
+        "timestamp",
     ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["sub_run_created"]):
-            raise ValueError("must be one of enum values ('sub_run_created')")
+        if value not in set(["item_completed"]):
+            raise ValueError("must be one of enum values ('item_completed')")
         return value
 
     model_config = ConfigDict(
@@ -74,7 +75,7 @@ class StatusEventOneOf7(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf7 from a JSON string"""
+        """Create an instance of StatusEventItemCompleted from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -94,11 +95,19 @@ class StatusEventOneOf7(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of result
+        if self.result:
+            _dict["result"] = self.result.to_dict()
+        # set to None if result (nullable) is None
+        # and model_fields_set contains the field
+        if self.result is None and "result" in self.model_fields_set:
+            _dict["result"] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf7 from a dict"""
+        """Create an instance of StatusEventItemCompleted from a dict"""
         if obj is None:
             return None
 
@@ -108,10 +117,15 @@ class StatusEventOneOf7(BaseModel):
         _obj = cls.model_validate(
             {
                 "runId": obj.get("runId"),
-                "parentRunId": obj.get("parentRunId"),
-                "flowId": obj.get("flowId"),
-                "itemCount": obj.get("itemCount"),
-                "event": obj.get("event"),
+                "itemIndex": obj.get("itemIndex"),
+                "result": FlowResult.from_dict(obj["result"])
+                if obj.get("result") is not None
+                else None,
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "item_completed",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

@@ -123,7 +123,7 @@ impl<'a> Recovery<'a> {
         let mut stream = self.journal.stream_from(self.root_run_id, start);
 
         // The first event must be RootRunCreated for the root run.
-        let (_seq, first_event) = stream
+        let first_entry = stream
             .next()
             .await
             .ok_or_else(|| {
@@ -136,7 +136,7 @@ impl<'a> Recovery<'a> {
             })?
             .change_context(ExecutionError::RecoveryFailed)?;
 
-        let (inputs, variables) = match first_event {
+        let (inputs, variables) = match first_entry.event {
             stepflow_state::JournalEvent::RootRunCreated {
                 run_id: event_run_id,
                 inputs,
@@ -354,7 +354,9 @@ impl<'a> Recovery<'a> {
         let mut event_count: usize = 0;
 
         while let Some(event_result) = events.next().await {
-            let (seq, event) = event_result.change_context(ExecutionError::RecoveryFailed)?;
+            let entry = event_result.change_context(ExecutionError::RecoveryFailed)?;
+            let seq = entry.sequence;
+            let event = entry.event;
             event_count += 1;
             recovered.last_sequence = Some(seq);
 

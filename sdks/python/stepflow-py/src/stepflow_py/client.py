@@ -63,8 +63,13 @@ class StatusEvent:
 
     @property
     def sequence_number(self) -> int | None:
-        """Journal sequence number, parsed from the SSE ``id`` field."""
-        return int(self.id) if self.id is not None else None
+        """Journal sequence number from the event payload."""
+        return self.data.get("sequenceNumber")
+
+    @property
+    def timestamp(self) -> str | None:
+        """ISO-8601 timestamp when the event was recorded."""
+        return self.data.get("timestamp")
 
 
 class StepflowClient:

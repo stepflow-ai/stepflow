@@ -29,74 +29,78 @@ from pydantic import (
     field_validator,
 )
 
-from stepflow_py.api.models.status_event_one_of import StatusEventOneOf
-from stepflow_py.api.models.status_event_one_of1 import StatusEventOneOf1
-from stepflow_py.api.models.status_event_one_of2 import StatusEventOneOf2
-from stepflow_py.api.models.status_event_one_of3 import StatusEventOneOf3
-from stepflow_py.api.models.status_event_one_of4 import StatusEventOneOf4
-from stepflow_py.api.models.status_event_one_of5 import StatusEventOneOf5
-from stepflow_py.api.models.status_event_one_of6 import StatusEventOneOf6
-from stepflow_py.api.models.status_event_one_of7 import StatusEventOneOf7
+from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
+from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
+from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
+from stepflow_py.api.models.status_event_run_initialized import (
+    StatusEventRunInitialized,
+)
+from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
+from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
+from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
+from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
 
 STATUSEVENT_ONE_OF_SCHEMAS = [
-    "StatusEventOneOf",
-    "StatusEventOneOf1",
-    "StatusEventOneOf2",
-    "StatusEventOneOf3",
-    "StatusEventOneOf4",
-    "StatusEventOneOf5",
-    "StatusEventOneOf6",
-    "StatusEventOneOf7",
+    "StatusEventItemCompleted",
+    "StatusEventRunCompleted",
+    "StatusEventRunCreated",
+    "StatusEventRunInitialized",
+    "StatusEventStepCompleted",
+    "StatusEventStepReady",
+    "StatusEventStepStarted",
+    "StatusEventSubRunCreated",
 ]
 
 
 class StatusEvent(BaseModel):
     """
-    A public-facing event from the execution journal stream.  These events map from internal `JournalEvent` variants to user-friendly names and shapes. \"Task\" terminology is replaced with \"step\" since that's the user-facing concept.  Sent as SSE events with: - `id` = journal sequence number - `event` = variant name in snake_case (e.g., `step_started`) - `data` = JSON-serialized event payload
+    A status event with metadata from the execution journal.  Wraps a [`StatusEventKind`] with the journal sequence number and timestamp, providing a flat JSON structure via `#[serde(flatten)]`.
     """
 
-    # data type: StatusEventOneOf
-    oneof_schema_1_validator: StatusEventOneOf | None = None
-    # data type: StatusEventOneOf1
-    oneof_schema_2_validator: StatusEventOneOf1 | None = None
-    # data type: StatusEventOneOf2
-    oneof_schema_3_validator: StatusEventOneOf2 | None = None
-    # data type: StatusEventOneOf3
-    oneof_schema_4_validator: StatusEventOneOf3 | None = None
-    # data type: StatusEventOneOf4
-    oneof_schema_5_validator: StatusEventOneOf4 | None = None
-    # data type: StatusEventOneOf5
-    oneof_schema_6_validator: StatusEventOneOf5 | None = None
-    # data type: StatusEventOneOf6
-    oneof_schema_7_validator: StatusEventOneOf6 | None = None
-    # data type: StatusEventOneOf7
-    oneof_schema_8_validator: StatusEventOneOf7 | None = None
+    # data type: StatusEventRunCreated
+    oneof_schema_1_validator: StatusEventRunCreated | None = None
+    # data type: StatusEventRunInitialized
+    oneof_schema_2_validator: StatusEventRunInitialized | None = None
+    # data type: StatusEventStepStarted
+    oneof_schema_3_validator: StatusEventStepStarted | None = None
+    # data type: StatusEventStepCompleted
+    oneof_schema_4_validator: StatusEventStepCompleted | None = None
+    # data type: StatusEventStepReady
+    oneof_schema_5_validator: StatusEventStepReady | None = None
+    # data type: StatusEventItemCompleted
+    oneof_schema_6_validator: StatusEventItemCompleted | None = None
+    # data type: StatusEventRunCompleted
+    oneof_schema_7_validator: StatusEventRunCompleted | None = None
+    # data type: StatusEventSubRunCreated
+    oneof_schema_8_validator: StatusEventSubRunCreated | None = None
     actual_instance: (
-        StatusEventOneOf
-        | StatusEventOneOf1
-        | StatusEventOneOf2
-        | StatusEventOneOf3
-        | StatusEventOneOf4
-        | StatusEventOneOf5
-        | StatusEventOneOf6
-        | StatusEventOneOf7
+        StatusEventItemCompleted
+        | StatusEventRunCompleted
+        | StatusEventRunCreated
+        | StatusEventRunInitialized
+        | StatusEventStepCompleted
+        | StatusEventStepReady
+        | StatusEventStepStarted
+        | StatusEventSubRunCreated
         | None
     ) = None
     one_of_schemas: set[str] = {
-        "StatusEventOneOf",
-        "StatusEventOneOf1",
-        "StatusEventOneOf2",
-        "StatusEventOneOf3",
-        "StatusEventOneOf4",
-        "StatusEventOneOf5",
-        "StatusEventOneOf6",
-        "StatusEventOneOf7",
+        "StatusEventItemCompleted",
+        "StatusEventRunCompleted",
+        "StatusEventRunCreated",
+        "StatusEventRunInitialized",
+        "StatusEventStepCompleted",
+        "StatusEventStepReady",
+        "StatusEventStepStarted",
+        "StatusEventSubRunCreated",
     }
 
     model_config = ConfigDict(
         validate_assignment=True,
         protected_namespaces=(),
     )
+
+    discriminator_value_class_map: dict[str, str] = {}
 
     def __init__(self, *args, **kwargs) -> None:
         if args:
@@ -117,72 +121,72 @@ class StatusEvent(BaseModel):
         instance = StatusEvent.model_construct()
         error_messages = []
         match = 0
-        # validate data type: StatusEventOneOf
-        if not isinstance(v, StatusEventOneOf):
+        # validate data type: StatusEventRunCreated
+        if not isinstance(v, StatusEventRunCreated):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf`"
+                f"Error! Input type `{type(v)}` is not `StatusEventRunCreated`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf1
-        if not isinstance(v, StatusEventOneOf1):
+        # validate data type: StatusEventRunInitialized
+        if not isinstance(v, StatusEventRunInitialized):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf1`"
+                f"Error! Input type `{type(v)}` is not `StatusEventRunInitialized`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf2
-        if not isinstance(v, StatusEventOneOf2):
+        # validate data type: StatusEventStepStarted
+        if not isinstance(v, StatusEventStepStarted):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf2`"
+                f"Error! Input type `{type(v)}` is not `StatusEventStepStarted`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf3
-        if not isinstance(v, StatusEventOneOf3):
+        # validate data type: StatusEventStepCompleted
+        if not isinstance(v, StatusEventStepCompleted):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf3`"
+                f"Error! Input type `{type(v)}` is not `StatusEventStepCompleted`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf4
-        if not isinstance(v, StatusEventOneOf4):
+        # validate data type: StatusEventStepReady
+        if not isinstance(v, StatusEventStepReady):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf4`"
+                f"Error! Input type `{type(v)}` is not `StatusEventStepReady`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf5
-        if not isinstance(v, StatusEventOneOf5):
+        # validate data type: StatusEventItemCompleted
+        if not isinstance(v, StatusEventItemCompleted):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf5`"
+                f"Error! Input type `{type(v)}` is not `StatusEventItemCompleted`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf6
-        if not isinstance(v, StatusEventOneOf6):
+        # validate data type: StatusEventRunCompleted
+        if not isinstance(v, StatusEventRunCompleted):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf6`"
+                f"Error! Input type `{type(v)}` is not `StatusEventRunCompleted`"
             )
         else:
             match += 1
-        # validate data type: StatusEventOneOf7
-        if not isinstance(v, StatusEventOneOf7):
+        # validate data type: StatusEventSubRunCreated
+        if not isinstance(v, StatusEventSubRunCreated):
             error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventOneOf7`"
+                f"Error! Input type `{type(v)}` is not `StatusEventSubRunCreated`"
             )
         else:
             match += 1
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventOneOf, StatusEventOneOf1, StatusEventOneOf2, StatusEventOneOf3, StatusEventOneOf4, StatusEventOneOf5, StatusEventOneOf6, StatusEventOneOf7. Details: "
+                "Multiple matches found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventOneOf, StatusEventOneOf1, StatusEventOneOf2, StatusEventOneOf3, StatusEventOneOf4, StatusEventOneOf5, StatusEventOneOf6, StatusEventOneOf7. Details: "
+                "No match found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -199,51 +203,51 @@ class StatusEvent(BaseModel):
         error_messages = []
         match = 0
 
-        # deserialize data into StatusEventOneOf
+        # deserialize data into StatusEventRunCreated
         try:
-            instance.actual_instance = StatusEventOneOf.from_json(json_str)
+            instance.actual_instance = StatusEventRunCreated.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf1
+        # deserialize data into StatusEventRunInitialized
         try:
-            instance.actual_instance = StatusEventOneOf1.from_json(json_str)
+            instance.actual_instance = StatusEventRunInitialized.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf2
+        # deserialize data into StatusEventStepStarted
         try:
-            instance.actual_instance = StatusEventOneOf2.from_json(json_str)
+            instance.actual_instance = StatusEventStepStarted.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf3
+        # deserialize data into StatusEventStepCompleted
         try:
-            instance.actual_instance = StatusEventOneOf3.from_json(json_str)
+            instance.actual_instance = StatusEventStepCompleted.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf4
+        # deserialize data into StatusEventStepReady
         try:
-            instance.actual_instance = StatusEventOneOf4.from_json(json_str)
+            instance.actual_instance = StatusEventStepReady.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf5
+        # deserialize data into StatusEventItemCompleted
         try:
-            instance.actual_instance = StatusEventOneOf5.from_json(json_str)
+            instance.actual_instance = StatusEventItemCompleted.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf6
+        # deserialize data into StatusEventRunCompleted
         try:
-            instance.actual_instance = StatusEventOneOf6.from_json(json_str)
+            instance.actual_instance = StatusEventRunCompleted.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into StatusEventOneOf7
+        # deserialize data into StatusEventSubRunCreated
         try:
-            instance.actual_instance = StatusEventOneOf7.from_json(json_str)
+            instance.actual_instance = StatusEventSubRunCreated.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
@@ -251,13 +255,13 @@ class StatusEvent(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventOneOf, StatusEventOneOf1, StatusEventOneOf2, StatusEventOneOf3, StatusEventOneOf4, StatusEventOneOf5, StatusEventOneOf6, StatusEventOneOf7. Details: "
+                "Multiple matches found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventOneOf, StatusEventOneOf1, StatusEventOneOf2, StatusEventOneOf3, StatusEventOneOf4, StatusEventOneOf5, StatusEventOneOf6, StatusEventOneOf7. Details: "
+                "No match found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -279,14 +283,14 @@ class StatusEvent(BaseModel):
         self,
     ) -> (
         dict[str, Any]
-        | StatusEventOneOf
-        | StatusEventOneOf1
-        | StatusEventOneOf2
-        | StatusEventOneOf3
-        | StatusEventOneOf4
-        | StatusEventOneOf5
-        | StatusEventOneOf6
-        | StatusEventOneOf7
+        | StatusEventItemCompleted
+        | StatusEventRunCompleted
+        | StatusEventRunCreated
+        | StatusEventRunInitialized
+        | StatusEventStepCompleted
+        | StatusEventStepReady
+        | StatusEventStepStarted
+        | StatusEventSubRunCreated
         | None
     ):
         """Returns the dict representation of the actual instance"""

@@ -102,9 +102,13 @@ async def test_stream_completed_run(client, completed_run):
     assert "run_created" in event_types
     assert "run_completed" in event_types
 
-    # All events should have sequence numbers
+    # All events should have sequence numbers and timestamps
     for ev in events:
         assert ev.id is not None, f"Event {ev.event} missing id"
+        assert ev.sequence_number is not None, (
+            f"Event {ev.event} missing sequenceNumber"
+        )
+        assert ev.timestamp is not None, f"Event {ev.event} missing timestamp"
 
     # Sequence numbers should be non-decreasing
     seqs = [ev.sequence_number for ev in events]

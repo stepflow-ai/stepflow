@@ -551,6 +551,68 @@ fn test_my_config_null_fields_use_custom_defaults() {
 
 See `stepflow-config/src/recovery_config.rs` and `stepflow-protocol/src/plugin.rs` for real examples.
 
+## OpenAPI Discriminator Pattern
+
+Tagged enums need explicit discriminator annotations for proper Python codegen.
+Without them, `openapi-generator` produces `OneOf`, `OneOf1`, etc. instead of
+named variant classes.
+
+### Basic discriminator
+
+Add `AddDiscriminator` transform to the enum and `title` to each variant:
+
+```rust
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
+enum MyEnum {
+    #[schemars(title = "MyEnumVariantA")]
+    VariantA { value: String },
+    #[schemars(title = "MyEnumVariantB")]
+    VariantB { count: i32 },
+}
+```
+
+- The `AddDiscriminator` property name must match the `serde(tag = "...")` value.
+- Each variant needs `#[schemars(title = "...")]` — the title becomes the `$defs`
+  key and the generated Python class name.
+- The `generate_json_schema_with_defs` pipeline (in `stepflow-core/src/json_schema.rs`)
+  extracts inline variants to `$defs` and builds discriminator mappings from titles.
+
+### Wrapper struct with shared fields (flatten pattern)
+
+When a struct wraps a tagged enum with `#[serde(flatten)]` and adds shared fields,
+use `MergePropertiesIntoOneOf` to push the shared fields into each variant schema:
+
+```rust
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+#[schemars(transform = stepflow_core::discriminator_schema::MergePropertiesIntoOneOf)]
+struct Wrapper {
+    sequence_number: u64,
+    timestamp: DateTime<Utc>,
+    #[serde(flatten)]
+    kind: MyEnum,
+}
+```
+
+This ensures each generated Python variant model includes `sequence_number` and
+`timestamp` as fields, rather than having them only on the wrapper (which
+`openapi-generator` ignores when `oneOf` is present).
+
+### Implementation
+
+Both transforms live in `stepflow-core/src/discriminator_schema.rs`.
+
+### Regenerating after schema changes
+
+```bash
+# Regenerate OpenAPI schema
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --lib test_openapi_schema_generation
+
+# Regenerate Python SDK
+cd ../sdks/python && uv run poe codegen-fix
+```
 ## Project Dependencies
 
 - Keep dependencies minimal and well-documented

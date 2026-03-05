@@ -21,40 +21,42 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 
-class StatusEventOneOf2(BaseModel):
+class StatusEventRunCreated(BaseModel):
     """
-    A step has started executing.
+    A run was created with its initial configuration.
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
-    item_index: Annotated[int, Field(strict=True, ge=0)] = Field(alias="itemIndex")
-    step_index: Annotated[int, Field(strict=True, ge=0)] = Field(alias="stepIndex")
-    step_id: StrictStr | None = Field(
-        default=None, description="Step name/identifier.", alias="stepId"
+    flow_id: StrictStr = Field(
+        description="A SHA-256 hash of the blob content, represented as a hexadecimal string.",
+        alias="flowId",
     )
-    attempt: Annotated[int, Field(strict=True, ge=0)] = Field(
-        description="Execution attempt number (1-based, >1 for retries)."
-    )
+    item_count: Annotated[int, Field(strict=True, ge=0)] = Field(alias="itemCount")
     event: StrictStr
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
     __properties: ClassVar[list[str]] = [
         "runId",
-        "itemIndex",
-        "stepIndex",
-        "stepId",
-        "attempt",
+        "flowId",
+        "itemCount",
         "event",
+        "sequenceNumber",
+        "timestamp",
     ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["step_started"]):
-            raise ValueError("must be one of enum values ('step_started')")
+        if value not in set(["run_created"]):
+            raise ValueError("must be one of enum values ('run_created')")
         return value
 
     model_config = ConfigDict(
@@ -74,7 +76,7 @@ class StatusEventOneOf2(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf2 from a JSON string"""
+        """Create an instance of StatusEventRunCreated from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -94,16 +96,11 @@ class StatusEventOneOf2(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if step_id (nullable) is None
-        # and model_fields_set contains the field
-        if self.step_id is None and "step_id" in self.model_fields_set:
-            _dict["stepId"] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf2 from a dict"""
+        """Create an instance of StatusEventRunCreated from a dict"""
         if obj is None:
             return None
 
@@ -113,11 +110,13 @@ class StatusEventOneOf2(BaseModel):
         _obj = cls.model_validate(
             {
                 "runId": obj.get("runId"),
-                "itemIndex": obj.get("itemIndex"),
-                "stepIndex": obj.get("stepIndex"),
-                "stepId": obj.get("stepId"),
-                "attempt": obj.get("attempt"),
-                "event": obj.get("event"),
+                "flowId": obj.get("flowId"),
+                "itemCount": obj.get("itemCount"),
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "run_created",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

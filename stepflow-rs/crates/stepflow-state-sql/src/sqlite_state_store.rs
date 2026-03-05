@@ -22,8 +22,8 @@ use stepflow_dtos::{
     StepStatusEntry,
 };
 use stepflow_state::{
-    BlobStore, CheckpointStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob,
-    RootJournalInfo, RunCompletionNotifier, SequenceNumber, StateError, StoredCheckpoint,
+    BlobStore, CheckpointStore, ExecutionJournal, JournalEntry, JournalEvent, MetadataStore,
+    RawBlob, RootJournalInfo, RunCompletionNotifier, SequenceNumber, StateError, StoredCheckpoint,
 };
 use uuid::Uuid;
 
@@ -71,11 +71,14 @@ fn row_to_step_status_entry(
     let component: Option<String> = row.get("component");
     let result_json: Option<String> = row.get("result_json");
     let journal_seqno: i64 = row.get("journal_seqno");
+    let updated_at_str: String = row.get("updated_at");
 
     let result = result_json
         .map(|json| serde_json::from_str::<FlowResult>(&json))
         .transpose()
         .change_context(StateError::Serialization)?;
+
+    let updated_at = parse_sqlite_datetime(&updated_at_str).unwrap_or_else(chrono::Utc::now);
 
     Ok(StepStatusEntry {
         step_id,
@@ -85,6 +88,7 @@ fn row_to_step_status_entry(
         component,
         result,
         journal_seqno: sql_to_u64(journal_seqno),
+        updated_at,
     })
 }
 
@@ -1020,7 +1024,7 @@ impl MetadataStore for SqliteStateStore {
         let step_id = step_id.to_string();
 
         async move {
-            let sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno \
+            let sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
                         FROM step_statuses WHERE run_id = ? AND item_index = ? AND step_id = ?";
 
             let row = sqlx::query(sql)
@@ -1048,7 +1052,7 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let mut sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno \
+            let mut sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
                            FROM step_statuses WHERE run_id = ?"
                 .to_string();
             let mut bind_values: Vec<String> = vec![run_id.to_string()];
@@ -1236,7 +1240,7 @@ impl ExecutionJournal for SqliteStateStore {
 
             loop {
                 let sql = r#"
-                    SELECT sequence, event_data
+                    SELECT sequence, run_id, timestamp, event_data
                     FROM journal_entries
                     WHERE root_run_id = ? AND sequence >= ?
                     ORDER BY sequence
@@ -1263,9 +1267,29 @@ impl ExecutionJournal for SqliteStateStore {
 
                 for row in &rows {
                     let seq: i64 = row.get("sequence");
+                    let run_id_str: String = row.get("run_id");
+                    let timestamp_str: String = row.get("timestamp");
                     let event_data: String = row.get("event_data");
+
+                    let run_id = match Uuid::parse_str(&run_id_str) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            yield Err(error_stack::report!(StateError::Serialization).attach(e));
+                            return;
+                        }
+                    };
+                    let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(|_| chrono::Utc::now());
+
                     match serde_json::from_str::<JournalEvent>(&event_data) {
-                        Ok(event) => yield Ok((SequenceNumber::new(seq as u64), event)),
+                        Ok(event) => yield Ok(JournalEntry {
+                            run_id,
+                            root_run_id,
+                            sequence: SequenceNumber::new(seq as u64),
+                            timestamp,
+                            event,
+                        }),
                         Err(e) => {
                             yield Err(error_stack::report!(StateError::Serialization).attach(e));
                             return;

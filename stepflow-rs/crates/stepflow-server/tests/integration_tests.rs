@@ -1487,6 +1487,18 @@ async fn test_sse_stream_basic() {
         assert!(id.is_some(), "SSE event missing id field");
     }
 
+    // All events should have sequenceNumber and timestamp in the data payload
+    for (_, event_type, data) in &events {
+        assert!(
+            data.get("sequenceNumber").is_some(),
+            "Event {event_type} missing sequenceNumber in data"
+        );
+        assert!(
+            data.get("timestamp").is_some(),
+            "Event {event_type} missing timestamp in data"
+        );
+    }
+
     // IDs should be monotonically non-decreasing
     let ids: Vec<u64> = events
         .iter()

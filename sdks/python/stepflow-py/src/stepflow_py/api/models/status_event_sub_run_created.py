@@ -21,28 +21,47 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
-from typing import Any, ClassVar, Self
+from datetime import datetime
+from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
-from stepflow_py.api.models.execution_status import ExecutionStatus
 
-
-class StatusEventOneOf6(BaseModel):
+class StatusEventSubRunCreated(BaseModel):
     """
-    A run has completed (terminal state).
+    A sub-run was created.
     """  # noqa: E501
 
-    run_id: StrictStr = Field(alias="runId")
-    status: ExecutionStatus
+    run_id: StrictStr = Field(description="The sub-run's ID.", alias="runId")
+    parent_run_id: StrictStr = Field(
+        description="The parent run that spawned this sub-run.", alias="parentRunId"
+    )
+    flow_id: StrictStr = Field(
+        description="The flow being executed by the sub-run.", alias="flowId"
+    )
+    item_count: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Number of items in the sub-run.", alias="itemCount"
+    )
     event: StrictStr
-    __properties: ClassVar[list[str]] = ["runId", "status", "event"]
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
+    __properties: ClassVar[list[str]] = [
+        "runId",
+        "parentRunId",
+        "flowId",
+        "itemCount",
+        "event",
+        "sequenceNumber",
+        "timestamp",
+    ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["run_completed"]):
-            raise ValueError("must be one of enum values ('run_completed')")
+        if value not in set(["sub_run_created"]):
+            raise ValueError("must be one of enum values ('sub_run_created')")
         return value
 
     model_config = ConfigDict(
@@ -62,7 +81,7 @@ class StatusEventOneOf6(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf6 from a JSON string"""
+        """Create an instance of StatusEventSubRunCreated from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -86,7 +105,7 @@ class StatusEventOneOf6(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf6 from a dict"""
+        """Create an instance of StatusEventSubRunCreated from a dict"""
         if obj is None:
             return None
 
@@ -96,8 +115,14 @@ class StatusEventOneOf6(BaseModel):
         _obj = cls.model_validate(
             {
                 "runId": obj.get("runId"),
-                "status": obj.get("status"),
-                "event": obj.get("event"),
+                "parentRunId": obj.get("parentRunId"),
+                "flowId": obj.get("flowId"),
+                "itemCount": obj.get("itemCount"),
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "sub_run_created",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

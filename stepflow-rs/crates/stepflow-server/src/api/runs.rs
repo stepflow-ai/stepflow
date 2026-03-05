@@ -29,6 +29,7 @@ use stepflow_core::{
 };
 use stepflow_dtos::{
     ItemResult, ResultOrder, RunDetails, RunFilters, RunStatus, RunSummary, StatusEvent,
+    StatusEventKind,
 };
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
@@ -909,17 +910,19 @@ pub async fn get_status_stream(
         let mut event_stream = journal.follow(root_run_id, from_sequence);
 
         while let Some(item) = event_stream.next().await {
-            let (seq, journal_event) = match item {
-                Ok(pair) => pair,
+            let entry = match item {
+                Ok(entry) => entry,
                 Err(_) => break, // Journal error — close the stream
             };
+            let seq = entry.sequence;
+            let timestamp = entry.timestamp;
 
             // Convert journal event to stream events
-            let stream_events = journal_event_to_stream_events(&journal_event, include_results);
+            let stream_events = journal_event_to_stream_events(&entry.event, include_results);
             let mut is_run_completed = false;
 
-            for event in stream_events {
-                let event_run_id = event.run_id();
+            for kind in stream_events {
+                let event_run_id = kind.run_id();
 
                 // Filter by run scope
                 if !include_sub_runs && event_run_id != run_id {
@@ -928,17 +931,24 @@ pub async fn get_status_stream(
 
                 // Filter by event type
                 if let Some(ref filter) = event_type_filter
-                    && !filter.iter().any(|f| f == event.event_type())
+                    && !filter.iter().any(|f| f == kind.event_type())
                 {
                     continue;
                 }
 
                 // Check if this is the target run completing
-                if let StatusEvent::RunCompleted { run_id: completed_id, .. } = &event
+                if let StatusEventKind::RunCompleted { run_id: completed_id, .. } = &kind
                     && *completed_id == run_id
                 {
                     is_run_completed = true;
                 }
+
+                // Wrap in StatusEvent with metadata
+                let event = StatusEvent {
+                    sequence_number: seq.value(),
+                    timestamp,
+                    kind,
+                };
 
                 // Serialize and yield
                 if let Ok(data) = serde_json::to_string(&event) {
@@ -963,14 +973,17 @@ pub async fn get_status_stream(
 ///
 /// Most journal events map 1:1, except `TasksStarted` which produces one
 /// `StepStarted` per task across potentially multiple runs.
-fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -> Vec<StatusEvent> {
+fn journal_event_to_stream_events(
+    event: &JournalEvent,
+    include_results: bool,
+) -> Vec<StatusEventKind> {
     match event {
         JournalEvent::RootRunCreated {
             run_id,
             flow_id,
             inputs,
             ..
-        } => vec![StatusEvent::RunCreated {
+        } => vec![StatusEventKind::RunCreated {
             run_id: *run_id,
             flow_id: flow_id.clone(),
             item_count: inputs.len(),
@@ -979,7 +992,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
         JournalEvent::RunInitialized {
             run_id,
             needed_steps,
-        } => vec![StatusEvent::RunInitialized {
+        } => vec![StatusEventKind::RunInitialized {
             run_id: *run_id,
             // Convert step indices to step IDs would require the flow,
             // which we don't have here. Send indices for now; clients can
@@ -996,7 +1009,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
             let mut events = Vec::new();
             for run_tasks in runs {
                 for task in &run_tasks.tasks {
-                    events.push(StatusEvent::StepStarted {
+                    events.push(StatusEventKind::StepStarted {
                         run_id: run_tasks.run_id,
                         item_index: task.item_index,
                         step_index: task.step_index,
@@ -1018,7 +1031,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
                 FlowResult::Failed(_) => StepStatus::Failed,
                 _ => StepStatus::Completed,
             };
-            vec![StatusEvent::StepCompleted {
+            vec![StatusEventKind::StepCompleted {
                 run_id: *run_id,
                 item_index: *item_index,
                 step_index: *step_index,
@@ -1038,7 +1051,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
             step_indices,
         } => step_indices
             .iter()
-            .map(|&step_index| StatusEvent::StepReady {
+            .map(|&step_index| StatusEventKind::StepReady {
                 run_id: *run_id,
                 item_index: *item_index,
                 step_index,
@@ -1050,7 +1063,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
             run_id,
             item_index,
             result,
-        } => vec![StatusEvent::ItemCompleted {
+        } => vec![StatusEventKind::ItemCompleted {
             run_id: *run_id,
             item_index: *item_index,
             result: if include_results {
@@ -1060,7 +1073,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
             },
         }],
 
-        JournalEvent::RunCompleted { run_id, status } => vec![StatusEvent::RunCompleted {
+        JournalEvent::RunCompleted { run_id, status } => vec![StatusEventKind::RunCompleted {
             run_id: *run_id,
             status: *status,
         }],
@@ -1071,7 +1084,7 @@ fn journal_event_to_stream_events(event: &JournalEvent, include_results: bool) -
             inputs,
             parent_run_id,
             ..
-        } => vec![StatusEvent::SubRunCreated {
+        } => vec![StatusEventKind::SubRunCreated {
             run_id: *run_id,
             parent_run_id: *parent_run_id,
             flow_id: flow_id.clone(),

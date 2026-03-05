@@ -21,29 +21,50 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from stepflow_py.api.models.flow_result import FlowResult
+from stepflow_py.api.models.step_status import StepStatus
 
 
-class StatusEventOneOf5(BaseModel):
+class StatusEventStepCompleted(BaseModel):
     """
-    An individual item has completed.
+    A step has completed (successfully or with failure).
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
     item_index: Annotated[int, Field(strict=True, ge=0)] = Field(alias="itemIndex")
+    step_index: Annotated[int, Field(strict=True, ge=0)] = Field(alias="stepIndex")
+    step_id: StrictStr | None = Field(
+        default=None, description="Step name/identifier.", alias="stepId"
+    )
+    status: StepStatus = Field(description="Whether the step succeeded or failed.")
     result: FlowResult | None = None
     event: StrictStr
-    __properties: ClassVar[list[str]] = ["runId", "itemIndex", "result", "event"]
+    sequence_number: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Journal sequence number for this event.", alias="sequenceNumber"
+    )
+    timestamp: datetime = Field(description="Timestamp when this event was recorded.")
+    __properties: ClassVar[list[str]] = [
+        "runId",
+        "itemIndex",
+        "stepIndex",
+        "stepId",
+        "status",
+        "result",
+        "event",
+        "sequenceNumber",
+        "timestamp",
+    ]
 
     @field_validator("event")
     def event_validate_enum(cls, value):
         """Validates the enum"""
-        if value not in set(["item_completed"]):
-            raise ValueError("must be one of enum values ('item_completed')")
+        if value not in set(["step_completed"]):
+            raise ValueError("must be one of enum values ('step_completed')")
         return value
 
     model_config = ConfigDict(
@@ -63,7 +84,7 @@ class StatusEventOneOf5(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Self | None:
-        """Create an instance of StatusEventOneOf5 from a JSON string"""
+        """Create an instance of StatusEventStepCompleted from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> dict[str, Any]:
@@ -86,6 +107,11 @@ class StatusEventOneOf5(BaseModel):
         # override the default output from pydantic by calling `to_dict()` of result
         if self.result:
             _dict["result"] = self.result.to_dict()
+        # set to None if step_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.step_id is None and "step_id" in self.model_fields_set:
+            _dict["stepId"] = None
+
         # set to None if result (nullable) is None
         # and model_fields_set contains the field
         if self.result is None and "result" in self.model_fields_set:
@@ -95,7 +121,7 @@ class StatusEventOneOf5(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: dict[str, Any] | None) -> Self | None:
-        """Create an instance of StatusEventOneOf5 from a dict"""
+        """Create an instance of StatusEventStepCompleted from a dict"""
         if obj is None:
             return None
 
@@ -106,10 +132,17 @@ class StatusEventOneOf5(BaseModel):
             {
                 "runId": obj.get("runId"),
                 "itemIndex": obj.get("itemIndex"),
+                "stepIndex": obj.get("stepIndex"),
+                "stepId": obj.get("stepId"),
+                "status": obj.get("status"),
                 "result": FlowResult.from_dict(obj["result"])
                 if obj.get("result") is not None
                 else None,
-                "event": obj.get("event"),
+                "event": obj.get("event")
+                if obj.get("event") is not None
+                else "step_completed",
+                "sequenceNumber": obj.get("sequenceNumber"),
+                "timestamp": obj.get("timestamp"),
             }
         )
         return _obj

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import pprint
 import re  # noqa: F401
+from datetime import datetime
 from typing import Annotated, Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
@@ -50,6 +51,9 @@ class StepStatusEntry(BaseModel):
         description="Journal sequence number of the event that produced this status.",
         alias="journalSeqno",
     )
+    updated_at: datetime = Field(
+        description="When this status was last updated.", alias="updatedAt"
+    )
     __properties: ClassVar[list[str]] = [
         "stepId",
         "stepIndex",
@@ -58,6 +62,7 @@ class StepStatusEntry(BaseModel):
         "component",
         "result",
         "journalSeqno",
+        "updatedAt",
     ]
 
     model_config = ConfigDict(
@@ -132,6 +137,7 @@ class StepStatusEntry(BaseModel):
                 if obj.get("result") is not None
                 else None,
                 "journalSeqno": obj.get("journalSeqno"),
+                "updatedAt": obj.get("updatedAt"),
             }
         )
         return _obj
