@@ -58,7 +58,7 @@ class StepflowSubprocessConfig(Struct, kw_only=True):
     args: list[str] | UnsetType = UNSET
     env: (
         Annotated[
-            dict[str, str],
+            dict[str, Any] | None,
             Meta(
                 description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
             ),
@@ -484,7 +484,7 @@ class RetryConfig(Struct, kw_only=True):
     ) = 3
     backoff: (
         Annotated[
-            BackoffConfig,
+            BackoffConfig | None,
             Meta(
                 description='Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).\n\nThis backoff applies to both transport error retries and component error\nretries. The same delay progression is used regardless of retry reason.'
             ),
@@ -533,7 +533,7 @@ class StepflowConfig(Struct, kw_only=True):
     ) = UNSET
     storageConfig: (
         Annotated[
-            StorageConfig,
+            StorageConfig | None,
             Meta(
                 description='Storage configuration. If not specified, uses in-memory storage.'
             ),
@@ -542,7 +542,7 @@ class StepflowConfig(Struct, kw_only=True):
     ) = field(default_factory=lambda: {'type': 'inMemory'})
     leaseManager: (
         Annotated[
-            LeaseManagerConfig,
+            LeaseManagerConfig | None,
             Meta(
                 description='Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).'
             ),
@@ -551,7 +551,7 @@ class StepflowConfig(Struct, kw_only=True):
     ) = field(default_factory=lambda: {'type': 'noOp'})
     recovery: (
         Annotated[
-            RecoveryConfig,
+            RecoveryConfig | None,
             Meta(description='Recovery configuration for handling interrupted runs.'),
         ]
         | UnsetType
@@ -570,7 +570,7 @@ class StepflowConfig(Struct, kw_only=True):
     )
     blobApi: (
         Annotated[
-            BlobApiConfig,
+            BlobApiConfig | None,
             Meta(
                 description='Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use.'
             ),
@@ -579,7 +579,7 @@ class StepflowConfig(Struct, kw_only=True):
     ) = field(default_factory=lambda: convert({'enabled': True}, type=BlobApiConfig))
     retry: (
         Annotated[
-            RetryConfig,
+            RetryConfig | None,
             Meta(
                 description='Retry configuration.\nControls backoff for all retries and the retry limit for transport errors\n(subprocess crash, network timeout, connection refused).'
             ),
