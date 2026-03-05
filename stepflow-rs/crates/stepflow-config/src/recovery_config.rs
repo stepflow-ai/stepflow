@@ -123,9 +123,7 @@ fn null_or_default_lease_ttl_secs<'de, D: Deserializer<'de>>(d: D) -> Result<u64
     Ok(Option::deserialize(d)?.unwrap_or(RECOVERY_DEFAULT_LEASE_TTL_SECS))
 }
 
-fn null_or_default_checkpoint_interval<'de, D: Deserializer<'de>>(
-    d: D,
-) -> Result<usize, D::Error> {
+fn null_or_default_checkpoint_interval<'de, D: Deserializer<'de>>(d: D) -> Result<usize, D::Error> {
     Ok(Option::deserialize(d)?.unwrap_or(RECOVERY_DEFAULT_CHECKPOINT_INTERVAL))
 }
 
@@ -145,11 +143,23 @@ mod tests {
         });
         let config: RecoveryConfig = serde_json::from_value(json).unwrap();
         assert_eq!(config.enabled, RECOVERY_DEFAULT_ENABLED);
-        assert_eq!(config.check_interval_secs, RECOVERY_DEFAULT_CHECK_INTERVAL_SECS);
-        assert_eq!(config.max_startup_recovery, RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY);
-        assert_eq!(config.max_claims_per_check, RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK);
+        assert_eq!(
+            config.check_interval_secs,
+            RECOVERY_DEFAULT_CHECK_INTERVAL_SECS
+        );
+        assert_eq!(
+            config.max_startup_recovery,
+            RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY
+        );
+        assert_eq!(
+            config.max_claims_per_check,
+            RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK
+        );
         assert_eq!(config.lease_ttl_secs, RECOVERY_DEFAULT_LEASE_TTL_SECS);
-        assert_eq!(config.checkpoint_interval, RECOVERY_DEFAULT_CHECKPOINT_INTERVAL);
+        assert_eq!(
+            config.checkpoint_interval,
+            RECOVERY_DEFAULT_CHECKPOINT_INTERVAL
+        );
     }
 
     #[test]
@@ -157,10 +167,22 @@ mod tests {
         let json = serde_json::json!({});
         let config: RecoveryConfig = serde_json::from_value(json).unwrap();
         assert_eq!(config.enabled, RECOVERY_DEFAULT_ENABLED);
-        assert_eq!(config.check_interval_secs, RECOVERY_DEFAULT_CHECK_INTERVAL_SECS);
-        assert_eq!(config.max_startup_recovery, RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY);
-        assert_eq!(config.max_claims_per_check, RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK);
+        assert_eq!(
+            config.check_interval_secs,
+            RECOVERY_DEFAULT_CHECK_INTERVAL_SECS
+        );
+        assert_eq!(
+            config.max_startup_recovery,
+            RECOVERY_DEFAULT_MAX_STARTUP_RECOVERY
+        );
+        assert_eq!(
+            config.max_claims_per_check,
+            RECOVERY_DEFAULT_MAX_CLAIMS_PER_CHECK
+        );
         assert_eq!(config.lease_ttl_secs, RECOVERY_DEFAULT_LEASE_TTL_SECS);
-        assert_eq!(config.checkpoint_interval, RECOVERY_DEFAULT_CHECKPOINT_INTERVAL);
+        assert_eq!(
+            config.checkpoint_interval,
+            RECOVERY_DEFAULT_CHECKPOINT_INTERVAL
+        );
     }
 }

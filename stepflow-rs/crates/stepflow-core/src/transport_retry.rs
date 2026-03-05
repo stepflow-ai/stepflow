@@ -165,9 +165,7 @@ impl BackoffConfig {
     }
 }
 
-fn null_or_default_transport_max_retries<'de, D: Deserializer<'de>>(
-    d: D,
-) -> Result<u32, D::Error> {
+fn null_or_default_transport_max_retries<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
     Ok(Option::deserialize(d)?.unwrap_or(RetryConfig::default_transport_max_retries()))
 }
 

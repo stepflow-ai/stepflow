@@ -132,9 +132,7 @@ fn null_or_default_health_timeout_ms<'de, D: Deserializer<'de>>(d: D) -> Result<
     Ok(Option::deserialize(d)?.unwrap_or_else(default_health_timeout_ms))
 }
 
-fn null_or_default_health_retry_delay_ms<'de, D: Deserializer<'de>>(
-    d: D,
-) -> Result<u64, D::Error> {
+fn null_or_default_health_retry_delay_ms<'de, D: Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
     Ok(Option::deserialize(d)?.unwrap_or_else(default_health_retry_delay_ms))
 }
 

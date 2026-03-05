@@ -202,7 +202,6 @@ impl StepflowConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     /// This test generates the StepflowConfig JSON schema to schemas/stepflow-config.json.
     /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config --features etcd test_schema_generation
@@ -212,6 +211,8 @@ mod tests {
     #[test]
     #[cfg(feature = "etcd")]
     fn test_schema_generation() {
+        use std::env;
+
         use stepflow_core::json_schema::generate_json_schema_with_defs;
 
         // Generate schema using schemars
@@ -238,17 +239,20 @@ mod tests {
             // Try to read the existing schema for comparison
             match std::fs::read_to_string(schema_path) {
                 Ok(expected_schema_str) => {
-                    assert_eq!(
-                        generated_schema_str, expected_schema_str,
-                        "Generated schema does not match the reference schema at {}. \
-                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to update.",
-                        schema_path
-                    );
+                    if generated_schema_str != expected_schema_str {
+                        panic!(
+                            "Generated schema does not match the reference schema at {}.\n\
+                            Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features' \
+                            to update.",
+                            schema_path
+                        );
+                    }
                 }
                 Err(_) => {
                     panic!(
-                        "StepflowConfig schema file not found at {}. \
-                         Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation' to create it.",
+                        "StepflowConfig schema file not found at {}.\n\
+                        Run 'STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features' \
+                        to create it.",
                         schema_path
                     );
                 }

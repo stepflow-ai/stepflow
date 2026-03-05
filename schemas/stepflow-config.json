@@ -29,21 +29,34 @@
     },
     "storageConfig": {
       "description": "Storage configuration. If not specified, uses in-memory storage.",
-      "$ref": "#/$defs/StorageConfig",
       "default": {
         "type": "inMemory"
-      }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StorageConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "leaseManager": {
       "description": "Lease manager configuration for distributed coordination.\nIf not specified, uses no-op (single orchestrator mode).",
-      "$ref": "#/$defs/LeaseManagerConfig",
       "default": {
         "type": "noOp"
-      }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LeaseManagerConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "recovery": {
       "description": "Recovery configuration for handling interrupted runs.",
-      "$ref": "#/$defs/RecoveryConfig",
       "default": {
         "enabled": true,
         "checkIntervalSecs": 30,
@@ -51,18 +64,32 @@
         "maxClaimsPerCheck": 10,
         "leaseTtlSecs": 30,
         "checkpointInterval": 1000
-      }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RecoveryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "blobApi": {
       "description": "Blob API configuration.\nControls whether the orchestrator serves blob endpoints and the URL workers use.",
-      "$ref": "#/$defs/BlobApiConfig",
       "default": {
         "enabled": true
-      }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/BlobApiConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "retry": {
       "description": "Retry configuration.\nControls backoff for all retries and the retry limit for transport errors\n(subprocess crash, network timeout, connection refused).",
-      "$ref": "#/$defs/RetryConfig",
       "default": {
         "transportMaxRetries": 3,
         "backoff": {
@@ -70,7 +97,15 @@
           "minDelayMs": 1000,
           "maxDelayMs": 10000
         }
-      }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RetryConfig"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -142,14 +177,20 @@
               "type": "string"
             },
             "args": {
-              "type": "array",
+              "type": [
+                "array",
+                "null"
+              ],
               "items": {
                 "type": "string"
               }
             },
             "env": {
               "description": "Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
-              "type": "object",
+              "type": [
+                "object",
+                "null"
+              ],
               "additionalProperties": {
                 "type": "string"
               }
@@ -678,12 +719,19 @@
         },
         "backoff": {
           "description": "Backoff strategy for all retry delays (default: fibonacci with 1s min, 10s max).\n\nThis backoff applies to both transport error retries and component error\nretries. The same delay progression is used regardless of retry reason.",
-          "$ref": "#/$defs/BackoffConfig",
           "default": {
             "type": "fibonacci",
             "minDelayMs": 1000,
             "maxDelayMs": 10000
-          }
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/BackoffConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
