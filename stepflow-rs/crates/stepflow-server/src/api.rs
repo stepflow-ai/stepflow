@@ -113,6 +113,14 @@ pub fn create_api_router() -> (axum::Router<Arc<StepflowEnvironment>>, OpenApi) 
             get_with(runs::get_run_steps, runs::get_run_steps_docs),
         )
         .api_route(
+            "/runs/{run_id}/steps/{step_id}",
+            get_with(runs::get_step_detail, runs::get_step_detail_docs),
+        )
+        .api_route(
+            "/runs/{run_id}/events",
+            get_with(runs::get_status_stream, runs::get_status_stream_docs),
+        )
+        .api_route(
             "/runs/{run_id}/cancel",
             post_with(runs::cancel_run, runs::cancel_run_docs),
         )

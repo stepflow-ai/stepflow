@@ -4947,10 +4947,12 @@ name = "stepflow-server"
 version = "0.11.1"
 dependencies = [
  "aide",
+ "async-stream",
  "axum",
  "chrono",
  "clap",
  "error-stack",
+ "futures",
  "indexmap 2.13.0",
  "log",
  "schemars 1.2.1",
@@ -4979,6 +4981,7 @@ dependencies = [
 name = "stepflow-state"
 version = "0.11.1"
 dependencies = [
+ "async-stream",
  "bytes",
  "chrono",
  "dashmap",

@@ -15,10 +15,11 @@ use std::collections::HashSet;
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::ValueRef};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
+    StepStatusEntry,
 };
 use stepflow_state::{
     BlobStore, CheckpointStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob,
@@ -41,6 +42,50 @@ fn u64_to_sql(v: u64) -> i64 {
 /// Inverse of [`u64_to_sql`]: map i64 back to u64 preserving ordering.
 fn sql_to_u64(v: i64) -> u64 {
     (v as u64) ^ (1u64 << 63)
+}
+
+/// Parse a `StepStatus` from a database string.
+fn parse_step_status(s: &str) -> StepStatus {
+    match s {
+        "blocked" => StepStatus::Blocked,
+        "runnable" => StepStatus::Runnable,
+        "running" => StepStatus::Running,
+        "completed" => StepStatus::Completed,
+        "skipped" => StepStatus::Skipped,
+        "failed" => StepStatus::Failed,
+        _ => {
+            log::warn!("Unrecognized step status: {s}, defaulting to blocked");
+            StepStatus::Blocked
+        }
+    }
+}
+
+/// Convert a SQLite row to a `StepStatusEntry`.
+fn row_to_step_status_entry(
+    row: &sqlx::sqlite::SqliteRow,
+) -> error_stack::Result<StepStatusEntry, StateError> {
+    let step_id: String = row.get("step_id");
+    let step_index: i64 = row.get("step_index");
+    let item_index: i64 = row.get("item_index");
+    let status_str: String = row.get("status");
+    let component: Option<String> = row.get("component");
+    let result_json: Option<String> = row.get("result_json");
+    let journal_seqno: i64 = row.get("journal_seqno");
+
+    let result = result_json
+        .map(|json| serde_json::from_str::<FlowResult>(&json))
+        .transpose()
+        .change_context(StateError::Serialization)?;
+
+    Ok(StepStatusEntry {
+        step_id,
+        step_index: step_index as usize,
+        item_index: item_index as u32,
+        status: parse_step_status(&status_str),
+        component,
+        result,
+        journal_seqno: sql_to_u64(journal_seqno),
+    })
 }
 
 /// Parse a datetime string from SQLite.
@@ -908,6 +953,134 @@ impl MetadataStore for SqliteStateStore {
                 .await
                 .change_context(StateError::Internal)?;
             Ok(result.rows_affected() as usize)
+        }
+        .boxed()
+    }
+
+    fn update_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+        step_index: usize,
+        status: StepStatus,
+        component: Option<&str>,
+        result: Option<FlowResult>,
+        journal_seqno: SequenceNumber,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        let step_id = step_id.to_string();
+        let component = component.map(|s| s.to_string());
+
+        async move {
+            let status_str = status.to_string();
+            let result_json = result
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .change_context(StateError::Serialization)?;
+            let seqno_sql = u64_to_sql(journal_seqno.value());
+
+            let sql = r#"
+                INSERT INTO step_statuses (run_id, item_index, step_id, step_index, status, component, result_json, journal_seqno)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(run_id, item_index, step_id) DO UPDATE SET
+                    status = excluded.status,
+                    component = COALESCE(excluded.component, step_statuses.component),
+                    result_json = COALESCE(excluded.result_json, step_statuses.result_json),
+                    journal_seqno = excluded.journal_seqno,
+                    updated_at = CURRENT_TIMESTAMP
+            "#;
+
+            sqlx::query(sql)
+                .bind(run_id.to_string())
+                .bind(item_index as i64)
+                .bind(&step_id)
+                .bind(step_index as i64)
+                .bind(status_str)
+                .bind(&component)
+                .bind(&result_json)
+                .bind(seqno_sql)
+                .execute(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StepStatusEntry>, StateError>> {
+        let pool = self.pool.clone();
+        let step_id = step_id.to_string();
+
+        async move {
+            let sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno \
+                        FROM step_statuses WHERE run_id = ? AND item_index = ? AND step_id = ?";
+
+            let row = sqlx::query(sql)
+                .bind(run_id.to_string())
+                .bind(item_index as i64)
+                .bind(&step_id)
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            match row {
+                Some(row) => Ok(Some(row_to_step_status_entry(&row)?)),
+                None => Ok(None),
+            }
+        }
+        .boxed()
+    }
+
+    fn get_step_statuses(
+        &self,
+        run_id: Uuid,
+        item_index: Option<usize>,
+        since_seqno: Option<SequenceNumber>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepStatusEntry>, StateError>> {
+        let pool = self.pool.clone();
+
+        async move {
+            let mut sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno \
+                           FROM step_statuses WHERE run_id = ?"
+                .to_string();
+            let mut bind_values: Vec<String> = vec![run_id.to_string()];
+
+            if let Some(idx) = item_index {
+                sql.push_str(" AND item_index = ?");
+                bind_values.push((idx as i64).to_string());
+            }
+
+            if let Some(since) = since_seqno {
+                sql.push_str(" AND journal_seqno > ?");
+                bind_values.push(u64_to_sql(since.value()).to_string());
+            }
+
+            sql.push_str(" ORDER BY step_index, item_index");
+
+            let mut query = sqlx::query(&sql);
+            for value in &bind_values {
+                query = query.bind(value);
+            }
+
+            let rows = query
+                .fetch_all(&pool)
+                .await
+                .change_context(StateError::Internal)?;
+
+            let mut entries = Vec::new();
+            for row in &rows {
+                entries.push(row_to_step_status_entry(row)?);
+            }
+
+            Ok(entries)
         }
         .boxed()
     }

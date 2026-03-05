@@ -15,7 +15,7 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 
 use bytes::Bytes;
 
@@ -27,6 +27,7 @@ use crate::{
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
+    StepStatusEntry,
 };
 use uuid::Uuid;
 
@@ -83,6 +84,8 @@ pub struct InMemoryStateStore {
     checkpoints: DashMap<Uuid, StoredCheckpoint>,
     /// Total number of checkpoint put operations (for testing).
     checkpoint_put_count: AtomicUsize,
+    /// Step status entries keyed by (run_id, item_index, step_id).
+    step_statuses: DashMap<(Uuid, usize, String), StepStatusEntry>,
 }
 
 impl InMemoryStateStore {
@@ -95,6 +98,7 @@ impl InMemoryStateStore {
             journals: DashMap::new(),
             checkpoints: DashMap::new(),
             checkpoint_put_count: AtomicUsize::new(0),
+            step_statuses: DashMap::new(),
         }
     }
 
@@ -546,6 +550,73 @@ impl MetadataStore for InMemoryStateStore {
             Ok(orphaned)
         }
         .boxed()
+    }
+
+    fn update_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+        step_index: usize,
+        status: StepStatus,
+        component: Option<&str>,
+        result: Option<FlowResult>,
+        journal_seqno: SequenceNumber,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let key = (run_id, item_index, step_id.to_string());
+        let entry = StepStatusEntry {
+            step_id: step_id.to_string(),
+            step_index,
+            item_index: item_index as u32,
+            status,
+            component: component.map(|s| s.to_string()),
+            result,
+            journal_seqno: journal_seqno.value(),
+        };
+        self.step_statuses.insert(key, entry);
+        async { Ok(()) }.boxed()
+    }
+
+    fn get_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StepStatusEntry>, StateError>> {
+        let key = (run_id, item_index, step_id.to_string());
+        let result = self.step_statuses.get(&key).map(|e| e.value().clone());
+        async move { Ok(result) }.boxed()
+    }
+
+    fn get_step_statuses(
+        &self,
+        run_id: Uuid,
+        item_index: Option<usize>,
+        since_seqno: Option<SequenceNumber>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepStatusEntry>, StateError>> {
+        let entries: Vec<StepStatusEntry> = self
+            .step_statuses
+            .iter()
+            .filter(|e| {
+                let (rid, idx, _) = e.key();
+                if *rid != run_id {
+                    return false;
+                }
+                if let Some(want_idx) = item_index
+                    && *idx != want_idx
+                {
+                    return false;
+                }
+                if let Some(since) = since_seqno
+                    && e.value().journal_seqno <= since.value()
+                {
+                    return false;
+                }
+                true
+            })
+            .map(|e| e.value().clone())
+            .collect();
+        async move { Ok(entries) }.boxed()
     }
 
     fn wait_for_completion(

@@ -58,6 +58,12 @@ pub(super) struct RecoveredState {
     /// indicating the run finished but the metadata store may not have been
     /// updated before the crash (journal-first ordering crash window).
     pub root_terminal_status: Option<ExecutionStatus>,
+    /// The last journal sequence number replayed during recovery.
+    ///
+    /// Used as the `journal_seqno` when syncing step statuses to the metadata
+    /// store after replay. This ensures the metadata reflects "at least this
+    /// point in the journal has been processed."
+    pub last_sequence: Option<SequenceNumber>,
 }
 
 /// Shared context for execution state recovery.
@@ -158,6 +164,7 @@ impl<'a> Recovery<'a> {
             subflow_runs: HashMap::new(),
             inflight_subflow_run_ids: HashSet::new(),
             root_terminal_status: None,
+            last_sequence: None,
         };
 
         // Replay from the root run's start sequence.
@@ -281,6 +288,7 @@ impl<'a> Recovery<'a> {
             subflow_runs,
             inflight_subflow_run_ids,
             root_terminal_status: None,
+            last_sequence: None,
         };
 
         // Checkpoint recovery: use the checkpoint sequence as a lower bound to
@@ -348,6 +356,7 @@ impl<'a> Recovery<'a> {
         while let Some(event_result) = events.next().await {
             let (seq, event) = event_result.change_context(ExecutionError::RecoveryFailed)?;
             event_count += 1;
+            recovered.last_sequence = Some(seq);
 
             // Apply event only to the RunStates it affects (O(1) per event
             // instead of O(subflows) broadcast).
@@ -439,6 +448,13 @@ impl<'a> Recovery<'a> {
                 recovered.inflight_subflow_run_ids.insert(*rid);
             }
 
+            // Sync step statuses to metadata for events in the replay window.
+            // This ensures that any step status changes journaled before a crash
+            // are reflected in metadata after recovery, bounded to only the events
+            // being replayed (not the full RunState).
+            self.sync_step_status_for_event(&event, recovered, seq)
+                .await?;
+
             // Handle RunCompleted: sync metadata for subflows, capture status for root.
             if let stepflow_state::JournalEvent::RunCompleted {
                 run_id: completed_id,
@@ -479,6 +495,111 @@ impl<'a> Recovery<'a> {
         }
 
         Ok(event_count)
+    }
+
+    /// Sync a single journal event's step status changes to the metadata store.
+    ///
+    /// Called inline during replay for each event. Only events that change step
+    /// status are handled (TasksStarted, TaskCompleted, StepsUnblocked). This
+    /// bounds recovery metadata syncing to only the events in the replay window,
+    /// avoiding redundant writes for steps already synced before a checkpoint.
+    async fn sync_step_status_for_event(
+        &self,
+        event: &stepflow_state::JournalEvent,
+        recovered: &RecoveredState,
+        seq: SequenceNumber,
+    ) -> Result<()> {
+        use stepflow_core::status::StepStatus;
+        use stepflow_state::JournalEvent;
+
+        // Helper: get the flow for a run_id from the recovered state.
+        let get_flow =
+            |run_id: &uuid::Uuid| -> Option<std::sync::Arc<stepflow_core::workflow::Flow>> {
+                if *run_id == self.root_run_id {
+                    Some(recovered.run_state.flow())
+                } else {
+                    recovered.subflow_runs.get(run_id).map(|s| s.flow())
+                }
+            };
+
+        match event {
+            JournalEvent::TasksStarted { runs } => {
+                for run_tasks in runs {
+                    let Some(flow) = get_flow(&run_tasks.run_id) else {
+                        continue;
+                    };
+                    for task in &run_tasks.tasks {
+                        let step = &flow.steps[task.step_index];
+                        self.metadata_store
+                            .update_step_status(
+                                run_tasks.run_id,
+                                task.item_index as usize,
+                                &step.id,
+                                task.step_index,
+                                StepStatus::Running,
+                                Some(step.component.path()),
+                                None,
+                                seq,
+                            )
+                            .await
+                            .change_context(ExecutionError::RecoveryFailed)?;
+                    }
+                }
+            }
+            JournalEvent::TaskCompleted {
+                run_id,
+                item_index,
+                step_index,
+                result,
+            } => {
+                if let Some(flow) = get_flow(run_id) {
+                    let step = &flow.steps[*step_index];
+                    let status = match result {
+                        stepflow_core::FlowResult::Failed(_) => StepStatus::Failed,
+                        _ => StepStatus::Completed,
+                    };
+                    self.metadata_store
+                        .update_step_status(
+                            *run_id,
+                            *item_index as usize,
+                            &step.id,
+                            *step_index,
+                            status,
+                            Some(step.component.path()),
+                            Some(result.clone()),
+                            seq,
+                        )
+                        .await
+                        .change_context(ExecutionError::RecoveryFailed)?;
+                }
+            }
+            JournalEvent::StepsUnblocked {
+                run_id,
+                item_index,
+                step_indices,
+            } => {
+                if let Some(flow) = get_flow(run_id) {
+                    for &step_index in step_indices {
+                        let step = &flow.steps[step_index];
+                        self.metadata_store
+                            .update_step_status(
+                                *run_id,
+                                *item_index as usize,
+                                &step.id,
+                                step_index,
+                                StepStatus::Runnable,
+                                Some(step.component.path()),
+                                None,
+                                seq,
+                            )
+                            .await
+                            .change_context(ExecutionError::RecoveryFailed)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Pre-fetch sub-run metadata from the metadata store.
@@ -547,6 +668,10 @@ struct SubflowMetadata {
 /// This resolves each item's output from the RunState and records it,
 /// then updates the run status to match the journal. Used for both subflow
 /// crash-window sync during replay and root run sync in tree.rs.
+///
+/// Note: Per-step statuses are synced inline during `replay_events` as each
+/// relevant event is processed, so this function only handles item results
+/// and run status.
 pub(super) async fn sync_run_state_to_metadata(
     run_id: uuid::Uuid,
     sub_state: &RunState,

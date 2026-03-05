@@ -451,4 +451,45 @@ pub trait ExecutionJournal: Send + Sync {
     fn list_active_roots(
         &self,
     ) -> BoxFuture<'_, error_stack::Result<Vec<RootJournalInfo>, StateError>>;
+
+    /// Follow a root run's journal, yielding events as they arrive.
+    ///
+    /// Like [`stream_from`](Self::stream_from), but never terminates — when all
+    /// existing events have been yielded, it polls for new entries. The stream
+    /// should be dropped by the consumer when it is no longer needed (e.g., after
+    /// receiving a `RunCompleted` event).
+    ///
+    /// The default implementation polls `stream_from` in a loop with a 500ms
+    /// delay between batches. Backends with native change-notification support
+    /// (e.g., NATS JetStream) should override this with a push-based implementation.
+    ///
+    /// # Arguments
+    /// * `root_run_id` - The root run's journal to follow
+    /// * `from_sequence` - Start reading from this sequence (inclusive)
+    fn follow(&self, root_run_id: Uuid, from_sequence: SequenceNumber) -> JournalEventStream<'_> {
+        Box::pin(async_stream::stream! {
+            let mut cursor = from_sequence;
+            loop {
+                let mut got_any = false;
+                let mut batch = self.stream_from(root_run_id, cursor);
+                while let Some(item) = futures::StreamExt::next(&mut batch).await {
+                    match item {
+                        Ok((seq, event)) => {
+                            cursor = seq.next();
+                            got_any = true;
+                            yield Ok((seq, event));
+                        }
+                        Err(e) => {
+                            yield Err(e);
+                            return;
+                        }
+                    }
+                }
+                drop(batch);
+                if !got_any {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+            }
+        })
+    }
 }

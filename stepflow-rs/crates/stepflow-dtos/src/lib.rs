@@ -44,6 +44,32 @@ impl StepStatusInfo {
     }
 }
 
+/// Detailed step status entry with result and journal tracking.
+///
+/// Stored in the `step_statuses` metadata table. Each entry tracks a single
+/// step's status for a specific item, along with the journal sequence number
+/// that produced the change (enabling `?asof=N` consistent reads).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepStatusEntry {
+    /// Step name/identifier.
+    pub step_id: String,
+    /// Step index in the workflow definition.
+    pub step_index: usize,
+    /// Item index (0-based).
+    pub item_index: u32,
+    /// Current status of the step.
+    pub status: StepStatus,
+    /// Component path (e.g., "/builtin/openai").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    /// Step result (only present when completed or failed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<FlowResult>,
+    /// Journal sequence number of the event that produced this status.
+    pub journal_seqno: u64,
+}
+
 /// Detailed information for a single item in a run.
 ///
 /// Includes the item's input, execution status, and step-level details.
@@ -379,6 +405,137 @@ impl StepInfo {
     /// Get the step name.
     pub fn step_name(&self) -> &str {
         self.step_id.name()
+    }
+}
+
+// =============================================================================
+// Stream Event DTOs
+// =============================================================================
+
+/// A public-facing event from the execution journal stream.
+///
+/// These events map from internal `JournalEvent` variants to user-friendly
+/// names and shapes. "Task" terminology is replaced with "step" since that's
+/// the user-facing concept.
+///
+/// Sent as SSE events with:
+/// - `id` = journal sequence number
+/// - `event` = variant name in snake_case (e.g., `step_started`)
+/// - `data` = JSON-serialized event payload
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "event",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum StatusEvent {
+    /// A run was created with its initial configuration.
+    RunCreated {
+        run_id: Uuid,
+        flow_id: BlobId,
+        item_count: usize,
+    },
+
+    /// A run was initialized and its steps have been discovered.
+    RunInitialized {
+        run_id: Uuid,
+        /// Step names needed per item (outer index = item_index).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        steps: Option<Vec<Vec<String>>>,
+    },
+
+    /// A step has started executing.
+    StepStarted {
+        run_id: Uuid,
+        item_index: u32,
+        step_index: usize,
+        /// Step name/identifier.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step_id: Option<String>,
+        /// Execution attempt number (1-based, >1 for retries).
+        attempt: u32,
+    },
+
+    /// A step has completed (successfully or with failure).
+    StepCompleted {
+        run_id: Uuid,
+        item_index: u32,
+        step_index: usize,
+        /// Step name/identifier.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step_id: Option<String>,
+        /// Whether the step succeeded or failed.
+        status: StepStatus,
+        /// The step result. Only included when `include_results=true`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<FlowResult>,
+    },
+
+    /// A step's dependencies are satisfied and it is ready to execute.
+    StepReady {
+        run_id: Uuid,
+        item_index: u32,
+        step_index: usize,
+        /// Step name/identifier.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        step_id: Option<String>,
+    },
+
+    /// An individual item has completed.
+    ItemCompleted {
+        run_id: Uuid,
+        item_index: u32,
+        /// The item result. Only included when `include_results=true`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        result: Option<FlowResult>,
+    },
+
+    /// A run has completed (terminal state).
+    RunCompleted {
+        run_id: Uuid,
+        status: ExecutionStatus,
+    },
+
+    /// A sub-run was created.
+    SubRunCreated {
+        /// The sub-run's ID.
+        run_id: Uuid,
+        /// The parent run that spawned this sub-run.
+        parent_run_id: Uuid,
+        /// The flow being executed by the sub-run.
+        flow_id: BlobId,
+        /// Number of items in the sub-run.
+        item_count: usize,
+    },
+}
+
+impl StatusEvent {
+    /// Get the run_id associated with this event.
+    pub fn run_id(&self) -> Uuid {
+        match self {
+            StatusEvent::RunCreated { run_id, .. }
+            | StatusEvent::RunInitialized { run_id, .. }
+            | StatusEvent::StepStarted { run_id, .. }
+            | StatusEvent::StepCompleted { run_id, .. }
+            | StatusEvent::StepReady { run_id, .. }
+            | StatusEvent::ItemCompleted { run_id, .. }
+            | StatusEvent::RunCompleted { run_id, .. }
+            | StatusEvent::SubRunCreated { run_id, .. } => *run_id,
+        }
+    }
+
+    /// Get the SSE event type name.
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            StatusEvent::RunCreated { .. } => "run_created",
+            StatusEvent::RunInitialized { .. } => "run_initialized",
+            StatusEvent::StepStarted { .. } => "step_started",
+            StatusEvent::StepCompleted { .. } => "step_completed",
+            StatusEvent::StepReady { .. } => "step_ready",
+            StatusEvent::ItemCompleted { .. } => "item_completed",
+            StatusEvent::RunCompleted { .. } => "run_completed",
+            StatusEvent::SubRunCreated { .. } => "sub_run_created",
+        }
     }
 }
 

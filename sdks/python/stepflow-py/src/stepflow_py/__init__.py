@@ -23,12 +23,13 @@ This package provides:
 from stepflow_py.api import ApiClient, Configuration
 from stepflow_py.api.api import ComponentApi, FlowApi, HealthApi, RunApi
 from stepflow_py.api.models import Flow, Step
-from stepflow_py.client import StepflowClient
+from stepflow_py.client import StatusEvent, StepflowClient
 from stepflow_py.worker.generated_protocol import ErrorCode
 
 __all__ = [
     # High-level client
     "StepflowClient",
+    "StatusEvent",
     # Low-level API client
     "ApiClient",
     "Configuration",

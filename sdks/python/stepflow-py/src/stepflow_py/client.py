@@ -21,6 +21,7 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +39,32 @@ if TYPE_CHECKING:
     from stepflow_py.config import StepflowConfig
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class StatusEvent:
+    """A status event from the SSE stream.
+
+    Attributes:
+        event: Event type name (e.g., "step_started", "run_completed").
+        data: Parsed JSON payload of the event.
+        id: Journal sequence number (string). Can be passed as ``since``
+            to resume the stream.
+    """
+
+    event: str
+    data: dict[str, Any]
+    id: str | None = None
+
+    @property
+    def run_id(self) -> str | None:
+        """Run ID associated with this event, if present."""
+        return self.data.get("runId")
+
+    @property
+    def sequence_number(self) -> int | None:
+        """Journal sequence number, parsed from the SSE ``id`` field."""
+        return int(self.id) if self.id is not None else None
 
 
 class StepflowClient:
@@ -415,6 +442,58 @@ class StepflowClient:
             timeout_secs=wait_timeout,
             _request_timeout=timeout,
         )
+
+    async def status_events(
+        self,
+        run_id: str,
+        *,
+        since: int | None = None,
+        include_sub_runs: bool = False,
+        event_types: list[str] | None = None,
+        include_results: bool = False,
+    ) -> AsyncIterator[StatusEvent]:
+        """Stream execution events for a run via Server-Sent Events.
+
+        Yields ``StatusEvent`` objects in journal order. The stream
+        closes automatically after a ``run_completed`` event for
+        the requested run.
+
+        Use ``since`` (a journal sequence number from a previous event's
+        ``id``) to resume from a specific point.
+
+        Args:
+            run_id: Run ID (UUID string).
+            since: Journal sequence number to start from (inclusive).
+            include_sub_runs: Include events from sub-runs.
+            event_types: Only include these event types (e.g.,
+                ``["step_started", "step_completed"]``).
+            include_results: Include result payloads in completion events.
+
+        Yields:
+            StatusEvent for each execution event.
+        """
+        import httpx
+
+        params: dict[str, str] = {}
+        if since is not None:
+            params["since"] = str(since)
+        if include_sub_runs:
+            params["includeSubRuns"] = "true"
+        if event_types:
+            params["eventTypes"] = ",".join(event_types)
+        if include_results:
+            params["includeResults"] = "true"
+
+        host: str = str(self._api_client.configuration.host)
+        url = f"{host}/runs/{run_id}/events"
+
+        async with httpx.AsyncClient() as http_client:
+            async with http_client.stream(
+                "GET", url, params=params, timeout=None
+            ) as response:
+                response.raise_for_status()
+                async for event in _parse_sse_stream(response.aiter_lines()):
+                    yield event
 
     async def get_run_items(
         self, run_id: str, timeout: float = 30.0
