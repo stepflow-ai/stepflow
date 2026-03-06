@@ -22,12 +22,20 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from stepflow_py.api import ApiClient, Configuration
 from stepflow_py.api.api import FlowApi, HealthApi, RunApi
 from stepflow_py.api.models import Flow
 from stepflow_py.api.models.create_run_request import CreateRunRequest
+from stepflow_py.api.models.status_event import StatusEvent as _StatusEventOneOf
+from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
+from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
+from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
+from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
+from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
+from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
+from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
 from stepflow_py.api.models.step_override import StepOverride
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
 
@@ -38,6 +46,18 @@ if TYPE_CHECKING:
     from stepflow_py.config import StepflowConfig
 
 logger = logging.getLogger(__name__)
+
+#: Union of all status event variant types yielded by
+#: :meth:`StepflowClient.status_events`.
+StatusEvent: TypeAlias = (
+    StatusEventRunCreated
+    | StatusEventStepStarted
+    | StatusEventStepCompleted
+    | StatusEventStepReady
+    | StatusEventItemCompleted
+    | StatusEventRunCompleted
+    | StatusEventSubRunCreated
+)
 
 
 class StepflowClient:
@@ -416,6 +436,63 @@ class StepflowClient:
             _request_timeout=timeout,
         )
 
+    async def status_events(
+        self,
+        run_id: str,
+        *,
+        since: int | None = None,
+        include_sub_runs: bool = False,
+        event_types: list[str] | None = None,
+        include_results: bool = False,
+    ) -> AsyncIterator[StatusEvent]:
+        """Stream execution events for a run via Server-Sent Events.
+
+        Yields typed status event objects (e.g., ``StatusEventRunCreated``,
+        ``StatusEventStepCompleted``) in journal order. The stream closes
+        automatically after a ``StatusEventRunCompleted`` for the requested
+        run.
+
+        Each event has ``sequence_number`` and ``timestamp`` fields. Use
+        ``sequence_number`` to resume from a specific point via ``since``.
+
+        Args:
+            run_id: Run ID (UUID string).
+            since: Journal sequence number to start from (inclusive).
+            include_sub_runs: Include events from sub-runs.
+            event_types: Only include these event types (e.g.,
+                ``["step_started", "step_completed"]``).
+            include_results: Include result payloads in completion events.
+
+        Yields:
+            A typed status event variant for each execution event.
+        """
+        import httpx
+
+        params: dict[str, str] = {}
+        if since is not None:
+            params["since"] = str(since)
+        if include_sub_runs:
+            params["includeSubRuns"] = "true"
+        if event_types:
+            params["eventTypes"] = ",".join(event_types)
+        if include_results:
+            params["includeResults"] = "true"
+
+        host: str = str(self._api_client.configuration.host)
+        url = f"{host}/runs/{run_id}/events"
+
+        # Reuse default headers (auth, user-agent, etc.) from the API client
+        headers = dict(self._api_client.default_headers)
+        headers["Accept"] = "text/event-stream"
+
+        async with httpx.AsyncClient(headers=headers) as http_client:
+            async with http_client.stream(
+                "GET", url, params=params, timeout=None
+            ) as response:
+                response.raise_for_status()
+                async for event in _parse_sse_stream(response.aiter_lines()):
+                    yield event
+
     async def get_run_items(
         self, run_id: str, timeout: float = 30.0
     ) -> list[dict[str, Any]]:
@@ -433,6 +510,66 @@ class StepflowClient:
             item.model_dump(by_alias=True, exclude_unset=True)
             for item in response.items
         ]
+
+
+async def _parse_sse_stream(
+    lines: AsyncIterator[str],
+) -> AsyncIterator[StatusEvent]:
+    """Parse an SSE byte stream into typed status event objects.
+
+    Implements the subset of the SSE spec needed for Stepflow:
+    ``id``, ``event``, and ``data`` fields. Ignores comments
+    (lines starting with ``:``).
+
+    The ``data`` payload is deserialized into the appropriate generated
+    status event variant (e.g., ``StatusEventRunCreated``) using the
+    ``event`` discriminator field.
+    """
+    data_buf: list[str] = []
+
+    async for line in lines:
+        if line.startswith(":"):
+            continue
+
+        if line == "":
+            # Empty line = event boundary
+            if data_buf:
+                raw = "\n".join(data_buf)
+                event = _deserialize_status_event(raw)
+                if event is not None:
+                    yield event
+            data_buf = []
+            continue
+
+        if ":" in line:
+            field, _, value = line.partition(":")
+            value = value.lstrip(" ")  # SSE spec: strip single leading space
+        else:
+            field = line
+            value = ""
+
+        if field == "data":
+            data_buf.append(value)
+
+    # Flush any trailing event (stream closed without final blank line)
+    if data_buf:
+        raw = "\n".join(data_buf)
+        event = _deserialize_status_event(raw)
+        if event is not None:
+            yield event
+
+
+def _deserialize_status_event(json_str: str) -> StatusEvent | None:
+    """Deserialize a JSON string into a typed status event variant.
+
+    Returns ``None`` if the JSON cannot be parsed into a known variant.
+    """
+    try:
+        wrapper = _StatusEventOneOf.from_json(json_str)
+        return wrapper.actual_instance
+    except (ValueError, Exception):
+        logger.debug("Failed to deserialize status event: %s", json_str[:200])
+        return None
 
 
 def _parse_env_value(value: str) -> Any:

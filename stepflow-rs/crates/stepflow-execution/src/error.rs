@@ -79,6 +79,8 @@ pub enum ExecutionError {
     JournalError,
     #[error("checkpoint failed")]
     CheckpointError,
+    #[error("metadata store write failed")]
+    MetadataStoreError,
 }
 
 impl ExecutionError {

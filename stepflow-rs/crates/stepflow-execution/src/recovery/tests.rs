@@ -609,7 +609,7 @@ async fn test_recovery_preserves_attempt_counts() {
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|(_seq, event)| match event {
+        .filter_map(|entry| match &entry.event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })
@@ -748,7 +748,7 @@ async fn test_recovery_batches_parallel_tasks() {
 
     let tasks_started_events: Vec<_> = all_entries
         .iter()
-        .filter_map(|(_seq, event)| match event {
+        .filter_map(|entry| match &entry.event {
             JournalEvent::TasksStarted { runs } => Some(runs),
             _ => None,
         })

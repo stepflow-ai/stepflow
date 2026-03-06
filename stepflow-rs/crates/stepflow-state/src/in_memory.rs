@@ -15,18 +15,19 @@ use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 
 use bytes::Bytes;
 
 use crate::{
-    BlobStore, CheckpointStore, ExecutionJournal, JournalEvent, MetadataStore, RawBlob,
-    RootJournalInfo, RunCompletionNotifier, SequenceNumber, StoredCheckpoint,
+    BlobStore, CheckpointStore, ExecutionJournal, JournalEntry, JournalEvent, MetadataStore,
+    RawBlob, RootJournalInfo, RunCompletionNotifier, SequenceNumber, StoredCheckpoint,
     state_store::CreateRunParams,
 };
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
 use stepflow_dtos::{
     ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
+    StepStatusEntry,
 };
 use uuid::Uuid;
 
@@ -60,8 +61,8 @@ impl RunState {
 /// Journal state for a single root run.
 #[derive(Debug, Default)]
 struct JournalState {
-    /// Journal events stored in order.
-    events: Vec<JournalEvent>,
+    /// Journal entries stored in sequence order.
+    entries: Vec<JournalEntry>,
 }
 
 /// In-memory implementation of MetadataStore, BlobStore, and ExecutionJournal.
@@ -83,6 +84,8 @@ pub struct InMemoryStateStore {
     checkpoints: DashMap<Uuid, StoredCheckpoint>,
     /// Total number of checkpoint put operations (for testing).
     checkpoint_put_count: AtomicUsize,
+    /// Step status entries keyed by (run_id, item_index, step_id).
+    step_statuses: DashMap<(Uuid, usize, String), StepStatusEntry>,
 }
 
 impl InMemoryStateStore {
@@ -95,6 +98,7 @@ impl InMemoryStateStore {
             journals: DashMap::new(),
             checkpoints: DashMap::new(),
             checkpoint_put_count: AtomicUsize::new(0),
+            step_statuses: DashMap::new(),
         }
     }
 
@@ -548,6 +552,74 @@ impl MetadataStore for InMemoryStateStore {
         .boxed()
     }
 
+    fn update_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+        step_index: usize,
+        status: StepStatus,
+        component: Option<&str>,
+        result: Option<FlowResult>,
+        journal_seqno: SequenceNumber,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let key = (run_id, item_index, step_id.to_string());
+        let entry = StepStatusEntry {
+            step_id: step_id.to_string(),
+            step_index,
+            item_index: item_index as u32,
+            status,
+            component: component.map(|s| s.to_string()),
+            result,
+            journal_seqno: journal_seqno.value(),
+            updated_at: chrono::Utc::now(),
+        };
+        self.step_statuses.insert(key, entry);
+        async { Ok(()) }.boxed()
+    }
+
+    fn get_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StepStatusEntry>, StateError>> {
+        let key = (run_id, item_index, step_id.to_string());
+        let result = self.step_statuses.get(&key).map(|e| e.value().clone());
+        async move { Ok(result) }.boxed()
+    }
+
+    fn get_step_statuses(
+        &self,
+        run_id: Uuid,
+        item_index: Option<usize>,
+        since_seqno: Option<SequenceNumber>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepStatusEntry>, StateError>> {
+        let entries: Vec<StepStatusEntry> = self
+            .step_statuses
+            .iter()
+            .filter(|e| {
+                let (rid, idx, _) = e.key();
+                if *rid != run_id {
+                    return false;
+                }
+                if let Some(want_idx) = item_index
+                    && *idx != want_idx
+                {
+                    return false;
+                }
+                if let Some(since) = since_seqno
+                    && e.value().journal_seqno <= since.value()
+                {
+                    return false;
+                }
+                true
+            })
+            .map(|e| e.value().clone())
+            .collect();
+        async move { Ok(entries) }.boxed()
+    }
+
     fn wait_for_completion(
         &self,
         run_id: Uuid,
@@ -654,8 +726,23 @@ impl ExecutionJournal for InMemoryStateStore {
             // Key by root_run_id so all events for an execution tree share one journal
             let mut journal = self.journals.entry(root_run_id).or_default();
             // Sequence number is current length (0-indexed)
-            let sequence = SequenceNumber::new(journal.events.len() as u64);
-            journal.events.push(event);
+            let sequence = SequenceNumber::new(journal.entries.len() as u64);
+            // Extract a representative run_id from the event (matches sqlite behavior)
+            let run_id = match &event {
+                JournalEvent::RootRunCreated { run_id, .. }
+                | JournalEvent::RunInitialized { run_id, .. }
+                | JournalEvent::RunCompleted { run_id, .. }
+                | JournalEvent::TaskCompleted { run_id, .. }
+                | JournalEvent::StepsUnblocked { run_id, .. }
+                | JournalEvent::ItemCompleted { run_id, .. }
+                | JournalEvent::SubRunCreated { run_id, .. } => *run_id,
+                JournalEvent::TasksStarted { runs } => {
+                    runs.first().map(|r| r.run_id).unwrap_or(root_run_id)
+                }
+            };
+            let mut entry = JournalEntry::new(run_id, root_run_id, event);
+            entry.sequence = sequence;
+            journal.entries.push(entry);
             Ok(sequence)
         }
         .boxed()
@@ -671,22 +758,16 @@ impl ExecutionJournal for InMemoryStateStore {
         // guard cannot be held across yield points (it is not Send).
         // This is acceptable: the in-memory journal is only used in tests,
         // not in production where the SQLite implementation streams properly.
-        let events: Vec<_> = self
+        let entries: Vec<_> = self
             .journals
             .get(&root_run_id)
             .map(|journal| {
                 let start_idx = from_sequence.value() as usize;
-                journal
-                    .events
-                    .iter()
-                    .enumerate()
-                    .skip(start_idx)
-                    .map(|(i, event)| (SequenceNumber::new(i as u64), event.clone()))
-                    .collect()
+                journal.entries.iter().skip(start_idx).cloned().collect()
             })
             .unwrap_or_default();
 
-        Box::pin(futures::stream::iter(events.into_iter().map(Ok)))
+        Box::pin(futures::stream::iter(entries.into_iter().map(Ok)))
     }
 
     fn latest_sequence(
@@ -695,11 +776,11 @@ impl ExecutionJournal for InMemoryStateStore {
     ) -> BoxFuture<'_, error_stack::Result<Option<SequenceNumber>, crate::StateError>> {
         async move {
             let result = self.journals.get(&root_run_id).and_then(|journal| {
-                if journal.events.is_empty() {
+                if journal.entries.is_empty() {
                     None
                 } else {
                     // Latest sequence is length - 1
-                    Some(SequenceNumber::new((journal.events.len() - 1) as u64))
+                    Some(SequenceNumber::new((journal.entries.len() - 1) as u64))
                 }
             });
             Ok(result)
@@ -717,17 +798,17 @@ impl ExecutionJournal for InMemoryStateStore {
                 let root_run_id = *entry.key();
                 let journal = entry.value();
 
-                if journal.events.is_empty() {
+                if journal.entries.is_empty() {
                     continue;
                 }
 
                 // Latest sequence is length - 1
-                let latest_sequence = SequenceNumber::new((journal.events.len() - 1) as u64);
+                let latest_sequence = SequenceNumber::new((journal.entries.len() - 1) as u64);
 
                 infos.push(RootJournalInfo {
                     root_run_id,
                     latest_sequence,
-                    entry_count: journal.events.len() as u64,
+                    entry_count: journal.entries.len() as u64,
                 });
             }
 

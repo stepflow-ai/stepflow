@@ -16,22 +16,22 @@
 //! across orchestrator instances. It stores:
 //! - Run metadata (for RunDetails/RunSummary API responses)
 //! - Item-level results
+//! - Step-level status entries with journal sequence tracking
 //!
 //! Blob storage (content-addressed data and flow definitions) is handled by
 //! the [`BlobStore`](crate::BlobStore) trait.
-//!
-//! Step-level details (StepResult, StepInfo, StepStatus) are recovered from the
-//! ExecutionJournal during recovery, not stored in MetadataStore.
 
 use std::collections::HashSet;
 
 use futures::future::{BoxFuture, FutureExt as _};
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
 use uuid::Uuid;
 
 use crate::{SequenceNumber, StateError};
-use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepStatusInfo};
+use stepflow_dtos::{
+    ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepStatusEntry, StepStatusInfo,
+};
 
 use super::state_store::CreateRunParams;
 
@@ -42,8 +42,6 @@ use super::state_store::CreateRunParams;
 /// (SQLite, NATS KV, CockroachDB, etc.) with consistent semantics.
 ///
 /// Blob storage is provided by the separate [`BlobStore`](crate::BlobStore) trait.
-/// Step-level execution details are handled by [`ExecutionJournal`](crate::ExecutionJournal) and
-/// recovered via journal replay during recovery.
 pub trait MetadataStore: Send + Sync {
     /// Initialize the metadata store backend (e.g., create tables, set up schema).
     ///
@@ -216,6 +214,68 @@ pub trait MetadataStore: Send + Sync {
         &self,
         live_orchestrator_ids: &HashSet<String>,
     ) -> BoxFuture<'_, error_stack::Result<usize, StateError>>;
+
+    // =========================================================================
+    // Step Status Tracking
+    // =========================================================================
+
+    /// Update the status of a step for a specific item.
+    ///
+    /// This is called incrementally during execution as steps transition
+    /// between statuses (runnable → running → completed/failed). Each update
+    /// carries the journal sequence number so that clients can verify
+    /// read-after-write consistency via `?asof=N`.
+    ///
+    /// Uses UPSERT semantics — inserts a new row or updates the existing one.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `item_index` - The item index (0-based)
+    /// * `step_id` - The step identifier
+    /// * `step_index` - The step's position in the workflow
+    /// * `status` - The new step status
+    /// * `component` - The component path (if known)
+    /// * `result` - The step result (set on completion/failure)
+    /// * `journal_seqno` - The journal sequence number of the event
+    #[allow(clippy::too_many_arguments)]
+    fn update_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+        step_index: usize,
+        status: StepStatus,
+        component: Option<&str>,
+        result: Option<FlowResult>,
+        journal_seqno: SequenceNumber,
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    /// Get the status of a specific step for a specific item.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `item_index` - The item index (0-based)
+    /// * `step_id` - The step identifier
+    fn get_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: usize,
+        step_id: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<StepStatusEntry>, StateError>>;
+
+    /// Get all step statuses for a run, optionally filtered by item and/or
+    /// journal sequence number.
+    ///
+    /// # Arguments
+    /// * `run_id` - The run identifier
+    /// * `item_index` - Optional item index filter
+    /// * `since_seqno` - If provided, only return entries with `journal_seqno > since_seqno`
+    fn get_step_statuses(
+        &self,
+        run_id: Uuid,
+        item_index: Option<usize>,
+        since_seqno: Option<SequenceNumber>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StepStatusEntry>, StateError>>;
 
     // =========================================================================
     // Completion Notification

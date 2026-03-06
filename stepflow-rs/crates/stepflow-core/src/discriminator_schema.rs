@@ -92,6 +92,97 @@ impl schemars::transform::Transform for AddDiscriminator {
     }
 }
 
+/// A schemars [`Transform`](schemars::transform::Transform) that merges top-level
+/// `properties` and `required` fields from a wrapper struct into each `oneOf` variant.
+///
+/// This is used when a struct wraps a `#[serde(flatten)]` tagged enum: schemars places
+/// the struct's own fields as top-level `properties` alongside the enum's `oneOf`.
+/// OpenAPI code generators don't handle this combination, so this transform pushes
+/// the shared properties into each variant so they appear in the generated models.
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(schemars::JsonSchema, serde::Serialize, serde::Deserialize)]
+/// #[serde(rename_all = "camelCase")]
+/// #[schemars(transform = MergePropertiesIntoOneOf)]
+/// struct Wrapper {
+///     sequence_number: u64,
+///     timestamp: DateTime<Utc>,
+///     #[serde(flatten)]
+///     kind: MyEnum,
+/// }
+/// ```
+pub struct MergePropertiesIntoOneOf;
+
+impl schemars::transform::Transform for MergePropertiesIntoOneOf {
+    fn transform(&mut self, schema: &mut schemars::Schema) {
+        let Some(obj) = schema.as_object_mut() else {
+            return;
+        };
+
+        // Only act when both properties and oneOf are present (flatten pattern)
+        if !obj.contains_key("properties") || !obj.contains_key("oneOf") {
+            return;
+        }
+
+        let properties = obj.remove("properties").unwrap();
+        let required = obj.remove("required");
+
+        // Remove "type": "object" — the oneOf variants define their own type
+        obj.remove("type");
+
+        let props_map = match properties.as_object() {
+            Some(m) => m.clone(),
+            None => return,
+        };
+        let req_items: Vec<Value> = required
+            .as_ref()
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let Some(one_of) = obj.get_mut("oneOf").and_then(|v| v.as_array_mut()) else {
+            return;
+        };
+
+        for variant in one_of.iter_mut() {
+            // Skip $ref variants — they'll be resolved later by the pipeline
+            if variant.get("$ref").is_some() {
+                continue;
+            }
+
+            let Some(variant_obj) = variant.as_object_mut() else {
+                continue;
+            };
+
+            // Merge properties
+            let variant_props = variant_obj
+                .entry("properties")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Some(vp) = variant_props.as_object_mut() {
+                for (key, value) in &props_map {
+                    vp.insert(key.clone(), value.clone());
+                }
+            }
+
+            // Merge required
+            if !req_items.is_empty() {
+                let variant_req = variant_obj
+                    .entry("required")
+                    .or_insert_with(|| Value::Array(Vec::new()));
+                if let Some(vr) = variant_req.as_array_mut() {
+                    for item in &req_items {
+                        if !vr.contains(item) {
+                            vr.push(item.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

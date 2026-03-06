@@ -16,6 +16,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use futures::StreamExt as _;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_with::{DefaultOnNull, serde_as};
@@ -26,9 +27,15 @@ use stepflow_core::{
     BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowResult,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_dtos::{ItemResult, ResultOrder, RunDetails, RunFilters, RunStatus, RunSummary};
+use stepflow_dtos::{
+    ItemResult, ResultOrder, RunDetails, RunFilters, RunStatus, RunSummary, StatusEvent,
+    StatusEventKind,
+};
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::{BlobStoreExt as _, MetadataStoreExt as _};
+use stepflow_state::{
+    BlobStoreExt as _, ExecutionJournalExt as _, JournalEvent, MetadataStoreExt as _,
+    SequenceNumber,
+};
 use uuid::Uuid;
 
 use crate::error::{ErrorResponse, ServerError};
@@ -601,6 +608,85 @@ fn status_precedence(status: StepStatus) -> u8 {
     }
 }
 
+// =============================================================================
+// Step Detail Endpoint
+// =============================================================================
+
+/// Path parameters for step detail endpoint
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct StepPath {
+    /// Run ID (UUID)
+    pub run_id: Uuid,
+    /// Step ID (name)
+    pub step_id: String,
+}
+
+/// Query parameters for step detail endpoint
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StepDetailQuery {
+    /// Item index within the run (default: 0).
+    #[serde(default)]
+    pub item_index: Option<usize>,
+    /// Minimum journal sequence number. If the step status in metadata has
+    /// a `journal_seqno` less than this value, the server returns 409 Conflict
+    /// indicating the read is not yet consistent with the SSE stream position.
+    #[serde(default)]
+    pub asof: Option<u64>,
+}
+
+pub fn get_step_detail_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getStepDetail")
+        .summary("Get detailed status for a specific step")
+        .description(
+            "Returns the detailed status, component, and result for a specific step. \
+             Use `asof` with a journal sequence number from the SSE stream to ensure \
+             read-after-write consistency. Returns 409 if the metadata store has not \
+             yet caught up to the requested sequence number.",
+        )
+        .tag("Run")
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run or step not found"))
+        .response_with::<409, ErrorResponse, _>(|res| {
+            res.description("Metadata not yet consistent with requested sequence number")
+        })
+}
+
+/// Get detailed status for a specific step
+pub async fn get_step_detail(
+    State(env): State<Arc<StepflowEnvironment>>,
+    Path(StepPath { run_id, step_id }): Path<StepPath>,
+    Query(query): Query<StepDetailQuery>,
+) -> Result<Json<stepflow_dtos::StepStatusEntry>, ErrorResponse> {
+    let metadata_store = env.metadata_store();
+    let item_index = query.item_index.unwrap_or(0);
+
+    let entry = metadata_store
+        .get_step_status(run_id, item_index, &step_id)
+        .await?
+        .ok_or_else(|| {
+            error_stack::report!(ServerError::StepNotFound {
+                run_id,
+                step_id: step_id.clone(),
+            })
+        })?;
+
+    // Check asof consistency
+    if let Some(asof) = query.asof
+        && entry.journal_seqno < asof
+    {
+        return Err(ErrorResponse {
+            code: StatusCode::CONFLICT,
+            message: format!(
+                "Metadata not yet consistent: step has journal_seqno={}, requested asof={}",
+                entry.journal_seqno, asof
+            ),
+            stack: vec![],
+        });
+    }
+
+    Ok(Json(entry))
+}
+
 pub fn cancel_run_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
     op.id("cancelRun")
         .summary("Cancel a running execution")
@@ -695,6 +781,333 @@ pub async fn delete_run(
     }
 
     Ok(())
+}
+
+// =============================================================================
+// SSE Status Stream
+// =============================================================================
+
+/// Query parameters for the status stream endpoint.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusStreamQuery {
+    /// Journal sequence number to start from (inclusive). If omitted,
+    /// starts from the beginning of the run.
+    #[serde(default)]
+    pub since: Option<u64>,
+    /// Include events from sub-runs (default: false, only root run events).
+    #[serde(default)]
+    pub include_sub_runs: Option<bool>,
+    /// Comma-separated list of event types to include (e.g., "step_started,step_completed").
+    /// If omitted, all event types are included.
+    #[serde(default)]
+    pub event_types: Option<String>,
+    /// Include result payloads in step_completed and item_completed events (default: false).
+    #[serde(default)]
+    pub include_results: Option<bool>,
+}
+
+/// Wrapper for SSE responses that implements aide's `OperationOutput` for
+/// OpenAPI generation with `text/event-stream` media type.
+pub struct SseStream<S>(pub axum::response::sse::Sse<S>);
+
+impl<S> axum::response::IntoResponse for SseStream<S>
+where
+    S: futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>
+        + Send
+        + 'static,
+{
+    fn into_response(self) -> axum::response::Response {
+        self.0.into_response()
+    }
+}
+
+impl<S: Send + 'static> aide::OperationOutput for SseStream<S> {
+    type Inner = StatusEvent;
+
+    fn operation_response(
+        ctx: &mut aide::generate::GenContext,
+        _operation: &mut aide::openapi::Operation,
+    ) -> Option<aide::openapi::Response> {
+        let json_schema = ctx.schema.subschema_for::<StatusEvent>();
+
+        Some(aide::openapi::Response {
+            description: "Server-Sent Events stream of execution events".into(),
+            content: indexmap::IndexMap::from_iter([(
+                "text/event-stream".into(),
+                aide::openapi::MediaType {
+                    schema: Some(aide::openapi::SchemaObject {
+                        json_schema,
+                        example: None,
+                        external_docs: None,
+                    }),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        })
+    }
+}
+
+pub fn get_status_stream_docs(op: TransformOperation<'_>) -> TransformOperation<'_> {
+    op.id("getRunStatusStream")
+        .summary("Stream run execution events via SSE")
+        .description(
+            "Opens a Server-Sent Events (SSE) stream of execution events for a run. \
+             Events are streamed in journal order with the SSE `id` set to the journal \
+             sequence number. Use `since` to resume from a specific point. \
+             The stream closes after a `run_completed` event for the requested run.",
+        )
+        .tag("Run")
+        .response_with::<200, SseStream<
+            futures::stream::Empty<Result<axum::response::sse::Event, std::convert::Infallible>>,
+        >, _>(|res| res.description("Server-Sent Events stream of execution events"))
+        .response_with::<404, ErrorResponse, _>(|res| res.description("Run not found"))
+}
+
+/// Stream run execution events via Server-Sent Events.
+///
+/// Returns an SSE stream of execution events for the given run. Each SSE event has:
+/// - `id`: journal sequence number (for resumption via `since`)
+/// - `event`: event type name (e.g., `step_started`, `step_completed`)
+/// - `data`: JSON event payload
+pub async fn get_status_stream(
+    State(env): State<Arc<StepflowEnvironment>>,
+    Path(RunPath { run_id }): Path<RunPath>,
+    Query(query): Query<StatusStreamQuery>,
+) -> Result<
+    SseStream<
+        impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    ErrorResponse,
+> {
+    let metadata_store = env.metadata_store();
+
+    // Verify the run exists and get its root_run_id + start sequence
+    let run_details = metadata_store
+        .get_run(run_id)
+        .await?
+        .ok_or_else(|| error_stack::report!(ServerError::ExecutionNotFound(run_id)))?;
+
+    let root_run_id = run_details.summary.root_run_id;
+    let include_sub_runs = query.include_sub_runs.unwrap_or(false);
+    let include_results = query.include_results.unwrap_or(false);
+
+    // Parse event type filter
+    let event_type_filter: Option<Vec<String>> = query.event_types.map(|types| {
+        types
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
+
+    // Determine the starting sequence number
+    let from_sequence = SequenceNumber::new(query.since.unwrap_or(0));
+
+    // Load the flow so we can resolve step indices to step IDs.
+    // The flow may not exist if it was deleted or this is an old run.
+    let flow = env
+        .blob_store()
+        .get_flow(&run_details.summary.flow_id)
+        .await
+        .ok()
+        .flatten();
+
+    let journal = env.execution_journal().clone();
+
+    let stream = async_stream::stream! {
+        let mut event_stream = journal.follow(root_run_id, from_sequence);
+
+        while let Some(item) = event_stream.next().await {
+            let entry = match item {
+                Ok(entry) => entry,
+                Err(_) => break, // Journal error — close the stream
+            };
+            let seq = entry.sequence;
+            let timestamp = entry.timestamp;
+
+            // Convert journal event to stream events
+            let stream_events = journal_event_to_stream_events(
+                &entry.event,
+                include_results,
+                flow.as_deref(),
+            );
+            let mut is_run_completed = false;
+
+            for kind in stream_events {
+                let event_run_id = kind.run_id();
+
+                // Filter by run scope
+                if !include_sub_runs && event_run_id != run_id {
+                    continue;
+                }
+
+                // Check completion before applying event_type filter so
+                // the stream terminates even when run_completed is filtered out.
+                if let StatusEventKind::RunCompleted { run_id: completed_id, .. } = &kind
+                    && *completed_id == run_id
+                {
+                    is_run_completed = true;
+                }
+
+                // Filter by event type
+                if let Some(ref filter) = event_type_filter
+                    && !filter.iter().any(|f| f == kind.event_type())
+                {
+                    continue;
+                }
+
+                // Wrap in StatusEvent with metadata
+                let event = StatusEvent {
+                    sequence_number: seq.value(),
+                    timestamp,
+                    kind,
+                };
+
+                // Serialize and yield
+                match serde_json::to_string(&event) {
+                    Ok(data) => {
+                        let sse_event = axum::response::sse::Event::default()
+                            .id(seq.value().to_string())
+                            .event(event.event_type())
+                            .data(data);
+                        yield Ok(sse_event);
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Failed to serialize SSE event (seq {}): {err}",
+                            seq.value()
+                        );
+                        break;
+                    }
+                }
+            }
+
+            if is_run_completed {
+                break;
+            }
+        }
+    };
+
+    Ok(SseStream(axum::response::sse::Sse::new(stream)))
+}
+
+/// Resolve a step index to a step ID using the flow, if available.
+fn resolve_step_id(flow: Option<&Flow>, step_index: usize) -> Option<String> {
+    flow.and_then(|f| f.steps().get(step_index))
+        .map(|s| s.id.clone())
+}
+
+/// Convert a `JournalEvent` into zero or more `StatusEvent`s.
+///
+/// Most journal events map 1:1, except `TasksStarted` which produces one
+/// `StepStarted` per task across potentially multiple runs.
+fn journal_event_to_stream_events(
+    event: &JournalEvent,
+    include_results: bool,
+    flow: Option<&Flow>,
+) -> Vec<StatusEventKind> {
+    match event {
+        JournalEvent::RootRunCreated {
+            run_id,
+            flow_id,
+            inputs,
+            ..
+        } => vec![StatusEventKind::RunCreated {
+            run_id: *run_id,
+            flow_id: flow_id.clone(),
+            item_count: inputs.len(),
+        }],
+
+        JournalEvent::RunInitialized { .. } => vec![],
+
+        JournalEvent::TasksStarted { runs } => {
+            let mut events = Vec::new();
+            for run_tasks in runs {
+                for task in &run_tasks.tasks {
+                    events.push(StatusEventKind::StepStarted {
+                        run_id: run_tasks.run_id,
+                        item_index: task.item_index,
+                        step_index: task.step_index,
+                        step_id: resolve_step_id(flow, task.step_index),
+                        attempt: task.attempt,
+                    });
+                }
+            }
+            events
+        }
+
+        JournalEvent::TaskCompleted {
+            run_id,
+            item_index,
+            step_index,
+            result,
+        } => {
+            let status = match result {
+                FlowResult::Failed(_) => StepStatus::Failed,
+                _ => StepStatus::Completed,
+            };
+            vec![StatusEventKind::StepCompleted {
+                run_id: *run_id,
+                item_index: *item_index,
+                step_index: *step_index,
+                step_id: resolve_step_id(flow, *step_index),
+                status,
+                result: if include_results {
+                    Some(result.clone())
+                } else {
+                    None
+                },
+            }]
+        }
+
+        JournalEvent::StepsUnblocked {
+            run_id,
+            item_index,
+            step_indices,
+        } => step_indices
+            .iter()
+            .map(|&step_index| StatusEventKind::StepReady {
+                run_id: *run_id,
+                item_index: *item_index,
+                step_index,
+                step_id: resolve_step_id(flow, step_index),
+            })
+            .collect(),
+
+        JournalEvent::ItemCompleted {
+            run_id,
+            item_index,
+            result,
+        } => vec![StatusEventKind::ItemCompleted {
+            run_id: *run_id,
+            item_index: *item_index,
+            result: if include_results {
+                Some(result.clone())
+            } else {
+                None
+            },
+        }],
+
+        JournalEvent::RunCompleted { run_id, status } => vec![StatusEventKind::RunCompleted {
+            run_id: *run_id,
+            status: *status,
+        }],
+
+        JournalEvent::SubRunCreated {
+            run_id,
+            flow_id,
+            inputs,
+            parent_run_id,
+            ..
+        } => vec![StatusEventKind::SubRunCreated {
+            run_id: *run_id,
+            parent_run_id: *parent_run_id,
+            flow_id: flow_id.clone(),
+            item_count: inputs.len(),
+        }],
+    }
 }
 
 #[cfg(test)]

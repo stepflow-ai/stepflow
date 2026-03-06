@@ -77,6 +77,12 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
         add_finished_at_seqno_column,
     )
     .await?;
+    run_migration(
+        pool,
+        "007_create_step_statuses_table",
+        create_step_statuses_table,
+    )
+    .await?;
 
     Ok(())
 }
@@ -433,6 +439,51 @@ async fn add_finished_at_seqno_column(conn: &mut SqliteConnection) -> Result<(),
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_runs_root_run_id_finished_at_seqno \
          ON runs(root_run_id, finished_at_seqno)",
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create the step_statuses table for incremental step status tracking.
+///
+/// Stores per-step status and results with the journal sequence number that
+/// produced the change. This enables:
+/// - Real-time step status queries during execution (not just at item completion)
+/// - Consistent reads via `?asof=N` (verify `journal_seqno >= N`)
+/// - Recovery sync (write step statuses from journal replay to metadata)
+async fn create_step_statuses_table(conn: &mut SqliteConnection) -> Result<(), StateError> {
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS step_statuses (
+                run_id TEXT NOT NULL,
+                item_index INTEGER NOT NULL,
+                step_id TEXT NOT NULL,
+                step_index INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                component TEXT,
+                result_json TEXT,
+                journal_seqno INTEGER NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (run_id, item_index, step_id),
+                FOREIGN KEY (run_id) REFERENCES runs(id) ON DELETE CASCADE
+            )
+        "#,
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_step_statuses_run_id ON step_statuses(run_id)")
+        .execute(&mut *conn)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_step_statuses_journal_seqno \
+         ON step_statuses(run_id, journal_seqno)",
     )
     .execute(&mut *conn)
     .await

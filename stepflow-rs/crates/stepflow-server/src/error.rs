@@ -59,6 +59,8 @@ pub enum ServerError {
         batch_id: Uuid,
         status: stepflow_core::status::ExecutionStatus,
     },
+    #[error("Step '{step_id}' not found for run {run_id}")]
+    StepNotFound { run_id: Uuid, step_id: String },
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
 }
@@ -68,7 +70,8 @@ impl ServerError {
         match self {
             ServerError::ExecutionNotFound(_)
             | ServerError::WorkflowNotFound(_)
-            | ServerError::BatchNotFound(_) => StatusCode::NOT_FOUND,
+            | ServerError::BatchNotFound(_)
+            | ServerError::StepNotFound { .. } => StatusCode::NOT_FOUND,
             ServerError::ExecutionNotCancellable { .. }
             | ServerError::ExecutionStillRunning(_)
             | ServerError::BatchNotCancellable { .. } => StatusCode::CONFLICT,
@@ -181,6 +184,7 @@ fn execution_error_status_code(err: &stepflow_execution::ExecutionError) -> Stat
         ExecutionError::ResolveStepOutput(_) => StatusCode::INTERNAL_SERVER_ERROR,
         ExecutionError::ResolveWorkflowOutput => StatusCode::INTERNAL_SERVER_ERROR,
         ExecutionError::CheckpointError => StatusCode::INTERNAL_SERVER_ERROR,
+        ExecutionError::MetadataStoreError => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

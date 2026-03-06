@@ -31,6 +31,8 @@ from stepflow_py.api.models.list_step_runs_response import ListStepRunsResponse
 from stepflow_py.api.models.run_details import RunDetails
 from stepflow_py.api.models.run_flow_response import RunFlowResponse
 from stepflow_py.api.models.run_summary import RunSummary
+from stepflow_py.api.models.status_event import StatusEvent
+from stepflow_py.api.models.step_status_entry import StepStatusEntry
 from stepflow_py.api.rest import RESTResponseType
 
 
@@ -1574,6 +1576,368 @@ class RunApi:
         )
 
     @validate_call
+    async def get_run_status_stream(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        since: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run."
+            ),
+        ] = None,
+        include_sub_runs: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include events from sub-runs (default: false, only root run events)."
+            ),
+        ] = None,
+        event_types: Annotated[
+            StrictStr | None,
+            Field(
+                description='Comma-separated list of event types to include (e.g., "step_started,step_completed"). If omitted, all event types are included.'
+            ),
+        ] = None,
+        include_results: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include result payloads in step_completed and item_completed events (default: false)."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> StatusEvent:
+        """Stream run execution events via SSE
+
+        Opens a Server-Sent Events (SSE) stream of execution events for a run. Events are streamed in journal order with the SSE `id` set to the journal sequence number. Use `since` to resume from a specific point. The stream closes after a `run_completed` event for the requested run.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param since: Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run.
+        :type since: int
+        :param include_sub_runs: Include events from sub-runs (default: false, only root run events).
+        :type include_sub_runs: bool
+        :param event_types: Comma-separated list of event types to include (e.g., \"step_started,step_completed\"). If omitted, all event types are included.
+        :type event_types: str
+        :param include_results: Include result payloads in step_completed and item_completed events (default: false).
+        :type include_results: bool
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_run_status_stream_serialize(
+            run_id=run_id,
+            since=since,
+            include_sub_runs=include_sub_runs,
+            event_types=event_types,
+            include_results=include_results,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StatusEvent",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        ).data
+
+    @validate_call
+    async def get_run_status_stream_with_http_info(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        since: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run."
+            ),
+        ] = None,
+        include_sub_runs: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include events from sub-runs (default: false, only root run events)."
+            ),
+        ] = None,
+        event_types: Annotated[
+            StrictStr | None,
+            Field(
+                description='Comma-separated list of event types to include (e.g., "step_started,step_completed"). If omitted, all event types are included.'
+            ),
+        ] = None,
+        include_results: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include result payloads in step_completed and item_completed events (default: false)."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> ApiResponse[StatusEvent]:
+        """Stream run execution events via SSE
+
+        Opens a Server-Sent Events (SSE) stream of execution events for a run. Events are streamed in journal order with the SSE `id` set to the journal sequence number. Use `since` to resume from a specific point. The stream closes after a `run_completed` event for the requested run.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param since: Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run.
+        :type since: int
+        :param include_sub_runs: Include events from sub-runs (default: false, only root run events).
+        :type include_sub_runs: bool
+        :param event_types: Comma-separated list of event types to include (e.g., \"step_started,step_completed\"). If omitted, all event types are included.
+        :type event_types: str
+        :param include_results: Include result payloads in step_completed and item_completed events (default: false).
+        :type include_results: bool
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_run_status_stream_serialize(
+            run_id=run_id,
+            since=since,
+            include_sub_runs=include_sub_runs,
+            event_types=event_types,
+            include_results=include_results,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StatusEvent",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        )
+
+    @validate_call
+    async def get_run_status_stream_without_preload_content(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        since: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run."
+            ),
+        ] = None,
+        include_sub_runs: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include events from sub-runs (default: false, only root run events)."
+            ),
+        ] = None,
+        event_types: Annotated[
+            StrictStr | None,
+            Field(
+                description='Comma-separated list of event types to include (e.g., "step_started,step_completed"). If omitted, all event types are included.'
+            ),
+        ] = None,
+        include_results: Annotated[
+            StrictBool | None,
+            Field(
+                description="Include result payloads in step_completed and item_completed events (default: false)."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> RESTResponseType:
+        """Stream run execution events via SSE
+
+        Opens a Server-Sent Events (SSE) stream of execution events for a run. Events are streamed in journal order with the SSE `id` set to the journal sequence number. Use `since` to resume from a specific point. The stream closes after a `run_completed` event for the requested run.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param since: Journal sequence number to start from (inclusive). If omitted, starts from the beginning of the run.
+        :type since: int
+        :param include_sub_runs: Include events from sub-runs (default: false, only root run events).
+        :type include_sub_runs: bool
+        :param event_types: Comma-separated list of event types to include (e.g., \"step_started,step_completed\"). If omitted, all event types are included.
+        :type event_types: str
+        :param include_results: Include result payloads in step_completed and item_completed events (default: false).
+        :type include_results: bool
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_run_status_stream_serialize(
+            run_id=run_id,
+            since=since,
+            include_sub_runs=include_sub_runs,
+            event_types=event_types,
+            include_results=include_results,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StatusEvent",
+            "404": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        return response_data.response
+
+    def _get_run_status_stream_serialize(
+        self,
+        run_id,
+        since,
+        include_sub_runs,
+        event_types,
+        include_results,
+        _request_auth,
+        _content_type,
+        _headers,
+        _host_index,
+    ) -> RequestSerialized:
+        _host = None
+
+        _collection_formats: dict[str, str] = {}
+
+        _path_params: dict[str, str] = {}
+        _query_params: list[tuple[str, str]] = []
+        _header_params: dict[str, str | None] = _headers or {}
+        _form_params: list[tuple[str, str]] = []
+        _files: dict[
+            str, str | bytes | list[str] | list[bytes] | list[tuple[str, bytes]]
+        ] = {}
+        _body_params: bytes | None = None
+
+        # process the path parameters
+        if run_id is not None:
+            _path_params["run_id"] = run_id
+        # process the query parameters
+        if since is not None:
+            _query_params.append(("since", since))
+
+        if include_sub_runs is not None:
+            _query_params.append(("includeSubRuns", include_sub_runs))
+
+        if event_types is not None:
+            _query_params.append(("eventTypes", event_types))
+
+        if include_results is not None:
+            _query_params.append(("includeResults", include_results))
+
+        # process the header parameters
+        # process the form parameters
+        # process the body parameter
+
+        # set the HTTP header `Accept`
+        if "Accept" not in _header_params:
+            _header_params["Accept"] = self.api_client.select_header_accept(
+                ["text/event-stream", "application/json"]
+            )
+
+        # authentication setting
+        _auth_settings: list[str] = []
+
+        return self.api_client.param_serialize(
+            method="GET",
+            resource_path="/runs/{run_id}/events",
+            path_params=_path_params,
+            query_params=_query_params,
+            header_params=_header_params,
+            body=_body_params,
+            post_params=_form_params,
+            files=_files,
+            auth_settings=_auth_settings,
+            collection_formats=_collection_formats,
+            _host=_host,
+            _request_auth=_request_auth,
+        )
+
+    @validate_call
     async def get_run_steps(
         self,
         run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
@@ -1830,6 +2194,318 @@ class RunApi:
         return self.api_client.param_serialize(
             method="GET",
             resource_path="/runs/{run_id}/steps",
+            path_params=_path_params,
+            query_params=_query_params,
+            header_params=_header_params,
+            body=_body_params,
+            post_params=_form_params,
+            files=_files,
+            auth_settings=_auth_settings,
+            collection_formats=_collection_formats,
+            _host=_host,
+            _request_auth=_request_auth,
+        )
+
+    @validate_call
+    async def get_step_detail(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        step_id: Annotated[StrictStr, Field(description="Step ID (name)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(description="Item index within the run (default: 0)."),
+        ] = None,
+        asof: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> StepStatusEntry:
+        """Get detailed status for a specific step
+
+        Returns the detailed status, component, and result for a specific step. Use `asof` with a journal sequence number from the SSE stream to ensure read-after-write consistency. Returns 409 if the metadata store has not yet caught up to the requested sequence number.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param step_id: Step ID (name) (required)
+        :type step_id: str
+        :param item_index: Item index within the run (default: 0).
+        :type item_index: int
+        :param asof: Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position.
+        :type asof: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_step_detail_serialize(
+            run_id=run_id,
+            step_id=step_id,
+            item_index=item_index,
+            asof=asof,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StepStatusEntry",
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        ).data
+
+    @validate_call
+    async def get_step_detail_with_http_info(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        step_id: Annotated[StrictStr, Field(description="Step ID (name)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(description="Item index within the run (default: 0)."),
+        ] = None,
+        asof: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> ApiResponse[StepStatusEntry]:
+        """Get detailed status for a specific step
+
+        Returns the detailed status, component, and result for a specific step. Use `asof` with a journal sequence number from the SSE stream to ensure read-after-write consistency. Returns 409 if the metadata store has not yet caught up to the requested sequence number.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param step_id: Step ID (name) (required)
+        :type step_id: str
+        :param item_index: Item index within the run (default: 0).
+        :type item_index: int
+        :param asof: Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position.
+        :type asof: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_step_detail_serialize(
+            run_id=run_id,
+            step_id=step_id,
+            item_index=item_index,
+            asof=asof,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StepStatusEntry",
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        await response_data.read()
+        return self.api_client.response_deserialize(
+            response_data=response_data,
+            response_types_map=_response_types_map,
+        )
+
+    @validate_call
+    async def get_step_detail_without_preload_content(
+        self,
+        run_id: Annotated[StrictStr, Field(description="Run ID (UUID)")],
+        step_id: Annotated[StrictStr, Field(description="Step ID (name)")],
+        item_index: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(description="Item index within the run (default: 0)."),
+        ] = None,
+        asof: Annotated[
+            Annotated[int, Field(strict=True, ge=0)] | None,
+            Field(
+                description="Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position."
+            ),
+        ] = None,
+        _request_timeout: None
+        | Annotated[StrictFloat, Field(gt=0)]
+        | tuple[
+            Annotated[StrictFloat, Field(gt=0)], Annotated[StrictFloat, Field(gt=0)]
+        ] = None,
+        _request_auth: dict[StrictStr, Any] | None = None,
+        _content_type: StrictStr | None = None,
+        _headers: dict[StrictStr, Any] | None = None,
+        _host_index: Annotated[StrictInt, Field(ge=0, le=0)] = 0,
+    ) -> RESTResponseType:
+        """Get detailed status for a specific step
+
+        Returns the detailed status, component, and result for a specific step. Use `asof` with a journal sequence number from the SSE stream to ensure read-after-write consistency. Returns 409 if the metadata store has not yet caught up to the requested sequence number.
+
+        :param run_id: Run ID (UUID) (required)
+        :type run_id: str
+        :param step_id: Step ID (name) (required)
+        :type step_id: str
+        :param item_index: Item index within the run (default: 0).
+        :type item_index: int
+        :param asof: Minimum journal sequence number. If the step status in metadata has a `journal_seqno` less than this value, the server returns 409 Conflict indicating the read is not yet consistent with the SSE stream position.
+        :type asof: int
+        :param _request_timeout: timeout setting for this request. If one
+                                 number provided, it will be total request
+                                 timeout. It can also be a pair (tuple) of
+                                 (connection, read) timeouts.
+        :type _request_timeout: int, tuple(int, int), optional
+        :param _request_auth: set to override the auth_settings for an a single
+                              request; this effectively ignores the
+                              authentication in the spec for a single request.
+        :type _request_auth: dict, optional
+        :param _content_type: force content-type for the request.
+        :type _content_type: str, Optional
+        :param _headers: set to override the headers for a single
+                         request; this effectively ignores the headers
+                         in the spec for a single request.
+        :type _headers: dict, optional
+        :param _host_index: set to override the host_index for a single
+                            request; this effectively ignores the host_index
+                            in the spec for a single request.
+        :type _host_index: int, optional
+        :return: Returns the result object.
+        """  # noqa: E501
+
+        _param = self._get_step_detail_serialize(
+            run_id=run_id,
+            step_id=step_id,
+            item_index=item_index,
+            asof=asof,
+            _request_auth=_request_auth,
+            _content_type=_content_type,
+            _headers=_headers,
+            _host_index=_host_index,
+        )
+
+        _response_types_map: dict[str, str | None] = {
+            "200": "StepStatusEntry",
+            "404": "ErrorResponse",
+            "409": "ErrorResponse",
+        }
+        response_data = await self.api_client.call_api(
+            *_param, _request_timeout=_request_timeout
+        )
+        return response_data.response
+
+    def _get_step_detail_serialize(
+        self,
+        run_id,
+        step_id,
+        item_index,
+        asof,
+        _request_auth,
+        _content_type,
+        _headers,
+        _host_index,
+    ) -> RequestSerialized:
+        _host = None
+
+        _collection_formats: dict[str, str] = {}
+
+        _path_params: dict[str, str] = {}
+        _query_params: list[tuple[str, str]] = []
+        _header_params: dict[str, str | None] = _headers or {}
+        _form_params: list[tuple[str, str]] = []
+        _files: dict[
+            str, str | bytes | list[str] | list[bytes] | list[tuple[str, bytes]]
+        ] = {}
+        _body_params: bytes | None = None
+
+        # process the path parameters
+        if run_id is not None:
+            _path_params["run_id"] = run_id
+        if step_id is not None:
+            _path_params["step_id"] = step_id
+        # process the query parameters
+        if item_index is not None:
+            _query_params.append(("itemIndex", item_index))
+
+        if asof is not None:
+            _query_params.append(("asof", asof))
+
+        # process the header parameters
+        # process the form parameters
+        # process the body parameter
+
+        # set the HTTP header `Accept`
+        if "Accept" not in _header_params:
+            _header_params["Accept"] = self.api_client.select_header_accept(
+                ["application/json"]
+            )
+
+        # authentication setting
+        _auth_settings: list[str] = []
+
+        return self.api_client.param_serialize(
+            method="GET",
+            resource_path="/runs/{run_id}/steps/{step_id}",
             path_params=_path_params,
             query_params=_query_params,
             header_params=_header_params,

@@ -143,6 +143,10 @@ pub(super) async fn recover_execution_tree(
         );
     }
 
+    // Note: Per-step statuses were already synced inline during replay_events
+    // for each TasksStarted, TaskCompleted, and StepsUnblocked event. No
+    // additional bulk sync is needed here.
+
     // Build the FlowExecutor with the recovered root state and subflow states.
     let mut builder = crate::FlowExecutorBuilder::new(env.clone(), recovered.run_state)
         .skip_validation() // Already validated before crash

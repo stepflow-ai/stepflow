@@ -64,7 +64,8 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
 
     let store = Arc::new(InMemoryStateStore::new());
     let metadata_store: Arc<dyn MetadataStore> = store.clone();
-    let blob_store: Arc<dyn BlobStore> = store;
+    let blob_store: Arc<dyn BlobStore> = store.clone();
+    let execution_journal: Arc<dyn stepflow_state::ExecutionJournal> = store;
 
     // Build the plugin router
     let mut plugin_router_builder = stepflow_plugin::routing::PluginRouter::builder();
@@ -154,6 +155,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     let executor = StepflowEnvironmentBuilder::new()
         .metadata_store(metadata_store)
         .blob_store(blob_store)
+        .execution_journal(execution_journal)
         .working_directory(std::path::PathBuf::from("."))
         .plugin_router(plugin_router)
         .build()
@@ -1304,4 +1306,514 @@ async fn test_blob_binary_round_trip() {
     // Check body matches original bytes
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     assert_eq!(body.as_ref(), binary_data.as_slice());
+}
+
+// =============================================================================
+// SSE Status Stream Tests
+// =============================================================================
+
+/// Parse SSE text into (id, event_type, data_json) tuples.
+fn parse_sse_events(text: &str) -> Vec<(Option<String>, String, serde_json::Value)> {
+    let mut events = Vec::new();
+    let mut current_id: Option<String> = None;
+    let mut current_event: Option<String> = None;
+    let mut current_data = String::new();
+
+    for line in text.lines() {
+        if line.starts_with("id:") {
+            current_id = Some(line["id:".len()..].trim().to_string());
+        } else if line.starts_with("event:") {
+            current_event = Some(line["event:".len()..].trim().to_string());
+        } else if line.starts_with("data:") {
+            if !current_data.is_empty() {
+                current_data.push('\n');
+            }
+            current_data.push_str(line["data:".len()..].trim_start());
+        } else if line.is_empty() && !current_data.is_empty() {
+            // Event boundary
+            let data: serde_json::Value =
+                serde_json::from_str(&current_data).unwrap_or(json!(current_data));
+            events.push((
+                current_id.take(),
+                current_event
+                    .take()
+                    .unwrap_or_else(|| "message".to_string()),
+                data,
+            ));
+            current_data.clear();
+        }
+    }
+    // Flush trailing event (stream may close without final blank line)
+    if !current_data.is_empty() {
+        let data: serde_json::Value =
+            serde_json::from_str(&current_data).unwrap_or(json!(current_data));
+        events.push((
+            current_id.take(),
+            current_event
+                .take()
+                .unwrap_or_else(|| "message".to_string()),
+            data,
+        ));
+    }
+    events
+}
+
+/// Helper: store a flow and return its flow_id.
+async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
+    let request = Request::builder()
+        .uri("/api/v1/flows")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({ "flow": workflow })).unwrap(),
+        ))
+        .unwrap();
+    let response = ServiceExt::<Request<Body>>::ready(app)
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    result["flowId"].as_str().unwrap().to_string()
+}
+
+/// Helper: execute a run (wait=true) and return the run_id.
+async fn execute_run(app: &mut Router, flow_id: &str, input: serde_json::Value) -> String {
+    let request = Request::builder()
+        .uri("/api/v1/runs")
+        .method("POST")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&json!({
+                "flowId": flow_id,
+                "input": [input],
+                "wait": true,
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let response = ServiceExt::<Request<Body>>::ready(app)
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    result["runId"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn test_sse_stream_basic() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+    let flow_id = store_flow(&mut app, &workflow).await;
+
+    // Execute the run to completion first (wait=true)
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "hello"})).await;
+
+    // Now stream events for the completed run — should replay all events and close
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    let events = parse_sse_events(&text);
+
+    // Should have at minimum: run_created, run_completed
+    assert!(
+        events.len() >= 2,
+        "Expected at least 2 SSE events, got {}: {:?}",
+        events.len(),
+        events
+            .iter()
+            .map(|(_, e, _)| e.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    // First event should be run_created
+    assert_eq!(events[0].1, "run_created");
+    assert_eq!(events[0].2["runId"], run_id);
+
+    // Last event should be run_completed
+    let last = events.last().unwrap();
+    assert_eq!(last.1, "run_completed");
+    assert_eq!(last.2["status"], "completed");
+
+    // All events should have SSE ids (journal sequence numbers)
+    for (id, _, _) in &events {
+        assert!(id.is_some(), "SSE event missing id field");
+    }
+
+    // All events should have sequenceNumber and timestamp in the data payload
+    for (_, event_type, data) in &events {
+        assert!(
+            data.get("sequenceNumber").is_some(),
+            "Event {event_type} missing sequenceNumber in data"
+        );
+        assert!(
+            data.get("timestamp").is_some(),
+            "Event {event_type} missing timestamp in data"
+        );
+    }
+
+    // IDs should be monotonically non-decreasing
+    let ids: Vec<u64> = events
+        .iter()
+        .map(|(id, _, _)| id.as_ref().unwrap().parse::<u64>().unwrap())
+        .collect();
+    for window in ids.windows(2) {
+        assert!(
+            window[0] <= window[1],
+            "SSE ids not monotonic: {} > {}",
+            window[0],
+            window[1]
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_sse_stream_resume_with_since() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+    let flow_id = store_flow(&mut app, &workflow).await;
+
+    // Execute run to completion
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "resume_test"})).await;
+
+    // Stream all events first
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let all_events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+    assert!(all_events.len() >= 2);
+
+    // Get the ID of the first event and resume from after it
+    let resume_from = all_events[0].0.as_ref().unwrap().parse::<u64>().unwrap() + 1;
+
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events?since={resume_from}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let resumed_events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    // Should have fewer events (skipped the first ones)
+    assert!(
+        resumed_events.len() < all_events.len(),
+        "Resumed stream should have fewer events: {} vs {}",
+        resumed_events.len(),
+        all_events.len()
+    );
+
+    // All resumed events should have IDs >= resume_from
+    for (id, _, _) in &resumed_events {
+        let seq: u64 = id.as_ref().unwrap().parse().unwrap();
+        assert!(
+            seq >= resume_from,
+            "Resumed event has id {} < since {}",
+            seq,
+            resume_from
+        );
+    }
+
+    // Should still end with run_completed
+    assert_eq!(resumed_events.last().unwrap().1, "run_completed");
+}
+
+#[tokio::test]
+async fn test_sse_stream_event_type_filter() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+    let flow_id = store_flow(&mut app, &workflow).await;
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "filter_test"})).await;
+
+    // Stream only run_completed events
+    let sse_request = Request::builder()
+        .uri(format!(
+            "/api/v1/runs/{run_id}/events?eventTypes=run_completed"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    // Should only have run_completed events
+    assert!(!events.is_empty(), "Should have at least one event");
+    for (_, event_type, _) in &events {
+        assert_eq!(event_type, "run_completed");
+    }
+}
+
+#[tokio::test]
+async fn test_sse_stream_include_results() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    // Need a workflow with output so steps are actually executed and journaled
+    let workflow = FlowBuilder::test_flow()
+        .step(
+            StepBuilder::builtin_step("test_step", "create_messages")
+                .input_literal(json!({"user_prompt": "hello"}))
+                .build(),
+        )
+        .output(ValueExpr::step_output("test_step"))
+        .build();
+    let flow_id = store_flow(&mut app, &workflow).await;
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "results_test"})).await;
+
+    // Stream with include_results=true
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events?includeResults=true"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    // Find step_completed events — they should have result field
+    let step_completed: Vec<_> = events
+        .iter()
+        .filter(|(_, t, _)| t == "step_completed")
+        .collect();
+    assert!(
+        !step_completed.is_empty(),
+        "Should have step_completed events"
+    );
+    for (_, _, data) in &step_completed {
+        assert!(
+            data.get("result").is_some(),
+            "step_completed should include result when includeResults=true"
+        );
+    }
+
+    // Stream without include_results (default)
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    let step_completed: Vec<_> = events
+        .iter()
+        .filter(|(_, t, _)| t == "step_completed")
+        .collect();
+    for (_, _, data) in &step_completed {
+        assert!(
+            data.get("result").is_none(),
+            "step_completed should NOT include result by default"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_sse_stream_not_found() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+
+    let fake_run_id = uuid::Uuid::now_v7();
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{fake_run_id}/events"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_sse_stream_multi_step_workflow() {
+    init_test_logging();
+
+    let (mut app, _env) = create_test_server_with_mocks().await;
+
+    // Build a two-step workflow with output referencing step2
+    let workflow = FlowBuilder::test_flow()
+        .name("sse_multi_step")
+        .step(
+            StepBuilder::new("step1")
+                .component("/mock/one_output")
+                .input_literal(json!({"input": "first_step"}))
+                .build(),
+        )
+        .step(
+            StepBuilder::new("step2")
+                .component("/mock/two_outputs")
+                .input_json(json!({"input": {"$step": "step1", "path": "output"}}))
+                .build(),
+        )
+        .output(ValueExpr::step_output("step2"))
+        .build();
+
+    let flow_id = store_flow(&mut app, &workflow).await;
+    let run_id = execute_run(&mut app, &flow_id, json!({"unused": true})).await;
+
+    // Stream events
+    let sse_request = Request::builder()
+        .uri(format!("/api/v1/runs/{run_id}/events"))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    let event_types: Vec<&str> = events.iter().map(|(_, t, _)| t.as_str()).collect();
+
+    // Should have expected lifecycle events
+    assert!(event_types.contains(&"run_created"));
+    assert!(event_types.contains(&"step_started"));
+    assert!(event_types.contains(&"step_completed"));
+    assert!(event_types.contains(&"run_completed"));
+
+    // Should have step events for both steps
+    let step_started_count = event_types.iter().filter(|&&t| t == "step_started").count();
+    assert!(
+        step_started_count >= 2,
+        "Expected at least 2 step_started events, got {}",
+        step_started_count
+    );
+
+    let step_completed_count = event_types
+        .iter()
+        .filter(|&&t| t == "step_completed")
+        .count();
+    assert!(
+        step_completed_count >= 2,
+        "Expected at least 2 step_completed events, got {}",
+        step_completed_count
+    );
+
+    // Step events should include stepId (resolved from the flow)
+    let step_started_events: Vec<_> = events
+        .iter()
+        .filter(|(_, t, _)| t == "step_started")
+        .collect();
+    for (_, _, data) in &step_started_events {
+        assert!(
+            data.get("stepId").is_some(),
+            "step_started should include stepId, got: {data}"
+        );
+    }
+    let step_ids: Vec<&str> = step_started_events
+        .iter()
+        .map(|(_, _, d)| d["stepId"].as_str().unwrap())
+        .collect();
+    assert!(
+        step_ids.contains(&"step1"),
+        "Should have step1: {step_ids:?}"
+    );
+    assert!(
+        step_ids.contains(&"step2"),
+        "Should have step2: {step_ids:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_sse_stream_terminates_when_filter_excludes_run_completed() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+    let flow_id = store_flow(&mut app, &workflow).await;
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "filter_term"})).await;
+
+    // Filter to only step_started — excludes run_completed.
+    // The stream should still terminate (not hang) because the server
+    // detects completion independently of the event type filter.
+    let sse_request = Request::builder()
+        .uri(format!(
+            "/api/v1/runs/{run_id}/events?eventTypes=step_started"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // If the stream doesn't terminate, to_bytes will hang — the fact that
+    // we reach the assertions below proves the fix works.
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    // All returned events should be step_started (the filter we requested)
+    for (_, event_type, _) in &events {
+        assert_eq!(
+            event_type, "step_started",
+            "Only step_started events should be returned"
+        );
+    }
 }

@@ -16,8 +16,10 @@ doctest = false
 workspace = true
 
 [dependencies]
+async-stream.workspace = true
 axum.workspace = true
 chrono.workspace = true
+futures.workspace = true
 clap.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
@@ -50,6 +52,7 @@ etcd = ["stepflow-config/etcd"]
 stepflow-builtins.workspace = true
 stepflow-mock.workspace = true
 tower.workspace = true
+uuid.workspace = true
 
 [[bin]]
 name = "stepflow-server"

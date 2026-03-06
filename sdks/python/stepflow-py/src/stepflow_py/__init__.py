@@ -23,12 +23,28 @@ This package provides:
 from stepflow_py.api import ApiClient, Configuration
 from stepflow_py.api.api import ComponentApi, FlowApi, HealthApi, RunApi
 from stepflow_py.api.models import Flow, Step
-from stepflow_py.client import StepflowClient
+from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
+from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
+from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
+from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
+from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
+from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
+from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
+from stepflow_py.client import StatusEvent, StepflowClient
 from stepflow_py.worker.generated_protocol import ErrorCode
 
 __all__ = [
     # High-level client
     "StepflowClient",
+    # Status event types
+    "StatusEvent",
+    "StatusEventRunCreated",
+    "StatusEventStepStarted",
+    "StatusEventStepCompleted",
+    "StatusEventStepReady",
+    "StatusEventItemCompleted",
+    "StatusEventRunCompleted",
+    "StatusEventSubRunCreated",
     # Low-level API client
     "ApiClient",
     "Configuration",

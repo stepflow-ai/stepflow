@@ -690,6 +690,209 @@
         }
       }
     },
+    "/runs/{run_id}/steps/{step_id}": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Get detailed status for a specific step",
+        "description": "Returns the detailed status, component, and result for a specific step. Use `asof` with a journal sequence number from the SSE stream to ensure read-after-write consistency. Returns 409 if the metadata store has not yet caught up to the requested sequence number.",
+        "operationId": "getStepDetail",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          },
+          {
+            "in": "path",
+            "name": "step_id",
+            "description": "Step ID (name)",
+            "required": true,
+            "schema": {
+              "description": "Step ID (name)",
+              "type": "string"
+            },
+            "style": "simple"
+          },
+          {
+            "in": "query",
+            "name": "itemIndex",
+            "description": "Item index within the run (default: 0).",
+            "schema": {
+              "description": "Item index within the run (default: 0).",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 0,
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "asof",
+            "description": "Minimum journal sequence number. If the step status in metadata has\na `journal_seqno` less than this value, the server returns 409 Conflict\nindicating the read is not yet consistent with the SSE stream position.",
+            "schema": {
+              "description": "Minimum journal sequence number. If the step status in metadata has\na `journal_seqno` less than this value, the server returns 409 Conflict\nindicating the read is not yet consistent with the SSE stream position.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detailed step status entry with result and journal tracking.\n\nStored in the `step_statuses` metadata table. Each entry tracks a single\nstep's status for a specific item, along with the journal sequence number\nthat produced the change (enabling `?asof=N` consistent reads).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StepStatusEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run or step not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Metadata not yet consistent with requested sequence number",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/events": {
+      "get": {
+        "tags": [
+          "Run"
+        ],
+        "summary": "Stream run execution events via SSE",
+        "description": "Opens a Server-Sent Events (SSE) stream of execution events for a run. Events are streamed in journal order with the SSE `id` set to the journal sequence number. Use `since` to resume from a specific point. The stream closes after a `run_completed` event for the requested run.",
+        "operationId": "getRunStatusStream",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "description": "Run ID (UUID)",
+            "required": true,
+            "schema": {
+              "description": "Run ID (UUID)",
+              "type": "string",
+              "format": "uuid"
+            },
+            "style": "simple"
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "description": "Journal sequence number to start from (inclusive). If omitted,\nstarts from the beginning of the run.",
+            "schema": {
+              "description": "Journal sequence number to start from (inclusive). If omitted,\nstarts from the beginning of the run.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint64",
+              "minimum": 0,
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "includeSubRuns",
+            "description": "Include events from sub-runs (default: false, only root run events).",
+            "schema": {
+              "description": "Include events from sub-runs (default: false, only root run events).",
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "eventTypes",
+            "description": "Comma-separated list of event types to include (e.g., \"step_started,step_completed\").\nIf omitted, all event types are included.",
+            "schema": {
+              "description": "Comma-separated list of event types to include (e.g., \"step_started,step_completed\").\nIf omitted, all event types are included.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          },
+          {
+            "in": "query",
+            "name": "includeResults",
+            "description": "Include result payloads in step_completed and item_completed events (default: false).",
+            "schema": {
+              "description": "Include result payloads in step_completed and item_completed events (default: false).",
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "default": null
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream of execution events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusEvent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs/{run_id}/cancel": {
       "post": {
         "tags": [
@@ -918,28 +1121,60 @@
   },
   "components": {
     "schemas": {
-      "OnErrorRetry": {
-        "title": "OnErrorRetry",
-        "description": "If the step fails, retry it.\n\n`max_retries` limits retries due to component errors — cases where the\ncomponent ran and returned an error. Transport-level failures (subprocess\ncrashes, network errors) are retried separately according to the plugin's\nretry configuration and do not count against this budget.",
+      "StatusEventSubRunCreated": {
+        "title": "StatusEventSubRunCreated",
+        "description": "A sub-run was created.",
         "type": "object",
         "properties": {
-          "maxRetries": {
-            "description": "Maximum number of retries due to component errors (default: 3).\n\nTotal attempts for component errors = max_retries + 1 (initial).",
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "uint32",
+          "runId": {
+            "description": "The sub-run's ID.",
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentRunId": {
+            "description": "The parent run that spawned this sub-run.",
+            "type": "string",
+            "format": "uuid"
+          },
+          "flowId": {
+            "description": "The flow being executed by the sub-run.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlobId"
+              }
+            ]
+          },
+          "itemCount": {
+            "description": "Number of items in the sub-run.",
+            "type": "integer",
+            "format": "uint",
             "minimum": 0
           },
-          "action": {
+          "event": {
             "type": "string",
-            "const": "retry",
-            "default": "retry"
+            "const": "sub_run_created",
+            "default": "sub_run_created"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "action"
+          "event",
+          "runId",
+          "parentRunId",
+          "flowId",
+          "itemCount",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
       "HealthResponse": {
@@ -1085,20 +1320,41 @@
           "binary"
         ]
       },
-      "OnErrorDefault": {
-        "title": "OnErrorDefault",
-        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+      "StatusEventRunCompleted": {
+        "title": "StatusEventRunCompleted",
+        "description": "A run has completed (terminal state).",
         "type": "object",
         "properties": {
-          "defaultValue": true,
-          "action": {
+          "runId": {
             "type": "string",
-            "const": "useDefault",
-            "default": "useDefault"
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus"
+          },
+          "event": {
+            "type": "string",
+            "const": "run_completed",
+            "default": "run_completed"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "action"
+          "event",
+          "runId",
+          "status",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
       "GetBlobResponse": {
@@ -1138,19 +1394,54 @@
           "blobId"
         ]
       },
-      "OnErrorFail": {
-        "title": "OnErrorFail",
-        "description": "If the step fails, the flow will fail.",
+      "StatusEventItemCompleted": {
+        "title": "StatusEventItemCompleted",
+        "description": "An individual item has completed.",
         "type": "object",
         "properties": {
-          "action": {
+          "runId": {
             "type": "string",
-            "const": "fail",
-            "default": "fail"
+            "format": "uuid"
+          },
+          "itemIndex": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "result": {
+            "description": "The item result. Only included when `include_results=true`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlowResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event": {
+            "type": "string",
+            "const": "item_completed",
+            "default": "item_completed"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "action"
+          "event",
+          "runId",
+          "itemIndex",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
       "ListComponentsResponse": {
@@ -1228,40 +1519,56 @@
         "type": "object",
         "additionalProperties": true
       },
-      "FlowVariablesResponse": {
-        "description": "Response containing variable schema and environment variable mappings for a flow.",
+      "StatusEventStepReady": {
+        "title": "StatusEventStepReady",
+        "description": "A step's dependencies are satisfied and it is ready to execute.",
         "type": "object",
         "properties": {
-          "flowId": {
-            "description": "The flow ID",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlobId"
-              }
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemIndex": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "stepIndex": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "stepId": {
+            "description": "Step name/identifier.",
+            "type": [
+              "string",
+              "null"
             ]
           },
-          "schema": {
-            "description": "The raw variable JSON Schema (null if the flow has no variables)",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Schema"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "event": {
+            "type": "string",
+            "const": "step_ready",
+            "default": "step_ready"
           },
-          "envVars": {
-            "description": "Mapping from variable name to the environment variable that populates it.\nOnly includes variables that have an `env_var` annotation.",
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "flowId",
-          "envVars"
+          "event",
+          "runId",
+          "itemIndex",
+          "stepIndex",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
       "ExecutionStatus": {
@@ -1770,47 +2077,135 @@
           "message"
         ]
       },
-      "FlowResponse": {
-        "description": "Response containing a flow definition and its ID",
+      "StatusEventStepCompleted": {
+        "title": "StatusEventStepCompleted",
+        "description": "A step has completed (successfully or with failure).",
         "type": "object",
         "properties": {
-          "flow": {
-            "description": "The flow definition",
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemIndex": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "stepIndex": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "stepId": {
+            "description": "Step name/identifier.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "Whether the step succeeded or failed.",
             "allOf": [
               {
-                "$ref": "#/components/schemas/Flow"
+                "$ref": "#/components/schemas/StepStatus"
               }
             ]
           },
-          "flowId": {
-            "description": "The flow ID",
-            "allOf": [
+          "result": {
+            "description": "The step result. Only included when `include_results=true`.",
+            "oneOf": [
               {
-                "$ref": "#/components/schemas/BlobId"
+                "$ref": "#/components/schemas/FlowResult"
+              },
+              {
+                "type": "null"
               }
             ]
           },
-          "allExamples": {
-            "description": "All available examples (includes both examples and test cases)",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleInput"
-            }
+          "event": {
+            "type": "string",
+            "const": "step_completed",
+            "default": "step_completed"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
           }
         },
         "required": [
-          "flow",
-          "flowId",
-          "allExamples"
+          "event",
+          "runId",
+          "itemIndex",
+          "stepIndex",
+          "status",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
-      "DiagnosticLevel": {
-        "description": "Diagnostic level indicating severity and impact\n\nCases:\n* `fatal`: Fatal: Prevents analysis from proceeding\n* `error`: Error: Will definitely fail during execution\n* `warning`: Warning: Likely to cause problems during execution",
-        "type": "string",
-        "enum": [
-          "fatal",
-          "error",
-          "warning"
+      "StatusEventStepStarted": {
+        "title": "StatusEventStepStarted",
+        "description": "A step has started executing.",
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemIndex": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "stepIndex": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "stepId": {
+            "description": "Step name/identifier.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempt": {
+            "description": "Execution attempt number (1-based, >1 for retries).",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "event": {
+            "type": "string",
+            "const": "step_started",
+            "default": "step_started"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "event",
+          "runId",
+          "itemIndex",
+          "stepIndex",
+          "attempt",
+          "sequenceNumber",
+          "timestamp"
         ]
       },
       "RunDetails": {
@@ -2323,9 +2718,48 @@
           "input"
         ]
       },
-      "Path": {
-        "description": "Path to a location in the workflow definition, serialized as a string",
-        "type": "string"
+      "StatusEventRunCreated": {
+        "title": "StatusEventRunCreated",
+        "description": "A run was created with its initial configuration.",
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "event": {
+            "type": "string",
+            "const": "run_created",
+            "default": "run_created"
+          },
+          "sequenceNumber": {
+            "description": "Journal sequence number for this event.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timestamp": {
+            "description": "Timestamp when this event was recorded.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "event",
+          "runId",
+          "flowId",
+          "itemCount",
+          "sequenceNumber",
+          "timestamp"
+        ]
       },
       "ListStepRunsResponse": {
         "description": "Response for listing step runs",
@@ -2382,6 +2816,166 @@
           "stepId",
           "status"
         ]
+      },
+      "OnErrorRetry": {
+        "title": "OnErrorRetry",
+        "description": "If the step fails, retry it.\n\n`max_retries` limits retries due to component errors — cases where the\ncomponent ran and returned an error. Transport-level failures (subprocess\ncrashes, network errors) are retried separately according to the plugin's\nretry configuration and do not count against this budget.",
+        "type": "object",
+        "properties": {
+          "maxRetries": {
+            "description": "Maximum number of retries due to component errors (default: 3).\n\nTotal attempts for component errors = max_retries + 1 (initial).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "action": {
+            "type": "string",
+            "const": "retry",
+            "default": "retry"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "OnErrorDefault": {
+        "title": "OnErrorDefault",
+        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+        "type": "object",
+        "properties": {
+          "defaultValue": true,
+          "action": {
+            "type": "string",
+            "const": "useDefault",
+            "default": "useDefault"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "StepStatusEntry": {
+        "description": "Detailed step status entry with result and journal tracking.\n\nStored in the `step_statuses` metadata table. Each entry tracks a single\nstep's status for a specific item, along with the journal sequence number\nthat produced the change (enabling `?asof=N` consistent reads).",
+        "type": "object",
+        "properties": {
+          "stepId": {
+            "description": "Step name/identifier.",
+            "type": "string"
+          },
+          "stepIndex": {
+            "description": "Step index in the workflow definition.",
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "itemIndex": {
+            "description": "Item index (0-based).",
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "status": {
+            "description": "Current status of the step.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StepStatus"
+              }
+            ]
+          },
+          "component": {
+            "description": "Component path (e.g., \"/builtin/openai\").",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "description": "Step result (only present when completed or failed).",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlowResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "journalSeqno": {
+            "description": "Journal sequence number of the event that produced this status.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "updatedAt": {
+            "description": "When this status was last updated.",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "stepId",
+          "stepIndex",
+          "itemIndex",
+          "status",
+          "journalSeqno",
+          "updatedAt"
+        ]
+      },
+      "OnErrorFail": {
+        "title": "OnErrorFail",
+        "description": "If the step fails, the flow will fail.",
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "const": "fail",
+            "default": "fail"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "StatusEvent": {
+        "description": "A status event with metadata from the execution journal.\n\nWraps a [`StatusEventKind`] with the journal sequence number and timestamp,\nproviding a flat JSON structure via `#[serde(flatten)]`.",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StatusEventRunCreated"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventStepStarted"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventStepCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventStepReady"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventItemCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventRunCompleted"
+          },
+          {
+            "$ref": "#/components/schemas/StatusEventSubRunCreated"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "event",
+          "mapping": {
+            "run_created": "#/components/schemas/StatusEventRunCreated",
+            "step_started": "#/components/schemas/StatusEventStepStarted",
+            "step_completed": "#/components/schemas/StatusEventStepCompleted",
+            "step_ready": "#/components/schemas/StatusEventStepReady",
+            "item_completed": "#/components/schemas/StatusEventItemCompleted",
+            "run_completed": "#/components/schemas/StatusEventRunCompleted",
+            "sub_run_created": "#/components/schemas/StatusEventSubRunCreated"
+          }
+        }
       },
       "StoreFlowRequest": {
         "description": "Request to store a flow",
@@ -2518,6 +3112,89 @@
           "code",
           "level",
           "formatted"
+        ]
+      },
+      "DiagnosticLevel": {
+        "description": "Diagnostic level indicating severity and impact\n\nCases:\n* `fatal`: Fatal: Prevents analysis from proceeding\n* `error`: Error: Will definitely fail during execution\n* `warning`: Warning: Likely to cause problems during execution",
+        "type": "string",
+        "enum": [
+          "fatal",
+          "error",
+          "warning"
+        ]
+      },
+      "Path": {
+        "description": "Path to a location in the workflow definition, serialized as a string",
+        "type": "string"
+      },
+      "FlowVariablesResponse": {
+        "description": "Response containing variable schema and environment variable mappings for a flow.",
+        "type": "object",
+        "properties": {
+          "flowId": {
+            "description": "The flow ID",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlobId"
+              }
+            ]
+          },
+          "schema": {
+            "description": "The raw variable JSON Schema (null if the flow has no variables)",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Schema"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "envVars": {
+            "description": "Mapping from variable name to the environment variable that populates it.\nOnly includes variables that have an `env_var` annotation.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "flowId",
+          "envVars"
+        ]
+      },
+      "FlowResponse": {
+        "description": "Response containing a flow definition and its ID",
+        "type": "object",
+        "properties": {
+          "flow": {
+            "description": "The flow definition",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Flow"
+              }
+            ]
+          },
+          "flowId": {
+            "description": "The flow ID",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlobId"
+              }
+            ]
+          },
+          "allExamples": {
+            "description": "All available examples (includes both examples and test cases)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            }
+          }
+        },
+        "required": [
+          "flow",
+          "flowId",
+          "allExamples"
         ]
       }
     }

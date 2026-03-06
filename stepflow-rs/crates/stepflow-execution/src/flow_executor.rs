@@ -217,6 +217,46 @@ impl FlowExecutor {
         Ok(sequence)
     }
 
+    /// Write a step status update to the metadata store.
+    ///
+    /// This is called after journal writes to keep the metadata store in sync
+    /// with step transitions. Failures propagate as execution errors.
+    async fn update_step_status(
+        &self,
+        run_id: Uuid,
+        item_index: u32,
+        step_index: usize,
+        status: stepflow_core::status::StepStatus,
+        result: Option<FlowResult>,
+        journal_seqno: stepflow_state::SequenceNumber,
+    ) -> Result<()> {
+        let run_state = self.run_state(run_id).ok_or_else(|| {
+            error_stack::report!(ExecutionError::internal(format!(
+                "run state not found for {run_id}"
+            )))
+        })?;
+        let flow = run_state.flow();
+        let step = &flow.steps[step_index];
+        let step_id = &step.id;
+        let component = step.component.path();
+
+        self.metadata_store
+            .update_step_status(
+                run_id,
+                item_index as usize,
+                step_id,
+                step_index,
+                status,
+                Some(component),
+                result,
+                journal_seqno,
+            )
+            .await
+            .change_context(ExecutionError::MetadataStoreError)?;
+
+        Ok(())
+    }
+
     /// Get the subflow submitter for this executor.
     ///
     /// This can be used to submit subflows that will be processed by this executor.
@@ -324,8 +364,22 @@ impl FlowExecutor {
                     .into_iter()
                     .map(|(run_id, tasks)| RunTaskAttempts { run_id, tasks })
                     .collect();
-                self.write_journal(JournalEvent::TasksStarted { runs })
+                let seqno = self
+                    .write_journal(JournalEvent::TasksStarted { runs })
                     .await?;
+
+                // Sync step statuses to metadata: mark started steps as Running
+                for task in tasks.iter() {
+                    self.update_step_status(
+                        task.run_id,
+                        task.item_index,
+                        task.step_index,
+                        stepflow_core::status::StepStatus::Running,
+                        None,
+                        seqno,
+                    )
+                    .await?;
+                }
 
                 for task in tasks.into_iter() {
                     let future = self.prepare_task_future(task)?;
@@ -831,12 +885,29 @@ impl FlowExecutor {
         );
 
         // Journal: Record task completion
-        self.write_journal(JournalEvent::TaskCompleted {
+        let completed_seqno = self
+            .write_journal(JournalEvent::TaskCompleted {
+                run_id,
+                item_index: task.item_index,
+                step_index: task.step_index,
+                result: result.clone(),
+            })
+            .await?;
+
+        // Sync step status to metadata: mark step as Completed or Failed
+        let step_status = if matches!(&result, FlowResult::Failed(_)) {
+            stepflow_core::status::StepStatus::Failed
+        } else {
+            stepflow_core::status::StepStatus::Completed
+        };
+        self.update_step_status(
             run_id,
-            item_index: task.item_index,
-            step_index: task.step_index,
-            result: result.clone(),
-        })
+            task.item_index,
+            task.step_index,
+            step_status,
+            Some(result.clone()),
+            completed_seqno,
+        )
         .await?;
 
         // Journal: Record newly unblocked steps (grouped by item)
@@ -848,13 +919,27 @@ impl FlowExecutor {
                 .or_default()
                 .push(new_task.step_index);
         }
-        for (item_index, step_indices) in unblocked_by_item {
-            self.write_journal(JournalEvent::StepsUnblocked {
-                run_id,
-                item_index,
-                step_indices,
-            })
-            .await?;
+        for (item_index, step_indices) in &unblocked_by_item {
+            let seqno = self
+                .write_journal(JournalEvent::StepsUnblocked {
+                    run_id,
+                    item_index: *item_index,
+                    step_indices: step_indices.clone(),
+                })
+                .await?;
+
+            // Sync step statuses to metadata: mark unblocked steps as Runnable
+            for &step_index in step_indices {
+                self.update_step_status(
+                    run_id,
+                    *item_index,
+                    step_index,
+                    stepflow_core::status::StepStatus::Runnable,
+                    None,
+                    seqno,
+                )
+                .await?;
+            }
         }
 
         // Notify scheduler
@@ -1062,16 +1147,28 @@ impl FlowExecutor {
         };
 
         // 4. Journal the new attempt
-        self.write_journal(JournalEvent::TasksStarted {
-            runs: vec![RunTaskAttempts {
-                run_id,
-                tasks: vec![TaskAttempt::new(
-                    task.item_index,
-                    task.step_index,
-                    new_attempt,
-                )],
-            }],
-        })
+        let seqno = self
+            .write_journal(JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id,
+                    tasks: vec![TaskAttempt::new(
+                        task.item_index,
+                        task.step_index,
+                        new_attempt,
+                    )],
+                }],
+            })
+            .await?;
+
+        // Sync step status to metadata: mark retried step as Running again
+        self.update_step_status(
+            run_id,
+            task.item_index,
+            task.step_index,
+            stepflow_core::status::StepStatus::Running,
+            None,
+            seqno,
+        )
         .await?;
 
         // 5. Record retry metric
