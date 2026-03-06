@@ -47,11 +47,11 @@ pub(super) struct RecoveredState {
     pub subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
     /// Additional (subflow) RunStates keyed by run_id.
     pub subflow_runs: HashMap<uuid::Uuid, RunState>,
-    /// Subflow run IDs that were in-flight at crash time (initialized but not completed).
+    /// Subflow run IDs whose `StepsNeeded` event was already journaled.
     ///
-    /// These already have a `StepsNeeded` journal event from the original execution,
-    /// so recovery must skip writing a duplicate.
-    pub inflight_subflow_run_ids: HashSet<uuid::Uuid>,
+    /// During recovery, the executor skips writing a duplicate `StepsNeeded`
+    /// for these subflows since the journal already contains it.
+    pub steps_initialized_run_ids: HashSet<uuid::Uuid>,
     /// Terminal status from the root run's `RunCompleted` event, if present.
     ///
     /// Set when the journal contains a `RunCompleted` for the root run,
@@ -162,7 +162,7 @@ impl<'a> Recovery<'a> {
             run_state,
             subflow_map: HashMap::new(),
             subflow_runs: HashMap::new(),
-            inflight_subflow_run_ids: HashSet::new(),
+            steps_initialized_run_ids: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
         };
@@ -274,8 +274,8 @@ impl<'a> Recovery<'a> {
             .journal
             .stream_from(self.root_run_id, stored_cp.sequence.next());
 
-        // Seed in-flight set: all checkpoint-restored subflows were past initialization.
-        let inflight_subflow_run_ids: HashSet<uuid::Uuid> = checkpoint_data
+        // Seed initialized set: all checkpoint-restored subflows already had StepsNeeded written.
+        let steps_initialized_run_ids: HashSet<uuid::Uuid> = checkpoint_data
             .runs
             .iter()
             .filter(|rc| rc.run_id != self.root_run_id)
@@ -286,7 +286,7 @@ impl<'a> Recovery<'a> {
             run_state,
             subflow_map,
             subflow_runs,
-            inflight_subflow_run_ids,
+            steps_initialized_run_ids,
             root_terminal_status: None,
             last_sequence: None,
         };
@@ -443,11 +443,11 @@ impl<'a> Recovery<'a> {
                 }
             }
 
-            // Track in-flight subflows: add on StepsNeeded (non-root).
+            // Track subflows whose StepsNeeded was already journaled.
             if let stepflow_state::JournalEvent::StepsNeeded { run_id: rid, .. } = &event
                 && *rid != self.root_run_id
             {
-                recovered.inflight_subflow_run_ids.insert(*rid);
+                recovered.steps_initialized_run_ids.insert(*rid);
             }
 
             // Sync step statuses to metadata for events in the replay window.
@@ -491,7 +491,7 @@ impl<'a> Recovery<'a> {
                     }
 
                     recovered.subflow_runs.remove(completed_id);
-                    recovered.inflight_subflow_run_ids.remove(completed_id);
+                    recovered.steps_initialized_run_ids.remove(completed_id);
                 }
             }
         }

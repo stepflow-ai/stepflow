@@ -74,8 +74,8 @@ pub struct FlowExecutorBuilder {
     additional_runs: HashMap<uuid::Uuid, RunState>,
     /// Recovered subflow mappings for deduplication during re-execution.
     recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-    /// Subflow run IDs that were in-flight (initialized but not completed) at crash time.
-    inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid>,
+    /// Subflow run IDs whose `StepsNeeded` event was already journaled.
+    steps_initialized_run_ids: std::collections::HashSet<uuid::Uuid>,
 }
 
 impl FlowExecutorBuilder {
@@ -92,7 +92,7 @@ impl FlowExecutorBuilder {
             skip_validation: false,
             additional_runs: HashMap::new(),
             recovered_subflows: HashMap::new(),
-            inflight_subflow_run_ids: std::collections::HashSet::new(),
+            steps_initialized_run_ids: std::collections::HashSet::new(),
         }
     }
 
@@ -124,18 +124,18 @@ impl FlowExecutorBuilder {
     /// subflows, the executor matches by `(parent_run_id, item_index, step_index,
     /// subflow_key)` and returns the existing run_id instead of creating a duplicate.
     ///
-    /// `inflight_subflow_run_ids` identifies subflows that were already initialized
-    /// (had `StepsNeeded` written) before the crash. These must skip the duplicate
+    /// `steps_initialized_run_ids` identifies subflows whose `StepsNeeded`
+    /// was already journaled before the crash. These must skip the duplicate
     /// journal write during re-initialization.
     pub fn with_recovered_subflows(
         mut self,
         additional_runs: HashMap<uuid::Uuid, RunState>,
         recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-        inflight_subflow_run_ids: std::collections::HashSet<uuid::Uuid>,
+        steps_initialized_run_ids: std::collections::HashSet<uuid::Uuid>,
     ) -> Self {
         self.additional_runs = additional_runs;
         self.recovered_subflows = recovered_subflows;
-        self.inflight_subflow_run_ids = inflight_subflow_run_ids;
+        self.steps_initialized_run_ids = steps_initialized_run_ids;
         self
     }
 
@@ -215,7 +215,7 @@ impl FlowExecutorBuilder {
             submit_sender,
             submit_receiver,
             self.recovered_subflows,
-            self.inflight_subflow_run_ids,
+            self.steps_initialized_run_ids,
             checkpointer,
         ))
     }
