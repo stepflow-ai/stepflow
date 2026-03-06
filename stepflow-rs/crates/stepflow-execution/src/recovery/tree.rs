@@ -156,7 +156,7 @@ pub(super) async fn recover_execution_tree(
         builder = builder.with_recovered_subflows(
             recovered.subflow_runs,
             recovered.subflow_map,
-            recovered.steps_initialized_run_ids,
+            recovered.runs_needing_step_updates,
         );
     }
 

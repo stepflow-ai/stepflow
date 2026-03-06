@@ -74,8 +74,8 @@ pub struct FlowExecutorBuilder {
     additional_runs: HashMap<uuid::Uuid, RunState>,
     /// Recovered subflow mappings for deduplication during re-execution.
     recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-    /// Subflow run IDs whose `StepsNeeded` event was already journaled.
-    steps_initialized_run_ids: std::collections::HashSet<uuid::Uuid>,
+    /// Recovered run IDs that still need a `StepsNeeded` event written.
+    runs_needing_step_updates: std::collections::HashSet<uuid::Uuid>,
 }
 
 impl FlowExecutorBuilder {
@@ -92,7 +92,7 @@ impl FlowExecutorBuilder {
             skip_validation: false,
             additional_runs: HashMap::new(),
             recovered_subflows: HashMap::new(),
-            steps_initialized_run_ids: std::collections::HashSet::new(),
+            runs_needing_step_updates: std::collections::HashSet::new(),
         }
     }
 
@@ -124,18 +124,19 @@ impl FlowExecutorBuilder {
     /// subflows, the executor matches by `(parent_run_id, item_index, step_index,
     /// subflow_key)` and returns the existing run_id instead of creating a duplicate.
     ///
-    /// `steps_initialized_run_ids` identifies subflows whose `StepsNeeded`
-    /// was already journaled before the crash. These must skip the duplicate
-    /// journal write during re-initialization.
+    /// `runs_needing_step_updates` identifies recovered subflows that still
+    /// need a `StepsNeeded` event written (crash between `SubRunCreated` and
+    /// `StepsNeeded`). Recovered subflows NOT in this set already have their
+    /// `StepsNeeded` journaled and the executor skips the duplicate write.
     pub fn with_recovered_subflows(
         mut self,
         additional_runs: HashMap<uuid::Uuid, RunState>,
         recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
-        steps_initialized_run_ids: std::collections::HashSet<uuid::Uuid>,
+        runs_needing_step_updates: std::collections::HashSet<uuid::Uuid>,
     ) -> Self {
         self.additional_runs = additional_runs;
         self.recovered_subflows = recovered_subflows;
-        self.steps_initialized_run_ids = steps_initialized_run_ids;
+        self.runs_needing_step_updates = runs_needing_step_updates;
         self
     }
 
@@ -215,7 +216,7 @@ impl FlowExecutorBuilder {
             submit_sender,
             submit_receiver,
             self.recovered_subflows,
-            self.steps_initialized_run_ids,
+            self.runs_needing_step_updates,
             checkpointer,
         ))
     }

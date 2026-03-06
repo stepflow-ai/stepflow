@@ -47,11 +47,14 @@ pub(super) struct RecoveredState {
     pub subflow_map: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
     /// Additional (subflow) RunStates keyed by run_id.
     pub subflow_runs: HashMap<uuid::Uuid, RunState>,
-    /// Subflow run IDs whose `StepsNeeded` event was already journaled.
+    /// Recovered run IDs that still need a `StepsNeeded` event written.
     ///
-    /// During recovery, the executor skips writing a duplicate `StepsNeeded`
-    /// for these subflows since the journal already contains it.
-    pub steps_initialized_run_ids: HashSet<uuid::Uuid>,
+    /// Populated on `SubRunCreated` (subflow exists but may not have been
+    /// initialized yet) and cleared on `StepsNeeded` (initialization was
+    /// journaled). After replay, any IDs remaining in this set represent
+    /// crash windows where the run was created but `StepsNeeded` was never
+    /// written — the executor must write it during re-initialization.
+    pub runs_needing_step_updates: HashSet<uuid::Uuid>,
     /// Terminal status from the root run's `RunCompleted` event, if present.
     ///
     /// Set when the journal contains a `RunCompleted` for the root run,
@@ -162,7 +165,7 @@ impl<'a> Recovery<'a> {
             run_state,
             subflow_map: HashMap::new(),
             subflow_runs: HashMap::new(),
-            steps_initialized_run_ids: HashSet::new(),
+            runs_needing_step_updates: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
         };
@@ -274,19 +277,14 @@ impl<'a> Recovery<'a> {
             .journal
             .stream_from(self.root_run_id, stored_cp.sequence.next());
 
-        // Seed initialized set: all checkpoint-restored subflows already had StepsNeeded written.
-        let steps_initialized_run_ids: HashSet<uuid::Uuid> = checkpoint_data
-            .runs
-            .iter()
-            .filter(|rc| rc.run_id != self.root_run_id)
-            .map(|rc| rc.run_id)
-            .collect();
-
+        // Checkpoint-restored subflows already had StepsNeeded written (they
+        // wouldn't be in a checkpoint otherwise). Start with an empty set;
+        // tail replay will populate it for any new SubRunCreated events.
         let mut recovered = RecoveredState {
             run_state,
             subflow_map,
             subflow_runs,
-            steps_initialized_run_ids,
+            runs_needing_step_updates: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
         };
@@ -413,6 +411,9 @@ impl<'a> Recovery<'a> {
                     recovered.subflow_runs.insert(*sub_run_id, sub_state);
                 }
 
+                // Mark as needing step updates until StepsNeeded is seen.
+                recovered.runs_needing_step_updates.insert(*sub_run_id);
+
                 // Ensure metadata record exists for this sub-run.
                 //
                 // Crash window: SubRunCreated was journalled but the crash happened
@@ -443,11 +444,11 @@ impl<'a> Recovery<'a> {
                 }
             }
 
-            // Track subflows whose StepsNeeded was already journaled.
+            // StepsNeeded was journaled — this subflow no longer needs it written.
             if let stepflow_state::JournalEvent::StepsNeeded { run_id: rid, .. } = &event
                 && *rid != self.root_run_id
             {
-                recovered.steps_initialized_run_ids.insert(*rid);
+                recovered.runs_needing_step_updates.remove(rid);
             }
 
             // Sync step statuses to metadata for events in the replay window.
@@ -491,7 +492,7 @@ impl<'a> Recovery<'a> {
                     }
 
                     recovered.subflow_runs.remove(completed_id);
-                    recovered.steps_initialized_run_ids.remove(completed_id);
+                    recovered.runs_needing_step_updates.remove(completed_id);
                 }
             }
         }

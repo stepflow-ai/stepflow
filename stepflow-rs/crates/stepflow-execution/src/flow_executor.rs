@@ -95,9 +95,14 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
-    /// Subflow run IDs whose `StepsNeeded` event was already journaled.
-    /// During recovery, the executor skips writing a duplicate `StepsNeeded` for these.
-    steps_initialized_run_ids: HashSet<Uuid>,
+    /// Recovered run IDs that still need a `StepsNeeded` event written.
+    /// Populated during recovery for subflows in the crash window between
+    /// `SubRunCreated` and `StepsNeeded`. Empty for non-recovery runs.
+    runs_needing_step_updates: HashSet<Uuid>,
+    /// All recovered subflow run IDs. Used to distinguish recovered subflows
+    /// (which may already have `StepsNeeded` journaled) from new runs (which
+    /// always need it written).
+    recovered_run_ids: HashSet<Uuid>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -117,10 +122,12 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
-        steps_initialized_run_ids: HashSet<Uuid>,
+        runs_needing_step_updates: HashSet<Uuid>,
         checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
+        // Derive the set of all recovered subflow run IDs from the dedup map.
+        let recovered_run_ids: HashSet<Uuid> = recovered_subflows.values().copied().collect();
         Self {
             env,
             root_run_id,
@@ -132,7 +139,8 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
-            steps_initialized_run_ids,
+            runs_needing_step_updates,
+            recovered_run_ids,
             checkpointer,
         }
     }
@@ -680,9 +688,12 @@ impl FlowExecutor {
             if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
 
-                // Skip duplicate StepsNeeded journal write for subflows whose
-                // StepsNeeded was already journaled before the crash.
-                if self.steps_initialized_run_ids.contains(&rid) {
+                // For recovered subflows, only write StepsNeeded if the journal
+                // doesn't already contain it (crash window between SubRunCreated
+                // and StepsNeeded). Non-recovered runs always need it written.
+                if self.recovered_run_ids.contains(&rid)
+                    && !self.runs_needing_step_updates.contains(&rid)
+                {
                     continue;
                 }
 
