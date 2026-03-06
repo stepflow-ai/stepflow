@@ -35,6 +35,7 @@ from stepflow_py.api.models.status_event_run_created import StatusEventRunCreate
 from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
 from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
 from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
+from stepflow_py.api.models.status_event_steps_needed import StatusEventStepsNeeded
 from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
 from stepflow_py.api.models.step_override import StepOverride
 from stepflow_py.api.models.store_flow_request import StoreFlowRequest
@@ -56,6 +57,7 @@ StatusEvent: TypeAlias = (
     | StatusEventStepReady
     | StatusEventItemCompleted
     | StatusEventRunCompleted
+    | StatusEventStepsNeeded
     | StatusEventSubRunCreated
 )
 

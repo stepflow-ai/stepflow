@@ -266,7 +266,11 @@ async fn test_recovery_already_complete_run_succeeds() {
     journal
         .write(
             run_id,
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -538,7 +542,11 @@ async fn test_recovery_preserves_attempt_counts() {
     journal
         .write(
             run_id,
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -670,7 +678,11 @@ async fn test_recovery_batches_parallel_tasks() {
     journal
         .write(
             run_id,
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0, 1],
+            },
         )
         .await
         .expect("should write");
@@ -815,8 +827,11 @@ async fn test_recovery_groups_by_root_run_id() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -843,8 +858,11 @@ async fn test_recovery_groups_by_root_run_id() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: subflow_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: subflow_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -1272,7 +1290,11 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
     journal
         .write(
             run_id,
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -1362,8 +1384,11 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0, 1],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0, 1],
+            },
         )
         .await
         .expect("should write");
@@ -1405,8 +1430,11 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: subflow_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: subflow_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .expect("should write");
@@ -1549,8 +1577,11 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -1681,8 +1712,11 @@ async fn test_recovery_resumes_inflight_subflow() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -1724,8 +1758,11 @@ async fn test_recovery_resumes_inflight_subflow() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: inflight_subflow_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: inflight_subflow_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -1852,8 +1889,11 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -1878,8 +1918,11 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: subflow_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: subflow_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -2150,7 +2193,11 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
     journal
         .write(
             run_id,
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -2287,8 +2334,11 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: root_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();
@@ -2313,8 +2363,11 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     journal
         .write(
             root_run_id,
-            JournalEvent::StepsNeeded { run_id: subflow_run_id, item_index: None, step_indices: vec![0],
-                },
+            JournalEvent::StepsNeeded {
+                run_id: subflow_run_id,
+                item_index: None,
+                step_indices: vec![0],
+            },
         )
         .await
         .unwrap();

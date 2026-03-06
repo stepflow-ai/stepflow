@@ -694,10 +694,7 @@ impl JournalComplianceTests {
                         step_indices: s2, ..
                     },
                 ) => {
-                    assert_eq!(
-                        s1, s2,
-                        "StepsNeeded step_indices should match"
-                    );
+                    assert_eq!(s1, s2, "StepsNeeded step_indices should match");
                 }
                 (
                     JournalEvent::TasksStarted { runs: r1 },

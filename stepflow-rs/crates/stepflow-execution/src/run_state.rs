@@ -1017,7 +1017,11 @@ mod tests {
 
         // Simulate journal entries from a crashed execution that completed step1
         let events = [
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0, 1, 2],
+            },
             JournalEvent::TaskCompleted {
                 run_id,
                 item_index: 0,
@@ -1074,7 +1078,11 @@ mod tests {
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
         // Initialize
-        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] });
+        state.apply_event(&JournalEvent::StepsNeeded {
+            run_id,
+            item_index: None,
+            step_indices: vec![0, 1, 2],
+        });
 
         // Before any TasksStarted, all attempts should be 0
         assert_eq!(state.items_state().item(0).attempt_count(0), 0);
@@ -1132,7 +1140,11 @@ mod tests {
 
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
-        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1] });
+        state.apply_event(&JournalEvent::StepsNeeded {
+            run_id,
+            item_index: None,
+            step_indices: vec![0, 1],
+        });
 
         // Start both steps in one batch
         state.apply_event(&JournalEvent::TasksStarted {
@@ -1165,7 +1177,11 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         let events = vec![
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0, 1, 2],
+            },
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
@@ -1226,7 +1242,11 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         let events = vec![
-            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
+            JournalEvent::StepsNeeded {
+                run_id,
+                item_index: None,
+                step_indices: vec![0, 1, 2],
+            },
             // Compacted: only the latest TasksStarted for step0 remains (attempt=3)
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
@@ -1287,10 +1307,18 @@ mod tests {
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
         // Initialize this run
-        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] });
+        state.apply_event(&JournalEvent::StepsNeeded {
+            run_id,
+            item_index: None,
+            step_indices: vec![0, 1, 2],
+        });
 
         // StepsNeeded from another run - should be ignored
-        let tasks = state.apply_event(&JournalEvent::StepsNeeded { run_id: other_run_id, item_index: None, step_indices: vec![0] });
+        let tasks = state.apply_event(&JournalEvent::StepsNeeded {
+            run_id: other_run_id,
+            item_index: None,
+            step_indices: vec![0],
+        });
         assert!(tasks.is_empty());
 
         // TaskCompleted from another run - should be ignored
