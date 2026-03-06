@@ -319,7 +319,8 @@ impl<'a> Recovery<'a> {
     /// 2. On `SubRunCreated`: updates the dedup map, creates a new RunState
     ///    (loading the flow definition from the blob store), and ensures a
     ///    metadata record exists (crash window: journal written, metadata not).
-    /// 3. On `StepsNeeded` (non-root): adds the run to the in-flight set.
+    /// 3. On `StepsNeeded` (non-root): removes the run from
+    ///    `runs_needing_step_updates` (initialization was journaled).
     /// 4. On `RunCompleted` (root): captures the terminal status in
     ///    `root_terminal_status` for the caller to sync.
     /// 5. On `RunCompleted` (non-root): syncs the metadata store if needed

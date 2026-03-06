@@ -525,9 +525,18 @@ impl FlowExecutor {
             let initial_tasks = run_state.initialize_all();
             let is_complete = run_state.is_complete();
             let item_count = run_state.items_state().item_count();
-            // All items share the same flow, so initial needed steps are common.
+            // All items share the same flow and start with zero completed steps,
+            // so initial needed steps are identical. Per-item divergence only
+            // happens after step completions (future dynamic StepsNeeded).
             let step_indices = if item_count > 0 {
-                run_state.items_state().item(0).needed_step_indices()
+                let indices = run_state.items_state().item(0).needed_step_indices();
+                debug_assert!(
+                    (1..item_count).all(|i| {
+                        run_state.items_state().item(i).needed_step_indices() == indices
+                    }),
+                    "Initial needed steps should be identical across all items"
+                );
+                indices
             } else {
                 Vec::new()
             };
@@ -698,12 +707,20 @@ impl FlowExecutor {
                 }
 
                 // Journal: Record the needed steps for this run.
-                // All items share the same flow, so initial needed steps are common.
+                // All items share the same flow and start with zero completed steps,
+                // so initial needed steps are identical. Per-item divergence only
+                // happens after step completions (future dynamic StepsNeeded).
                 let items_state = run_state.items_state();
-                if items_state.item_count() == 0 {
+                let item_count = items_state.item_count();
+                if item_count == 0 {
                     continue;
                 }
                 let step_indices = items_state.item(0).needed_step_indices();
+                debug_assert!(
+                    (1..item_count)
+                        .all(|i| { items_state.item(i).needed_step_indices() == step_indices }),
+                    "Initial needed steps should be identical across all items"
+                );
                 if !step_indices.is_empty() {
                     self.write_journal(JournalEvent::StepsNeeded {
                         run_id: rid,

@@ -688,12 +688,17 @@ impl JournalComplianceTests {
                 }
                 (
                     JournalEvent::StepsNeeded {
-                        step_indices: s1, ..
+                        item_index: i1,
+                        step_indices: s1,
+                        ..
                     },
                     JournalEvent::StepsNeeded {
-                        step_indices: s2, ..
+                        item_index: i2,
+                        step_indices: s2,
+                        ..
                     },
                 ) => {
+                    assert_eq!(i1, i2, "StepsNeeded item_index should match");
                     assert_eq!(s1, s2, "StepsNeeded step_indices should match");
                 }
                 (

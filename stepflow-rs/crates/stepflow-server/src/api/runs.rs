@@ -1025,9 +1025,26 @@ fn journal_event_to_stream_events(
             item_index,
             step_indices,
         } => {
+            debug_assert!(
+                step_indices
+                    .iter()
+                    .all(|&idx| resolve_step_id(flow, idx).is_some()),
+                "StepsNeeded contains unresolvable step indices: {:?}",
+                step_indices
+            );
             let step_ids: Vec<String> = step_indices
                 .iter()
-                .filter_map(|&idx| resolve_step_id(flow, idx))
+                .filter_map(|&idx| {
+                    let id = resolve_step_id(flow, idx);
+                    if id.is_none() {
+                        log::warn!(
+                            "StepsNeeded for run {}: step index {} could not be resolved",
+                            run_id,
+                            idx
+                        );
+                    }
+                    id
+                })
                 .collect();
             vec![StatusEventKind::StepsNeeded {
                 run_id: *run_id,
