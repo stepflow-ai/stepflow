@@ -1752,4 +1752,63 @@ async fn test_sse_stream_multi_step_workflow() {
         "Expected at least 2 step_completed events, got {}",
         step_completed_count
     );
+
+    // Step events should include stepId (resolved from the flow)
+    let step_started_events: Vec<_> = events
+        .iter()
+        .filter(|(_, t, _)| t == "step_started")
+        .collect();
+    for (_, _, data) in &step_started_events {
+        assert!(
+            data.get("stepId").is_some(),
+            "step_started should include stepId, got: {data}"
+        );
+    }
+    let step_ids: Vec<&str> = step_started_events
+        .iter()
+        .map(|(_, _, d)| d["stepId"].as_str().unwrap())
+        .collect();
+    assert!(step_ids.contains(&"step1"), "Should have step1: {step_ids:?}");
+    assert!(step_ids.contains(&"step2"), "Should have step2: {step_ids:?}");
+}
+
+#[tokio::test]
+async fn test_sse_stream_terminates_when_filter_excludes_run_completed() {
+    init_test_logging();
+
+    let (mut app, _env) = create_basic_test_server().await;
+    let workflow = create_test_workflow();
+    let flow_id = store_flow(&mut app, &workflow).await;
+    let run_id = execute_run(&mut app, &flow_id, json!({"test_input": "filter_term"})).await;
+
+    // Filter to only step_started — excludes run_completed.
+    // The stream should still terminate (not hang) because the server
+    // detects completion independently of the event type filter.
+    let sse_request = Request::builder()
+        .uri(format!(
+            "/api/v1/runs/{run_id}/events?eventTypes=step_started"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = ServiceExt::<Request<Body>>::ready(&mut app)
+        .await
+        .unwrap()
+        .call(sse_request)
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    // If the stream doesn't terminate, to_bytes will hang — the fact that
+    // we reach the assertions below proves the fix works.
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
+
+    // All returned events should be step_started (the filter we requested)
+    for (_, event_type, _) in &events {
+        assert_eq!(
+            event_type, "step_started",
+            "Only step_started events should be returned"
+        );
+    }
 }
