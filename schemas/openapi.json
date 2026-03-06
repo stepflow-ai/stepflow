@@ -2718,32 +2718,27 @@
           "input"
         ]
       },
-      "StatusEventRunInitialized": {
-        "title": "StatusEventRunInitialized",
-        "description": "A run was initialized and its steps have been discovered.",
+      "StatusEventRunCreated": {
+        "title": "StatusEventRunCreated",
+        "description": "A run was created with its initial configuration.",
         "type": "object",
         "properties": {
           "runId": {
             "type": "string",
             "format": "uuid"
           },
-          "steps": {
-            "description": "Step names needed per item (outer index = item_index).",
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
+          "flowId": {
+            "$ref": "#/components/schemas/BlobId"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
           },
           "event": {
             "type": "string",
-            "const": "run_initialized",
-            "default": "run_initialized"
+            "const": "run_created",
+            "default": "run_created"
           },
           "sequenceNumber": {
             "description": "Journal sequence number for this event.",
@@ -2760,6 +2755,8 @@
         "required": [
           "event",
           "runId",
+          "flowId",
+          "itemCount",
           "sequenceNumber",
           "timestamp"
         ]
@@ -2820,49 +2817,6 @@
           "status"
         ]
       },
-      "StatusEventRunCreated": {
-        "title": "StatusEventRunCreated",
-        "description": "A run was created with its initial configuration.",
-        "type": "object",
-        "properties": {
-          "runId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "flowId": {
-            "$ref": "#/components/schemas/BlobId"
-          },
-          "itemCount": {
-            "type": "integer",
-            "format": "uint",
-            "minimum": 0
-          },
-          "event": {
-            "type": "string",
-            "const": "run_created",
-            "default": "run_created"
-          },
-          "sequenceNumber": {
-            "description": "Journal sequence number for this event.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0
-          },
-          "timestamp": {
-            "description": "Timestamp when this event was recorded.",
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "event",
-          "runId",
-          "flowId",
-          "itemCount",
-          "sequenceNumber",
-          "timestamp"
-        ]
-      },
       "OnErrorRetry": {
         "title": "OnErrorRetry",
         "description": "If the step fails, retry it.\n\n`max_retries` limits retries due to component errors — cases where the\ncomponent ran and returned an error. Transport-level failures (subprocess\ncrashes, network errors) are retried separately according to the plugin's\nretry configuration and do not count against this budget.",
@@ -2881,6 +2835,22 @@
             "type": "string",
             "const": "retry",
             "default": "retry"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "OnErrorDefault": {
+        "title": "OnErrorDefault",
+        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+        "type": "object",
+        "properties": {
+          "defaultValue": true,
+          "action": {
+            "type": "string",
+            "const": "useDefault",
+            "default": "useDefault"
           }
         },
         "required": [
@@ -2954,16 +2924,15 @@
           "updatedAt"
         ]
       },
-      "OnErrorDefault": {
-        "title": "OnErrorDefault",
-        "description": "If the step fails, use the `defaultValue` instead.\nIf `defaultValue` is not specified, the step returns null.\nThe default value must be a literal JSON value (not an expression).\nFor dynamic defaults, use `$coalesce` in the consuming expression instead.",
+      "OnErrorFail": {
+        "title": "OnErrorFail",
+        "description": "If the step fails, the flow will fail.",
         "type": "object",
         "properties": {
-          "defaultValue": true,
           "action": {
             "type": "string",
-            "const": "useDefault",
-            "default": "useDefault"
+            "const": "fail",
+            "default": "fail"
           }
         },
         "required": [
@@ -2975,9 +2944,6 @@
         "oneOf": [
           {
             "$ref": "#/components/schemas/StatusEventRunCreated"
-          },
-          {
-            "$ref": "#/components/schemas/StatusEventRunInitialized"
           },
           {
             "$ref": "#/components/schemas/StatusEventStepStarted"
@@ -3002,7 +2968,6 @@
           "propertyName": "event",
           "mapping": {
             "run_created": "#/components/schemas/StatusEventRunCreated",
-            "run_initialized": "#/components/schemas/StatusEventRunInitialized",
             "step_started": "#/components/schemas/StatusEventStepStarted",
             "step_completed": "#/components/schemas/StatusEventStepCompleted",
             "step_ready": "#/components/schemas/StatusEventStepReady",
@@ -3162,55 +3127,6 @@
         "description": "Path to a location in the workflow definition, serialized as a string",
         "type": "string"
       },
-      "OnErrorFail": {
-        "title": "OnErrorFail",
-        "description": "If the step fails, the flow will fail.",
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "const": "fail",
-            "default": "fail"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      },
-      "FlowResponse": {
-        "description": "Response containing a flow definition and its ID",
-        "type": "object",
-        "properties": {
-          "flow": {
-            "description": "The flow definition",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Flow"
-              }
-            ]
-          },
-          "flowId": {
-            "description": "The flow ID",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/BlobId"
-              }
-            ]
-          },
-          "allExamples": {
-            "description": "All available examples (includes both examples and test cases)",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExampleInput"
-            }
-          }
-        },
-        "required": [
-          "flow",
-          "flowId",
-          "allExamples"
-        ]
-      },
       "FlowVariablesResponse": {
         "description": "Response containing variable schema and environment variable mappings for a flow.",
         "type": "object",
@@ -3245,6 +3161,40 @@
         "required": [
           "flowId",
           "envVars"
+        ]
+      },
+      "FlowResponse": {
+        "description": "Response containing a flow definition and its ID",
+        "type": "object",
+        "properties": {
+          "flow": {
+            "description": "The flow definition",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Flow"
+              }
+            ]
+          },
+          "flowId": {
+            "description": "The flow ID",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BlobId"
+              }
+            ]
+          },
+          "allExamples": {
+            "description": "All available examples (includes both examples and test cases)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExampleInput"
+            }
+          }
+        },
+        "required": [
+          "flow",
+          "flowId",
+          "allExamples"
         ]
       }
     }

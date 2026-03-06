@@ -1436,10 +1436,10 @@ async fn test_sse_stream_basic() {
     let text = String::from_utf8(body.to_vec()).unwrap();
     let events = parse_sse_events(&text);
 
-    // Should have at minimum: run_created, run_initialized, step events, run_completed
+    // Should have at minimum: run_created, run_completed
     assert!(
-        events.len() >= 3,
-        "Expected at least 3 SSE events, got {}: {:?}",
+        events.len() >= 2,
+        "Expected at least 2 SSE events, got {}: {:?}",
         events.len(),
         events
             .iter()
@@ -1513,10 +1513,10 @@ async fn test_sse_stream_resume_with_since() {
         .unwrap();
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let all_events = parse_sse_events(&String::from_utf8(body.to_vec()).unwrap());
-    assert!(all_events.len() >= 3);
+    assert!(all_events.len() >= 2);
 
-    // Get the ID of the second event and resume from after it
-    let resume_from = all_events[1].0.as_ref().unwrap().parse::<u64>().unwrap() + 1;
+    // Get the ID of the first event and resume from after it
+    let resume_from = all_events[0].0.as_ref().unwrap().parse::<u64>().unwrap() + 1;
 
     let sse_request = Request::builder()
         .uri(format!("/api/v1/runs/{run_id}/events?since={resume_from}"))
@@ -1730,7 +1730,6 @@ async fn test_sse_stream_multi_step_workflow() {
 
     // Should have expected lifecycle events
     assert!(event_types.contains(&"run_created"));
-    assert!(event_types.contains(&"run_initialized"));
     assert!(event_types.contains(&"step_started"));
     assert!(event_types.contains(&"step_completed"));
     assert!(event_types.contains(&"run_completed"));

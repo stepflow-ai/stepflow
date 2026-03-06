@@ -32,9 +32,6 @@ from stepflow_py.api.models.status_event import StatusEvent as _StatusEventOneOf
 from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
 from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
 from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
-from stepflow_py.api.models.status_event_run_initialized import (
-    StatusEventRunInitialized,
-)
 from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
 from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
 from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
@@ -54,7 +51,6 @@ logger = logging.getLogger(__name__)
 #: :meth:`StepflowClient.status_events`.
 StatusEvent: TypeAlias = (
     StatusEventRunCreated
-    | StatusEventRunInitialized
     | StatusEventStepStarted
     | StatusEventStepCompleted
     | StatusEventStepReady

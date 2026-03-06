@@ -32,9 +32,6 @@ from pydantic import (
 from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
 from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
 from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
-from stepflow_py.api.models.status_event_run_initialized import (
-    StatusEventRunInitialized,
-)
 from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
 from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
 from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
@@ -44,7 +41,6 @@ STATUSEVENT_ONE_OF_SCHEMAS = [
     "StatusEventItemCompleted",
     "StatusEventRunCompleted",
     "StatusEventRunCreated",
-    "StatusEventRunInitialized",
     "StatusEventStepCompleted",
     "StatusEventStepReady",
     "StatusEventStepStarted",
@@ -59,25 +55,22 @@ class StatusEvent(BaseModel):
 
     # data type: StatusEventRunCreated
     oneof_schema_1_validator: StatusEventRunCreated | None = None
-    # data type: StatusEventRunInitialized
-    oneof_schema_2_validator: StatusEventRunInitialized | None = None
     # data type: StatusEventStepStarted
-    oneof_schema_3_validator: StatusEventStepStarted | None = None
+    oneof_schema_2_validator: StatusEventStepStarted | None = None
     # data type: StatusEventStepCompleted
-    oneof_schema_4_validator: StatusEventStepCompleted | None = None
+    oneof_schema_3_validator: StatusEventStepCompleted | None = None
     # data type: StatusEventStepReady
-    oneof_schema_5_validator: StatusEventStepReady | None = None
+    oneof_schema_4_validator: StatusEventStepReady | None = None
     # data type: StatusEventItemCompleted
-    oneof_schema_6_validator: StatusEventItemCompleted | None = None
+    oneof_schema_5_validator: StatusEventItemCompleted | None = None
     # data type: StatusEventRunCompleted
-    oneof_schema_7_validator: StatusEventRunCompleted | None = None
+    oneof_schema_6_validator: StatusEventRunCompleted | None = None
     # data type: StatusEventSubRunCreated
-    oneof_schema_8_validator: StatusEventSubRunCreated | None = None
+    oneof_schema_7_validator: StatusEventSubRunCreated | None = None
     actual_instance: (
         StatusEventItemCompleted
         | StatusEventRunCompleted
         | StatusEventRunCreated
-        | StatusEventRunInitialized
         | StatusEventStepCompleted
         | StatusEventStepReady
         | StatusEventStepStarted
@@ -88,7 +81,6 @@ class StatusEvent(BaseModel):
         "StatusEventItemCompleted",
         "StatusEventRunCompleted",
         "StatusEventRunCreated",
-        "StatusEventRunInitialized",
         "StatusEventStepCompleted",
         "StatusEventStepReady",
         "StatusEventStepStarted",
@@ -125,13 +117,6 @@ class StatusEvent(BaseModel):
         if not isinstance(v, StatusEventRunCreated):
             error_messages.append(
                 f"Error! Input type `{type(v)}` is not `StatusEventRunCreated`"
-            )
-        else:
-            match += 1
-        # validate data type: StatusEventRunInitialized
-        if not isinstance(v, StatusEventRunInitialized):
-            error_messages.append(
-                f"Error! Input type `{type(v)}` is not `StatusEventRunInitialized`"
             )
         else:
             match += 1
@@ -180,13 +165,13 @@ class StatusEvent(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
+                "Multiple matches found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
+                "No match found when setting `actual_instance` in StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -206,12 +191,6 @@ class StatusEvent(BaseModel):
         # deserialize data into StatusEventRunCreated
         try:
             instance.actual_instance = StatusEventRunCreated.from_json(json_str)
-            match += 1
-        except (ValidationError, ValueError) as e:
-            error_messages.append(str(e))
-        # deserialize data into StatusEventRunInitialized
-        try:
-            instance.actual_instance = StatusEventRunInitialized.from_json(json_str)
             match += 1
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
@@ -255,13 +234,13 @@ class StatusEvent(BaseModel):
         if match > 1:
             # more than 1 match
             raise ValueError(
-                "Multiple matches found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
+                "Multiple matches found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         elif match == 0:
             # no match
             raise ValueError(
-                "No match found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventRunInitialized, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
+                "No match found when deserializing the JSON string into StatusEvent with oneOf schemas: StatusEventItemCompleted, StatusEventRunCompleted, StatusEventRunCreated, StatusEventStepCompleted, StatusEventStepReady, StatusEventStepStarted, StatusEventSubRunCreated. Details: "
                 + ", ".join(error_messages)
             )
         else:
@@ -286,7 +265,6 @@ class StatusEvent(BaseModel):
         | StatusEventItemCompleted
         | StatusEventRunCompleted
         | StatusEventRunCreated
-        | StatusEventRunInitialized
         | StatusEventStepCompleted
         | StatusEventStepReady
         | StatusEventStepStarted

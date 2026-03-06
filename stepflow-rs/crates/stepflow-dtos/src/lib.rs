@@ -440,15 +440,6 @@ pub enum StatusEventKind {
         item_count: usize,
     },
 
-    /// A run was initialized and its steps have been discovered.
-    #[schemars(title = "StatusEventRunInitialized")]
-    RunInitialized {
-        run_id: Uuid,
-        /// Step names needed per item (outer index = item_index).
-        #[serde(skip_serializing_if = "Option::is_none")]
-        steps: Option<Vec<Vec<String>>>,
-    },
-
     /// A step has started executing.
     #[schemars(title = "StatusEventStepStarted")]
     StepStarted {
@@ -554,7 +545,6 @@ impl StatusEventKind {
     pub fn run_id(&self) -> Uuid {
         match self {
             StatusEventKind::RunCreated { run_id, .. }
-            | StatusEventKind::RunInitialized { run_id, .. }
             | StatusEventKind::StepStarted { run_id, .. }
             | StatusEventKind::StepCompleted { run_id, .. }
             | StatusEventKind::StepReady { run_id, .. }
@@ -568,7 +558,6 @@ impl StatusEventKind {
     pub fn event_type(&self) -> &'static str {
         match self {
             StatusEventKind::RunCreated { .. } => "run_created",
-            StatusEventKind::RunInitialized { .. } => "run_initialized",
             StatusEventKind::StepStarted { .. } => "step_started",
             StatusEventKind::StepCompleted { .. } => "step_completed",
             StatusEventKind::StepReady { .. } => "step_ready",
