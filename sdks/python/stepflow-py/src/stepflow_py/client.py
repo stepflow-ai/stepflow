@@ -576,7 +576,6 @@ def _deserialize_status_event(json_str: str) -> StatusEvent | None:
         return None
 
 
-
 def _parse_env_value(value: str) -> Any:
     """Parse an environment variable value, trying JSON first.
 

@@ -1768,8 +1768,14 @@ async fn test_sse_stream_multi_step_workflow() {
         .iter()
         .map(|(_, _, d)| d["stepId"].as_str().unwrap())
         .collect();
-    assert!(step_ids.contains(&"step1"), "Should have step1: {step_ids:?}");
-    assert!(step_ids.contains(&"step2"), "Should have step2: {step_ids:?}");
+    assert!(
+        step_ids.contains(&"step1"),
+        "Should have step1: {step_ids:?}"
+    );
+    assert!(
+        step_ids.contains(&"step2"),
+        "Should have step2: {step_ids:?}"
+    );
 }
 
 #[tokio::test]
