@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 from typing import Any
 
 from docling.backend.docling_parse_backend import DoclingParseDocumentBackend
@@ -208,6 +209,7 @@ class ConverterCache:
         self._cache: dict[str, DocumentConverter] = {}
         self._access_order: list[str] = []
         self._max_size = max_size
+        self._lock = threading.Lock()
 
     def get_by_config_name(self, config_name: str) -> DocumentConverter:
         """Get converter for a named pipeline config."""
@@ -217,25 +219,27 @@ class ConverterCache:
             )
             config_name = "default"
         key = f"config:{config_name}"
-        if key not in self._cache:
-            self._evict_if_full()
-            logger.info(
-                "Initializing DocumentConverter for config '%s'...", config_name
-            )
-            self._cache[key] = _build_converter_from_config(config_name)
-            logger.info("DocumentConverter for '%s' initialized.", config_name)
-        self._touch(key)
-        return self._cache[key]
+        with self._lock:
+            if key not in self._cache:
+                self._evict_if_full()
+                logger.info(
+                    "Initializing DocumentConverter for config '%s'...", config_name
+                )
+                self._cache[key] = _build_converter_from_config(config_name)
+                logger.info("DocumentConverter for '%s' initialized.", config_name)
+            self._touch(key)
+            return self._cache[key]
 
     def get_by_options(self, options: dict[str, Any]) -> DocumentConverter:
         """Get converter for per-request options."""
         key = f"opts:{_options_hash(options)}"
-        if key not in self._cache:
-            self._evict_if_full()
-            logger.info("Building DocumentConverter for options hash %s", key)
-            self._cache[key] = build_converter(options)
-        self._touch(key)
-        return self._cache[key]
+        with self._lock:
+            if key not in self._cache:
+                self._evict_if_full()
+                logger.info("Building DocumentConverter for options hash %s", key)
+                self._cache[key] = build_converter(options)
+            self._touch(key)
+            return self._cache[key]
 
     @property
     def size(self) -> int:
@@ -253,5 +257,6 @@ class ConverterCache:
             self._cache.pop(oldest, None)
 
     def clear(self):
-        self._cache.clear()
-        self._access_order.clear()
+        with self._lock:
+            self._cache.clear()
+            self._access_order.clear()
