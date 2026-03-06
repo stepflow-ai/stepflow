@@ -91,6 +91,17 @@ run_check "Tests" uv run poe test || true
 # INTEGRATION TESTS (requires stepflow-server binary)
 # =============================================================================
 
+# If running in a git worktree, copy .env from the main worktree if missing.
+# Worktrees share git history but not untracked files like .env.
+if [ ! -f .env ]; then
+    MAIN_WORKTREE="$(git worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')"
+    MAIN_ENV="$MAIN_WORKTREE/integrations/langflow/.env"
+    if [ -n "$MAIN_WORKTREE" ] && [ "$MAIN_WORKTREE" != "$PROJECT_ROOT" ] && [ -f "$MAIN_ENV" ]; then
+        cp "$MAIN_ENV" .env
+        print_verbose "Copied .env from main worktree: $MAIN_ENV"
+    fi
+fi
+
 # Check if we have the stepflow-server binary available
 # If STEPFLOW_DEV_BINARY is set, use it (allows testing with custom binaries)
 # Otherwise, build the debug binary automatically to ensure we test the latest code
