@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
@@ -242,3 +243,19 @@ class TestConverterCache:
         c_a = cache.get_by_options({"key": "a"})
         # Total builds: a, b, c = 3 (a was not rebuilt)
         assert mock_build.call_count == 3
+
+    @patch("docling_step_worker.converter_cache._build_converter_from_config")
+    def test_concurrent_access_returns_same_instance(self, mock_build):
+        sentinel = MagicMock()
+        mock_build.return_value = sentinel
+        cache = ConverterCache(max_size=2)
+
+        def _get(_):
+            return cache.get_by_config_name("default")
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(_get, range(8)))
+
+        assert all(r is sentinel for r in results)
+        assert mock_build.call_count == 1
+        assert cache.size == 1
