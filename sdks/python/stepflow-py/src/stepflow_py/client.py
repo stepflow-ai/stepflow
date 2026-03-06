@@ -485,7 +485,11 @@ class StepflowClient:
         host: str = str(self._api_client.configuration.host)
         url = f"{host}/runs/{run_id}/events"
 
-        async with httpx.AsyncClient() as http_client:
+        # Reuse default headers (auth, user-agent, etc.) from the API client
+        headers = dict(self._api_client.default_headers)
+        headers["Accept"] = "text/event-stream"
+
+        async with httpx.AsyncClient(headers=headers) as http_client:
             async with http_client.stream(
                 "GET", url, params=params, timeout=None
             ) as response:

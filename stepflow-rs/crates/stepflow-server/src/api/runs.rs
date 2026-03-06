@@ -664,9 +664,10 @@ pub async fn get_step_detail(
         .get_step_status(run_id, item_index, &step_id)
         .await?
         .ok_or_else(|| {
-            error_stack::report!(ServerError::InvalidRequest(format!(
-                "Step '{step_id}' not found for run {run_id} item {item_index}"
-            )))
+            error_stack::report!(ServerError::StepNotFound {
+                run_id,
+                step_id: step_id.clone(),
+            })
         })?;
 
     // Check asof consistency
@@ -904,6 +905,15 @@ pub async fn get_status_stream(
     // Determine the starting sequence number
     let from_sequence = SequenceNumber::new(query.since.unwrap_or(0));
 
+    // Load the flow so we can resolve step indices to step IDs.
+    // The flow may not exist if it was deleted or this is an old run.
+    let flow = env
+        .blob_store()
+        .get_flow(&run_details.summary.flow_id)
+        .await
+        .ok()
+        .flatten();
+
     let journal = env.execution_journal().clone();
 
     let stream = async_stream::stream! {
@@ -918,7 +928,11 @@ pub async fn get_status_stream(
             let timestamp = entry.timestamp;
 
             // Convert journal event to stream events
-            let stream_events = journal_event_to_stream_events(&entry.event, include_results);
+            let stream_events = journal_event_to_stream_events(
+                &entry.event,
+                include_results,
+                flow.as_deref(),
+            );
             let mut is_run_completed = false;
 
             for kind in stream_events {
@@ -929,18 +943,19 @@ pub async fn get_status_stream(
                     continue;
                 }
 
+                // Check completion before applying event_type filter so
+                // the stream terminates even when run_completed is filtered out.
+                if let StatusEventKind::RunCompleted { run_id: completed_id, .. } = &kind
+                    && *completed_id == run_id
+                {
+                    is_run_completed = true;
+                }
+
                 // Filter by event type
                 if let Some(ref filter) = event_type_filter
                     && !filter.iter().any(|f| f == kind.event_type())
                 {
                     continue;
-                }
-
-                // Check if this is the target run completing
-                if let StatusEventKind::RunCompleted { run_id: completed_id, .. } = &kind
-                    && *completed_id == run_id
-                {
-                    is_run_completed = true;
                 }
 
                 // Wrap in StatusEvent with metadata
@@ -951,12 +966,21 @@ pub async fn get_status_stream(
                 };
 
                 // Serialize and yield
-                if let Ok(data) = serde_json::to_string(&event) {
-                    let sse_event = axum::response::sse::Event::default()
-                        .id(seq.value().to_string())
-                        .event(event.event_type())
-                        .data(data);
-                    yield Ok(sse_event);
+                match serde_json::to_string(&event) {
+                    Ok(data) => {
+                        let sse_event = axum::response::sse::Event::default()
+                            .id(seq.value().to_string())
+                            .event(event.event_type())
+                            .data(data);
+                        yield Ok(sse_event);
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Failed to serialize SSE event (seq {}): {err}",
+                            seq.value()
+                        );
+                        break;
+                    }
                 }
             }
 
@@ -969,6 +993,12 @@ pub async fn get_status_stream(
     Ok(SseStream(axum::response::sse::Sse::new(stream)))
 }
 
+/// Resolve a step index to a step ID using the flow, if available.
+fn resolve_step_id(flow: Option<&Flow>, step_index: usize) -> Option<String> {
+    flow.and_then(|f| f.steps().get(step_index))
+        .map(|s| s.id.clone())
+}
+
 /// Convert a `JournalEvent` into zero or more `StatusEvent`s.
 ///
 /// Most journal events map 1:1, except `TasksStarted` which produces one
@@ -976,6 +1006,7 @@ pub async fn get_status_stream(
 fn journal_event_to_stream_events(
     event: &JournalEvent,
     include_results: bool,
+    flow: Option<&Flow>,
 ) -> Vec<StatusEventKind> {
     match event {
         JournalEvent::RootRunCreated {
@@ -994,13 +1025,15 @@ fn journal_event_to_stream_events(
             needed_steps,
         } => vec![StatusEventKind::RunInitialized {
             run_id: *run_id,
-            // Convert step indices to step IDs would require the flow,
-            // which we don't have here. Send indices for now; clients can
-            // correlate with the flow definition.
             steps: Some(
                 needed_steps
                     .iter()
-                    .map(|is| is.step_indices.iter().map(|i| i.to_string()).collect())
+                    .map(|is| {
+                        is.step_indices
+                            .iter()
+                            .map(|&i| resolve_step_id(flow, i).unwrap_or_else(|| i.to_string()))
+                            .collect()
+                    })
                     .collect(),
             ),
         }],
@@ -1013,7 +1046,7 @@ fn journal_event_to_stream_events(
                         run_id: run_tasks.run_id,
                         item_index: task.item_index,
                         step_index: task.step_index,
-                        step_id: None, // Would need flow to resolve
+                        step_id: resolve_step_id(flow, task.step_index),
                         attempt: task.attempt,
                     });
                 }
@@ -1035,7 +1068,7 @@ fn journal_event_to_stream_events(
                 run_id: *run_id,
                 item_index: *item_index,
                 step_index: *step_index,
-                step_id: None,
+                step_id: resolve_step_id(flow, *step_index),
                 status,
                 result: if include_results {
                     Some(result.clone())
@@ -1055,7 +1088,7 @@ fn journal_event_to_stream_events(
                 run_id: *run_id,
                 item_index: *item_index,
                 step_index,
-                step_id: None,
+                step_id: resolve_step_id(flow, step_index),
             })
             .collect(),
 

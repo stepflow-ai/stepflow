@@ -1380,32 +1380,6 @@ async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
     result["flowId"].as_str().unwrap().to_string()
 }
 
-/// Helper: submit a run (wait=false) and return the run_id.
-async fn _submit_run(app: &mut Router, flow_id: &str, input: serde_json::Value) -> String {
-    let request = Request::builder()
-        .uri("/api/v1/runs")
-        .method("POST")
-        .header("content-type", "application/json")
-        .body(Body::from(
-            serde_json::to_string(&json!({
-                "flowId": flow_id,
-                "input": [input],
-            }))
-            .unwrap(),
-        ))
-        .unwrap();
-    let response = ServiceExt::<Request<Body>>::ready(app)
-        .await
-        .unwrap()
-        .call(request)
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::ACCEPTED);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    result["runId"].as_str().unwrap().to_string()
-}
-
 /// Helper: execute a run (wait=true) and return the run_id.
 async fn execute_run(app: &mut Router, flow_id: &str, input: serde_json::Value) -> String {
     let request = Request::builder()

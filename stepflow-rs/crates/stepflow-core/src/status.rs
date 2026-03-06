@@ -50,8 +50,21 @@ impl std::fmt::Display for ExecutionStatus {
 }
 
 /// Status of an individual step within a workflow
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    schemars::JsonSchema,
+    strum::Display,
+    strum::EnumString,
+    strum::IntoStaticStr,
+)]
 #[serde(rename_all = "camelCase")]
+#[strum(serialize_all = "camelCase")]
 pub enum StepStatus {
     /// Step is waiting for dependencies to complete
     Blocked,
@@ -65,19 +78,6 @@ pub enum StepStatus {
     Skipped,
     /// Step failed with an error
     Failed,
-}
-
-impl std::fmt::Display for StepStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StepStatus::Blocked => write!(f, "blocked"),
-            StepStatus::Runnable => write!(f, "runnable"),
-            StepStatus::Running => write!(f, "running"),
-            StepStatus::Completed => write!(f, "completed"),
-            StepStatus::Skipped => write!(f, "skipped"),
-            StepStatus::Failed => write!(f, "failed"),
-        }
-    }
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
-use sqlx::{Row as _, SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::ValueRef};
 use stepflow_dtos::{
@@ -46,18 +46,10 @@ fn sql_to_u64(v: i64) -> u64 {
 
 /// Parse a `StepStatus` from a database string.
 fn parse_step_status(s: &str) -> StepStatus {
-    match s {
-        "blocked" => StepStatus::Blocked,
-        "runnable" => StepStatus::Runnable,
-        "running" => StepStatus::Running,
-        "completed" => StepStatus::Completed,
-        "skipped" => StepStatus::Skipped,
-        "failed" => StepStatus::Failed,
-        _ => {
-            log::warn!("Unrecognized step status: {s}, defaulting to blocked");
-            StepStatus::Blocked
-        }
-    }
+    s.parse().unwrap_or_else(|_| {
+        log::warn!("Unrecognized step status: {s}, defaulting to blocked");
+        StepStatus::Blocked
+    })
 }
 
 /// Convert a SQLite row to a `StepStatusEntry`.
@@ -78,7 +70,10 @@ fn row_to_step_status_entry(
         .transpose()
         .change_context(StateError::Serialization)?;
 
-    let updated_at = parse_sqlite_datetime(&updated_at_str).unwrap_or_else(chrono::Utc::now);
+    let updated_at = parse_sqlite_datetime(&updated_at_str).unwrap_or_else(|| {
+        log::warn!("Failed to parse updated_at timestamp: {updated_at_str}");
+        chrono::Utc::now()
+    });
 
     Ok(StepStatusEntry {
         step_id,
@@ -500,8 +495,8 @@ impl MetadataStore for SqliteStateStore {
         let filters = filters.clone();
 
         async move {
-            let mut sql = r#"
-                SELECT
+            let mut qb = QueryBuilder::<Sqlite>::new(
+                r#"SELECT
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
                     r.root_run_id, r.parent_run_id, r.orchestrator_id,
@@ -522,54 +517,43 @@ impl MetadataStore for SqliteStateStore {
                         SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
                     FROM run_items
                     GROUP BY run_id
-                ) i ON r.id = i.run_id
-            "#
-            .to_string();
-            let mut conditions = Vec::new();
-            let mut bind_values: Vec<String> = Vec::new();
+                ) i ON r.id = i.run_id WHERE 1=1"#,
+            );
 
             if let Some(ref status) = filters.status {
-                let status_str = match status {
-                    ExecutionStatus::Running => "running",
-                    ExecutionStatus::Completed => "completed",
-                    ExecutionStatus::Failed => "failed",
-                    ExecutionStatus::Cancelled => "cancelled",
-                    ExecutionStatus::Paused => "paused",
-                    ExecutionStatus::RecoveryFailed => "recoveryFailed",
-                };
-                conditions.push("r.status = ?".to_string());
-                bind_values.push(status_str.to_string());
+                qb.push(" AND r.status = ");
+                qb.push_bind(status.as_str().to_string());
             }
 
             if let Some(ref flow_name) = filters.flow_name {
-                conditions.push("r.flow_name = ?".to_string());
-                bind_values.push(flow_name.clone());
+                qb.push(" AND r.flow_name = ");
+                qb.push_bind(flow_name.clone());
             }
 
             if let Some(root_run_id) = filters.root_run_id {
-                conditions.push("r.root_run_id = ?".to_string());
-                bind_values.push(root_run_id.to_string());
+                qb.push(" AND r.root_run_id = ");
+                qb.push_bind(root_run_id.to_string());
             }
 
             if let Some(parent_run_id) = filters.parent_run_id {
-                conditions.push("r.parent_run_id = ?".to_string());
-                bind_values.push(parent_run_id.to_string());
+                qb.push(" AND r.parent_run_id = ");
+                qb.push_bind(parent_run_id.to_string());
             }
 
             // Filter for root runs only (no parent)
             if filters.roots_only == Some(true) {
-                conditions.push("r.parent_run_id IS NULL".to_string());
+                qb.push(" AND r.parent_run_id IS NULL");
             }
 
             // Filter by orchestrator_id
             if let Some(ref orch_filter) = filters.orchestrator_id {
                 match orch_filter {
                     Some(orch_id) => {
-                        conditions.push("r.orchestrator_id = ?".to_string());
-                        bind_values.push(orch_id.clone());
+                        qb.push(" AND r.orchestrator_id = ");
+                        qb.push_bind(orch_id.clone());
                     }
                     None => {
-                        conditions.push("r.orchestrator_id IS NULL".to_string());
+                        qb.push(" AND r.orchestrator_id IS NULL");
                     }
                 }
             }
@@ -578,41 +562,32 @@ impl MetadataStore for SqliteStateStore {
             // Convert u64 → i64 via u64_to_sql (order-preserving) so the SQL >=
             // comparison operates on the same encoding used at insert time.
             if let Some(offset_gte) = filters.created_after_seqno {
-                conditions.push("r.created_at_seqno >= ?".to_string());
-                bind_values.push(u64_to_sql(offset_gte).to_string());
+                qb.push(" AND r.created_at_seqno >= ");
+                qb.push_bind(u64_to_sql(offset_gte));
             }
 
             // Filter: runs that haven't finished before the given seqno.
             // Semantics: still running (NULL) OR finished at/after this point.
             if let Some(seqno) = filters.not_finished_before_seqno {
-                conditions
-                    .push("(r.finished_at_seqno IS NULL OR r.finished_at_seqno >= ?)".to_string());
-                bind_values.push(u64_to_sql(seqno).to_string());
+                qb.push(" AND (r.finished_at_seqno IS NULL OR r.finished_at_seqno >= ");
+                qb.push_bind(u64_to_sql(seqno));
+                qb.push(")");
             }
 
-            if !conditions.is_empty() {
-                sql.push_str(" WHERE ");
-                sql.push_str(&conditions.join(" AND "));
-            }
-
-            sql.push_str(" ORDER BY r.created_at DESC");
+            qb.push(" ORDER BY r.created_at DESC");
 
             if let Some(limit) = filters.limit {
-                sql.push_str(" LIMIT ");
-                sql.push_str(&limit.to_string());
+                qb.push(" LIMIT ");
+                qb.push_bind(limit as i64);
 
                 if let Some(offset) = filters.offset {
-                    sql.push_str(" OFFSET ");
-                    sql.push_str(&offset.to_string());
+                    qb.push(" OFFSET ");
+                    qb.push_bind(offset as i64);
                 }
             }
 
-            let mut query = sqlx::query(&sql);
-            for value in bind_values {
-                query = query.bind(value);
-            }
-
-            let rows = query
+            let rows = qb
+                .build()
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1052,29 +1027,27 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let mut sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
-                           FROM step_statuses WHERE run_id = ?"
-                .to_string();
-            let mut bind_values: Vec<String> = vec![run_id.to_string()];
+            let mut qb = QueryBuilder::<Sqlite>::new(
+                "SELECT step_id, step_index, item_index, status, component, \
+                 result_json, journal_seqno, updated_at \
+                 FROM step_statuses WHERE run_id = ",
+            );
+            qb.push_bind(run_id.to_string());
 
             if let Some(idx) = item_index {
-                sql.push_str(" AND item_index = ?");
-                bind_values.push((idx as i64).to_string());
+                qb.push(" AND item_index = ");
+                qb.push_bind(idx as i64);
             }
 
             if let Some(since) = since_seqno {
-                sql.push_str(" AND journal_seqno > ?");
-                bind_values.push(u64_to_sql(since.value()).to_string());
+                qb.push(" AND journal_seqno > ");
+                qb.push_bind(u64_to_sql(since.value()));
             }
 
-            sql.push_str(" ORDER BY step_index, item_index");
+            qb.push(" ORDER BY step_index, item_index");
 
-            let mut query = sqlx::query(&sql);
-            for value in &bind_values {
-                query = query.bind(value);
-            }
-
-            let rows = query
+            let rows = qb
+                .build()
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1280,7 +1253,12 @@ impl ExecutionJournal for SqliteStateStore {
                     };
                     let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
                         .map(|dt| dt.with_timezone(&chrono::Utc))
-                        .unwrap_or_else(|_| chrono::Utc::now());
+                        .unwrap_or_else(|e| {
+                            log::warn!(
+                                "Failed to parse journal timestamp '{timestamp_str}': {e}"
+                            );
+                            chrono::Utc::now()
+                        });
 
                     match serde_json::from_str::<JournalEvent>(&event_data) {
                         Ok(event) => yield Ok(JournalEntry {
