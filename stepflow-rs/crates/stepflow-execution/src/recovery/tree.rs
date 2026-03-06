@@ -116,7 +116,7 @@ pub(super) async fn recover_execution_tree(
     // to spawn an executor.
     //
     // Important: we gate on `root_terminal_status` (presence of RunCompleted),
-    // NOT on `is_complete()`. Before RunInitialized, `is_complete()` is vacuously
+    // NOT on `is_complete()`. Before StepsNeeded, `is_complete()` is vacuously
     // true (0 running tasks) which would cause an early return and infinite
     // recovery loop for runs that crashed before initialization.
     if let Some(status) = recovered.root_terminal_status {

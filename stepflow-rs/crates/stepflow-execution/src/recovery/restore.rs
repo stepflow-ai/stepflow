@@ -49,7 +49,7 @@ pub(super) struct RecoveredState {
     pub subflow_runs: HashMap<uuid::Uuid, RunState>,
     /// Subflow run IDs that were in-flight at crash time (initialized but not completed).
     ///
-    /// These already have a `RunInitialized` journal event from the original execution,
+    /// These already have a `StepsNeeded` journal event from the original execution,
     /// so recovery must skip writing a duplicate.
     pub inflight_subflow_run_ids: HashSet<uuid::Uuid>,
     /// Terminal status from the root run's `RunCompleted` event, if present.
@@ -321,7 +321,7 @@ impl<'a> Recovery<'a> {
     /// 2. On `SubRunCreated`: updates the dedup map, creates a new RunState
     ///    (loading the flow definition from the blob store), and ensures a
     ///    metadata record exists (crash window: journal written, metadata not).
-    /// 3. On `RunInitialized` (non-root): adds the run to the in-flight set.
+    /// 3. On `StepsNeeded` (non-root): adds the run to the in-flight set.
     /// 4. On `RunCompleted` (root): captures the terminal status in
     ///    `root_terminal_status` for the caller to sync.
     /// 5. On `RunCompleted` (non-root): syncs the metadata store if needed
@@ -443,8 +443,8 @@ impl<'a> Recovery<'a> {
                 }
             }
 
-            // Track in-flight subflows: add on RunInitialized (non-root).
-            if let stepflow_state::JournalEvent::RunInitialized { run_id: rid, .. } = &event
+            // Track in-flight subflows: add on StepsNeeded (non-root).
+            if let stepflow_state::JournalEvent::StepsNeeded { run_id: rid, .. } = &event
                 && *rid != self.root_run_id
             {
                 recovered.inflight_subflow_run_ids.insert(*rid);

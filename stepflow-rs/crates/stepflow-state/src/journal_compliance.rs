@@ -48,9 +48,7 @@ use stepflow_core::workflow::ValueRef;
 use stepflow_core::{BlobId, FlowError, FlowResult};
 use uuid::Uuid;
 
-use crate::{
-    ExecutionJournal, ItemSteps, JournalEvent, RunTaskAttempts, SequenceNumber, TaskAttempt,
-};
+use crate::{ExecutionJournal, JournalEvent, RunTaskAttempts, SequenceNumber, TaskAttempt};
 
 /// Compliance test suite for ExecutionJournal implementations.
 ///
@@ -616,18 +614,10 @@ impl JournalComplianceTests {
                 step_index: 0,
                 subflow_key: Uuid::now_v7(),
             },
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![
-                    ItemSteps {
-                        item_index: 0,
-                        step_indices: vec![0, 1, 2],
-                    },
-                    ItemSteps {
-                        item_index: 1,
-                        step_indices: vec![0, 1],
-                    },
-                ],
+                item_index: None,
+                step_indices: vec![0, 1, 2],
             },
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
@@ -697,17 +687,16 @@ impl JournalComplianceTests {
                     assert_eq!(f1, f2, "SubRunCreated flow_id should match");
                 }
                 (
-                    JournalEvent::RunInitialized {
-                        needed_steps: n1, ..
+                    JournalEvent::StepsNeeded {
+                        step_indices: s1, ..
                     },
-                    JournalEvent::RunInitialized {
-                        needed_steps: n2, ..
+                    JournalEvent::StepsNeeded {
+                        step_indices: s2, ..
                     },
                 ) => {
                     assert_eq!(
-                        n1.len(),
-                        n2.len(),
-                        "RunInitialized needed_steps length should match"
+                        s1, s2,
+                        "StepsNeeded step_indices should match"
                     );
                 }
                 (

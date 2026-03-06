@@ -143,15 +143,6 @@ impl JournalEntry {
     }
 }
 
-/// Per-item step indices for batch initialization.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ItemSteps {
-    /// The item index within the run.
-    pub item_index: u32,
-    /// Step indices that are needed for this item.
-    pub step_indices: Vec<usize>,
-}
-
 /// Information about a task being started.
 ///
 /// Records the item, step, and execution-level attempt number (1-based).
@@ -218,12 +209,21 @@ pub enum JournalEvent {
         variables: HashMap<String, ValueRef>,
     },
 
-    /// Run initialized after step discovery.
-    RunInitialized {
+    /// Steps needed for item(s) after analysis.
+    ///
+    /// Emitted after flow analysis (initial step discovery) and again whenever
+    /// the needed step set changes (e.g., conditional branches resolved).
+    ///
+    /// When `item_index` is `None`, the step set applies to all items in the
+    /// run (used for the initial common set). When `Some(i)`, it applies only
+    /// to item `i` (used for dynamically discovered per-item steps).
+    StepsNeeded {
         /// The run this event belongs to.
         run_id: Uuid,
-        /// Per-item needed step indices.
-        needed_steps: Vec<ItemSteps>,
+        /// The item index, or `None` for all items.
+        item_index: Option<u32>,
+        /// Step indices that are needed.
+        step_indices: Vec<usize>,
     },
 
     /// Run completed (terminal state).
@@ -321,12 +321,12 @@ pub enum JournalEvent {
 impl JournalEvent {
     /// Returns the run IDs whose `RunState` is modified by this event.
     ///
-    /// Only events that mutate `RunState` are included: `RunInitialized`,
+    /// Only events that mutate `RunState` are included: `StepsNeeded`,
     /// `TasksStarted`, `TaskCompleted`. All others are either informational
     /// or handled separately by the recovery loop.
     pub fn affected_run_ids(&self) -> AffectedRunIds<'_> {
         match self {
-            JournalEvent::RunInitialized { run_id, .. }
+            JournalEvent::StepsNeeded { run_id, .. }
             | JournalEvent::TaskCompleted { run_id, .. } => AffectedRunIds::One(Some(run_id)),
             JournalEvent::TasksStarted { runs } => AffectedRunIds::TaskAttempts(runs.iter()),
             _ => AffectedRunIds::None,

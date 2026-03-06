@@ -469,6 +469,20 @@ pub enum StatusEventKind {
         result: Option<FlowResult>,
     },
 
+    /// Steps needed for item(s) after analysis.
+    ///
+    /// Emitted after flow analysis and when the needed step set changes.
+    /// When `item_index` is absent, the step set applies to all items.
+    #[schemars(title = "StatusEventStepsNeeded")]
+    StepsNeeded {
+        run_id: Uuid,
+        /// Item index, or absent for all items.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        item_index: Option<u32>,
+        /// Step IDs that are needed.
+        step_ids: Vec<String>,
+    },
+
     /// A step's dependencies are satisfied and it is ready to execute.
     #[schemars(title = "StatusEventStepReady")]
     StepReady {
@@ -545,6 +559,7 @@ impl StatusEventKind {
     pub fn run_id(&self) -> Uuid {
         match self {
             StatusEventKind::RunCreated { run_id, .. }
+            | StatusEventKind::StepsNeeded { run_id, .. }
             | StatusEventKind::StepStarted { run_id, .. }
             | StatusEventKind::StepCompleted { run_id, .. }
             | StatusEventKind::StepReady { run_id, .. }
@@ -558,6 +573,7 @@ impl StatusEventKind {
     pub fn event_type(&self) -> &'static str {
         match self {
             StatusEventKind::RunCreated { .. } => "run_created",
+            StatusEventKind::StepsNeeded { .. } => "steps_needed",
             StatusEventKind::StepStarted { .. } => "step_started",
             StatusEventKind::StepCompleted { .. } => "step_completed",
             StatusEventKind::StepReady { .. } => "step_ready",

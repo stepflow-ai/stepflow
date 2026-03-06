@@ -125,7 +125,7 @@ impl FlowExecutorBuilder {
     /// subflow_key)` and returns the existing run_id instead of creating a duplicate.
     ///
     /// `inflight_subflow_run_ids` identifies subflows that were already initialized
-    /// (had `RunInitialized` written) before the crash. These must skip the duplicate
+    /// (had `StepsNeeded` written) before the crash. These must skip the duplicate
     /// journal write during re-initialization.
     pub fn with_recovered_subflows(
         mut self,

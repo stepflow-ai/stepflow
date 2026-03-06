@@ -730,7 +730,7 @@ impl ExecutionJournal for InMemoryStateStore {
             // Extract a representative run_id from the event (matches sqlite behavior)
             let run_id = match &event {
                 JournalEvent::RootRunCreated { run_id, .. }
-                | JournalEvent::RunInitialized { run_id, .. }
+                | JournalEvent::StepsNeeded { run_id, .. }
                 | JournalEvent::RunCompleted { run_id, .. }
                 | JournalEvent::TaskCompleted { run_id, .. }
                 | JournalEvent::StepsUnblocked { run_id, .. }

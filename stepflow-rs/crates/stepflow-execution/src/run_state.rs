@@ -178,7 +178,7 @@ impl RunState {
     ///
     /// # Event Handling
     ///
-    /// - `RunInitialized`: Sets up needed steps for each item with their dependencies.
+    /// - `StepsNeeded`: Sets up needed steps for item(s) with their dependencies.
     ///   Returns all initially ready tasks.
     /// - `TaskCompleted`: Marks a task as complete, updates dependencies, discovers
     ///   newly ready tasks. Returns the newly ready tasks.
@@ -192,21 +192,30 @@ impl RunState {
                 // RootRunCreated is handled at construction time, not via apply_event
                 Vec::new()
             }
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps,
+                item_index,
+                step_indices,
             } => {
                 if *run_id != self.run_id {
                     return Vec::new();
                 }
-                let mut tasks = Vec::new();
-                for item_steps in needed_steps {
-                    tasks.extend(self.items_state.initialize_item_with_steps(
-                        item_steps.item_index,
-                        &item_steps.step_indices,
-                    ));
+                match item_index {
+                    Some(idx) => self
+                        .items_state
+                        .initialize_item_with_steps(*idx, step_indices),
+                    None => {
+                        // Applies to all items
+                        let mut tasks = Vec::new();
+                        for idx in 0..self.items_state.item_count() {
+                            tasks.extend(
+                                self.items_state
+                                    .initialize_item_with_steps(idx, step_indices),
+                            );
+                        }
+                        tasks
+                    }
                 }
-                tasks
             }
             JournalEvent::TasksStarted { runs } => {
                 // Restore attempt counts from the journal. We use set_attempt_at_least
@@ -762,8 +771,8 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_apply_event_run_initialized() {
-        // Test that apply_event with RunInitialized produces the same state as initialize_all
+    fn test_apply_event_steps_needed() {
+        // Test that apply_event with StepsNeeded produces the same state as initialize_all
         let run_id = Uuid::now_v7();
         let flow = create_chain_flow();
         let flow_id = BlobId::from_flow(&flow).unwrap();
@@ -778,9 +787,9 @@ mod tests {
             HashMap::new(),
         );
         let exec_ready = exec_state.initialize_all();
-        let needed_steps = exec_state.items_state().needed_steps_for_journal();
+        let step_indices = exec_state.items_state().item(0).needed_step_indices();
 
-        // Recovery path: create state, apply RunInitialized event
+        // Recovery path: create state, apply StepsNeeded event
         let mut recovery_state = RunState::new(
             run_id,
             flow_id.clone(),
@@ -788,9 +797,10 @@ mod tests {
             inputs.clone(),
             HashMap::new(),
         );
-        let recovery_ready = recovery_state.apply_event(&JournalEvent::RunInitialized {
+        let recovery_ready = recovery_state.apply_event(&JournalEvent::StepsNeeded {
             run_id,
-            needed_steps: needed_steps.clone(),
+            item_index: None,
+            step_indices: step_indices.clone(),
         });
 
         // Both paths should produce the same ready tasks
@@ -897,13 +907,14 @@ mod tests {
 
         // Initialize
         let initial_ready = exec_state.initialize_all();
-        let needed_steps = exec_state.items_state().needed_steps_for_journal();
+        let step_indices = exec_state.items_state().item(0).needed_step_indices();
         assert_eq!(initial_ready.len(), 1); // step1 ready
 
         // Record events as we execute
-        let mut events: Vec<JournalEvent> = vec![JournalEvent::RunInitialized {
+        let mut events: Vec<JournalEvent> = vec![JournalEvent::StepsNeeded {
             run_id,
-            needed_steps: needed_steps.clone(),
+            item_index: None,
+            step_indices: step_indices.clone(),
         }];
 
         // Execute step1
@@ -1006,13 +1017,7 @@ mod tests {
 
         // Simulate journal entries from a crashed execution that completed step1
         let events = [
-            JournalEvent::RunInitialized {
-                run_id,
-                needed_steps: vec![stepflow_state::ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1, 2],
-                }],
-            },
+            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
             JournalEvent::TaskCompleted {
                 run_id,
                 item_index: 0,
@@ -1069,13 +1074,7 @@ mod tests {
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
         // Initialize
-        state.apply_event(&JournalEvent::RunInitialized {
-            run_id,
-            needed_steps: vec![stepflow_state::ItemSteps {
-                item_index: 0,
-                step_indices: vec![0, 1, 2],
-            }],
-        });
+        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] });
 
         // Before any TasksStarted, all attempts should be 0
         assert_eq!(state.items_state().item(0).attempt_count(0), 0);
@@ -1133,13 +1132,7 @@ mod tests {
 
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
-        state.apply_event(&JournalEvent::RunInitialized {
-            run_id,
-            needed_steps: vec![stepflow_state::ItemSteps {
-                item_index: 0,
-                step_indices: vec![0, 1],
-            }],
-        });
+        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1] });
 
         // Start both steps in one batch
         state.apply_event(&JournalEvent::TasksStarted {
@@ -1172,13 +1165,7 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         let events = vec![
-            JournalEvent::RunInitialized {
-                run_id,
-                needed_steps: vec![stepflow_state::ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1, 2],
-                }],
-            },
+            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
@@ -1239,13 +1226,7 @@ mod tests {
         let inputs = vec![ValueRef::new(json!({"x": 1}))];
 
         let events = vec![
-            JournalEvent::RunInitialized {
-                run_id,
-                needed_steps: vec![stepflow_state::ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1, 2],
-                }],
-            },
+            JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] },
             // Compacted: only the latest TasksStarted for step0 remains (attempt=3)
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
@@ -1306,22 +1287,10 @@ mod tests {
         let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
 
         // Initialize this run
-        state.apply_event(&JournalEvent::RunInitialized {
-            run_id,
-            needed_steps: vec![stepflow_state::ItemSteps {
-                item_index: 0,
-                step_indices: vec![0, 1, 2],
-            }],
-        });
+        state.apply_event(&JournalEvent::StepsNeeded { run_id, item_index: None, step_indices: vec![0, 1, 2] });
 
-        // RunInitialized from another run - should be ignored
-        let tasks = state.apply_event(&JournalEvent::RunInitialized {
-            run_id: other_run_id,
-            needed_steps: vec![stepflow_state::ItemSteps {
-                item_index: 0,
-                step_indices: vec![0],
-            }],
-        });
+        // StepsNeeded from another run - should be ignored
+        let tasks = state.apply_event(&JournalEvent::StepsNeeded { run_id: other_run_id, item_index: None, step_indices: vec![0] });
         assert!(tasks.is_empty());
 
         // TaskCompleted from another run - should be ignored

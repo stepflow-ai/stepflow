@@ -1020,7 +1020,21 @@ fn journal_event_to_stream_events(
             item_count: inputs.len(),
         }],
 
-        JournalEvent::RunInitialized { .. } => vec![],
+        JournalEvent::StepsNeeded {
+            run_id,
+            item_index,
+            step_indices,
+        } => {
+            let step_ids: Vec<String> = step_indices
+                .iter()
+                .filter_map(|&idx| resolve_step_id(flow, idx))
+                .collect();
+            vec![StatusEventKind::StepsNeeded {
+                run_id: *run_id,
+                item_index: *item_index,
+                step_ids,
+            }]
+        }
 
         JournalEvent::TasksStarted { runs } => {
             let mut events = Vec::new();

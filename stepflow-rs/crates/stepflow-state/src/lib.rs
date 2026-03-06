@@ -43,7 +43,7 @@ pub use environment_ext::{
 };
 pub use error::{Result, StateError};
 pub use execution_journal::{
-    ExecutionJournal, ItemSteps, JournalEntry, JournalEvent, JournalEventStream, RootJournalInfo,
+    ExecutionJournal, JournalEntry, JournalEvent, JournalEventStream, RootJournalInfo,
     RunTaskAttempts, SequenceNumber, TaskAttempt,
 };
 pub use filesystem_blob_store::{FilesystemBlobStore, FilesystemBlobStoreConfig};
