@@ -230,11 +230,7 @@ impl FlowExecutor {
     /// Each item gets its own event because conditional output expressions
     /// (`$if`) can cause different items to need different steps based on
     /// their input.
-    async fn write_steps_needed_events(
-        &mut self,
-        run_id: Uuid,
-        item_count: u32,
-    ) -> Result<()> {
+    async fn write_steps_needed_events(&mut self, run_id: Uuid, item_count: u32) -> Result<()> {
         for item_index in 0..item_count {
             let run_state = self.runs.get(&run_id).expect("run should exist");
             let step_indices = run_state
