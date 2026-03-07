@@ -21,7 +21,7 @@ use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
 use stepflow_core::{BlobId, ValueExpr};
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _, ItemSteps, JournalEvent,
+    BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _, JournalEvent,
     MetadataStoreExt as _, OrchestratorId, RunTaskAttempts, SequenceNumber, TaskAttempt,
 };
 
@@ -266,12 +266,10 @@ async fn test_recovery_already_complete_run_succeeds() {
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -439,19 +437,17 @@ async fn test_recovery_resumes_partial_execution() {
 
     // Journal entries for a PARTIAL execution:
     // - RootRunCreated (written by create_test_run)
-    // - RunInitialized (with both steps needed)
+    // - StepsNeeded (with both steps needed)
     // - TaskCompleted for step0 only
     // - NO ItemCompleted, NO RunCompleted (simulates crash after step0)
 
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1], // Both steps needed
-                }],
+                item_index: 0,
+                step_indices: vec![0, 1], // Both steps needed
             },
         )
         .await
@@ -542,16 +538,14 @@ async fn test_recovery_preserves_attempt_counts() {
     let run_id = uuid::Uuid::now_v7();
     create_test_run(&env, run_id, flow_id.clone()).await;
 
-    // Journal: RunInitialized, TasksStarted(step0 attempt=1), NO TaskCompleted
+    // Journal: StepsNeeded, TasksStarted(step0 attempt=1), NO TaskCompleted
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -684,12 +678,10 @@ async fn test_recovery_batches_parallel_tasks() {
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1],
-                }],
+                item_index: 0,
+                step_indices: vec![0, 1],
             },
         )
         .await
@@ -835,12 +827,10 @@ async fn test_recovery_groups_by_root_run_id() {
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -868,12 +858,10 @@ async fn test_recovery_groups_by_root_run_id() {
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1302,12 +1290,10 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1394,16 +1380,14 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
     create_test_run(&env, root_run_id, flow_id.clone()).await;
 
     // Write interleaved root + subflow events (simulates real execution)
-    // Root: RunInitialized
+    // Root: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0, 1],
-                }],
+                item_index: 0,
+                step_indices: vec![0, 1],
             },
         )
         .await
@@ -1442,16 +1426,14 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
         .await
         .expect("should write");
 
-    // Subflow: RunInitialized (different run_id, should be ignored by root)
+    // Subflow: StepsNeeded (different run_id, should be ignored by root)
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1595,12 +1577,10 @@ async fn test_recovery_skips_completed_subflow_runstate() {
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1672,9 +1652,9 @@ async fn test_recovery_skips_completed_subflow_runstate() {
 #[tokio::test]
 async fn test_recovery_resumes_inflight_subflow() {
     // Test that recovery succeeds when a subflow's inner step was in-flight
-    // at crash time. The subflow had RunInitialized + TasksStarted but no
+    // at crash time. The subflow had StepsNeeded + TasksStarted but no
     // TaskCompleted or RunCompleted. Recovery should reconstruct the subflow's
-    // RunState and skip writing a duplicate RunInitialized journal event.
+    // RunState and skip writing a duplicate StepsNeeded journal event.
     use stepflow_core::workflow::FlowBuilder;
 
     let env = create_test_env().await;
@@ -1728,16 +1708,14 @@ async fn test_recovery_resumes_inflight_subflow() {
         .expect("should create subflow run");
 
     // Write journal events simulating crash during subflow's inner step:
-    // Root: RunInitialized
+    // Root: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1776,16 +1754,14 @@ async fn test_recovery_resumes_inflight_subflow() {
         )
         .await
         .unwrap();
-    // Subflow: RunInitialized (inner step0 is needed)
+    // Subflow: StepsNeeded (inner step0 is needed)
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: inflight_subflow_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1909,16 +1885,14 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should create subflow run");
 
     // === Journal events ===
-    // Root: RunInitialized
+    // Root: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -1940,16 +1914,14 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         )
         .await
         .unwrap();
-    // Subflow: RunInitialized
+    // Subflow: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -2221,12 +2193,10 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
     journal
         .write(
             run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -2360,16 +2330,14 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
     // Do NOT create the subflow metadata record — this is the crash window.
 
     // === Journal events ===
-    // Root: RunInitialized
+    // Root: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -2391,16 +2359,14 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
         )
         .await
         .unwrap();
-    // Subflow: RunInitialized
+    // Subflow: StepsNeeded
     journal
         .write(
             root_run_id,
-            JournalEvent::RunInitialized {
+            JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                needed_steps: vec![ItemSteps {
-                    item_index: 0,
-                    step_indices: vec![0],
-                }],
+                item_index: 0,
+                step_indices: vec![0],
             },
         )
         .await
@@ -2424,7 +2390,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
         .unwrap();
 
     // === CRASH HERE ===
-    // Journal has SubRunCreated + RunInitialized + TasksStarted for the subflow,
+    // Journal has SubRunCreated + StepsNeeded + TasksStarted for the subflow,
     // but NO metadata record exists for the subflow.
 
     // Verify pre-condition: subflow has no metadata record
@@ -2480,5 +2446,362 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
         root_run.summary.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with missing subflow metadata"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests for runs_needing_step_updates tracking during journal replay.
+//
+// These test various crash windows where StepsNeeded may or may not have been
+// journaled for a subflow, verifying that `runs_needing_step_updates` correctly
+// identifies which subflows still need their StepsNeeded event written.
+// ---------------------------------------------------------------------------
+
+/// Helper to run journal replay and return the RecoveredState.
+///
+/// Stores the flow, creates a root run, writes the provided journal events
+/// (built via the closure which receives the stored `flow_id`), then replays
+/// them via `Recovery::restore_from_journal`.
+async fn replay_journal_events(
+    env: &StepflowEnvironment,
+    root_run_id: uuid::Uuid,
+    flow: Arc<stepflow_core::workflow::Flow>,
+    build_events: impl FnOnce(&BlobId) -> Vec<JournalEvent>,
+) -> restore::RecoveredState {
+    let journal = env.execution_journal();
+    let blob_store = env.blob_store();
+    let metadata_store = env.metadata_store();
+
+    let flow_id = blob_store
+        .store_flow(flow)
+        .await
+        .expect("should store flow");
+
+    // Write RootRunCreated + metadata
+    create_test_run(env, root_run_id, flow_id.clone()).await;
+
+    // Write all provided events
+    for event in build_events(&flow_id) {
+        journal
+            .write(root_run_id, event)
+            .await
+            .expect("should write event");
+    }
+
+    let root_info = stepflow_state::RunRecoveryInfo {
+        root_run_id,
+        flow_id: flow_id.clone(),
+        start_sequence: SequenceNumber::new(0),
+    };
+
+    let root_flow = blob_store
+        .get_flow(&flow_id)
+        .await
+        .expect("should get flow")
+        .expect("flow should exist");
+
+    let recovery = restore::Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &root_flow,
+        blob_store.as_ref(),
+        metadata_store.as_ref(),
+    );
+
+    recovery
+        .restore_from_journal(&root_info)
+        .await
+        .expect("replay should succeed")
+}
+
+/// Create a simple 1-step test flow.
+fn create_single_step_flow() -> Arc<stepflow_core::workflow::Flow> {
+    Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("step0")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "step0".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    )
+}
+
+#[tokio::test]
+async fn test_crash_after_subrun_created_no_steps_needed() {
+    // Crash window: SubRunCreated was written but StepsNeeded was not.
+    // runs_needing_step_updates should contain the subflow.
+    let env = create_test_env().await;
+    let root_run_id = uuid::Uuid::now_v7();
+    let sub_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+    let flow = create_single_step_flow();
+
+    let recovered = replay_journal_events(&env, root_run_id, flow, |flow_id| {
+        vec![
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::SubRunCreated {
+                run_id: sub_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+            // CRASH: no StepsNeeded for sub_run_id
+        ]
+    })
+    .await;
+
+    assert!(
+        recovered.runs_needing_step_updates.contains(&sub_run_id),
+        "Subflow should be in runs_needing_step_updates (crash before StepsNeeded)"
+    );
+    assert!(
+        !recovered.runs_needing_step_updates.contains(&root_run_id),
+        "Root run should not be in runs_needing_step_updates"
+    );
+}
+
+#[tokio::test]
+async fn test_crash_after_steps_needed_written() {
+    // Normal case: SubRunCreated AND StepsNeeded both written before crash.
+    // runs_needing_step_updates should NOT contain the subflow.
+    let env = create_test_env().await;
+    let root_run_id = uuid::Uuid::now_v7();
+    let sub_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+    let flow = create_single_step_flow();
+
+    let recovered = replay_journal_events(&env, root_run_id, flow, |flow_id| {
+        vec![
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::SubRunCreated {
+                run_id: sub_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+            JournalEvent::StepsNeeded {
+                run_id: sub_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            // CRASH after StepsNeeded written
+        ]
+    })
+    .await;
+
+    assert!(
+        !recovered.runs_needing_step_updates.contains(&sub_run_id),
+        "Subflow should NOT be in runs_needing_step_updates (StepsNeeded already written)"
+    );
+}
+
+#[tokio::test]
+async fn test_crash_after_one_completed_step_no_new_steps_needed() {
+    // Subflow had StepsNeeded + TasksStarted + TaskCompleted, but no
+    // subsequent StepsNeeded for dynamically discovered steps.
+    // runs_needing_step_updates should be empty (no pending updates).
+    let env = create_test_env().await;
+    let root_run_id = uuid::Uuid::now_v7();
+    let sub_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+    let flow = create_single_step_flow();
+
+    let recovered = replay_journal_events(&env, root_run_id, flow, |flow_id| {
+        vec![
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::SubRunCreated {
+                run_id: sub_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+            JournalEvent::StepsNeeded {
+                run_id: sub_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: sub_run_id,
+                    tasks: vec![TaskAttempt {
+                        item_index: 0,
+                        step_index: 0,
+                        attempt: 1,
+                    }],
+                }],
+            },
+            JournalEvent::TaskCompleted {
+                run_id: sub_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"ok": true}))),
+            },
+            // CRASH: step completed but no new StepsNeeded needed (single-step flow)
+        ]
+    })
+    .await;
+
+    assert!(
+        !recovered.runs_needing_step_updates.contains(&sub_run_id),
+        "Subflow should NOT need step updates (StepsNeeded was written, step completed normally)"
+    );
+}
+
+#[tokio::test]
+async fn test_crash_multiple_subflows_mixed_states() {
+    // Two subflows: one got StepsNeeded written, the other crashed before it.
+    // Only the second should be in runs_needing_step_updates.
+    let env = create_test_env().await;
+    let root_run_id = uuid::Uuid::now_v7();
+    let sub1_id = uuid::Uuid::now_v7();
+    let sub2_id = uuid::Uuid::now_v7();
+    let key1 = uuid::Uuid::now_v7();
+    let key2 = uuid::Uuid::now_v7();
+    let flow = create_single_step_flow();
+
+    let recovered = replay_journal_events(&env, root_run_id, flow, |flow_id| {
+        vec![
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            // Subflow 1: fully initialized
+            JournalEvent::SubRunCreated {
+                run_id: sub1_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key: key1,
+            },
+            JournalEvent::StepsNeeded {
+                run_id: sub1_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            // Subflow 2: created but crashed before StepsNeeded
+            JournalEvent::SubRunCreated {
+                run_id: sub2_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key: key2,
+            },
+            // CRASH: sub2 never got StepsNeeded
+        ]
+    })
+    .await;
+
+    assert!(
+        !recovered.runs_needing_step_updates.contains(&sub1_id),
+        "Subflow 1 should NOT need step updates (already initialized)"
+    );
+    assert!(
+        recovered.runs_needing_step_updates.contains(&sub2_id),
+        "Subflow 2 should need step updates (crash before StepsNeeded)"
+    );
+}
+
+#[tokio::test]
+async fn test_completed_subflow_not_in_needing_updates() {
+    // A subflow that completed (RunCompleted) should be removed from
+    // runs_needing_step_updates even if it was once in the set.
+    let env = create_test_env().await;
+    let root_run_id = uuid::Uuid::now_v7();
+    let sub_run_id = uuid::Uuid::now_v7();
+    let subflow_key = uuid::Uuid::now_v7();
+    let flow = create_single_step_flow();
+
+    let recovered = replay_journal_events(&env, root_run_id, flow, |flow_id| {
+        vec![
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::SubRunCreated {
+                run_id: sub_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({}))],
+                variables: HashMap::new(),
+                parent_run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                subflow_key,
+            },
+            JournalEvent::StepsNeeded {
+                run_id: sub_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: sub_run_id,
+                    tasks: vec![TaskAttempt {
+                        item_index: 0,
+                        step_index: 0,
+                        attempt: 1,
+                    }],
+                }],
+            },
+            JournalEvent::TaskCompleted {
+                run_id: sub_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"done": true}))),
+            },
+            JournalEvent::RunCompleted {
+                run_id: sub_run_id,
+                status: ExecutionStatus::Completed,
+            },
+        ]
+    })
+    .await;
+
+    assert!(
+        !recovered.runs_needing_step_updates.contains(&sub_run_id),
+        "Completed subflow should not be in runs_needing_step_updates"
+    );
+    assert!(
+        !recovered.subflow_runs.contains_key(&sub_run_id),
+        "Completed subflow RunState should be evicted"
     );
 }

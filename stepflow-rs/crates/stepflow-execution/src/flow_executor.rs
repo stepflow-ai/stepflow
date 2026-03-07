@@ -95,9 +95,14 @@ pub struct FlowExecutor {
     /// When a parent step re-executes after recovery and submits the "same" subflow,
     /// the dedup check in `handle_submit_request` returns the existing run_id.
     recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
-    /// Subflow run IDs that were in-flight (initialized but not completed) at crash time.
-    /// These already have a `RunInitialized` journal event, so recovery skips writing a duplicate.
-    inflight_subflow_run_ids: HashSet<Uuid>,
+    /// Recovered run IDs that still need a `StepsNeeded` event written.
+    /// Populated during recovery for subflows in the crash window between
+    /// `SubRunCreated` and `StepsNeeded`. Empty for non-recovery runs.
+    runs_needing_step_updates: HashSet<Uuid>,
+    /// All recovered subflow run IDs. Used to distinguish recovered subflows
+    /// (which may already have `StepsNeeded` journaled) from new runs (which
+    /// always need it written).
+    recovered_run_ids: HashSet<Uuid>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -117,10 +122,12 @@ impl FlowExecutor {
         submit_sender: SubflowSubmitter,
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
-        inflight_subflow_run_ids: HashSet<Uuid>,
+        runs_needing_step_updates: HashSet<Uuid>,
         checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
+        // Derive the set of all recovered subflow run IDs from the dedup map.
+        let recovered_run_ids: HashSet<Uuid> = recovered_subflows.values().copied().collect();
         Self {
             env,
             root_run_id,
@@ -132,7 +139,8 @@ impl FlowExecutor {
             submit_sender,
             submit_receiver,
             recovered_subflows,
-            inflight_subflow_run_ids,
+            runs_needing_step_updates,
+            recovered_run_ids,
             checkpointer,
         }
     }
@@ -215,6 +223,30 @@ impl FlowExecutor {
             .change_context(ExecutionError::JournalError)?;
         self.checkpointer.record_entry(sequence);
         Ok(sequence)
+    }
+
+    /// Write per-item `StepsNeeded` journal events for a run.
+    ///
+    /// Each item gets its own event because conditional output expressions
+    /// (`$if`) can cause different items to need different steps based on
+    /// their input.
+    async fn write_steps_needed_events(&mut self, run_id: Uuid, item_count: u32) -> Result<()> {
+        for item_index in 0..item_count {
+            let run_state = self.runs.get(&run_id).expect("run should exist");
+            let step_indices = run_state
+                .items_state()
+                .item(item_index)
+                .needed_step_indices();
+            if !step_indices.is_empty() {
+                self.write_journal(JournalEvent::StepsNeeded {
+                    run_id,
+                    item_index,
+                    step_indices,
+                })
+                .await?;
+            }
+        }
+        Ok(())
     }
 
     /// Write a step status update to the metadata store.
@@ -512,21 +544,16 @@ impl FlowExecutor {
         );
 
         // Initialize the run and get ready tasks
-        let (initial_tasks, is_complete, item_count, needed_steps) = {
+        let (initial_tasks, is_complete, item_count) = {
             let run_state = self.run_state_mut(run_id).expect("run should exist");
             let initial_tasks = run_state.initialize_all();
             let is_complete = run_state.is_complete();
             let item_count = run_state.items_state().item_count();
-            let needed_steps = run_state.items_state().needed_steps_for_journal();
-            (initial_tasks, is_complete, item_count, needed_steps)
+            (initial_tasks, is_complete, item_count)
         };
 
         // Journal: Record subflow initialization (on the subflow run)
-        self.write_journal(JournalEvent::RunInitialized {
-            run_id,
-            needed_steps,
-        })
-        .await?;
+        self.write_steps_needed_events(run_id, item_count).await?;
 
         log::debug!(
             "Subflow initialized: run_id={}, initial_tasks={}",
@@ -669,23 +696,23 @@ impl FlowExecutor {
         let run_ids: Vec<Uuid> = self.runs.keys().copied().collect();
         let mut initial_tasks = Vec::new();
         for rid in run_ids {
-            if let Some(run_state) = self.runs.get_mut(&rid) {
+            let item_count = if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
+                run_state.items_state().item_count()
+            } else {
+                continue;
+            };
 
-                // Skip duplicate RunInitialized journal write for subflows that were
-                // already in-flight before the crash — they already have this event.
-                if self.inflight_subflow_run_ids.contains(&rid) {
-                    continue;
-                }
-
-                // Journal: Record the needed steps for this run
-                let needed_steps = run_state.items_state().needed_steps_for_journal();
-                self.write_journal(JournalEvent::RunInitialized {
-                    run_id: rid,
-                    needed_steps,
-                })
-                .await?;
+            // For recovered subflows, only write StepsNeeded if the journal
+            // doesn't already contain it (crash window between SubRunCreated
+            // and StepsNeeded). Non-recovered runs always need it written.
+            if self.recovered_run_ids.contains(&rid)
+                && !self.runs_needing_step_updates.contains(&rid)
+            {
+                continue;
             }
+
+            self.write_steps_needed_events(rid, item_count).await?;
         }
 
         self.scheduler.notify_new_tasks(&initial_tasks);

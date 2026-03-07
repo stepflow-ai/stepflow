@@ -1152,7 +1152,7 @@ impl ExecutionJournal for SqliteStateStore {
             // For TasksStarted with multiple runs, we use the first run's ID.
             let run_id = match &event {
                 JournalEvent::RootRunCreated { run_id, .. }
-                | JournalEvent::RunInitialized { run_id, .. }
+                | JournalEvent::StepsNeeded { run_id, .. }
                 | JournalEvent::RunCompleted { run_id, .. }
                 | JournalEvent::TaskCompleted { run_id, .. }
                 | JournalEvent::StepsUnblocked { run_id, .. }
@@ -1165,7 +1165,7 @@ impl ExecutionJournal for SqliteStateStore {
 
             let event_type = match &event {
                 JournalEvent::RootRunCreated { .. } => "root_run_created",
-                JournalEvent::RunInitialized { .. } => "run_initialized",
+                JournalEvent::StepsNeeded { .. } => "steps_needed",
                 JournalEvent::RunCompleted { .. } => "run_completed",
                 JournalEvent::TasksStarted { .. } => "tasks_started",
                 JournalEvent::TaskCompleted { .. } => "task_completed",

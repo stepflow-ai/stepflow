@@ -263,7 +263,7 @@ impl ItemsState {
     ///
     /// This is the unified method for setting up needed steps, used by both:
     /// - Execution: after discovering steps via output expression and must_execute
-    /// - Recovery: with steps recorded in RunInitialized journal entry
+    /// - Recovery: with steps recorded in StepsNeeded journal entry
     ///
     /// The method adds each step to the needed set and recursively discovers
     /// dependencies, setting up the waiting_on relationships.
@@ -321,19 +321,6 @@ impl ItemsState {
         }
 
         newly_needed.iter().collect()
-    }
-
-    /// Get the needed steps for all items in a format suitable for journalling.
-    ///
-    /// Returns a vector of ItemSteps, one per item, containing the step indices
-    /// that are needed for that item.
-    pub fn needed_steps_for_journal(&self) -> Vec<stepflow_state::ItemSteps> {
-        (0..self.item_count())
-            .map(|item_index| stepflow_state::ItemSteps {
-                item_index,
-                step_indices: self.item(item_index).needed_step_indices(),
-            })
-            .collect()
     }
 
     /// Get step status information for a specific item.
