@@ -29,14 +29,12 @@ from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 class StatusEventStepsNeeded(BaseModel):
     """
-    Steps needed for item(s) after analysis.  Emitted after flow analysis and when the needed step set changes. When `item_index` is absent, the step set applies to all items.
+    Steps needed for a specific item after analysis.  Emitted per-item after flow analysis and when the needed step set changes.
     """  # noqa: E501
 
     run_id: StrictStr = Field(alias="runId")
-    item_index: Annotated[int, Field(strict=True, ge=0)] | None = Field(
-        default=None,
-        description="Item index, or absent for all items.",
-        alias="itemIndex",
+    item_index: Annotated[int, Field(strict=True, ge=0)] = Field(
+        description="Item index this event applies to.", alias="itemIndex"
     )
     step_ids: list[StrictStr] = Field(
         description="Step IDs that are needed.", alias="stepIds"
@@ -99,11 +97,6 @@ class StatusEventStepsNeeded(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if item_index (nullable) is None
-        # and model_fields_set contains the field
-        if self.item_index is None and "item_index" in self.model_fields_set:
-            _dict["itemIndex"] = None
-
         return _dict
 
     @classmethod

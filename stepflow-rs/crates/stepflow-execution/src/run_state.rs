@@ -200,22 +200,8 @@ impl RunState {
                 if *run_id != self.run_id {
                     return Vec::new();
                 }
-                match item_index {
-                    Some(idx) => self
-                        .items_state
-                        .initialize_item_with_steps(*idx, step_indices),
-                    None => {
-                        // Applies to all items
-                        let mut tasks = Vec::new();
-                        for idx in 0..self.items_state.item_count() {
-                            tasks.extend(
-                                self.items_state
-                                    .initialize_item_with_steps(idx, step_indices),
-                            );
-                        }
-                        tasks
-                    }
-                }
+                self.items_state
+                    .initialize_item_with_steps(*item_index, step_indices)
             }
             JournalEvent::TasksStarted { runs } => {
                 // Restore attempt counts from the journal. We use set_attempt_at_least
@@ -799,7 +785,7 @@ mod tests {
         );
         let recovery_ready = recovery_state.apply_event(&JournalEvent::StepsNeeded {
             run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: step_indices.clone(),
         });
 
@@ -913,7 +899,7 @@ mod tests {
         // Record events as we execute
         let mut events: Vec<JournalEvent> = vec![JournalEvent::StepsNeeded {
             run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: step_indices.clone(),
         }];
 
@@ -1019,7 +1005,7 @@ mod tests {
         let events = [
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1, 2],
             },
             JournalEvent::TaskCompleted {
@@ -1080,7 +1066,7 @@ mod tests {
         // Initialize
         state.apply_event(&JournalEvent::StepsNeeded {
             run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: vec![0, 1, 2],
         });
 
@@ -1142,7 +1128,7 @@ mod tests {
 
         state.apply_event(&JournalEvent::StepsNeeded {
             run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: vec![0, 1],
         });
 
@@ -1179,7 +1165,7 @@ mod tests {
         let events = vec![
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1, 2],
             },
             JournalEvent::TasksStarted {
@@ -1244,7 +1230,7 @@ mod tests {
         let events = vec![
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1, 2],
             },
             // Compacted: only the latest TasksStarted for step0 remains (attempt=3)
@@ -1309,14 +1295,14 @@ mod tests {
         // Initialize this run
         state.apply_event(&JournalEvent::StepsNeeded {
             run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: vec![0, 1, 2],
         });
 
         // StepsNeeded from another run - should be ignored
         let tasks = state.apply_event(&JournalEvent::StepsNeeded {
             run_id: other_run_id,
-            item_index: None,
+            item_index: 0,
             step_indices: vec![0],
         });
         assert!(tasks.is_empty());
@@ -1343,5 +1329,97 @@ mod tests {
         let item = state.items_state().item(0);
         assert!(!item.is_completed(0));
         assert_eq!(item.attempt_count(0), 0);
+    }
+
+    /// Test that batch items with conditional output get different needed steps.
+    ///
+    /// This reproduces the CI panic where a `debug_assert!` assumed all items
+    /// in a batch run would have identical needed steps. With `$if` in the
+    /// output expression, different items can take different branches and
+    /// need different steps. Each item gets its own StepsNeeded event.
+    #[test]
+    fn test_batch_items_with_conditional_output_get_different_needed_steps() {
+        // Flow with two independent steps and a conditional output:
+        //   step_a: takes $input
+        //   step_b: takes $input
+        //   output: $if($input.use_a) then $step.step_a else $step.step_b
+        let flow = Arc::new(
+            FlowBuilder::test_flow()
+                .steps(vec![
+                    StepBuilder::mock_step("step_a")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                    StepBuilder::mock_step("step_b")
+                        .input(ValueExpr::Input {
+                            input: Default::default(),
+                        })
+                        .build(),
+                ])
+                .output(ValueExpr::If {
+                    condition: Box::new(ValueExpr::Input {
+                        input: "use_a".into(),
+                    }),
+                    then: Box::new(ValueExpr::Step {
+                        step: "step_a".to_string(),
+                        path: Default::default(),
+                    }),
+                    else_expr: Some(Box::new(ValueExpr::Step {
+                        step: "step_b".to_string(),
+                        path: Default::default(),
+                    })),
+                })
+                .build(),
+        );
+
+        let run_id = Uuid::now_v7();
+        let flow_id = BlobId::from_flow(&flow).unwrap();
+
+        // Two items: item 0 has use_a=true, item 1 has use_a=false
+        let inputs = vec![
+            ValueRef::new(json!({"use_a": true})),
+            ValueRef::new(json!({"use_a": false})),
+        ];
+
+        let mut state = RunState::new(run_id, flow_id, flow, inputs, HashMap::new());
+        state.initialize_all();
+
+        // Item 0 should need step_a (index 0) only
+        let item0_needed = state.items_state().item(0).needed_step_indices();
+        assert_eq!(item0_needed, vec![0], "item 0 should only need step_a");
+
+        // Item 1 should need step_b (index 1) only
+        let item1_needed = state.items_state().item(1).needed_step_indices();
+        assert_eq!(item1_needed, vec![1], "item 1 should only need step_b");
+
+        // Verify per-item StepsNeeded events can be applied during recovery
+        let mut recovery = RunState::new(
+            run_id,
+            BlobId::from_flow(&state.flow()).unwrap(),
+            state.flow().clone(),
+            vec![
+                ValueRef::new(json!({"use_a": true})),
+                ValueRef::new(json!({"use_a": false})),
+            ],
+            HashMap::new(),
+        );
+
+        let tasks0 = recovery.apply_event(&JournalEvent::StepsNeeded {
+            run_id,
+            item_index: 0,
+            step_indices: vec![0],
+        });
+        let tasks1 = recovery.apply_event(&JournalEvent::StepsNeeded {
+            run_id,
+            item_index: 1,
+            step_indices: vec![1],
+        });
+
+        // Each item should have exactly one ready task
+        assert_eq!(tasks0.len(), 1, "item 0 should have 1 ready task");
+        assert_eq!(tasks0[0].step_index, 0, "item 0 task should be step_a");
+        assert_eq!(tasks1.len(), 1, "item 1 should have 1 ready task");
+        assert_eq!(tasks1[0].step_index, 1, "item 1 task should be step_b");
     }
 }

@@ -225,6 +225,34 @@ impl FlowExecutor {
         Ok(sequence)
     }
 
+    /// Write per-item `StepsNeeded` journal events for a run.
+    ///
+    /// Each item gets its own event because conditional output expressions
+    /// (`$if`) can cause different items to need different steps based on
+    /// their input.
+    async fn write_steps_needed_events(
+        &mut self,
+        run_id: Uuid,
+        item_count: u32,
+    ) -> Result<()> {
+        for item_index in 0..item_count {
+            let run_state = self.runs.get(&run_id).expect("run should exist");
+            let step_indices = run_state
+                .items_state()
+                .item(item_index)
+                .needed_step_indices();
+            if !step_indices.is_empty() {
+                self.write_journal(JournalEvent::StepsNeeded {
+                    run_id,
+                    item_index,
+                    step_indices,
+                })
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Write a step status update to the metadata store.
     ///
     /// This is called after journal writes to keep the metadata store in sync
@@ -520,38 +548,16 @@ impl FlowExecutor {
         );
 
         // Initialize the run and get ready tasks
-        let (initial_tasks, is_complete, item_count, step_indices) = {
+        let (initial_tasks, is_complete, item_count) = {
             let run_state = self.run_state_mut(run_id).expect("run should exist");
             let initial_tasks = run_state.initialize_all();
             let is_complete = run_state.is_complete();
             let item_count = run_state.items_state().item_count();
-            // All items share the same flow and start with zero completed steps,
-            // so initial needed steps are identical. Per-item divergence only
-            // happens after step completions (future dynamic StepsNeeded).
-            let step_indices = if item_count > 0 {
-                let indices = run_state.items_state().item(0).needed_step_indices();
-                debug_assert!(
-                    (1..item_count).all(|i| {
-                        run_state.items_state().item(i).needed_step_indices() == indices
-                    }),
-                    "Initial needed steps should be identical across all items"
-                );
-                indices
-            } else {
-                Vec::new()
-            };
-            (initial_tasks, is_complete, item_count, step_indices)
+            (initial_tasks, is_complete, item_count)
         };
 
         // Journal: Record subflow initialization (on the subflow run)
-        if !step_indices.is_empty() {
-            self.write_journal(JournalEvent::StepsNeeded {
-                run_id,
-                item_index: None,
-                step_indices,
-            })
-            .await?;
-        }
+        self.write_steps_needed_events(run_id, item_count).await?;
 
         log::debug!(
             "Subflow initialized: run_id={}, initial_tasks={}",
@@ -694,42 +700,23 @@ impl FlowExecutor {
         let run_ids: Vec<Uuid> = self.runs.keys().copied().collect();
         let mut initial_tasks = Vec::new();
         for rid in run_ids {
-            if let Some(run_state) = self.runs.get_mut(&rid) {
+            let item_count = if let Some(run_state) = self.runs.get_mut(&rid) {
                 initial_tasks.extend(run_state.initialize_all());
+                run_state.items_state().item_count()
+            } else {
+                continue;
+            };
 
-                // For recovered subflows, only write StepsNeeded if the journal
-                // doesn't already contain it (crash window between SubRunCreated
-                // and StepsNeeded). Non-recovered runs always need it written.
-                if self.recovered_run_ids.contains(&rid)
-                    && !self.runs_needing_step_updates.contains(&rid)
-                {
-                    continue;
-                }
-
-                // Journal: Record the needed steps for this run.
-                // All items share the same flow and start with zero completed steps,
-                // so initial needed steps are identical. Per-item divergence only
-                // happens after step completions (future dynamic StepsNeeded).
-                let items_state = run_state.items_state();
-                let item_count = items_state.item_count();
-                if item_count == 0 {
-                    continue;
-                }
-                let step_indices = items_state.item(0).needed_step_indices();
-                debug_assert!(
-                    (1..item_count)
-                        .all(|i| { items_state.item(i).needed_step_indices() == step_indices }),
-                    "Initial needed steps should be identical across all items"
-                );
-                if !step_indices.is_empty() {
-                    self.write_journal(JournalEvent::StepsNeeded {
-                        run_id: rid,
-                        item_index: None,
-                        step_indices,
-                    })
-                    .await?;
-                }
+            // For recovered subflows, only write StepsNeeded if the journal
+            // doesn't already contain it (crash window between SubRunCreated
+            // and StepsNeeded). Non-recovered runs always need it written.
+            if self.recovered_run_ids.contains(&rid)
+                && !self.runs_needing_step_updates.contains(&rid)
+            {
+                continue;
             }
+
+            self.write_steps_needed_events(rid, item_count).await?;
         }
 
         self.scheduler.notify_new_tasks(&initial_tasks);

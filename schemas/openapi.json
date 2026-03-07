@@ -2079,7 +2079,7 @@
       },
       "StatusEventStepsNeeded": {
         "title": "StatusEventStepsNeeded",
-        "description": "Steps needed for item(s) after analysis.\n\nEmitted after flow analysis and when the needed step set changes.\nWhen `item_index` is absent, the step set applies to all items.",
+        "description": "Steps needed for a specific item after analysis.\n\nEmitted per-item after flow analysis and when the needed step set changes.",
         "type": "object",
         "properties": {
           "runId": {
@@ -2087,11 +2087,8 @@
             "format": "uuid"
           },
           "itemIndex": {
-            "description": "Item index, or absent for all items.",
-            "type": [
-              "integer",
-              "null"
-            ],
+            "description": "Item index this event applies to.",
+            "type": "integer",
             "format": "uint32",
             "minimum": 0
           },
@@ -2122,6 +2119,7 @@
         "required": [
           "event",
           "runId",
+          "itemIndex",
           "stepIds",
           "sequenceNumber",
           "timestamp"

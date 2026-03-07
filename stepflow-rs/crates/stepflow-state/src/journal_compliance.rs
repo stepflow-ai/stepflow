@@ -616,7 +616,7 @@ impl JournalComplianceTests {
             },
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1, 2],
             },
             JournalEvent::TasksStarted {

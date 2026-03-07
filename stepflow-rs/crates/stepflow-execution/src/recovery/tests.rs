@@ -268,7 +268,7 @@ async fn test_recovery_already_complete_run_succeeds() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -446,7 +446,7 @@ async fn test_recovery_resumes_partial_execution() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1], // Both steps needed
             },
         )
@@ -544,7 +544,7 @@ async fn test_recovery_preserves_attempt_counts() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -680,7 +680,7 @@ async fn test_recovery_batches_parallel_tasks() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1],
             },
         )
@@ -829,7 +829,7 @@ async fn test_recovery_groups_by_root_run_id() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -860,7 +860,7 @@ async fn test_recovery_groups_by_root_run_id() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1292,7 +1292,7 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1386,7 +1386,7 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0, 1],
             },
         )
@@ -1432,7 +1432,7 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1579,7 +1579,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1714,7 +1714,7 @@ async fn test_recovery_resumes_inflight_subflow() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1760,7 +1760,7 @@ async fn test_recovery_resumes_inflight_subflow() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: inflight_subflow_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1891,7 +1891,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -1920,7 +1920,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -2195,7 +2195,7 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
             run_id,
             JournalEvent::StepsNeeded {
                 run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -2336,7 +2336,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -2365,7 +2365,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
             root_run_id,
             JournalEvent::StepsNeeded {
                 run_id: subflow_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
         )
@@ -2548,7 +2548,7 @@ async fn test_crash_after_subrun_created_no_steps_needed() {
         vec![
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::SubRunCreated {
@@ -2590,7 +2590,7 @@ async fn test_crash_after_steps_needed_written() {
         vec![
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::SubRunCreated {
@@ -2605,7 +2605,7 @@ async fn test_crash_after_steps_needed_written() {
             },
             JournalEvent::StepsNeeded {
                 run_id: sub_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             // CRASH after StepsNeeded written
@@ -2634,7 +2634,7 @@ async fn test_crash_after_one_completed_step_no_new_steps_needed() {
         vec![
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::SubRunCreated {
@@ -2649,7 +2649,7 @@ async fn test_crash_after_one_completed_step_no_new_steps_needed() {
             },
             JournalEvent::StepsNeeded {
                 run_id: sub_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::TasksStarted {
@@ -2695,7 +2695,7 @@ async fn test_crash_multiple_subflows_mixed_states() {
         vec![
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             // Subflow 1: fully initialized
@@ -2711,7 +2711,7 @@ async fn test_crash_multiple_subflows_mixed_states() {
             },
             JournalEvent::StepsNeeded {
                 run_id: sub1_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             // Subflow 2: created but crashed before StepsNeeded
@@ -2754,7 +2754,7 @@ async fn test_completed_subflow_not_in_needing_updates() {
         vec![
             JournalEvent::StepsNeeded {
                 run_id: root_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::SubRunCreated {
@@ -2769,7 +2769,7 @@ async fn test_completed_subflow_not_in_needing_updates() {
             },
             JournalEvent::StepsNeeded {
                 run_id: sub_run_id,
-                item_index: None,
+                item_index: 0,
                 step_indices: vec![0],
             },
             JournalEvent::TasksStarted {

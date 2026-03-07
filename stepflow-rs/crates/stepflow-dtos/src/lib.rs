@@ -469,16 +469,14 @@ pub enum StatusEventKind {
         result: Option<FlowResult>,
     },
 
-    /// Steps needed for item(s) after analysis.
+    /// Steps needed for a specific item after analysis.
     ///
-    /// Emitted after flow analysis and when the needed step set changes.
-    /// When `item_index` is absent, the step set applies to all items.
+    /// Emitted per-item after flow analysis and when the needed step set changes.
     #[schemars(title = "StatusEventStepsNeeded")]
     StepsNeeded {
         run_id: Uuid,
-        /// Item index, or absent for all items.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        item_index: Option<u32>,
+        /// Item index this event applies to.
+        item_index: u32,
         /// Step IDs that are needed.
         step_ids: Vec<String>,
     },

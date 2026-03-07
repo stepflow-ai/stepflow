@@ -209,19 +209,17 @@ pub enum JournalEvent {
         variables: HashMap<String, ValueRef>,
     },
 
-    /// Steps needed for item(s) after analysis.
+    /// Steps needed for a specific item after analysis.
     ///
-    /// Emitted after flow analysis (initial step discovery) and again whenever
-    /// the needed step set changes (e.g., conditional branches resolved).
-    ///
-    /// When `item_index` is `None`, the step set applies to all items in the
-    /// run (used for the initial common set). When `Some(i)`, it applies only
-    /// to item `i` (used for dynamically discovered per-item steps).
+    /// Emitted per-item after flow analysis (initial step discovery) and again
+    /// whenever the needed step set changes (e.g., conditional branches resolved).
+    /// Each item gets its own event because conditional output expressions can
+    /// cause different items to need different steps based on their input.
     StepsNeeded {
         /// The run this event belongs to.
         run_id: Uuid,
-        /// The item index, or `None` for all items.
-        item_index: Option<u32>,
+        /// The item index this event applies to.
+        item_index: u32,
         /// Step indices that are needed.
         step_indices: Vec<usize>,
     },
