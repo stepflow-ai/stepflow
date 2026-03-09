@@ -656,6 +656,7 @@ dependencies = [
     { name = "docling" },
     { name = "docling-core" },
     { name = "nest-asyncio" },
+    { name = "opentelemetry-api" },
     { name = "python-dotenv" },
     { name = "stepflow-py", extra = ["http"] },
 ]
@@ -693,6 +694,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'facade'", specifier = ">=0.100.0" },
     { name = "httpx", marker = "extra == 'facade'", specifier = ">=0.25.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "opentelemetry-api", specifier = ">=1.20.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", marker = "extra == 'facade'", specifier = ">=6.0" },
     { name = "stepflow-py", extras = ["http"], editable = "../../sdks/python/stepflow-py" },

@@ -129,18 +129,19 @@ class TestRequestToFlowInput:
         with pytest.raises(ValueError, match="Either sources or file_bytes"):
             request_to_flow_input()
 
-    def test_empty_options_not_included(self):
+    def test_empty_options_gets_defaults(self):
         sources = [{"kind": "http", "url": "https://example.com/doc.pdf"}]
         result = request_to_flow_input(sources=sources, options=None)
-        assert "options" not in result
+        # Default images_scale is applied even when no options provided
+        assert result["options"] == {"images_scale": 2.0}
 
     def test_options_with_only_hoisted_fields(self):
         sources = [{"kind": "http", "url": "https://example.com/doc.pdf"}]
         options = {"to_formats": ["md"]}
         result = request_to_flow_input(sources=sources, options=options)
         assert result["to_formats"] == ["md"]
-        # options dict is empty after hoisting, should not be included
-        assert "options" not in result
+        # After hoisting, only the default images_scale remains
+        assert result["options"] == {"images_scale": 2.0}
 
 
 # ---------------------------------------------------------------------------

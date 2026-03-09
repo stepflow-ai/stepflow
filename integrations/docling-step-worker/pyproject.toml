@@ -44,6 +44,7 @@ dependencies = [
     "click>=8.0",
     "python-dotenv>=1.0.0",
     "nest-asyncio>=1.6.0",
+    "opentelemetry-api>=1.20.0",
 ]
 
 [project.optional-dependencies]
@@ -176,6 +177,7 @@ DEP001 = ["docling", "docling_core", "pypdfium2"]
 python-dotenv = ["dotenv"]
 stepflow-py = ["stepflow_py"]
 nest-asyncio = ["nest_asyncio"]
+opentelemetry-api = ["opentelemetry"]
 docling-core = ["docling_core"]
 pyyaml = ["yaml"]
 
@@ -198,7 +200,7 @@ strict_equality = false
 
 # Third-party libraries without type stubs
 [[tool.mypy.overrides]]
-module = ["pypdfium2", "pypdfium2.*", "nest_asyncio", "nest_asyncio.*"]
+module = ["pypdfium2", "pypdfium2.*", "nest_asyncio", "nest_asyncio.*", "yaml", "yaml.*"]
 ignore_missing_imports = true
 follow_untyped_imports = true
 
