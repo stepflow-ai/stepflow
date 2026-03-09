@@ -49,6 +49,13 @@ data:
     storageConfig:
       type: inMemory
 
+    retry:
+      transportMaxRetries: 60
+      backoff:
+        type: fibonacci
+        minDelayMs: 2000
+        maxDelayMs: 15000
+
   docling-process-document.yaml: |
     schema: https://stepflow.org/schemas/v1/flow.json
     name: docling-process-document

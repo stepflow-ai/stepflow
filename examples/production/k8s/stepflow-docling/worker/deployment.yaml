@@ -51,6 +51,10 @@ spec:
         # Thread contention prevention
         - name: OMP_NUM_THREADS
           value: "4"
+        # Backpressure: limit concurrent component executions per pod.
+        # Worker returns 503 when at capacity; orchestrator retries.
+        - name: STEPFLOW_MAX_CONCURRENT_COMPONENTS
+          value: "1"
         # Pod metadata
         - name: POD_NAME
           valueFrom:

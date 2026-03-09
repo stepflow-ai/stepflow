@@ -14,7 +14,7 @@
 
 use opentelemetry::{
     KeyValue, global,
-    metrics::{Counter, Histogram},
+    metrics::{Counter, Histogram, UpDownCounter},
 };
 use std::sync::LazyLock;
 
@@ -171,6 +171,29 @@ pub fn record_step_retries_exhausted(reason: &str, component: &str) {
             KeyValue::new("component", component.to_string()),
         ],
     );
+}
+
+// =========================================================================
+// Pending Component Executions (Backpressure)
+// =========================================================================
+
+/// Number of component executions currently waiting to retry.
+static PENDING_COMPONENT_EXECUTIONS: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .i64_up_down_counter("stepflow_pending_component_executions")
+        .with_description("Component executions pending retry (waiting in backoff delay)")
+        .build()
+});
+
+/// Record that a component execution is pending retry (increment).
+pub fn record_pending_execution_start(component: &str) {
+    PENDING_COMPONENT_EXECUTIONS.add(1, &[KeyValue::new("component", component.to_string())]);
+}
+
+/// Record that a pending component execution has resumed (decrement).
+pub fn record_pending_execution_end(component: &str) {
+    PENDING_COMPONENT_EXECUTIONS.add(-1, &[KeyValue::new("component", component.to_string())]);
 }
 
 /// Record a step execution attempt.
