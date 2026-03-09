@@ -195,21 +195,13 @@ Docling Client (compare-batch.py, curl, etc.)
 
 ### Autoscaling Signal
 
-With runs executing immediately and retrying at the step boundary, the right autoscale signal is `active_executions.count()` — the number of runs currently executing. This is already tracked in `stepflow-state/src/active_executions.rs` via a `DashMap`. It just needs to be exposed as a Prometheus gauge.
+Two metrics together give a complete picture of worker pool pressure. The 503 rate drives autoscaling; pending tasks provides diagnostic depth.
 
-**Add to orchestrator metrics:**
+#### 503 Rate — KEDA autoscale trigger (already available, no new code)
 
-```rust
-// In stepflow-server/src/metrics.rs:
-pub static ACTIVE_RUNS: Lazy<Gauge> = Lazy::new(|| {
-    register_gauge!(
-        "stepflow_active_runs",
-        "Number of flow runs currently executing"
-    ).unwrap()
-});
-```
+`stepflow_lb_requests_total` is already labeled by `backend`, `status`, and `method` and recorded in the LB's `logging()` hook for every request. Worker semaphore rejections appear as `status="503"`. A sustained non-zero 503 rate means workers are actively rejecting work right now — the right leading indicator for scaling.
 
-Update in `submit_run()` (increment on spawn, decrement on completion via the existing `ActiveExecutions` cleanup hook).
+Since the docling deployment has a dedicated LB instance, all 503s from that LB are docling worker rejections. No additional label scoping is needed. (Note: if multiple worker pools are ever colocated behind a single LB, a `pool_name` label would be needed to scope this query.)
 
 **KEDA ScaledObject:**
 
@@ -229,12 +221,33 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.stepflow-o11y.svc:9090
-        metricName: stepflow_active_runs
-        threshold: "3"
-        query: stepflow_active_runs
+        metricName: stepflow_lb_worker_rejection_rate
+        query: rate(stepflow_lb_requests_total{status="503"}[2m])
+        threshold: "0.1"   # ~6 rejections/minute sustained → scale up
 ```
 
-`active_runs > 3` sustained for the KEDA stabilization window triggers scale-up. This is a starting point — the right threshold depends on runtime data. A 600-page image-heavy PDF and a 5-page memo have entirely different resource profiles. Calibrate once production data is available.
+The threshold of 0.1 (roughly 6 rejections per minute) is a starting point. Calibrate once production data is available — document processing load varies dramatically between a 5-page memo and a 600-page image-heavy PDF.
+
+#### Pending Tasks — diagnostic signal (new instrumentation)
+
+A pending task is a step execution currently sleeping in retry backoff in the orchestrator — it has been dispatched, hit a busy worker, and is waiting to retry. This isn't directly observable from the LB, but it's useful for understanding queue depth and retry pressure beyond what 503 rate alone shows.
+
+**Add to orchestrator step runner:**
+
+```rust
+// In stepflow-server/src/metrics.rs (or stepflow-execution):
+pub static PENDING_COMPONENT_EXECUTIONS: Lazy<GaugeVec> = Lazy::new(|| {
+    register_gauge_vec!(
+        "stepflow_pending_component_executions",
+        "Number of component executions currently waiting in transport retry backoff",
+        &["component"]
+    ).unwrap()
+});
+```
+
+In the step runner's transport retry loop, increment the gauge when entering a retry sleep and decrement when the sleep completes (either retrying or giving up). The `component` label lets you see which step is the bottleneck — for docling, `/docling/convert` will dominate during saturation.
+
+This metric is not wired to KEDA. It provides Grafana visibility into retry depth: a spike in `stepflow_pending_component_executions{component="/docling/convert"}` alongside a 503 rate spike confirms the system is under backpressure rather than experiencing unrelated failures.
 
 ## Files to Modify
 
@@ -254,8 +267,8 @@ spec:
 
 | File | Change |
 |------|--------|
-| `stepflow-rs/crates/stepflow-server/src/metrics.rs` | Add `stepflow_active_runs` gauge |
-| `stepflow-rs/crates/stepflow-execution/src/executor.rs` | Increment/decrement `ACTIVE_RUNS` gauge in `submit_run()` alongside existing `ActiveExecutions` tracking |
+| `stepflow-rs/crates/stepflow-server/src/metrics.rs` | Add `stepflow_pending_component_executions` GaugeVec (label: `component`) |
+| `stepflow-rs/crates/stepflow-execution/src/step_runner.rs` | Increment/decrement `PENDING_COMPONENT_EXECUTIONS` gauge in transport retry loop |
 
 ### Deployment
 
@@ -270,13 +283,15 @@ spec:
 
 2. **Retry patience.** With `transportMaxRetries: 60` and 2 workers at `max_concurrent=1`, submit 3 concurrent documents. All 3 should complete — the third retries until a worker frees up. Observe retry log lines in the orchestrator.
 
-3. **Active runs metric.** During batch processing, observe `stepflow_active_runs` in Prometheus. Verify it tracks the actual number of in-flight runs.
+3. **503 rate metric.** During batch processing under load, observe `rate(stepflow_lb_requests_total{status="503"}[2m])` in Prometheus. Verify it spikes when workers are saturated and returns to zero as workers free up.
 
-4. **KEDA autoscale.** Submit a batch large enough to sustain `active_runs > 3`. Verify KEDA triggers scale-up. Verify new pods are discovered by the LB and begin receiving work.
+4. **Pending component executions metric.** Under load, observe `stepflow_pending_component_executions{component="/docling/convert"}`. Verify it increments when retries are in-flight and drains as workers become available.
 
-5. **Backward compatibility.** Run with default config (no retry override, no semaphore). Behavior identical to current for non-docling workloads.
+5. **KEDA autoscale.** Submit a batch large enough to sustain the 503 rate above threshold. Verify KEDA triggers scale-up. Verify new pods are discovered by the LB and begin receiving work.
 
-6. **End-to-end.** Run `compare-batch.py --concurrency 3 --skip-download`. Expect 10/10 success — documents process with retries under load rather than failing at retry exhaustion.
+6. **Backward compatibility.** Run with default config (no retry override, no semaphore). Behavior identical to current for non-docling workloads.
+
+7. **End-to-end.** Run `compare-batch.py --concurrency 3 --skip-download`. Expect 10/10 success — documents process with retries under load rather than failing at retry exhaustion.
 
 ## Open Questions
 
@@ -284,9 +299,7 @@ spec:
 
 2. **Distinguishing "busy" from "broken" in retries.** Error code -32300 is treated as a generic transport error. If we wanted different retry budgets for "worker busy" vs "worker crashed," we could use distinct sub-codes (-32301, -32302, etc. — already noted as a TODO in `step_runner.rs`). Not required for the immediate fix.
 
-3. **`active_runs` metric placement.** The gauge update could live in `submit_run()`/`ActiveExecutions`, or it could be derived directly from `active_executions.count()` on a scrape interval. The latter avoids coordination code but is less real-time. Either works for KEDA's polling interval.
-
-4. **KEDA threshold calibration.** The `threshold: 3` is a placeholder. What instrumentation should the first production deployment collect to calibrate this? Conversion duration histograms per document size bucket (page count from the classify step) would be most valuable.
+3. **KEDA threshold calibration.** The `threshold: 3` is a placeholder. What instrumentation should the first production deployment collect to calibrate this? Conversion duration histograms per document size bucket (page count from the classify step) would be most valuable.
 
 ## Non-Goals (This Proposal)
 
