@@ -204,8 +204,12 @@ async def convert_document(
     except Exception as e:
         logger.error("Document conversion failed: %s", e)
         documents_processed.add(
-            1, {"format": filename.rsplit(".", 1)[-1] if "." in filename else "unknown",
-                "pipeline_config": pipeline_config, "status": "failure"}
+            1,
+            {
+                "format": filename.rsplit(".", 1)[-1] if "." in filename else "unknown",
+                "pipeline_config": pipeline_config,
+                "status": "failure",
+            },
         )
         return {
             "document": None,

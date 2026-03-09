@@ -68,7 +68,8 @@ def _load_flow_definition() -> dict[str, Any]:
     if not flow_path.exists():
         raise FileNotFoundError(f"Flow definition not found: {flow_path}")
     with open(flow_path) as f:
-        return yaml.safe_load(f)
+        result: dict[str, Any] = yaml.safe_load(f)
+        return result
 
 
 # ---------------------------------------------------------------------------

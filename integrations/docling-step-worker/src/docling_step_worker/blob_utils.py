@@ -62,7 +62,7 @@ async def get_document_bytes(
     # {"$blob": "<sha256>", "size": N}.  We fetch the original value from the
     # blob store before proceeding with the normal source_kind logic.
     if is_blob_ref(source):
-        blob_id = source["$blob"]  # type: ignore[index]
+        blob_id: str = source["$blob"]  # type: ignore[index]
         logger.debug(
             "Resolving $blob reference %s (source_kind=%s)", blob_id[:12], source_kind
         )
@@ -72,6 +72,9 @@ async def get_document_bytes(
             raise BlobStoreError(
                 f"Failed to resolve $blob reference {blob_id}: {e}"
             ) from e
+
+    # After $blob resolution, source should be a plain string.
+    assert isinstance(source, str), f"Expected str source, got {type(source).__name__}"
 
     if source_kind == "blob":
         try:

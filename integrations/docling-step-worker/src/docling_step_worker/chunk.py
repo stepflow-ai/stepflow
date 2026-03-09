@@ -109,9 +109,7 @@ def _run_chunking(
     # Record chunking metrics
     chunks_per_document.record(len(chunks))
     total_tokens = sum(
-        chunker.tokenizer.count_tokens(text=c["text"])
-        for c in chunks
-        if c.get("text")
+        chunker.tokenizer.count_tokens(text=c["text"]) for c in chunks if c.get("text")
     )
     tokenizer_name = opts.get("tokenizer", "default")
     chunk_tokens_total.add(total_tokens, {"tokenizer": tokenizer_name})
