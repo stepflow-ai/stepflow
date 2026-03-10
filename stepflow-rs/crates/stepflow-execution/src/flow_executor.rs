@@ -1211,8 +1211,11 @@ impl FlowExecutor {
 
         // 6. Build retry future: sleep then re-execute
         let task_future = self.prepare_task_future(task)?;
+        let component_for_metric = component_path.to_string();
         let retry_future = async move {
+            stepflow_observability::metrics::record_pending_execution_start(&component_for_metric);
             tokio::time::sleep(delay).await;
+            stepflow_observability::metrics::record_pending_execution_end(&component_for_metric);
             task_future.await
         };
 

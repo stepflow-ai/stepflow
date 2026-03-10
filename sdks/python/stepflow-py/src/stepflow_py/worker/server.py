@@ -795,6 +795,7 @@ class StepflowServer:
         backlog: int = 128,
         timeout_keep_alive: int = 5,
         instance_id: str | None = None,
+        max_concurrent_components: int | None = None,
     ) -> None:
         """Start the server using HTTP transport.
 
@@ -809,6 +810,9 @@ class StepflowServer:
             timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
             instance_id: Optional instance ID for load balancer routing
                 (auto-generated if not provided)
+            max_concurrent_components: Max concurrent component executions.
+                Resolved from STEPFLOW_MAX_CONCURRENT_COMPONENTS env var if None.
+                0 means unlimited.
         """
         from .http_server import run_http_server
 
@@ -820,4 +824,5 @@ class StepflowServer:
             backlog=backlog,
             timeout_keep_alive=timeout_keep_alive,
             instance_id=instance_id,
+            max_concurrent_components=max_concurrent_components,
         )

@@ -118,7 +118,8 @@ spec:
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
-        args: ["--config=/app/config/stepflow-config.yml"]
+        command: ["stepflow-server"]
+        args: ["--port", "7840", "--config", "/app/config/stepflow-config.yml"]
         ports:
         - name: http
           containerPort: 7840

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from collections.abc import AsyncGenerator
 from typing import Any, assert_never
@@ -70,9 +71,17 @@ def _generate_instance_id() -> str:
 class _HttpServerContext:
     """Internal context for HTTP server route handlers."""
 
-    def __init__(self, server: StepflowServer, instance_id: str):
+    def __init__(
+        self,
+        server: StepflowServer,
+        instance_id: str,
+        semaphore: asyncio.Semaphore | None = None,
+        max_concurrent: int = 0,
+    ):
         self.server = server
         self.instance_id = instance_id
+        self.semaphore = semaphore
+        self.max_concurrent = max_concurrent
         self.message_decoder: MessageDecoder[asyncio.Future[Any]] = MessageDecoder()
         self._http_client: Any = None  # Shared httpx.AsyncClient for blob operations
         self._http_client_loop: asyncio.AbstractEventLoop | None = None
@@ -147,6 +156,28 @@ class _HttpServerContext:
     ):
         """Handle a parsed JSON-RPC message according to type."""
         if isinstance(message, MethodRequest):
+            # Gate component_execute with semaphore for backpressure
+            if (
+                self.semaphore is not None
+                and isinstance(message, MethodRequest)
+                and message.method == Method.components_execute
+            ):
+                if self.semaphore.locked():
+                    logger.warning(
+                        "Rejecting component_execute: at capacity (%d concurrent)",
+                        self.max_concurrent,
+                    )
+                    return self.create_error_response(
+                        request_id=message.id,
+                        status_code=503,
+                        error_code=-32300,
+                        error_message=(
+                            f"Worker at capacity ({self.max_concurrent} "
+                            f"concurrent executions)"
+                        ),
+                    )
+                async with self.semaphore:
+                    return await self.handle_request(message)
             return await self.handle_request(message)
         elif isinstance(message, MethodError):
             assert pending is not None
@@ -441,6 +472,36 @@ class _StepflowUvicornServer(uvicorn.Server):
                 return
 
 
+def _resolve_max_concurrent(max_concurrent_components: int | None) -> int:
+    """Resolve the max concurrent components value.
+
+    Priority: explicit parameter > env var > default (4).
+    Returns 0 for unlimited (no semaphore).
+    """
+    if max_concurrent_components is not None:
+        return max_concurrent_components
+    env_val = os.environ.get("STEPFLOW_MAX_CONCURRENT_COMPONENTS", "4")
+    try:
+        return int(env_val)
+    except ValueError:
+        logger.warning(
+            "Invalid STEPFLOW_MAX_CONCURRENT_COMPONENTS=%r, using default 4",
+            env_val,
+        )
+        return 4
+
+
+def _create_semaphore(max_concurrent: int) -> tuple[asyncio.Semaphore | None, int]:
+    """Create a semaphore for concurrency limiting.
+
+    Returns (semaphore, max_concurrent). Semaphore is None if max_concurrent is 0
+    (unlimited).
+    """
+    if max_concurrent <= 0:
+        return None, 0
+    return asyncio.Semaphore(max_concurrent), max_concurrent
+
+
 async def run_http_server(
     server: StepflowServer,
     host: str = "127.0.0.1",
@@ -449,6 +510,7 @@ async def run_http_server(
     backlog: int = 128,
     timeout_keep_alive: int = 5,
     instance_id: str | None = None,
+    max_concurrent_components: int | None = None,
 ) -> None:
     """Start the HTTP server.
 
@@ -457,13 +519,18 @@ async def run_http_server(
     """
     if instance_id is None:
         instance_id = _generate_instance_id()
-    ctx = _HttpServerContext(server, instance_id)
+
+    max_concurrent = _resolve_max_concurrent(max_concurrent_components)
+    semaphore, max_concurrent = _create_semaphore(max_concurrent)
+    ctx = _HttpServerContext(server, instance_id, semaphore, max_concurrent)
     app = _create_app(ctx)
 
     logger.info(f"Starting Stepflow Streamable HTTP server on {host}:{port}")
     logger.info(f"  Workers: {workers}")
     logger.info(f"  Backlog: {backlog}")
     logger.info(f"  Keep-alive timeout: {timeout_keep_alive}s")
+    mc_display = max_concurrent if max_concurrent > 0 else "unlimited"
+    logger.info(f"  Max concurrent components: {mc_display}")
 
     server.set_initialized(True)
 
@@ -484,17 +551,24 @@ async def run_http_server(
         await ctx.close()
 
 
-def create_test_app(server: StepflowServer, instance_id: str | None = None) -> FastAPI:
+def create_test_app(
+    server: StepflowServer,
+    instance_id: str | None = None,
+    max_concurrent_components: int | None = None,
+) -> FastAPI:
     """Create a FastAPI app for testing purposes.
 
     Args:
         server: StepflowServer instance with registered components
         instance_id: Optional instance ID (auto-generated if not provided)
+        max_concurrent_components: Max concurrent component executions (0 = unlimited)
 
     Returns:
         FastAPI application instance for testing
     """
     if instance_id is None:
         instance_id = _generate_instance_id()
-    ctx = _HttpServerContext(server, instance_id)
+    max_concurrent = _resolve_max_concurrent(max_concurrent_components)
+    semaphore, max_concurrent = _create_semaphore(max_concurrent)
+    ctx = _HttpServerContext(server, instance_id, semaphore, max_concurrent)
     return _create_app(ctx)
