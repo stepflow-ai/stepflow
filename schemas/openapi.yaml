@@ -9,7 +9,6 @@ info:
 servers:
     - url: http://localhost:7837/api/v1
       description: Local development server
-
 paths:
     /blobs:
         post:
@@ -236,7 +235,16 @@ paths:
                   in: query
                   description: Filter by execution status.
                   schema:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
+                    format: enum
                 - name: flowName
                   in: query
                   description: Filter by flow name (not flow_id).
@@ -244,12 +252,12 @@ paths:
                     type: string
                 - name: rootRunId
                   in: query
-                  description: Filter to runs under this root (includes the root itself).
+                  description: Filter to runs under this root run (UUID). Includes the root itself.
                   schema:
                     type: string
                 - name: parentRunId
                   in: query
-                  description: Filter to direct children of this parent run.
+                  description: Filter to direct children of this parent run (UUID).
                   schema:
                     type: string
                 - name: rootsOnly
@@ -323,6 +331,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -358,6 +367,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -384,6 +394,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -410,6 +421,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -456,6 +468,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -482,14 +495,20 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
                 - name: resultOrder
                   in: query
-                  description: 'Result ordering: "byIndex" or "byCompletion".'
+                  description: Result ordering.
                   schema:
+                    enum:
+                        - RESULT_ORDER_UNSPECIFIED
+                        - RESULT_ORDER_BY_INDEX
+                        - RESULT_ORDER_BY_COMPLETION
                     type: string
+                    format: enum
             responses:
                 "200":
                     description: OK
@@ -513,6 +532,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -544,6 +564,7 @@ paths:
             parameters:
                 - name: runId
                   in: path
+                  description: Run ID (UUID).
                   required: true
                   schema:
                     type: string
@@ -579,6 +600,34 @@ paths:
                                 $ref: '#/components/schemas/Status'
 components:
     schemas:
+        BuildInfo:
+            type: object
+            properties:
+                gitVersion:
+                    type: string
+                    description: |-
+                        Git version string from `git describe --tags`. Returns the tag name
+                         if HEAD is tagged (e.g., "v0.11.0"), otherwise "tag-N-gSHORTHASH"
+                         (e.g., "v0.11.0-3-gabcdef1"). Falls back to the short commit hash
+                         if no tags exist.
+                dirty:
+                    type: boolean
+                    description: True if the working tree had uncommitted changes at build time.
+                rustcVersion:
+                    type: string
+                    description: Rust compiler version (e.g., "1.82.0").
+                profile:
+                    type: string
+                    description: Build profile (e.g., "debug" or "release").
+                features:
+                    type: array
+                    items:
+                        type: string
+                    description: Cargo features enabled at build time.
+                target:
+                    type: string
+                    description: Target architecture (e.g., "aarch64-apple-darwin").
+            description: Build-time metadata embedded in the service binary.
         CancelRunResponse:
             type: object
             properties:
@@ -631,6 +680,9 @@ components:
                 timeoutSecs:
                     type: string
                     description: Maximum seconds to wait when wait=true (default 300).
+            description: |-
+                Shared run creation parameters used by both RunsService.CreateRun (REST/gRPC)
+                 and OrchestratorService.SubmitRun (worker callback for sub-flows).
         CreateRunResponse:
             type: object
             properties:
@@ -726,14 +778,23 @@ components:
         FlowVariable:
             type: object
             properties:
-                name:
-                    type: string
                 description:
                     type: string
+                    description: Human-readable description.
                 defaultValue:
-                    $ref: '#/components/schemas/GoogleProtobufValue'
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Default value for the variable.
                 required:
                     type: boolean
+                    description: Whether the variable is required.
+                schema:
+                    type: object
+                    description: JSON Schema for this variable's expected value.
+                envVar:
+                    type: string
+                    description: Environment variable name that populates this variable.
+            description: Definition of a single flow variable.
         GetBlobResponse:
             type: object
             properties:
@@ -778,20 +839,12 @@ components:
                     type: string
                     description: The flow blob ID.
                 variables:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/FlowVariable'
-                    description: Variable definitions from the flow.
-                schema:
-                    type: object
-                    description: Raw JSON Schema for the variables section (null if no variables).
-                envVars:
                     type: object
                     additionalProperties:
-                        type: string
+                        $ref: '#/components/schemas/FlowVariable'
                     description: |-
-                        Mapping from variable name to the environment variable that populates it.
-                         Only includes variables that have an `env_var` annotation.
+                        Variable definitions keyed by variable name.
+                         Each variable includes its schema, description, default, and env_var mapping.
         GetRunFlowResponse:
             type: object
             properties:
@@ -845,15 +898,18 @@ components:
                     description: Service status (e.g., "healthy").
                 timestamp:
                     type: string
-                    description: Timestamp when health was checked (RFC 3339 format).
-                version:
-                    type: string
-                    description: Service version.
+                    description: Timestamp when health was checked.
+                    format: date-time
+                build:
+                    allOf:
+                        - $ref: '#/components/schemas/BuildInfo'
+                    description: Build metadata for the running service.
         ItemCompletedEvent:
             type: object
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 itemIndex:
                     type: integer
                     format: uint32
@@ -869,8 +925,17 @@ components:
                     description: Index of this item in the input array (0-based).
                     format: uint32
                 status:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
                     description: Execution status of this item.
+                    format: enum
                 output:
                     allOf:
                         - $ref: '#/components/schemas/GoogleProtobufValue'
@@ -884,7 +949,9 @@ components:
                     format: int32
                 completedAt:
                     type: string
-                    description: When this item completed (ISO 8601).
+                    description: When this item completed.
+                    format: date-time
+            description: Result of a single item in a run.
         ItemStatistics:
             type: object
             properties:
@@ -903,6 +970,7 @@ components:
                 cancelled:
                     type: integer
                     format: uint32
+            description: Aggregate statistics for items in a run.
         ListRegisteredComponentsResponse:
             type: object
             properties:
@@ -952,13 +1020,24 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 status:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
+                    format: enum
         RunCreatedEvent:
             type: object
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 flowId:
                     type: string
                 itemCount:
@@ -969,26 +1048,38 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 flowId:
                     type: string
                 flowName:
                     type: string
                 status:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
+                    format: enum
                 items:
                     $ref: '#/components/schemas/ItemStatistics'
                 createdAt:
                     type: string
+                    format: date-time
                 completedAt:
                     type: string
+                    format: date-time
                 rootRunId:
                     type: string
                     description: |-
                         Run hierarchy fields.
-                         For top-level runs, root_run_id equals run_id.
+                         Root run ID (UUID). For top-level runs, equals run_id.
                 parentRunId:
                     type: string
-                    description: Parent run ID if this is a sub-flow. Absent for top-level runs.
+                    description: Parent run ID (UUID). Present only for sub-flow runs.
                 orchestratorId:
                     type: string
                     description: The orchestrator currently managing this run.
@@ -1021,7 +1112,8 @@ components:
                     description: Journal sequence number (used as SSE id).
                 timestamp:
                     type: string
-                    description: Timestamp when this event was recorded (ISO 8601).
+                    description: Timestamp when this event was recorded.
+                    format: date-time
                 runCreated:
                     $ref: '#/components/schemas/RunCreatedEvent'
                 stepStarted:
@@ -1048,6 +1140,7 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 itemIndex:
                     type: integer
                     format: uint32
@@ -1057,8 +1150,17 @@ components:
                 stepId:
                     type: string
                 status:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
                     description: Whether the step succeeded or failed.
+                    format: enum
                 result:
                     allOf:
                         - $ref: '#/components/schemas/GoogleProtobufValue'
@@ -1068,6 +1170,7 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 itemIndex:
                     type: integer
                     format: uint32
@@ -1081,6 +1184,7 @@ components:
             properties:
                 runId:
                     type: string
+                    description: Run ID (UUID).
                 itemIndex:
                     type: integer
                     format: uint32
@@ -1106,7 +1210,16 @@ components:
                     description: Item index (0-based). Required for batch runs.
                     format: uint32
                 status:
+                    enum:
+                        - EXECUTION_STATUS_UNSPECIFIED
+                        - EXECUTION_STATUS_RUNNING
+                        - EXECUTION_STATUS_COMPLETED
+                        - EXECUTION_STATUS_FAILED
+                        - EXECUTION_STATUS_CANCELLED
+                        - EXECUTION_STATUS_PAUSED
+                        - EXECUTION_STATUS_RECOVERY_FAILED
                     type: string
+                    format: enum
                 component:
                     type: string
                 output:
@@ -1120,14 +1233,17 @@ components:
                     format: int32
                 startedAt:
                     type: string
+                    format: date-time
                 completedAt:
                     type: string
+                    format: date-time
                 journalSeqno:
                     type: string
                     description: Journal sequence number of the event that produced this status.
                 updatedAt:
                     type: string
-                    description: When this status was last updated (ISO 8601).
+                    description: When this status was last updated.
+                    format: date-time
         StoreFlowRequest:
             type: object
             properties:
@@ -1157,10 +1273,10 @@ components:
             properties:
                 runId:
                     type: string
-                    description: The sub-run's ID.
+                    description: The sub-run's ID (UUID).
                 parentRunId:
                     type: string
-                    description: The parent run that spawned this sub-run.
+                    description: Parent run ID (UUID) that spawned this sub-run.
                 flowId:
                     type: string
                     description: The flow being executed by the sub-run.
@@ -1174,7 +1290,7 @@ tags:
         Content-addressed blob storage service.
 
          Exposed as both REST (for external clients) and gRPC (for workers via
-         `blob_service_url` from ExecutionContext). Workers can call any
+         `blob_service_url` environment variable). Workers can call any
          orchestrator or a dedicated blob pool for these operations.
 
          The REST layer supports content negotiation:
@@ -1188,7 +1304,7 @@ tags:
 
          This is the external REST/gRPC API for clients to discover available
          components. It aggregates results from all registered plugins. For the
-         internal worker-facing component API, see WorkerPushService in worker.proto.
+         internal task dispatch API, see TasksService in tasks.proto.
     - name: FlowsService
       description: Service for managing workflow (flow) definitions.
     - name: HealthService
