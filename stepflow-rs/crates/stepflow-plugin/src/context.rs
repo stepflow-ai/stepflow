@@ -13,7 +13,7 @@
 //! Execution context types for workflow runs.
 
 use crate::subflow::SubflowSubmitter;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use stepflow_core::{
@@ -135,18 +135,18 @@ impl RunContext {
         &self.env
     }
 
-    /// Get a reference to the metadata store.
-    pub fn metadata_store(&self) -> &Arc<dyn MetadataStore> {
+    /// Get the metadata store.
+    pub fn metadata_store(&self) -> Arc<dyn MetadataStore> {
         self.env.metadata_store()
     }
 
-    /// Get a reference to the blob store.
-    pub fn blob_store(&self) -> &Arc<dyn BlobStore> {
+    /// Get the blob store.
+    pub fn blob_store(&self) -> Arc<dyn BlobStore> {
         self.env.blob_store()
     }
 
     /// Get the working directory.
-    pub fn working_directory(&self) -> &Path {
+    pub fn working_directory(&self) -> PathBuf {
         self.env.working_directory()
     }
 

@@ -1,0 +1,74 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "gnostic/openapi/v3/annotations.proto";
+
+// Service health check endpoint.
+service HealthService {
+  // Check service health and return status, version, and timestamp.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get: "/health"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Check service health"
+      operation_id: "healthCheck"
+    };
+  }
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  // Service status (e.g., "healthy").
+  string status = 1;
+
+  // Timestamp when health was checked.
+  google.protobuf.Timestamp timestamp = 2;
+
+  // Build metadata for the running service.
+  BuildInfo build = 3;
+}
+
+// Build-time metadata embedded in the service binary.
+message BuildInfo {
+  // Git version string from `git describe --tags`. Returns the tag name
+  // if HEAD is tagged (e.g., "v0.11.0"), otherwise "tag-N-gSHORTHASH"
+  // (e.g., "v0.11.0-3-gabcdef1"). Falls back to the short commit hash
+  // if no tags exist.
+  string git_version = 1;
+
+  // True if the working tree had uncommitted changes at build time.
+  bool dirty = 2;
+
+  // Rust compiler version (e.g., "1.82.0").
+  string rustc_version = 3;
+
+  // Build profile (e.g., "debug" or "release").
+  string profile = 4;
+
+  // Cargo features enabled at build time.
+  repeated string features = 5;
+
+  // Target architecture (e.g., "aarch64-apple-darwin").
+  string target = 6;
+}

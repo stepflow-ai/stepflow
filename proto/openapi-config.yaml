@@ -1,0 +1,32 @@
+# tonic-rest-openapi configuration for Stepflow API
+#
+# Used by: tonic-rest-openapi generate --config proto/openapi-config.yaml
+# See: https://github.com/zs-dima/tonic-rest
+
+# Schema reference for structured error responses
+# error_schema_ref: "#/components/schemas/stepflow.v1.ErrorResponse"
+
+# Methods that don't require authentication
+public_methods:
+  - HealthCheck
+
+# Endpoints that return plain text instead of JSON
+# plain_text_endpoints:
+#   - path: /api/v1/health
+#     content_type: application/json
+
+# Server entries for the OpenAPI spec
+servers:
+  - url: http://localhost:7837/api/v1
+    description: Local development server
+
+# API info overrides
+info:
+  title: Stepflow API
+  description: Stepflow orchestration engine REST API
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+# Keep request body schemas as named references for better documentation
+inline_request_bodies: false

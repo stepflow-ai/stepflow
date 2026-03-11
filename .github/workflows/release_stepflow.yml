@@ -57,6 +57,7 @@ jobs:
 
   build-binaries:
     name: Build ${{ matrix.target }}
+    needs: [determine-version]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -111,6 +112,9 @@ jobs:
       - name: Build binaries (native)
         if: ${{ !matrix.cross }}
         working-directory: stepflow-rs
+        env:
+          # Override built crate's git_version so health endpoint reports the release tag
+          BUILT_OVERRIDE_STEPFLOW_GRPC_GIT_VERSION: ${{ needs.determine-version.outputs.tag }}
         run: |
           if [ "${{ matrix.os }}" = "windows-2022" ]; then
             # Windows: Only build stepflow and stepflow-server (load-balancer is Unix-only)
@@ -124,6 +128,9 @@ jobs:
       - name: Build binaries (cross)
         if: matrix.cross
         working-directory: stepflow-rs
+        env:
+          # Override built crate's git_version so health endpoint reports the release tag
+          BUILT_OVERRIDE_STEPFLOW_GRPC_GIT_VERSION: ${{ needs.determine-version.outputs.tag }}
         run: |
           # Cross builds are Unix-only, so always build all three binaries
           cross build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer

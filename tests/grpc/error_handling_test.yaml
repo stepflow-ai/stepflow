@@ -1,0 +1,50 @@
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        mode:
+          type: string
+        message:
+          type: string
+      required: [mode, message]
+steps:
+- id: error_step
+  component: /python_grpc/error_test
+  input:
+    mode:
+      $input: mode
+    message:
+      $input: message
+output:
+  $step: error_step
+test:
+  cases:
+  - name: "ValueError is surfaced via gRPC"
+    input:
+      mode: "value_error"
+      message: "test error"
+    output:
+      outcome: failed
+      error:
+        code: 500
+        message: "Intentional error: test error"
+  - name: "RuntimeError is surfaced via gRPC"
+    input:
+      mode: "runtime_error"
+      message: "unexpected failure"
+    output:
+      outcome: failed
+      error:
+        code: 500
+        message: "Runtime failure: unexpected failure"
+  - name: "Success case works normally"
+    input:
+      mode: "success"
+      message: ""
+    output:
+      outcome: success
+      result:
+        result: "success"
+        mode: "success"

@@ -1,0 +1,43 @@
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    output:
+      type: object
+      properties:
+        blob_id:
+          type: string
+        matches:
+          type: boolean
+steps:
+- id: blob_step
+  component: /python_grpc/blob_roundtrip
+  input:
+    data:
+      key:
+        $input: key
+      value:
+        $input: value
+output:
+  blob_id:
+    $step: blob_step
+    path: blob_id
+  matches:
+    $step: blob_step
+    path: matches
+test:
+  cases:
+  - name: "blob put and get roundtrip via gRPC context"
+    input:
+      key: "greeting"
+      value: "hello from grpc"
+    output:
+      outcome: success
+      result:
+        matches: true

@@ -206,3 +206,99 @@ pub fn record_step_execution(component: &str, outcome: &str) {
         ],
     );
 }
+
+// =========================================================================
+// Task Lifecycle Metrics (gRPC pull transport)
+// =========================================================================
+
+/// Time between task dispatch and StartTask (queue wait time).
+static TASK_QUEUE_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .f64_histogram("task.queue_duration_seconds")
+        .with_description("Time between task dispatch and StartTask")
+        .with_unit("s")
+        .build()
+});
+
+/// Time between StartTask and CompleteTask (execution time).
+static TASK_EXECUTION_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .f64_histogram("task.execution_duration_seconds")
+        .with_description("Time between StartTask and CompleteTask")
+        .with_unit("s")
+        .build()
+});
+
+/// Tasks that timed out before StartTask (lost in queue).
+static TASK_QUEUE_TIMEOUT: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("task.queue_timeout_total")
+        .with_description("Tasks that timed out waiting for a worker to start")
+        .build()
+});
+
+/// Tasks that timed out after StartTask (worker crash / heartbeat miss).
+static TASK_EXECUTION_TIMEOUT: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("task.execution_timeout_total")
+        .with_description("Tasks that timed out during execution (heartbeat miss or execution cap)")
+        .build()
+});
+
+/// Tasks that completed successfully.
+static TASK_SUCCESS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("task.success_total")
+        .with_description("Tasks that completed successfully")
+        .build()
+});
+
+/// Tasks that completed with an error.
+static TASK_FAILURE: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("task.failure_total")
+        .with_description("Tasks that completed with an error")
+        .build()
+});
+
+/// Record time a task spent in the queue (dispatch to StartTask).
+pub fn record_task_queue_duration(component: &str, duration_secs: f64) {
+    TASK_QUEUE_DURATION.record(
+        duration_secs,
+        &[KeyValue::new("component", component.to_string())],
+    );
+}
+
+/// Record time a task spent executing (StartTask to CompleteTask).
+pub fn record_task_execution_duration(component: &str, duration_secs: f64) {
+    TASK_EXECUTION_DURATION.record(
+        duration_secs,
+        &[KeyValue::new("component", component.to_string())],
+    );
+}
+
+/// Record a task queue timeout (no StartTask received).
+pub fn record_task_queue_timeout(component: &str) {
+    TASK_QUEUE_TIMEOUT.add(1, &[KeyValue::new("component", component.to_string())]);
+}
+
+/// Record a task execution timeout (heartbeat miss or execution cap).
+pub fn record_task_execution_timeout(component: &str) {
+    TASK_EXECUTION_TIMEOUT.add(1, &[KeyValue::new("component", component.to_string())]);
+}
+
+/// Record a successful task completion.
+pub fn record_task_success(component: &str) {
+    TASK_SUCCESS.add(1, &[KeyValue::new("component", component.to_string())]);
+}
+
+/// Record a failed task completion.
+pub fn record_task_failure(component: &str) {
+    TASK_FAILURE.add(1, &[KeyValue::new("component", component.to_string())]);
+}

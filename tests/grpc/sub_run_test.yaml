@@ -1,0 +1,38 @@
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+    output:
+      type: object
+      properties:
+        sub_run_status:
+          type: string
+        has_results:
+          type: boolean
+steps:
+- id: sub_run_step
+  component: /python_grpc/sub_run
+  input:
+    message:
+      $input: message
+output:
+  sub_run_status:
+    $step: sub_run_step
+    path: sub_run_status
+  has_results:
+    $step: sub_run_step
+    path: has_results
+test:
+  cases:
+  - name: "sub-run via OrchestratorService.SubmitRun"
+    input:
+      message: "hello from sub-run"
+    output:
+      outcome: success
+      result:
+        sub_run_status: "completed"
+        has_results: true

@@ -170,7 +170,7 @@ pub async fn submit_run(
     };
 
     // Spawn the flow executor and register with active executions.
-    flow_executor.spawn(env.active_executions());
+    flow_executor.spawn(&env.active_executions());
 
     // Return current status (will be Running since we just spawned the task)
     get_run(env, run_id, GetRunParams::default()).await

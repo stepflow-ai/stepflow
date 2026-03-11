@@ -119,6 +119,7 @@ stepflow-config = { path = "./crates/stepflow-config" }
 stepflow-core = { path = "./crates/stepflow-core" }
 stepflow-dtos = { path = "./crates/stepflow-dtos" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
+stepflow-grpc = { path = "./crates/stepflow-grpc" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-observability = { path = "./crates/stepflow-observability" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
@@ -141,7 +142,7 @@ tokio = { version = "1.44.1", features = [
     "time",
 ] }
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["time"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 trait-variant = "0.1.2"

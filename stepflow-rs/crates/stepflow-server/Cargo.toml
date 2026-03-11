@@ -28,6 +28,7 @@ serde.workspace = true
 serde_with.workspace = true
 stepflow-analysis.workspace = true
 stepflow-config.workspace = true
+stepflow-grpc.workspace = true
 stepflow-core.workspace = true
 stepflow-dtos.workspace = true
 stepflow-execution.workspace = true

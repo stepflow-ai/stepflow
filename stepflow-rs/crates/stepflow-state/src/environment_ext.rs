@@ -38,16 +38,16 @@ use crate::{
 /// }
 /// ```
 pub trait MetadataStoreExt {
-    /// Get a reference to the metadata store.
+    /// Get the metadata store.
     ///
     /// # Panics
     ///
     /// Panics if metadata store was not set during environment construction.
-    fn metadata_store(&self) -> &Arc<dyn MetadataStore>;
+    fn metadata_store(&self) -> Arc<dyn MetadataStore>;
 }
 
 impl MetadataStoreExt for StepflowEnvironment {
-    fn metadata_store(&self) -> &Arc<dyn MetadataStore> {
+    fn metadata_store(&self) -> Arc<dyn MetadataStore> {
         self.get::<Arc<dyn MetadataStore>>()
             .expect("MetadataStore not set in environment")
     }
@@ -70,16 +70,16 @@ impl MetadataStoreExt for StepflowEnvironment {
 /// }
 /// ```
 pub trait BlobStoreExt {
-    /// Get a reference to the blob store.
+    /// Get the blob store.
     ///
     /// # Panics
     ///
     /// Panics if blob store was not set during environment construction.
-    fn blob_store(&self) -> &Arc<dyn BlobStore>;
+    fn blob_store(&self) -> Arc<dyn BlobStore>;
 }
 
 impl BlobStoreExt for StepflowEnvironment {
-    fn blob_store(&self) -> &Arc<dyn BlobStore> {
+    fn blob_store(&self) -> Arc<dyn BlobStore> {
         self.get::<Arc<dyn BlobStore>>()
             .expect("BlobStore not set in environment")
     }
@@ -101,16 +101,16 @@ impl BlobStoreExt for StepflowEnvironment {
 /// }
 /// ```
 pub trait ExecutionJournalExt {
-    /// Get a reference to the execution journal.
+    /// Get the execution journal.
     ///
     /// # Panics
     ///
     /// Panics if execution journal was not set during environment construction.
-    fn execution_journal(&self) -> &Arc<dyn ExecutionJournal>;
+    fn execution_journal(&self) -> Arc<dyn ExecutionJournal>;
 }
 
 impl ExecutionJournalExt for StepflowEnvironment {
-    fn execution_journal(&self) -> &Arc<dyn ExecutionJournal> {
+    fn execution_journal(&self) -> Arc<dyn ExecutionJournal> {
         self.get::<Arc<dyn ExecutionJournal>>()
             .expect("ExecutionJournal not set in environment")
     }
@@ -132,16 +132,16 @@ impl ExecutionJournalExt for StepflowEnvironment {
 /// }
 /// ```
 pub trait LeaseManagerExt {
-    /// Get a reference to the lease manager.
+    /// Get the lease manager.
     ///
     /// # Panics
     ///
     /// Panics if lease manager was not set during environment construction.
-    fn lease_manager(&self) -> &Arc<dyn LeaseManager>;
+    fn lease_manager(&self) -> Arc<dyn LeaseManager>;
 }
 
 impl LeaseManagerExt for StepflowEnvironment {
-    fn lease_manager(&self) -> &Arc<dyn LeaseManager> {
+    fn lease_manager(&self) -> Arc<dyn LeaseManager> {
         self.get::<Arc<dyn LeaseManager>>()
             .expect("LeaseManager not set in environment")
     }
@@ -153,12 +153,12 @@ impl LeaseManagerExt for StepflowEnvironment {
 /// because the orchestrator ID is only set in multi-orchestrator deployments.
 /// Single-orchestrator mode (CLI, tests) does not set it.
 pub trait OrchestratorIdExt {
-    /// Get a reference to the orchestrator ID, if set.
-    fn orchestrator_id(&self) -> Option<&OrchestratorId>;
+    /// Get the orchestrator ID, if set.
+    fn orchestrator_id(&self) -> Option<OrchestratorId>;
 }
 
 impl OrchestratorIdExt for StepflowEnvironment {
-    fn orchestrator_id(&self) -> Option<&OrchestratorId> {
+    fn orchestrator_id(&self) -> Option<OrchestratorId> {
         self.get::<OrchestratorId>()
     }
 }
@@ -175,16 +175,16 @@ impl OrchestratorIdExt for StepflowEnvironment {
 /// }
 /// ```
 pub trait CheckpointStoreExt {
-    /// Get a reference to the checkpoint store.
+    /// Get the checkpoint store.
     ///
     /// # Panics
     ///
     /// Panics if checkpoint store was not set during environment construction.
-    fn checkpoint_store(&self) -> &Arc<dyn CheckpointStore>;
+    fn checkpoint_store(&self) -> Arc<dyn CheckpointStore>;
 }
 
 impl CheckpointStoreExt for StepflowEnvironment {
-    fn checkpoint_store(&self) -> &Arc<dyn CheckpointStore> {
+    fn checkpoint_store(&self) -> Arc<dyn CheckpointStore> {
         self.get::<Arc<dyn CheckpointStore>>()
             .expect("CheckpointStore not set in environment")
     }
@@ -207,16 +207,16 @@ impl CheckpointStoreExt for StepflowEnvironment {
 /// }
 /// ```
 pub trait ActiveExecutionsExt {
-    /// Get a reference to the active executions tracker.
+    /// Get the active executions tracker.
     ///
     /// # Panics
     ///
     /// Panics if active executions was not set during environment construction.
-    fn active_executions(&self) -> &ActiveExecutions;
+    fn active_executions(&self) -> ActiveExecutions;
 }
 
 impl ActiveExecutionsExt for StepflowEnvironment {
-    fn active_executions(&self) -> &ActiveExecutions {
+    fn active_executions(&self) -> ActiveExecutions {
         self.get::<ActiveExecutions>()
             .expect("ActiveExecutions not set in environment")
     }
@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_metadata_store_ext() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let store: Arc<dyn MetadataStore> = Arc::new(InMemoryStateStore::new());
         env.insert(store);
 
@@ -237,7 +237,7 @@ mod tests {
         let retrieved = env.metadata_store();
         // Just verify we can access it - the actual store functionality
         // is tested elsewhere
-        assert!(Arc::strong_count(retrieved) >= 1);
+        assert!(Arc::strong_count(&retrieved) >= 1);
     }
 
     #[test]
@@ -249,14 +249,14 @@ mod tests {
 
     #[test]
     fn test_execution_journal_ext() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let store = Arc::new(InMemoryStateStore::new());
         let journal: Arc<dyn ExecutionJournal> = store;
         env.insert(journal);
 
         // Use the extension trait
         let retrieved = env.execution_journal();
-        assert!(Arc::strong_count(retrieved) >= 1);
+        assert!(Arc::strong_count(&retrieved) >= 1);
     }
 
     #[test]
@@ -270,14 +270,14 @@ mod tests {
     fn test_lease_manager_ext() {
         use crate::NoOpLeaseManager;
 
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let lease_manager: Arc<dyn LeaseManager> =
             Arc::new(NoOpLeaseManager::new(std::time::Duration::from_secs(30)));
         env.insert(lease_manager);
 
         // Use the extension trait
         let retrieved = env.lease_manager();
-        assert!(Arc::strong_count(retrieved) >= 1);
+        assert!(Arc::strong_count(&retrieved) >= 1);
     }
 
     #[test]
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn test_active_executions_ext() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let active = ActiveExecutions::new();
         env.insert(active);
 
@@ -309,12 +309,12 @@ mod tests {
     fn test_checkpoint_store_ext() {
         use crate::NoOpCheckpointStore;
 
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let store: Arc<dyn CheckpointStore> = Arc::new(NoOpCheckpointStore);
         env.insert(store);
 
         let retrieved = env.checkpoint_store();
-        assert!(Arc::strong_count(retrieved) >= 1);
+        assert!(Arc::strong_count(&retrieved) >= 1);
     }
 
     #[test]

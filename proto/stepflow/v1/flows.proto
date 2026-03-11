@@ -1,0 +1,222 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "gnostic/openapi/v3/annotations.proto";
+// Service for managing workflow (flow) definitions.
+service FlowsService {
+  // Store a flow definition and return its content-based ID.
+  //
+  // Validates the workflow and returns diagnostics. When `dry_run` is true,
+  // the flow is validated but not stored. If validation produces fatal
+  // diagnostics, the flow is not stored even when `dry_run` is false.
+  rpc StoreFlow(StoreFlowRequest) returns (StoreFlowResponse) {
+    option (google.api.http) = {
+      post: "/flows"
+      body: "*"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Store a flow"
+      operation_id: "storeFlow"
+    };
+  }
+
+  // Retrieve a flow definition by its blob ID.
+  rpc GetFlow(GetFlowRequest) returns (GetFlowResponse) {
+    option (google.api.http) = {
+      get: "/flows/{flow_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get a flow by ID"
+      operation_id: "getFlow"
+    };
+  }
+
+  // Delete a flow definition by its blob ID.
+  rpc DeleteFlow(DeleteFlowRequest) returns (DeleteFlowResponse) {
+    option (google.api.http) = {
+      delete: "/flows/{flow_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Delete a flow by ID"
+      operation_id: "deleteFlow"
+    };
+  }
+
+  // Get the variable definitions for a flow.
+  //
+  // Lightweight endpoint that returns variable schema and environment
+  // variable mappings without fetching the entire flow definition.
+  rpc GetFlowVariables(GetFlowVariablesRequest) returns (GetFlowVariablesResponse) {
+    option (google.api.http) = {
+      get: "/flows/{flow_id}/variables"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get variable schema for a flow"
+      operation_id: "getFlowVariables"
+    };
+  }
+}
+
+// --- StoreFlow ---
+
+message StoreFlowRequest {
+  // The flow definition as JSON.
+  google.protobuf.Struct flow = 1;
+
+  // If true, only validate the flow without storing it.
+  bool dry_run = 2;
+}
+
+message StoreFlowResponse {
+  // Content-based flow ID (SHA-256 hash). Always present, even for dry runs.
+  string flow_id = 1;
+
+  // Whether the flow was actually stored.
+  // False when dry_run=true or when validation has fatal diagnostics.
+  bool stored = 2;
+
+  // Validation diagnostics (warnings, errors, fatals).
+  Diagnostics diagnostics = 3;
+}
+
+// --- GetFlow ---
+
+message GetFlowRequest {
+  string flow_id = 1;
+}
+
+message GetFlowResponse {
+  // The flow definition.
+  google.protobuf.Struct flow = 1;
+
+  // The flow blob ID.
+  string flow_id = 2;
+
+  // All available examples (includes both examples and test cases).
+  repeated ExampleInput all_examples = 3;
+}
+
+// --- DeleteFlow ---
+
+message DeleteFlowRequest {
+  string flow_id = 1;
+}
+
+message DeleteFlowResponse {}
+
+// --- GetFlowVariables ---
+
+message GetFlowVariablesRequest {
+  string flow_id = 1;
+}
+
+message GetFlowVariablesResponse {
+  // The flow blob ID.
+  string flow_id = 2;
+
+  // Variable definitions keyed by variable name.
+  // Each variable includes its schema, description, default, and env_var mapping.
+  map<string, FlowVariable> variables = 1;
+}
+
+// --- Shared flow types ---
+
+// Definition of a single flow variable.
+message FlowVariable {
+  // Human-readable description.
+  optional string description = 1;
+
+  // Default value for the variable.
+  optional google.protobuf.Value default_value = 2;
+
+  // Whether the variable is required.
+  bool required = 3;
+
+  // JSON Schema for this variable's expected value.
+  optional google.protobuf.Struct schema = 4;
+
+  // Environment variable name that populates this variable.
+  optional string env_var = 5;
+}
+
+// An example input for a flow (from `examples` or `tests` sections).
+message ExampleInput {
+  // Display name of the example.
+  string name = 1;
+
+  // Optional description of what this example demonstrates.
+  optional string description = 2;
+
+  // The input data for this example.
+  google.protobuf.Value input = 3;
+}
+
+// =============================================================================
+// Validation Diagnostics
+// =============================================================================
+
+// Validation results from analyzing a flow definition.
+message Diagnostics {
+  // All diagnostics found during validation.
+  repeated Diagnostic diagnostics = 1;
+
+  // Count of fatal-level diagnostics (flow cannot be executed).
+  uint32 num_fatal = 2;
+
+  // Count of error-level diagnostics.
+  uint32 num_error = 3;
+
+  // Count of warning-level diagnostics.
+  uint32 num_warning = 4;
+}
+
+// A single validation diagnostic.
+message Diagnostic {
+  // Diagnostic kind name (camelCase identifier).
+  string kind = 1;
+
+  // Numeric error code.
+  uint32 code = 2;
+
+  // Severity level.
+  DiagnosticLevel level = 3;
+
+  // Human-readable formatted message.
+  string formatted = 4;
+
+  // Structured data with additional context (null if no data).
+  optional google.protobuf.Value data = 5;
+
+  // JSON path to the field with the issue (e.g., "$.steps[0].input").
+  optional string path = 6;
+
+  // Whether this diagnostic is experimental (may have false positives).
+  bool experimental = 7;
+}
+
+// Severity level for a validation diagnostic.
+enum DiagnosticLevel {
+  DIAGNOSTIC_LEVEL_UNSPECIFIED = 0;
+  DIAGNOSTIC_LEVEL_FATAL = 1;
+  DIAGNOSTIC_LEVEL_ERROR = 2;
+  DIAGNOSTIC_LEVEL_WARNING = 3;
+}

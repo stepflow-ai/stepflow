@@ -1,0 +1,1197 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: Stepflow API
+    description: Stepflow orchestration engine REST API
+    version: 0.0.1
+servers:
+    - url: http://localhost:7837/api/v1
+      description: Local development server
+
+paths:
+    /blobs:
+        post:
+            tags:
+                - BlobService
+            summary: Store a blob
+            description: Store a blob and return its content-based ID.
+            operationId: storeBlob
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PutBlobRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PutBlobResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /blobs/{blobId}:
+        get:
+            tags:
+                - BlobService
+            summary: Get a blob by ID
+            description: Retrieve a blob by its content-based ID.
+            operationId: getBlob
+            parameters:
+                - name: blobId
+                  in: path
+                  description: Blob ID (SHA-256 hash) to retrieve.
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBlobResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /components:
+        get:
+            tags:
+                - ComponentsService
+            summary: List all available components
+            description: List all available components from registered plugins.
+            operationId: listComponents
+            parameters:
+                - name: excludeSchemas
+                  in: query
+                  description: |-
+                    Set to true to exclude input/output schemas from the response.
+                     By default (when false or omitted), schemas are included.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRegisteredComponentsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /flows:
+        post:
+            tags:
+                - FlowsService
+            summary: Store a flow
+            description: |-
+                Store a flow definition and return its content-based ID.
+
+                 Validates the workflow and returns diagnostics. When `dry_run` is true,
+                 the flow is validated but not stored. If validation produces fatal
+                 diagnostics, the flow is not stored even when `dry_run` is false.
+            operationId: storeFlow
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/StoreFlowRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StoreFlowResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /flows/{flowId}:
+        get:
+            tags:
+                - FlowsService
+            summary: Get a flow by ID
+            description: Retrieve a flow definition by its blob ID.
+            operationId: getFlow
+            parameters:
+                - name: flowId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFlowResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - FlowsService
+            summary: Delete a flow by ID
+            description: Delete a flow definition by its blob ID.
+            operationId: deleteFlow
+            parameters:
+                - name: flowId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DeleteFlowResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /flows/{flowId}/variables:
+        get:
+            tags:
+                - FlowsService
+            summary: Get variable schema for a flow
+            description: |-
+                Get the variable definitions for a flow.
+
+                 Lightweight endpoint that returns variable schema and environment
+                 variable mappings without fetching the entire flow definition.
+            operationId: getFlowVariables
+            parameters:
+                - name: flowId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFlowVariablesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /health:
+        get:
+            tags:
+                - HealthService
+            summary: Check service health
+            description: Check service health and return status, version, and timestamp.
+            operationId: healthCheck
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HealthCheckResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs:
+        get:
+            tags:
+                - RunsService
+            summary: List runs with optional filtering
+            description: List runs with optional filtering.
+            operationId: listRuns
+            parameters:
+                - name: status
+                  in: query
+                  description: Filter by execution status.
+                  schema:
+                    type: string
+                - name: flowName
+                  in: query
+                  description: Filter by flow name (not flow_id).
+                  schema:
+                    type: string
+                - name: rootRunId
+                  in: query
+                  description: Filter to runs under this root (includes the root itself).
+                  schema:
+                    type: string
+                - name: parentRunId
+                  in: query
+                  description: Filter to direct children of this parent run.
+                  schema:
+                    type: string
+                - name: rootsOnly
+                  in: query
+                  description: Filter to only root runs (runs where parent_run_id is None).
+                  schema:
+                    type: boolean
+                - name: maxDepth
+                  in: query
+                  description: Maximum depth for hierarchy queries (0 = root only).
+                  schema:
+                    type: integer
+                    format: uint32
+                - name: limit
+                  in: query
+                  description: Maximum number of results.
+                  schema:
+                    type: integer
+                    format: uint32
+                - name: offset
+                  in: query
+                  description: Number of results to skip.
+                  schema:
+                    type: integer
+                    format: uint32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListRunsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - RunsService
+            summary: Create and execute a flow run
+            description: Create a new run for a flow.
+            operationId: createRun
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateRunRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CreateRunResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}:
+        get:
+            tags:
+                - RunsService
+            summary: Get run details by ID
+            description: Get details of a specific run.
+            operationId: getRun
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: wait
+                  in: query
+                  description: If true, block until the run completes.
+                  schema:
+                    type: boolean
+                - name: timeoutSecs
+                  in: query
+                  description: Maximum seconds to wait when wait=true (default 300).
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRunResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - RunsService
+            summary: Delete a completed execution
+            description: Delete a run.
+            operationId: deleteRun
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/DeleteRunResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/cancel:
+        post:
+            tags:
+                - RunsService
+            summary: Cancel a running execution
+            description: Cancel a running run.
+            operationId: cancelRun
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CancelRunResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/events:
+        get:
+            tags:
+                - RunsService
+            summary: Stream run execution events via SSE
+            description: Stream status events for a run (SSE via tonic-rest).
+            operationId: getRunStatusStream
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: since
+                  in: query
+                  description: Resume from this sequence number (for SSE Last-Event-ID).
+                  schema:
+                    type: string
+                - name: eventTypes
+                  in: query
+                  description: Filter by event types (comma-separated).
+                  schema:
+                    type: string
+                - name: includeSubRuns
+                  in: query
+                  description: Include events from sub-runs.
+                  schema:
+                    type: boolean
+                - name: includeResults
+                  in: query
+                  description: Include step/run results in events.
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/StatusEvent'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/flow:
+        get:
+            tags:
+                - RunsService
+            summary: Get the workflow definition for a run
+            description: Get the flow definition associated with a run.
+            operationId: getRunFlow
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRunFlowResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/items:
+        get:
+            tags:
+                - RunsService
+            summary: Get all item results for a run
+            description: Get item results for a run.
+            operationId: getRunItems
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: resultOrder
+                  in: query
+                  description: 'Result ordering: "byIndex" or "byCompletion".'
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRunItemsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/steps:
+        get:
+            tags:
+                - RunsService
+            summary: Get step-level execution details
+            description: Get step statuses for a run.
+            operationId: getRunSteps
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: itemIndex
+                  in: query
+                  schema:
+                    type: integer
+                    format: uint32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRunStepsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /runs/{runId}/steps/{stepId}:
+        get:
+            tags:
+                - RunsService
+            summary: Get detailed status for a specific step
+            description: Get detailed status for a specific step.
+            operationId: getStepDetail
+            parameters:
+                - name: runId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: stepId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                - name: itemIndex
+                  in: query
+                  schema:
+                    type: integer
+                    format: uint32
+                - name: asof
+                  in: query
+                  description: |-
+                    Read-after-write consistency: only return data if the store has
+                     processed at least this journal sequence number.
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetStepDetailResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+components:
+    schemas:
+        CancelRunResponse:
+            type: object
+            properties:
+                summary:
+                    $ref: '#/components/schemas/RunSummary'
+        ComponentInfoEntry:
+            type: object
+            properties:
+                component:
+                    type: string
+                    description: Component path (e.g., "/builtin/openai", "/python/my_func").
+                description:
+                    type: string
+                    description: Optional human-readable description.
+                inputSchema:
+                    type: object
+                    description: JSON Schema for the component's input (null if schemas not requested).
+                outputSchema:
+                    type: object
+                    description: JSON Schema for the component's output (null if schemas not requested).
+            description: A component registered with the orchestrator.
+        CreateRunRequest:
+            type: object
+            properties:
+                flowId:
+                    type: string
+                    description: Flow blob ID to execute.
+                input:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Input data — one element per item (batch mode).
+                overrides:
+                    type: object
+                    description: |-
+                        Workflow overrides to apply (JSON Merge Patch per step).
+                         Keys are step IDs, values are override objects.
+                variables:
+                    type: object
+                    additionalProperties:
+                        $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Variables for variable references in the workflow.
+                maxConcurrency:
+                    type: integer
+                    description: Maximum concurrent item executions.
+                    format: uint32
+                wait:
+                    type: boolean
+                    description: If true, block until the run completes.
+                timeoutSecs:
+                    type: string
+                    description: Maximum seconds to wait when wait=true (default 300).
+        CreateRunResponse:
+            type: object
+            properties:
+                summary:
+                    allOf:
+                        - $ref: '#/components/schemas/RunSummary'
+                    description: Run summary.
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ItemResult'
+                    description: Item results, populated when wait=true and the run completed.
+            description: |-
+                Response for create run.
+
+                 The summary fields are included directly (not nested) to match the existing
+                 REST API's flattened JSON shape. tonic-rest serializes this as a flat object
+                 where RunSummary fields appear at the top level alongside `results`.
+        DeleteFlowResponse:
+            type: object
+            properties: {}
+        DeleteRunResponse:
+            type: object
+            properties: {}
+        Diagnostic:
+            type: object
+            properties:
+                kind:
+                    type: string
+                    description: Diagnostic kind name (camelCase identifier).
+                code:
+                    type: integer
+                    description: Numeric error code.
+                    format: uint32
+                level:
+                    enum:
+                        - DIAGNOSTIC_LEVEL_UNSPECIFIED
+                        - DIAGNOSTIC_LEVEL_FATAL
+                        - DIAGNOSTIC_LEVEL_ERROR
+                        - DIAGNOSTIC_LEVEL_WARNING
+                    type: string
+                    description: Severity level.
+                    format: enum
+                formatted:
+                    type: string
+                    description: Human-readable formatted message.
+                data:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Structured data with additional context (null if no data).
+                path:
+                    type: string
+                    description: JSON path to the field with the issue (e.g., "$.steps[0].input").
+                experimental:
+                    type: boolean
+                    description: Whether this diagnostic is experimental (may have false positives).
+            description: A single validation diagnostic.
+        Diagnostics:
+            type: object
+            properties:
+                diagnostics:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Diagnostic'
+                    description: All diagnostics found during validation.
+                numFatal:
+                    type: integer
+                    description: Count of fatal-level diagnostics (flow cannot be executed).
+                    format: uint32
+                numError:
+                    type: integer
+                    description: Count of error-level diagnostics.
+                    format: uint32
+                numWarning:
+                    type: integer
+                    description: Count of warning-level diagnostics.
+                    format: uint32
+            description: Validation results from analyzing a flow definition.
+        ExampleInput:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Display name of the example.
+                description:
+                    type: string
+                    description: Optional description of what this example demonstrates.
+                input:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: The input data for this example.
+            description: An example input for a flow (from `examples` or `tests` sections).
+        FlowVariable:
+            type: object
+            properties:
+                name:
+                    type: string
+                description:
+                    type: string
+                defaultValue:
+                    $ref: '#/components/schemas/GoogleProtobufValue'
+                required:
+                    type: boolean
+        GetBlobResponse:
+            type: object
+            properties:
+                jsonData:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: JSON data (for data and flow blobs).
+                rawData:
+                    type: string
+                    description: Raw binary data (for binary blobs).
+                    format: bytes
+                blobType:
+                    type: string
+                    description: The blob type.
+                blobId:
+                    type: string
+                    description: The blob ID (for confirmation).
+                filename:
+                    type: string
+                    description: Filename if one was set.
+                contentType:
+                    type: string
+                    description: MIME content type (e.g., "application/pdf"). Present for binary blobs.
+        GetFlowResponse:
+            type: object
+            properties:
+                flow:
+                    type: object
+                    description: The flow definition.
+                flowId:
+                    type: string
+                    description: The flow blob ID.
+                allExamples:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ExampleInput'
+                    description: All available examples (includes both examples and test cases).
+        GetFlowVariablesResponse:
+            type: object
+            properties:
+                flowId:
+                    type: string
+                    description: The flow blob ID.
+                variables:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlowVariable'
+                    description: Variable definitions from the flow.
+                schema:
+                    type: object
+                    description: Raw JSON Schema for the variables section (null if no variables).
+                envVars:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: |-
+                        Mapping from variable name to the environment variable that populates it.
+                         Only includes variables that have an `env_var` annotation.
+        GetRunFlowResponse:
+            type: object
+            properties:
+                flow:
+                    type: object
+                flowId:
+                    type: string
+        GetRunItemsResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ItemResult'
+        GetRunResponse:
+            type: object
+            properties:
+                summary:
+                    $ref: '#/components/schemas/RunSummary'
+                steps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StepStatus'
+        GetRunStepsResponse:
+            type: object
+            properties:
+                steps:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StepStatus'
+        GetStepDetailResponse:
+            type: object
+            properties:
+                step:
+                    $ref: '#/components/schemas/StepStatus'
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: The type of the serialized message.
+            additionalProperties: true
+            description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+        GoogleProtobufValue:
+            description: Represents a dynamically typed value which can be either null, a number, a string, a boolean, a recursive struct value, or a list of values.
+        HealthCheckResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: Service status (e.g., "healthy").
+                timestamp:
+                    type: string
+                    description: Timestamp when health was checked (RFC 3339 format).
+                version:
+                    type: string
+                    description: Service version.
+        ItemCompletedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                itemIndex:
+                    type: integer
+                    format: uint32
+                result:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: The item result. Only included when include_results=true.
+        ItemResult:
+            type: object
+            properties:
+                itemIndex:
+                    type: integer
+                    description: Index of this item in the input array (0-based).
+                    format: uint32
+                status:
+                    type: string
+                    description: Execution status of this item.
+                output:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Result of this item (present when completed successfully).
+                errorMessage:
+                    type: string
+                    description: Error message (present when failed).
+                errorCode:
+                    type: integer
+                    description: Error code (present when failed).
+                    format: int32
+                completedAt:
+                    type: string
+                    description: When this item completed (ISO 8601).
+        ItemStatistics:
+            type: object
+            properties:
+                total:
+                    type: integer
+                    format: uint32
+                completed:
+                    type: integer
+                    format: uint32
+                running:
+                    type: integer
+                    format: uint32
+                failed:
+                    type: integer
+                    format: uint32
+                cancelled:
+                    type: integer
+                    format: uint32
+        ListRegisteredComponentsResponse:
+            type: object
+            properties:
+                components:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ComponentInfoEntry'
+                    description: All available components, sorted by name.
+        ListRunsResponse:
+            type: object
+            properties:
+                runs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RunSummary'
+        PutBlobRequest:
+            type: object
+            properties:
+                jsonData:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: JSON data (for data and flow blobs).
+                rawData:
+                    type: string
+                    description: Raw binary data (for binary blobs, images, PDFs, etc.).
+                    format: bytes
+                blobType:
+                    type: string
+                    description: 'Blob type: "data", "flow", or "binary".'
+                filename:
+                    type: string
+                    description: Optional filename to associate with the blob.
+                contentType:
+                    type: string
+                    description: MIME content type (e.g., "application/pdf"). Used with raw_data.
+        PutBlobResponse:
+            type: object
+            properties:
+                blobId:
+                    type: string
+                    description: Content-based blob ID (SHA-256 hash).
+                filename:
+                    type: string
+                    description: Filename if one was provided.
+        RunCompletedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                status:
+                    type: string
+        RunCreatedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                flowId:
+                    type: string
+                itemCount:
+                    type: integer
+                    format: uint32
+        RunSummary:
+            type: object
+            properties:
+                runId:
+                    type: string
+                flowId:
+                    type: string
+                flowName:
+                    type: string
+                status:
+                    type: string
+                items:
+                    $ref: '#/components/schemas/ItemStatistics'
+                createdAt:
+                    type: string
+                completedAt:
+                    type: string
+                rootRunId:
+                    type: string
+                    description: |-
+                        Run hierarchy fields.
+                         For top-level runs, root_run_id equals run_id.
+                parentRunId:
+                    type: string
+                    description: Parent run ID if this is a sub-flow. Absent for top-level runs.
+                orchestratorId:
+                    type: string
+                    description: The orchestrator currently managing this run.
+                createdAtSeqno:
+                    type: string
+                    description: Journal sequence numbers for recovery and consistency.
+                finishedAtSeqno:
+                    type: string
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+                    format: int32
+                message:
+                    type: string
+                    description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
+            description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
+        StatusEvent:
+            type: object
+            properties:
+                sequenceNumber:
+                    type: string
+                    description: Journal sequence number (used as SSE id).
+                timestamp:
+                    type: string
+                    description: Timestamp when this event was recorded (ISO 8601).
+                runCreated:
+                    $ref: '#/components/schemas/RunCreatedEvent'
+                stepStarted:
+                    $ref: '#/components/schemas/StepStartedEvent'
+                stepCompleted:
+                    $ref: '#/components/schemas/StepCompletedEvent'
+                stepReady:
+                    $ref: '#/components/schemas/StepReadyEvent'
+                itemCompleted:
+                    $ref: '#/components/schemas/ItemCompletedEvent'
+                runCompleted:
+                    $ref: '#/components/schemas/RunCompletedEvent'
+                subRunCreated:
+                    $ref: '#/components/schemas/SubRunCreatedEvent'
+            description: |-
+                A status event from the execution journal.
+
+                 Sent as SSE events with:
+                 - id = sequence_number
+                 - event = the event type name (e.g., "step_started")
+                 - data = JSON-serialized StatusEvent
+        StepCompletedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                itemIndex:
+                    type: integer
+                    format: uint32
+                stepIndex:
+                    type: integer
+                    format: uint32
+                stepId:
+                    type: string
+                status:
+                    type: string
+                    description: Whether the step succeeded or failed.
+                result:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: The step result. Only included when include_results=true.
+        StepReadyEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                itemIndex:
+                    type: integer
+                    format: uint32
+                stepIndex:
+                    type: integer
+                    format: uint32
+                stepId:
+                    type: string
+        StepStartedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                itemIndex:
+                    type: integer
+                    format: uint32
+                stepIndex:
+                    type: integer
+                    format: uint32
+                stepId:
+                    type: string
+                attempt:
+                    type: integer
+                    description: Execution attempt number (1-based, >1 for retries).
+                    format: uint32
+        StepStatus:
+            type: object
+            properties:
+                stepId:
+                    type: string
+                stepIndex:
+                    type: integer
+                    format: uint32
+                itemIndex:
+                    type: integer
+                    description: Item index (0-based). Required for batch runs.
+                    format: uint32
+                status:
+                    type: string
+                component:
+                    type: string
+                output:
+                    allOf:
+                        - $ref: '#/components/schemas/GoogleProtobufValue'
+                    description: Step result (present when completed or failed).
+                errorMessage:
+                    type: string
+                errorCode:
+                    type: integer
+                    format: int32
+                startedAt:
+                    type: string
+                completedAt:
+                    type: string
+                journalSeqno:
+                    type: string
+                    description: Journal sequence number of the event that produced this status.
+                updatedAt:
+                    type: string
+                    description: When this status was last updated (ISO 8601).
+        StoreFlowRequest:
+            type: object
+            properties:
+                flow:
+                    type: object
+                    description: The flow definition as JSON.
+                dryRun:
+                    type: boolean
+                    description: If true, only validate the flow without storing it.
+        StoreFlowResponse:
+            type: object
+            properties:
+                flowId:
+                    type: string
+                    description: Content-based flow ID (SHA-256 hash). Always present, even for dry runs.
+                stored:
+                    type: boolean
+                    description: |-
+                        Whether the flow was actually stored.
+                         False when dry_run=true or when validation has fatal diagnostics.
+                diagnostics:
+                    allOf:
+                        - $ref: '#/components/schemas/Diagnostics'
+                    description: Validation diagnostics (warnings, errors, fatals).
+        SubRunCreatedEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: The sub-run's ID.
+                parentRunId:
+                    type: string
+                    description: The parent run that spawned this sub-run.
+                flowId:
+                    type: string
+                    description: The flow being executed by the sub-run.
+                itemCount:
+                    type: integer
+                    description: Number of items in the sub-run.
+                    format: uint32
+tags:
+    - name: BlobService
+      description: |-
+        Content-addressed blob storage service.
+
+         Exposed as both REST (for external clients) and gRPC (for workers via
+         `blob_service_url` from ExecutionContext). Workers can call any
+         orchestrator or a dedicated blob pool for these operations.
+
+         The REST layer supports content negotiation:
+         - `application/json`: JSON-encoded blob data
+         - `application/octet-stream`: Raw binary data (with `X-Blob-Filename` header)
+
+         The gRPC layer uses `oneof` to carry either JSON or raw bytes efficiently.
+    - name: ComponentsService
+      description: |-
+        Service for listing registered components across all plugins.
+
+         This is the external REST/gRPC API for clients to discover available
+         components. It aggregates results from all registered plugins. For the
+         internal worker-facing component API, see WorkerPushService in worker.proto.
+    - name: FlowsService
+      description: Service for managing workflow (flow) definitions.
+    - name: HealthService
+      description: Service health check endpoint.
+    - name: RunsService
+      description: Service for managing workflow runs.

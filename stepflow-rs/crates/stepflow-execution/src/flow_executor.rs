@@ -1223,7 +1223,7 @@ impl FlowExecutor {
     }
 
     /// Get the transport retry config from the environment.
-    fn retry_config(&self) -> &stepflow_core::RetryConfig {
+    fn retry_config(&self) -> stepflow_core::RetryConfig {
         self.env
             .get::<stepflow_core::RetryConfig>()
             .expect("RetryConfig must be in environment")
@@ -1241,7 +1241,7 @@ impl FlowExecutor {
     fn lookup_plugin_for_task(
         &self,
         task: Task,
-    ) -> Result<(&std::sync::Arc<stepflow_plugin::DynPlugin<'static>>, String)> {
+    ) -> Result<(std::sync::Arc<stepflow_plugin::DynPlugin<'static>>, String)> {
         let run_state = self.run_state(task.run_id).ok_or_else(|| {
             error_stack::report!(ExecutionError::Deadlock)
                 .attach_printable(format!("Unknown run_id {} for retry lookup", task.run_id))

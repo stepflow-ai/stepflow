@@ -1,0 +1,210 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/protobuf/timestamp.proto";
+import "stepflow/v1/common.proto";
+import "stepflow/v1/tasks.proto";
+import "stepflow/v1/runs.proto";
+
+// Service exposed by the orchestrator for workers to interact with during
+// component execution. Workers reach this via `orchestrator_service_url`
+// from TaskContext.
+//
+// This must reach the orchestrator that owns the specific run — it is NOT
+// interchangeable with other orchestrators (unlike WorkerService).
+//
+// gRPC only — not exposed as REST.
+service OrchestratorService {
+  // Submit a sub-flow run from within a component execution.
+  rpc SubmitRun(OrchestratorSubmitRunRequest) returns (OrchestratorRunStatus);
+
+  // Get the status of a run (optionally waiting for completion).
+  rpc GetRun(OrchestratorGetRunRequest) returns (OrchestratorRunStatus);
+
+  // Report task completion (success or failure).
+  //
+  // Called by workers after executing a component, regardless of how the
+  // task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+  // `orchestrator_service_url` from the task's TaskContext to reach
+  // the orchestrator that owns the run.
+  rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse);
+
+  // Notify the orchestrator that the worker has started executing a task.
+  //
+  // Called by the worker immediately before beginning component execution.
+  // This transitions the task from "queued" to "executing" on the
+  // orchestrator side, starting the heartbeat timeout. If the response
+  // has `timed_out = true`, the task already expired in the queue and the
+  // worker should skip execution.
+  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
+
+  // Send a heartbeat for an in-progress task.
+  //
+  // Called periodically by the worker during component execution (typically
+  // every 1s). Each heartbeat resets the crash-detection timer on the
+  // orchestrator. If heartbeats stop arriving for 5s, the orchestrator
+  // presumes the worker crashed and fails the task.
+  rpc TaskHeartbeat(TaskHeartbeatRequest) returns (TaskHeartbeatResponse);
+}
+
+// --- SubmitRun ---
+
+// Submit a sub-flow run from within a component execution.
+// Wraps the shared CreateRunRequest with an optional subflow deduplication key.
+message OrchestratorSubmitRunRequest {
+  // The run creation parameters (shared with RunsService.CreateRun).
+  CreateRunRequest run_request = 1;
+
+  // Deterministic key for subflow deduplication during recovery.
+  // When present, the orchestrator will return an existing run with the
+  // same key instead of creating a duplicate.
+  optional string subflow_key = 2;
+}
+
+// --- GetRun ---
+
+message OrchestratorGetRunRequest {
+  // Run ID (UUID) to query.
+  string run_id = 1;
+
+  // If true, wait for the run to complete before responding.
+  bool wait = 2;
+
+  // If true, include item results in the response.
+  bool include_results = 3;
+
+  // Result ordering.
+  ResultOrder result_order = 4;
+
+  // Maximum seconds to wait when wait=true (default 300).
+  optional uint64 timeout_secs = 5;
+}
+
+// --- Response ---
+
+message OrchestratorRunStatus {
+  // Run ID (UUID).
+  string run_id = 1;
+  string flow_id = 2;
+  optional string flow_name = 3;
+  ExecutionStatus status = 4;
+  ItemStatistics items = 5;
+  google.protobuf.Timestamp created_at = 6;
+  optional google.protobuf.Timestamp completed_at = 7;
+  repeated ItemResult results = 8;
+
+  // Run hierarchy fields.
+  // Root run ID (UUID). For top-level runs, equals run_id.
+  string root_run_id = 9;
+  // Parent run ID (UUID). Present only for sub-flow runs.
+  optional string parent_run_id = 10;
+
+  // Journal sequence number of the run creation event.
+  uint64 created_at_seqno = 11;
+}
+
+// --- CompleteTask ---
+
+// Error codes for task failures.
+enum TaskErrorCode {
+  // Default value; should not be used explicitly.
+  TASK_ERROR_CODE_UNSPECIFIED = 0;
+
+  // An unexpected internal error in the worker or runtime (e.g., serialization
+  // failure, panic, OOM). Generally not retriable without a fix.
+  TASK_ERROR_CODE_INTERNAL = 1;
+
+  // The task exceeded its execution deadline or heartbeat timeout. The
+  // orchestrator may retry depending on the configured retry policy.
+  TASK_ERROR_CODE_TIMEOUT = 2;
+
+  // The component rejected its input (e.g., missing required fields, schema
+  // validation failure). Not retriable without correcting the input.
+  TASK_ERROR_CODE_INVALID_INPUT = 3;
+
+  // The component executed but returned a business-logic failure (e.g., an API
+  // call returned an error, a transformation produced an invalid result).
+  TASK_ERROR_CODE_COMPONENT_FAILED = 4;
+
+  // The task was explicitly cancelled by the orchestrator (e.g., run
+  // cancellation, step timeout policy). Not retriable.
+  TASK_ERROR_CODE_CANCELLED = 5;
+
+  // The worker or component could not be reached (e.g., worker disconnected,
+  // gRPC channel broken). Typically retriable after backoff.
+  TASK_ERROR_CODE_UNAVAILABLE = 6;
+}
+
+// Structured error type for task failures.
+message TaskError {
+  // Error code categorizing the failure.
+  TaskErrorCode code = 1;
+
+  // Human-readable error message.
+  string message = 2;
+}
+
+message CompleteTaskRequest {
+  // The task ID from the TaskAssignment.
+  string task_id = 1;
+
+  // The task result — exactly one must be set.
+  oneof result {
+    // The component execution response (on success).
+    ComponentExecuteResponse response = 2;
+
+    // Structured error (on failure).
+    TaskError error = 3;
+  }
+}
+
+message CompleteTaskResponse {}
+
+// --- StartTask ---
+
+message StartTaskRequest {
+  // The task ID from the TaskAssignment.
+  string task_id = 1;
+}
+
+message StartTaskResponse {
+  // If true, the task already timed out in the queue before the worker
+  // called StartTask. The worker should skip execution — no CompleteTask
+  // call is needed.
+  bool timed_out = 1;
+}
+
+// --- TaskHeartbeat ---
+
+message TaskHeartbeatRequest {
+  // The task ID from the TaskAssignment.
+  string task_id = 1;
+
+  // Optional progress indicator (0.0 to 1.0).
+  optional float progress = 2;
+
+  // Optional human-readable status message.
+  optional string status_message = 3;
+}
+
+message TaskHeartbeatResponse {
+  // If true, the worker should cancel the task (e.g., run was cancelled).
+  bool should_cancel = 1;
+}

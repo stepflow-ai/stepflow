@@ -5,6 +5,8 @@ excludes:
   - examples/production/k8s/arxiv-pdfs/.*
   - sdks/python/stepflow-api/.*
   - sdks/python/stepflow-py/src/stepflow_py/api/.*
+  - sdks/python/stepflow-py/src/stepflow_py/proto/.*
+  - .*\.pyi
   - .*\.ya?ml
   - .*\.snap
   - .*\.toml
@@ -33,6 +35,9 @@ excludes:
   - env.*
   - \.dockerignore
   - \.gitkeep
+  - proto/buf.lock
+  - proto/gnostic/.*
+  - proto/google/.*
 
 licenses:
   - files: any
@@ -57,6 +62,12 @@ licenses:
 comments:
   - columns: 100
     extension: rs
+    commenter:
+      type: line
+      comment_char: "//"
+      trailing_lines: 1
+  - columns: 80
+    extension: proto
     commenter:
       type: line
       comment_char: "//"

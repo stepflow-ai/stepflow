@@ -1,0 +1,19 @@
+version: v2
+plugins:
+  - remote: buf.build/community/google-gnostic-openapi:v0.7.1
+    out: ../schemas
+    opt:
+      - title=Stepflow API
+      - description=Stepflow orchestration engine REST API
+      - naming=json
+      - enum_type=string
+      - output_mode=merge
+      - default_response=true
+inputs:
+  - directory: .
+    paths:
+      - stepflow/v1/health.proto
+      - stepflow/v1/components.proto
+      - stepflow/v1/blobs.proto
+      - stepflow/v1/flows.proto
+      - stepflow/v1/runs.proto
