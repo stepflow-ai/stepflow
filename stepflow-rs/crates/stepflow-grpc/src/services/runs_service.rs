@@ -733,30 +733,20 @@ fn journal_event_to_proto(
 /// Get the `StatusEventType` enum value for a proto status event (for filtering).
 fn proto_event_type_enum(event: &proto::status_event::Event) -> i32 {
     match event {
-        proto::status_event::Event::RunCreated(_) => {
-            proto::StatusEventType::RunCreated as i32
-        }
-        proto::status_event::Event::StepStarted(_) => {
-            proto::StatusEventType::StepStarted as i32
-        }
+        proto::status_event::Event::RunCreated(_) => proto::StatusEventType::RunCreated as i32,
+        proto::status_event::Event::StepStarted(_) => proto::StatusEventType::StepStarted as i32,
         proto::status_event::Event::StepCompleted(_) => {
             proto::StatusEventType::StepCompleted as i32
         }
-        proto::status_event::Event::StepReady(_) => {
-            proto::StatusEventType::StepReady as i32
-        }
+        proto::status_event::Event::StepReady(_) => proto::StatusEventType::StepReady as i32,
         proto::status_event::Event::ItemCompleted(_) => {
             proto::StatusEventType::ItemCompleted as i32
         }
-        proto::status_event::Event::RunCompleted(_) => {
-            proto::StatusEventType::RunCompleted as i32
-        }
+        proto::status_event::Event::RunCompleted(_) => proto::StatusEventType::RunCompleted as i32,
         proto::status_event::Event::SubRunCreated(_) => {
             proto::StatusEventType::SubRunCreated as i32
         }
-        proto::status_event::Event::StepsNeeded(_) => {
-            proto::StatusEventType::StepsNeeded as i32
-        }
+        proto::status_event::Event::StepsNeeded(_) => proto::StatusEventType::StepsNeeded as i32,
     }
 }
 
