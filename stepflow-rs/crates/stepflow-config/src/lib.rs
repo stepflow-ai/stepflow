@@ -210,6 +210,10 @@ impl StepflowConfig {
         }
         env.insert(ActiveExecutions::new());
 
+        // Insert the gRPC server for pull-based plugins.
+        // The server is started lazily when the first pull plugin initializes.
+        env.insert(StdArc::new(stepflow_grpc::StepflowGrpcServer::new()));
+
         initialize_plugins(&env)
             .await
             .change_context(ConfigError::Configuration)?;

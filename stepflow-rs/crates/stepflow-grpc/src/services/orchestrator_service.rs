@@ -208,7 +208,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 FlowResult::Success(ValueRef::new(json))
             }
             Some(TaskResult::Error(task_error)) => {
-                FlowResult::Failed(FlowError::new(task_error.code.into(), task_error.message))
+                // Map proto TaskErrorCode to HTTP-style error codes for FlowError.
+                // Proto enum values (0-5) are not HTTP codes; map them accordingly.
+                let http_code = match task_error.code {
+                    3 => 400, // INVALID_INPUT → Bad Request
+                    _ => 500, // INTERNAL, TIMEOUT, COMPONENT_FAILED, CANCELLED, etc.
+                };
+                FlowResult::Failed(FlowError::new(http_code, task_error.message))
             }
             None => {
                 return Err(grpc_err::invalid_argument(

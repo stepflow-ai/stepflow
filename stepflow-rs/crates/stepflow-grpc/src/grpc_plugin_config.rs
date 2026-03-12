@@ -12,8 +12,11 @@
 
 //! Configuration and plugin factory for gRPC-based pull transport.
 //!
-//! [`PullPluginConfig`] spawns a gRPC server (TasksService + OrchestratorService)
-//! and optionally launches a worker subprocess that connects back via pull transport.
+//! [`PullPluginConfig`] registers a task queue with the orchestrator's
+//! gRPC server ([`StepflowGrpcServer`]) and optionally launches a worker
+//! subprocess that connects back via pull transport.
+//!
+//! [`StepflowGrpcServer`]: crate::grpc_server::StepflowGrpcServer
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,18 +32,20 @@ use stepflow_plugin::{
 use tokio::sync::Mutex;
 
 use crate::in_memory_transport::InMemoryTaskTransport;
-use crate::pending_tasks::PendingTasks;
-use crate::proto::stepflow::v1::orchestrator_service_server::OrchestratorServiceServer;
-use crate::proto::stepflow::v1::tasks_service_server::TasksServiceServer;
 use crate::pull_task_queue::PullTaskQueue;
 use crate::queue_plugin::StepflowQueuePlugin;
-use crate::services::{OrchestratorServiceImpl, TasksServiceImpl};
+use crate::grpc_server::StepflowGrpcServer;
+use crate::task_transport::TaskTransport;
+
+/// Transport, queue timeout, and execution timeout — consumed once during initialization.
+type TransportInit = (Box<dyn TaskTransport>, std::time::Duration, Option<std::time::Duration>);
 
 /// Configuration for a gRPC pull-based plugin.
 ///
 /// When instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory
-/// task queue. The gRPC server and optional worker subprocess are started
-/// during `ensure_initialized`, which runs after the environment is built.
+/// task queue. During `ensure_initialized`, registers its queue with the
+/// orchestrator's [`StepflowGrpcServer`] and optionally spawns a worker
+/// subprocess.
 ///
 /// # Config example
 ///
@@ -111,123 +116,109 @@ impl PluginConfig for PullPluginConfig {
         let execution_timeout = self
             .execution_timeout_secs
             .map(std::time::Duration::from_secs);
-        let pending_tasks = PendingTasks::new();
         let queue = Arc::new(PullTaskQueue::new());
         let transport = Box::new(InMemoryTaskTransport::new(queue.clone()));
-        let inner = StepflowQueuePlugin::new(
-            transport,
-            pending_tasks.clone(),
-            queue_timeout,
-            execution_timeout,
-        );
 
         let plugin = PullPlugin {
-            inner,
+            inner: Mutex::new(None),
+            transport_and_timeouts: Mutex::new(Some((transport, queue_timeout, execution_timeout))),
             queue,
-            pending_tasks,
             command: self.command,
             args: self.args,
             env: self.env,
             queue_name: self.queue_name,
             working_directory: working_directory.to_path_buf(),
-            state: Mutex::new(None),
+            worker: Mutex::new(None),
         };
 
         Ok(DynPlugin::boxed(plugin))
     }
 }
 
-/// Runtime state created during initialization.
+/// Runtime state for the worker subprocess.
 ///
-/// When dropped, the gRPC server task is aborted and the worker subprocess
-/// is killed. This prevents orphaned worker processes that spin on
-/// "Connection refused" after the orchestrator exits.
-struct PullPluginState {
-    /// Worker subprocess handle — killed on drop.
-    worker: Option<tokio::process::Child>,
-    /// gRPC server task handle — aborted on drop.
-    server: tokio::task::JoinHandle<()>,
+/// When dropped, the worker subprocess is killed to prevent orphaned
+/// processes that spin on "Connection refused" after the orchestrator exits.
+struct WorkerState {
+    child: tokio::process::Child,
 }
 
-impl Drop for PullPluginState {
+impl Drop for WorkerState {
     fn drop(&mut self) {
-        // Abort the gRPC server task so the listener is closed.
-        self.server.abort();
-
-        // Kill the worker subprocess to prevent orphaned processes.
-        if let Some(ref mut child) = self.worker {
-            let pid = child.id();
-            if let Err(e) = child.start_kill() {
-                log::debug!("Failed to kill worker subprocess (pid={pid:?}): {e}");
-            } else {
-                log::debug!("Killed worker subprocess (pid={pid:?})");
-            }
+        let pid = self.child.id();
+        if let Err(e) = self.child.start_kill() {
+            log::debug!("Failed to kill worker subprocess (pid={pid:?}): {e}");
+        } else {
+            log::debug!("Killed worker subprocess (pid={pid:?})");
         }
     }
 }
 
-/// gRPC pull-based plugin that manages the lifecycle of a gRPC server and
-/// optional worker subprocess.
+/// gRPC pull-based plugin that registers its task queue with the
+/// orchestrator's shared gRPC server and optionally manages a worker
+/// subprocess lifecycle.
 ///
 /// Created by [`PullPluginConfig`]. Delegates task execution to
 /// [`StepflowQueuePlugin`].
 pub struct PullPlugin {
-    inner: StepflowQueuePlugin,
+    /// The inner queue plugin, initialized during `ensure_initialized`.
+    inner: Mutex<Option<StepflowQueuePlugin>>,
+    /// Transport + timeouts consumed during initialization to build the inner plugin.
+    transport_and_timeouts: Mutex<Option<TransportInit>>,
     queue: Arc<PullTaskQueue>,
-    pending_tasks: Arc<PendingTasks>,
     command: Option<String>,
     args: Vec<String>,
     env: std::collections::HashMap<String, String>,
     queue_name: Option<String>,
     working_directory: PathBuf,
-    state: Mutex<Option<PullPluginState>>,
+    worker: Mutex<Option<WorkerState>>,
 }
 
 impl stepflow_plugin::Plugin for PullPlugin {
     async fn ensure_initialized(&self, env: &Arc<StepflowEnvironment>) -> Result<()> {
         // Idempotent: skip if already initialized
-        let mut state = self.state.lock().await;
-        if state.is_some() {
-            return Ok(());
+        {
+            let inner = self.inner.lock().await;
+            if inner.is_some() {
+                return Ok(());
+            }
         }
 
-        // Start gRPC server on a random port
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .change_context(PluginError::Initializing)
-            .attach_printable("Failed to bind gRPC server")?;
-        let port = listener
-            .local_addr()
-            .change_context(PluginError::Initializing)?
-            .port();
+        // Get or create the shared gRPC server from the environment.
+        // The first plugin to initialize will start the server.
+        let shared_server = env.get::<Arc<StepflowGrpcServer>>().ok_or_else(|| {
+            error_stack::report!(PluginError::Initializing)
+                .attach_printable("StepflowGrpcServer not found in environment")
+        })?;
 
-        let orchestrator_service =
-            OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
-        let tasks_service = TasksServiceImpl::new(self.queue.clone());
+        // Start the server (idempotent — returns existing address if already running)
+        let server_address = shared_server.ensure_started(env).await?;
 
-        let server_handle = tokio::spawn(async move {
-            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-            if let Err(e) = tonic::transport::Server::builder()
-                .add_service(OrchestratorServiceServer::new(orchestrator_service))
-                .add_service(TasksServiceServer::new(tasks_service))
-                .serve_with_incoming(incoming)
-                .await
-            {
-                log::error!("gRPC server error: {e}");
-            }
-        });
+        // Register this plugin's queue with the shared server
+        let queue_name = self.queue_name.as_deref().unwrap_or("python");
+        shared_server.register_queue(queue_name.to_string(), self.queue.clone());
 
-        log::info!("gRPC pull transport server started on port {port}");
+        // Build the inner StepflowQueuePlugin with the shared PendingTasks
+        let (transport, queue_timeout, execution_timeout) =
+            self.transport_and_timeouts.lock().await.take().ok_or_else(|| {
+                error_stack::report!(PluginError::Initializing)
+                    .attach_printable("transport already consumed (double initialization?)")
+            })?;
 
-        // Set the orchestrator URL override so task assignments carry the
-        // correct URL for workers to call CompleteTask back to
-        self.inner.set_orchestrator_url(format!("127.0.0.1:{port}"));
+        let inner_plugin = StepflowQueuePlugin::new(
+            transport,
+            shared_server.pending_tasks().clone(),
+            queue_timeout,
+            execution_timeout,
+        );
+
+        // Set the orchestrator URL so task assignments carry the shared server address
+        inner_plugin.set_orchestrator_url(server_address.clone());
+
+        *self.inner.lock().await = Some(inner_plugin);
 
         // Spawn worker subprocess if command is configured
-        let worker = if let Some(command) = &self.command {
-            let orchestrator_url = format!("127.0.0.1:{port}");
-            let queue_name = self.queue_name.as_deref().unwrap_or("python");
-
+        if let Some(command) = &self.command {
             let mut cmd = tokio::process::Command::new(command);
             cmd.args(&self.args)
                 .current_dir(&self.working_directory)
@@ -236,8 +227,11 @@ impl stepflow_plugin::Plugin for PullPlugin {
                 // Set transport config via environment variables so the
                 // same worker binary works for all transport modes.
                 .env("STEPFLOW_TRANSPORT", "grpc")
-                .env("STEPFLOW_TASKS_URL", &orchestrator_url)
-                .env("STEPFLOW_QUEUE_NAME", queue_name);
+                .env("STEPFLOW_TASKS_URL", &server_address)
+                .env("STEPFLOW_QUEUE_NAME", queue_name)
+                // The blob service is hosted on the same shared gRPC server,
+                // so use the same address as the tasks/orchestrator URL.
+                .env("STEPFLOW_BLOB_URL", &server_address);
 
             for (k, v) in &self.env {
                 cmd.env(k, v);
@@ -267,25 +261,28 @@ impl stepflow_plugin::Plugin for PullPlugin {
             }
 
             log::info!("gRPC worker connected successfully");
-            Some(child)
-        } else {
-            None
-        };
-
-        *state = Some(PullPluginState {
-            worker,
-            server: server_handle,
-        });
+            *self.worker.lock().await = Some(WorkerState { child });
+        }
 
         Ok(())
     }
 
     async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        self.inner.list_components().await
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("plugin not initialized")
+        })?;
+        inner.list_components().await
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        self.inner.component_info(component).await
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("plugin not initialized")
+        })?;
+        inner.component_info(component).await
     }
 
     async fn execute(
@@ -296,12 +293,22 @@ impl stepflow_plugin::Plugin for PullPlugin {
         input: ValueRef,
         attempt: u32,
     ) -> Result<FlowResult> {
-        self.inner
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("plugin not initialized")
+        })?;
+        inner
             .execute(component, run_context, step, input, attempt)
             .await
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {
-        self.inner.prepare_for_retry().await
+        let inner = self.inner.lock().await;
+        let inner = inner.as_ref().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("plugin not initialized")
+        })?;
+        inner.prepare_for_retry().await
     }
 }

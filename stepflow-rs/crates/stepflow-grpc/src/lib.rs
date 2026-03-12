@@ -51,6 +51,7 @@ pub mod pending_tasks;
 pub mod pull_task_queue;
 pub mod queue_plugin;
 mod services;
+pub mod grpc_server;
 pub mod task_transport;
 
 /// Generated REST route handlers from `google.api.http` annotations.
@@ -72,4 +73,5 @@ pub use proto::stepflow::v1::*;
 pub use pull_task_queue::PullTaskQueue;
 pub use queue_plugin::StepflowQueuePlugin;
 pub use services::*;
+pub use grpc_server::StepflowGrpcServer;
 pub use task_transport::TaskTransport;

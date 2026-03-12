@@ -33,20 +33,21 @@ use tonic::{Request, Response, Status};
 use crate::error as grpc_err;
 use crate::proto::stepflow::v1::tasks_service_server::TasksService;
 use crate::proto::stepflow::v1::{PullTasksRequest, TaskAssignment};
-use crate::pull_task_queue::PullTaskQueue;
+use crate::grpc_server::QueueRegistry;
 
 /// gRPC implementation of [TasksService].
 ///
-/// Streams task assignments from a shared [`PullTaskQueue`] to workers.
-/// Can be served by any orchestrator that has access to the queue.
+/// Routes `PullTasks` requests to the correct [`PullTaskQueue`] based on
+/// the worker's `queue_name`. Each pull plugin registers its queue under
+/// a unique name in the shared [`QueueRegistry`].
 #[derive(Debug)]
 pub struct TasksServiceImpl {
-    queue: Arc<PullTaskQueue>,
+    registry: Arc<QueueRegistry>,
 }
 
 impl TasksServiceImpl {
-    pub fn new(queue: Arc<PullTaskQueue>) -> Self {
-        Self { queue }
+    pub fn new(registry: Arc<QueueRegistry>) -> Self {
+        Self { registry }
     }
 }
 
@@ -66,6 +67,11 @@ impl TasksService for TasksServiceImpl {
                 "queue name is required",
             ));
         }
+
+        // Look up the queue for this worker's queue_name
+        let queue = self.registry.get(&req.queue_name).ok_or_else(|| {
+            grpc_err::not_found("queue", &req.queue_name)
+        })?;
 
         // Convert proto ComponentInfo to domain ComponentInfo
         let components: Vec<ComponentInfo> = req
@@ -95,8 +101,7 @@ impl TasksService for TasksServiceImpl {
         );
 
         // Register this worker's components
-        let worker_id = self.queue.register_worker(components);
-        let queue = self.queue.clone();
+        let worker_id = queue.register_worker(components);
 
         // Create a channel for the response stream.
         // Buffer size matches max_concurrent so the worker can receive

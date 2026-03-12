@@ -424,7 +424,7 @@
       ]
     },
     "PullPluginConfig": {
-      "description": "Configuration for a gRPC pull-based plugin.\n\nWhen instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory\ntask queue. The gRPC server and optional worker subprocess are started\nduring `ensure_initialized`, which runs after the environment is built.\n\n# Config example\n\n```yaml\nplugins:\n  python:\n    type: pull\n    command: uv\n    args: [\"--project\", \"../sdks/python/stepflow-py\", \"run\", \"stepflow_py\", \"--grpc\"]\n    queueName: python\n```",
+      "description": "Configuration for a gRPC pull-based plugin.\n\nWhen instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory\ntask queue. During `ensure_initialized`, registers its queue with the\norchestrator's [`StepflowGrpcServer`] and optionally spawns a worker\nsubprocess.\n\n# Config example\n\n```yaml\nplugins:\n  python:\n    type: pull\n    command: uv\n    args: [\"--project\", \"../sdks/python/stepflow-py\", \"run\", \"stepflow_py\", \"--grpc\"]\n    queueName: python\n```",
       "type": "object",
       "properties": {
         "command": {
