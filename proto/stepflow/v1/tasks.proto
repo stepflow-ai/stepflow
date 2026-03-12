@@ -1,0 +1,187 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/protobuf/struct.proto";
+import "stepflow/v1/common.proto";
+
+// Orchestrator-hosted service that workers connect to for receiving tasks.
+//
+// This service runs on the orchestrator (or any stateless dispatcher with
+// access to the task queue). Workers are *clients* of this service — they
+// call PullTasks to receive work.
+//
+// Static worker configuration (blob service URL, blobification threshold,
+// etc.) is provided via environment variables at deployment time. Only
+// per-task information (e.g., the run-owning orchestrator URL) is sent
+// in-band via TaskContext.
+//
+// Workers report task completion via OrchestratorService.CompleteTask,
+// which must reach the orchestrator that owns the specific run (URL
+// provided per-task in TaskContext).
+//
+// gRPC only — not exposed as REST.
+service TasksService {
+  // Pull task assignments for a specific plugin.
+  //
+  // The worker specifies which plugin entry it is pulling for (by name from
+  // the orchestrator's config). The orchestrator validates that the plugin
+  // uses a compatible transport (e.g., "pull"). If the plugin uses a
+  // queue-based transport (e.g., NATS, Kafka), this RPC returns FAILED_PRECONDITION.
+  //
+  // The worker also declares its capabilities (concurrency, components).
+  // The stream stays open for the worker's lifetime — tasks are sent as
+  // they become available.
+  rpc PullTasks(PullTasksRequest) returns (stream TaskAssignment);
+}
+
+// =============================================================================
+// Task context (per-task metadata for worker callbacks)
+// =============================================================================
+
+// Per-task context sent with each TaskAssignment.
+//
+// Contains the orchestrator URL that the worker needs for callbacks
+// (CompleteTask, SubmitRun, GetRun). This URL identifies the orchestrator
+// that owns the specific run — it may differ per task in multi-orchestrator
+// deployments.
+//
+// Static configuration (blob URL, thresholds, etc.) is provided via
+// environment variables at deployment time, not per-task.
+message TaskContext {
+  // gRPC endpoint for OrchestratorService (submit_run, get_run, complete_task).
+  // Must reach the orchestrator that owns the current run.
+  string orchestrator_service_url = 1;
+}
+
+// =============================================================================
+// Component messages
+// =============================================================================
+
+// --- ListComponents ---
+
+message ListComponentsRequest {}
+
+message ListComponentsResponse {
+  repeated ComponentInfo components = 1;
+}
+
+// Information about a single component.
+message ComponentInfo {
+  // Component path (e.g., "my_function", "transform/clean").
+  string name = 1;
+
+  // Human-readable description.
+  optional string description = 2;
+
+  // JSON Schema for the component's expected input, encoded as JSON string.
+  optional string input_schema = 3;
+
+  // JSON Schema for the component's output, encoded as JSON string.
+  optional string output_schema = 4;
+}
+
+// --- GetComponentInfo ---
+
+message ComponentInfoRequest {
+  // Component path to get info for.
+  string component = 1;
+}
+
+message ComponentInfoResponse {
+  ComponentInfo info = 1;
+}
+
+// --- ExecuteComponent ---
+
+message ComponentExecuteRequest {
+  // Component path to execute (e.g., "my_function").
+  string component = 1;
+
+  // Input data for the component.
+  google.protobuf.Value input = 2;
+
+  // Execution attempt number (1-based, monotonically increasing).
+  // Increments on transport errors, component retries, or orchestrator recovery.
+  // Components can use this for idempotency guards.
+  uint32 attempt = 3;
+
+  // Observability context for tracing and logging.
+  ObservabilityContext observability = 4;
+
+  // Task context with the orchestrator URL for worker callbacks.
+  // Replaces stateful initialization — every request is self-describing.
+  TaskContext context = 5;
+}
+
+message ComponentExecuteResponse {
+  // Output data from the component.
+  google.protobuf.Value output = 1;
+}
+
+// =============================================================================
+// Task dispatch (PullTasks)
+// =============================================================================
+
+message PullTasksRequest {
+  // Queue name matching the plugin's key in the orchestrator config (e.g., "python").
+  // The orchestrator uses this to route tasks to the correct worker pool.
+  // Set via STEPFLOW_QUEUE_NAME environment variable on the worker.
+  string queue_name = 1;
+
+  // Maximum concurrent tasks this worker can accept.
+  // The orchestrator will not exceed this limit for this worker.
+  int32 max_concurrent = 2;
+
+  // Components available from this worker.
+  // Sent once at connection time so the orchestrator knows what this worker
+  // can handle. The orchestrator uses this for component routing.
+  repeated ComponentInfo components = 3;
+}
+
+message TaskAssignment {
+  // Unique ID for this task assignment.
+  // Used to correlate completion reports with assignments.
+  string task_id = 1;
+
+  // The component execution request to process.
+  ComponentExecuteRequest request = 2;
+
+  // Queue timeout in seconds: maximum time the orchestrator will wait
+  // for the worker to call StartTask after receiving this assignment.
+  // If the worker does not call StartTask within this window, the
+  // orchestrator treats the task as lost in the queue.
+  // 0 means no queue timeout.
+  uint32 deadline_secs = 3;
+
+  // Suggested heartbeat interval in seconds. The worker should send
+  // TaskHeartbeat at this cadence after calling StartTask. The
+  // orchestrator uses a 5s crash-detection timeout — if no heartbeat
+  // or CompleteTask arrives within 5s, the task is treated as failed.
+  // 0 means no heartbeating required.
+  uint32 heartbeat_interval_secs = 4;
+
+  // Optional execution timeout in seconds: maximum time from StartTask
+  // to CompleteTask. 0 means no execution timeout.
+  uint32 execution_timeout_secs = 5;
+}
+
+// CompleteTaskRequest and CompleteTaskResponse live in orchestrator.proto
+// because task completion must reach the orchestrator that owns the run,
+// not necessarily the orchestrator that dispatched the task.

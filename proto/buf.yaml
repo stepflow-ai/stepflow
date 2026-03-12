@@ -1,0 +1,19 @@
+version: v2
+modules:
+  - path: .
+    excludes:
+      - google
+deps:
+  - buf.build/googleapis/googleapis
+lint:
+  use:
+    - STANDARD
+  except:
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
+  ignore:
+    - gnostic
+breaking:
+  use:
+    - FILE

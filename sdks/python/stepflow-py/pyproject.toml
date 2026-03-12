@@ -43,6 +43,9 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
     "httpx>=0.25.0",  # HTTP client for blob API
+    # gRPC dependencies (for pull-based worker transport)
+    "grpcio>=1.67.0",
+    "protobuf>=5.26.0,<6",
     # API client dependencies (pydantic models, async HTTP)
     "pydantic>=2",
     "aiohttp>=3.9.0",
@@ -91,6 +94,9 @@ dev = [
     "httpx>=0.25.0",
     "pytest-mock>=3.14.1",
     "langchain-core>=0.3.72",
+    "grpcio-tools>=1.67.0,<1.75.0",  # <1.75 to stay compatible with protobuf 5.x
+    "mypy-protobuf>=3.6.0,<5",  # <5 to stay compatible with protobuf 5.x
+    "types-grpcio>=1.0.0",
 ]
 
 [project.scripts]
@@ -106,7 +112,7 @@ packages = ["src/stepflow_py"]
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["**/generated_*.py", "**/_generated_*.py", "**/api/**"]
+extend-exclude = ["**/generated_*.py", "**/_generated_*.py", "**/api/**", "**/proto/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
@@ -126,13 +132,18 @@ exclude = ["**/generated_*.py", "**/_generated_*.py", "**/api/**"]
 
 [tool.deptry]
 ignore = ["DEP002"]
-extend_exclude = ["types-jsonschema"]
+# types-jsonschema: type stub package, deptry can't match it to a module name.
+# src/stepflow_py/proto: auto-generated from .proto files; imports grpc/google
+#   which deptry can't map to grpcio/protobuf packages.
+extend_exclude = ["types-jsonschema", "src/stepflow_py/proto"]
 
 [tool.deptry.package_module_name_map]
 opentelemetry-api = "opentelemetry"
 opentelemetry-sdk = "opentelemetry"
 opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 python-dateutil = "dateutil"
+grpcio = "grpc"
+protobuf = "google"
 
 # Note: mypy configuration is at the workspace level (sdks/python/pyproject.toml)
 # to ensure consistent settings across all packages

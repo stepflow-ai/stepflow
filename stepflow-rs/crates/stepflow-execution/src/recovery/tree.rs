@@ -166,7 +166,7 @@ pub(super) async fn recover_execution_tree(
         .change_context(ExecutionError::RecoveryFailed)?;
 
     // Spawn and track the recovered execution tree
-    flow_executor.spawn(env.active_executions());
+    flow_executor.spawn(&env.active_executions());
 
     Ok(())
 }

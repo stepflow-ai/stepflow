@@ -304,7 +304,7 @@ impl StepRunner {
 
         // Execute the step (system error if infrastructure fails)
         let outcome = execute_step_async(
-            plugin,
+            &plugin,
             &self.step,
             &resolved_component,
             input,

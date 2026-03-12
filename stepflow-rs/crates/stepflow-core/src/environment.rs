@@ -18,8 +18,9 @@
 //! of plugin and state store implementations.
 
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+use dashmap::DashMap;
 
 /// Environment for Stepflow flow execution.
 ///
@@ -34,22 +35,23 @@ use std::path::{Path, PathBuf};
 ///
 /// # Thread Safety
 ///
-/// The environment is immutable after creation. All stored values must be
-/// `Send + Sync` for safe sharing across async tasks.
+/// The environment supports concurrent reads and writes via interior mutability
+/// (`DashMap`). All stored values must be `Send + Sync` for safe sharing across
+/// async tasks.
 ///
 /// # Example
 ///
 /// ```ignore
 /// use stepflow_core::StepflowEnvironment;
 ///
-/// let mut env = StepflowEnvironment::new();
+/// let env = StepflowEnvironment::new();
 /// env.insert(PathBuf::from("/working/dir"));
 ///
 /// // Later, retrieve typed values
 /// let dir = env.working_directory();
 /// ```
 pub struct StepflowEnvironment {
-    resources: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    resources: DashMap<TypeId, Box<dyn Any + Send + Sync>>,
 }
 
 impl Default for StepflowEnvironment {
@@ -62,33 +64,30 @@ impl StepflowEnvironment {
     /// Create a new empty environment.
     pub fn new() -> Self {
         Self {
-            resources: HashMap::new(),
+            resources: DashMap::new(),
         }
     }
 
     /// Insert a resource into the environment.
     ///
     /// If a resource of the same type already exists, it is replaced.
-    /// Returns the previous value if one existed.
-    pub fn insert<T: Send + Sync + 'static>(&mut self, value: T) -> Option<T> {
-        self.resources
-            .insert(TypeId::of::<T>(), Box::new(value))
-            .and_then(|boxed| boxed.downcast().ok().map(|b| *b))
+    pub fn insert<T: Send + Sync + 'static>(&self, value: T) {
+        self.resources.insert(TypeId::of::<T>(), Box::new(value));
     }
 
-    /// Get a reference to a resource by type.
+    /// Get a cloned copy of a resource by type.
     ///
     /// Returns `None` if no resource of that type has been inserted.
-    pub fn get<T: 'static>(&self) -> Option<&T> {
+    pub fn get<T: Clone + 'static>(&self) -> Option<T> {
         self.resources
             .get(&TypeId::of::<T>())
-            .and_then(|boxed| boxed.downcast_ref())
+            .and_then(|r| (**r).downcast_ref::<T>().cloned())
     }
 
-    /// Get a reference to a resource by type.
+    /// Get a cloned copy of a resource by type.
     ///
     /// Panics if no resource of that type has been inserted.
-    pub fn get_expected<T: 'static>(&self) -> &T {
+    pub fn get_expected<T: Clone + 'static>(&self) -> T {
         self.get().unwrap_or_else(|| {
             panic!(
                 "Missing expected value of type {}",
@@ -112,9 +111,8 @@ impl StepflowEnvironment {
     /// # Panics
     ///
     /// Panics if working directory was not set during environment construction.
-    pub fn working_directory(&self) -> &Path {
+    pub fn working_directory(&self) -> PathBuf {
         self.get::<PathBuf>()
-            .map(|p| p.as_path())
             .expect("working_directory not set in environment")
     }
 }
@@ -140,23 +138,22 @@ mod tests {
 
     #[test]
     fn test_insert_and_get() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         env.insert(PathBuf::from("/test/dir"));
 
         let path = env.get::<PathBuf>().unwrap();
-        assert_eq!(path.as_path(), Path::new("/test/dir"));
+        assert_eq!(path.as_path(), std::path::Path::new("/test/dir"));
     }
 
     #[test]
     fn test_insert_replaces_existing() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         env.insert(PathBuf::from("/first"));
-        let old = env.insert(PathBuf::from("/second"));
+        env.insert(PathBuf::from("/second"));
 
-        assert_eq!(old, Some(PathBuf::from("/first")));
         assert_eq!(
             env.get::<PathBuf>().unwrap().as_path(),
-            Path::new("/second")
+            std::path::Path::new("/second")
         );
     }
 
@@ -168,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_contains() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         assert!(!env.contains::<PathBuf>());
 
         env.insert(PathBuf::from("/test"));
@@ -177,10 +174,10 @@ mod tests {
 
     #[test]
     fn test_working_directory() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         env.insert(PathBuf::from("/working/dir"));
 
-        assert_eq!(env.working_directory(), Path::new("/working/dir"));
+        assert_eq!(env.working_directory(), PathBuf::from("/working/dir"));
     }
 
     #[test]
@@ -192,23 +189,26 @@ mod tests {
 
     #[test]
     fn test_arc_wrapped_type() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         let value: Arc<String> = Arc::new("test".to_string());
         env.insert(value.clone());
 
         let retrieved = env.get::<Arc<String>>().unwrap();
-        assert_eq!(**retrieved, "test");
+        assert_eq!(*retrieved, "test");
     }
 
     #[test]
     fn test_multiple_types() {
-        let mut env = StepflowEnvironment::new();
+        let env = StepflowEnvironment::new();
         env.insert(PathBuf::from("/path"));
         env.insert(42u32);
         env.insert("hello".to_string());
 
-        assert_eq!(env.get::<PathBuf>().unwrap().as_path(), Path::new("/path"));
-        assert_eq!(*env.get::<u32>().unwrap(), 42);
+        assert_eq!(
+            env.get::<PathBuf>().unwrap().as_path(),
+            std::path::Path::new("/path")
+        );
+        assert_eq!(env.get::<u32>().unwrap(), 42);
         assert_eq!(env.get::<String>().unwrap(), "hello");
     }
 }

@@ -30,6 +30,25 @@ use crate::execution_config::ExecutionConfig;
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
+/// Orchestrator service URL stored in the environment for worker callbacks.
+///
+/// Workers use this URL to call back to the orchestrator (e.g., submit sub-runs,
+/// get run status) during component execution.
+#[derive(Debug, Clone)]
+pub struct OrchestratorServiceUrl(Option<String>);
+
+impl OrchestratorServiceUrl {
+    /// Create a new OrchestratorServiceUrl configuration.
+    pub fn new(url: Option<String>) -> Self {
+        Self(url)
+    }
+
+    /// Get the orchestrator service URL if configured.
+    pub fn url(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
 /// Blob API configuration stored in the environment for worker communication.
 ///
 /// Contains the URL workers should use for direct HTTP blob access and the
@@ -60,6 +79,43 @@ impl BlobApiUrl {
     }
 }
 
+/// Initialize all plugins registered in the environment.
+/// Called after all resources are inserted into the environment.
+pub async fn initialize_plugins(env: &Arc<StepflowEnvironment>) -> Result<()> {
+    for plugin in env.plugins() {
+        plugin
+            .ensure_initialized(env)
+            .await
+            .change_context(PluginError::Initializing)?;
+    }
+    Ok(())
+}
+
+/// Build an in-memory environment for testing.
+pub async fn build_in_memory_environment() -> Result<Arc<StepflowEnvironment>> {
+    let plugin_router = PluginRouter::builder()
+        .build()
+        .change_context(PluginError::Initializing)?;
+
+    let store = Arc::new(InMemoryStateStore::new());
+    let env = Arc::new(StepflowEnvironment::new());
+    env.insert(store.clone() as Arc<dyn MetadataStore>);
+    env.insert(store.clone() as Arc<dyn BlobStore>);
+    env.insert(store.clone() as Arc<dyn ExecutionJournal>);
+    env.insert(store.clone() as Arc<dyn CheckpointStore>);
+    env.insert(Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))) as Arc<dyn LeaseManager>);
+    env.insert(PathBuf::from("."));
+    env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
+    env.insert(BlobApiUrl::new(None, 0));
+    env.insert(OrchestratorServiceUrl::new(None));
+    env.insert(ExecutionConfig {
+        checkpoint_interval: 0,
+    });
+    env.insert(stepflow_core::RetryConfig::default());
+    env.insert(ActiveExecutions::new());
+    Ok(env)
+}
+
 /// Builder for constructing a StepflowEnvironment.
 ///
 /// This builder ensures all required resources are set before
@@ -87,6 +143,7 @@ pub struct StepflowEnvironmentBuilder {
     plugin_router: Option<PluginRouter>,
     blob_api_url: Option<String>,
     blob_threshold: usize,
+    orchestrator_service_url: Option<String>,
     orchestrator_id: Option<OrchestratorId>,
     checkpoint_interval: usize,
     transport_retry: RetryConfig,
@@ -111,6 +168,7 @@ impl StepflowEnvironmentBuilder {
             plugin_router: None,
             blob_api_url: None,
             blob_threshold: 0,
+            orchestrator_service_url: None,
             orchestrator_id: None,
             checkpoint_interval: 0,
             transport_retry: RetryConfig::default(),
@@ -210,6 +268,15 @@ impl StepflowEnvironmentBuilder {
         self
     }
 
+    /// Set the orchestrator service URL for worker callbacks.
+    ///
+    /// Workers use this URL to call back to the orchestrator for sub-run
+    /// submission and status queries during component execution.
+    pub fn orchestrator_service_url(mut self, url: Option<String>) -> Self {
+        self.orchestrator_service_url = url;
+        self
+    }
+
     /// Set the checkpoint interval for periodic state snapshots.
     ///
     /// When set to a non-zero value, the executor will create a checkpoint
@@ -274,17 +341,20 @@ impl StepflowEnvironmentBuilder {
             .await
             .change_context(PluginError::Initializing)?;
 
-        let mut env = StepflowEnvironment::new();
+        let env = Arc::new(StepflowEnvironment::new());
         env.insert(metadata_store);
         env.insert(blob_store);
         env.insert(journal);
         env.insert(checkpoint_store);
         env.insert(lease_manager);
         env.insert(working_directory);
-        env.insert(plugin_router);
+        env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
 
         // Store blob API configuration for workers
         env.insert(BlobApiUrl::new(self.blob_api_url, self.blob_threshold));
+
+        // Store orchestrator service URL for worker callbacks
+        env.insert(OrchestratorServiceUrl::new(self.orchestrator_service_url));
 
         // Store execution configuration
         env.insert(ExecutionConfig {
@@ -302,15 +372,8 @@ impl StepflowEnvironmentBuilder {
         // Always create ActiveExecutions for tracking running executions
         env.insert(ActiveExecutions::new());
 
-        let env = Arc::new(env);
-
         // Initialize all plugins
-        for plugin in env.plugins() {
-            plugin
-                .ensure_initialized(&env)
-                .await
-                .change_context(PluginError::Initializing)?;
-        }
+        initialize_plugins(&env).await?;
 
         Ok(env)
     }
@@ -321,20 +384,6 @@ impl StepflowEnvironmentBuilder {
     /// current directory as working directory, and empty plugin router.
     /// The in-memory state store is also used as the execution journal and blob store.
     pub async fn build_in_memory() -> Result<Arc<StepflowEnvironment>> {
-        let plugin_router = PluginRouter::builder()
-            .build()
-            .change_context(PluginError::Initializing)?;
-
-        let store = Arc::new(InMemoryStateStore::new());
-
-        Self::new()
-            .metadata_store(store.clone())
-            .blob_store(store.clone())
-            .execution_journal(store.clone())
-            .checkpoint_store(store)
-            .working_directory(PathBuf::from("."))
-            .plugin_router(plugin_router)
-            .build()
-            .await
+        build_in_memory_environment().await
     }
 }

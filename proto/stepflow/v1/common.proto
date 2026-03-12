@@ -1,0 +1,111 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Observability
+// =============================================================================
+
+// Observability context for distributed tracing and logging.
+//
+// Passed with protocol requests to enable trace correlation and structured
+// logging across the Stepflow runtime and component servers.
+message ObservabilityContext {
+  // OpenTelemetry trace ID (128-bit, hex encoded).
+  // Present when tracing is enabled.
+  optional string trace_id = 1;
+
+  // OpenTelemetry span ID (64-bit, hex encoded).
+  // Component servers should use this as the parent span.
+  optional string span_id = 2;
+
+  // The ID of the workflow run (UUID).
+  // Present for workflow execution requests, absent for discovery.
+  optional string run_id = 3;
+
+  // The ID of the flow being executed (SHA-256 blob hash).
+  // Present for workflow execution requests, absent for discovery.
+  optional string flow_id = 4;
+
+  // The ID of the step being executed.
+  // Present for step-level execution, absent for workflow-level operations.
+  optional string step_id = 5;
+}
+
+// =============================================================================
+// Status enums
+// =============================================================================
+
+// Execution status for runs, items, and steps.
+enum ExecutionStatus {
+  EXECUTION_STATUS_UNSPECIFIED = 0;
+  EXECUTION_STATUS_RUNNING = 1;
+  EXECUTION_STATUS_COMPLETED = 2;
+  EXECUTION_STATUS_FAILED = 3;
+  EXECUTION_STATUS_CANCELLED = 4;
+  EXECUTION_STATUS_PAUSED = 5;
+  EXECUTION_STATUS_RECOVERY_FAILED = 6;
+}
+
+// Result ordering for item results.
+enum ResultOrder {
+  RESULT_ORDER_UNSPECIFIED = 0;
+  // Order results by their index in the input array (default).
+  RESULT_ORDER_BY_INDEX = 1;
+  // Order results by completion time.
+  RESULT_ORDER_BY_COMPLETION = 2;
+}
+
+// =============================================================================
+// Shared types used across services
+// =============================================================================
+
+// Aggregate statistics for items in a run.
+message ItemStatistics {
+  uint32 total = 1;
+  uint32 completed = 2;
+  uint32 running = 3;
+  uint32 failed = 4;
+  uint32 cancelled = 5;
+}
+
+// Result of a single item in a run.
+message ItemResult {
+  // Index of this item in the input array (0-based).
+  uint32 item_index = 1;
+
+  // Execution status of this item.
+  ExecutionStatus status = 2;
+
+  // Result of this item (present when completed successfully).
+  optional google.protobuf.Value output = 3;
+
+  // Error message (present when failed).
+  optional string error_message = 4;
+
+  // Error code (present when failed).
+  optional int32 error_code = 5;
+
+  // When this item completed.
+  optional google.protobuf.Timestamp completed_at = 6;
+}
+

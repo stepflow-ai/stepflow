@@ -1,0 +1,119 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "gnostic/openapi/v3/annotations.proto";
+
+// Content-addressed blob storage service.
+//
+// Exposed as both REST (for external clients) and gRPC (for workers via
+// `blob_service_url` environment variable). Workers can call any
+// orchestrator or a dedicated blob pool for these operations.
+//
+// The REST layer supports content negotiation:
+// - `application/json`: JSON-encoded blob data
+// - `application/octet-stream`: Raw binary data (with `X-Blob-Filename` header)
+//
+// The gRPC layer uses `oneof` to carry either JSON or raw bytes efficiently.
+service BlobService {
+  // Store a blob and return its content-based ID.
+  rpc PutBlob(PutBlobRequest) returns (PutBlobResponse) {
+    option (google.api.http) = {
+      post: "/blobs"
+      body: "*"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Store a blob"
+      operation_id: "storeBlob"
+    };
+  }
+
+  // Retrieve a blob by its content-based ID.
+  rpc GetBlob(GetBlobRequest) returns (GetBlobResponse) {
+    option (google.api.http) = {
+      get: "/blobs/{blob_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get a blob by ID"
+      operation_id: "getBlob"
+    };
+  }
+}
+
+// --- PutBlob ---
+
+message PutBlobRequest {
+  // The blob content. Exactly one must be set.
+  oneof content {
+    // JSON data (for data and flow blobs).
+    google.protobuf.Value json_data = 1;
+
+    // Raw binary data (for binary blobs, images, PDFs, etc.).
+    bytes raw_data = 5;
+  }
+
+  // Blob type: "data", "flow", or "binary".
+  string blob_type = 2;
+
+  // Optional filename to associate with the blob.
+  optional string filename = 3;
+
+  // MIME content type (e.g., "application/pdf"). Used with raw_data.
+  optional string content_type = 4;
+}
+
+message PutBlobResponse {
+  // Content-based blob ID (SHA-256 hash).
+  string blob_id = 1;
+
+  // Filename if one was provided.
+  optional string filename = 2;
+}
+
+// --- GetBlob ---
+
+message GetBlobRequest {
+  // Blob ID (SHA-256 hash) to retrieve.
+  string blob_id = 1;
+}
+
+message GetBlobResponse {
+  // The blob content. Exactly one will be set based on blob type.
+  oneof content {
+    // JSON data (for data and flow blobs).
+    google.protobuf.Value json_data = 1;
+
+    // Raw binary data (for binary blobs).
+    bytes raw_data = 6;
+  }
+
+  // The blob type.
+  string blob_type = 2;
+
+  // The blob ID (for confirmation).
+  string blob_id = 3;
+
+  // Filename if one was set.
+  optional string filename = 4;
+
+  // MIME content type (e.g., "application/pdf"). Present for binary blobs.
+  optional string content_type = 5;
+}

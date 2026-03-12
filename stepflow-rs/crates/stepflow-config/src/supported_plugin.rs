@@ -16,6 +16,7 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_builtins::BuiltinPluginConfig;
 use stepflow_components_mcp::McpPluginConfig;
+use stepflow_grpc::PullPluginConfig;
 use stepflow_mock::MockPlugin;
 use stepflow_plugin::{DynPlugin, PluginConfig};
 use stepflow_protocol::StepflowPluginConfig;
@@ -34,6 +35,8 @@ pub enum SupportedPlugin {
     Mock(MockPlugin),
     #[schemars(title = "McpPluginConfig")]
     Mcp(McpPluginConfig),
+    #[schemars(title = "PullPluginConfig")]
+    Pull(PullPluginConfig),
 }
 
 #[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
@@ -59,6 +62,7 @@ impl SupportedPluginConfig {
             SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
             SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
             SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,
+            SupportedPlugin::Pull(plugin) => create_plugin(plugin, working_directory).await?,
         };
         Ok(plugin)
     }

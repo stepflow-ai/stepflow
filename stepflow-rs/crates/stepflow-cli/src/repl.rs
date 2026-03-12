@@ -230,7 +230,7 @@ async fn handle_status_command(state: &ReplState) -> Result<()> {
     println!("REPL Status:");
     println!("  Config: {:?}", state.config_path);
 
-    let plugins: Vec<_> = state.env.plugins().collect();
+    let plugins = state.env.plugins();
     println!("  Executor: {} plugins loaded", plugins.len());
 
     if let Some(last_run) = &state.last_run {

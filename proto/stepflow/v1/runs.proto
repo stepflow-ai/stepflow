@@ -1,0 +1,491 @@
+// Copyright 2025 DataStax Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not
+// use this file except in compliance with the License. You may obtain a copy of
+// the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+syntax = "proto3";
+
+package stepflow.v1;
+
+option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "gnostic/openapi/v3/annotations.proto";
+import "stepflow/v1/common.proto";
+
+// Service for managing workflow runs.
+service RunsService {
+  // Create a new run for a flow.
+  rpc CreateRun(CreateRunRequest) returns (CreateRunResponse) {
+    option (google.api.http) = {
+      post: "/runs"
+      body: "*"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Create and execute a flow run"
+      operation_id: "createRun"
+    };
+  }
+
+  // List runs with optional filtering.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {
+      get: "/runs"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "List runs with optional filtering"
+      operation_id: "listRuns"
+    };
+  }
+
+  // Get details of a specific run.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get run details by ID"
+      operation_id: "getRun"
+    };
+  }
+
+  // Delete a run.
+  rpc DeleteRun(DeleteRunRequest) returns (DeleteRunResponse) {
+    option (google.api.http) = {
+      delete: "/runs/{run_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Delete a completed execution"
+      operation_id: "deleteRun"
+    };
+  }
+
+  // Get item results for a run.
+  rpc GetRunItems(GetRunItemsRequest) returns (GetRunItemsResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/items"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get all item results for a run"
+      operation_id: "getRunItems"
+    };
+  }
+
+  // Get the flow definition associated with a run.
+  rpc GetRunFlow(GetRunFlowRequest) returns (GetRunFlowResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/flow"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get the workflow definition for a run"
+      operation_id: "getRunFlow"
+    };
+  }
+
+  // Get step statuses for a run.
+  rpc GetRunSteps(GetRunStepsRequest) returns (GetRunStepsResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/steps"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get step-level execution details"
+      operation_id: "getRunSteps"
+    };
+  }
+
+  // Get detailed status for a specific step.
+  rpc GetStepDetail(GetStepDetailRequest) returns (GetStepDetailResponse) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/steps/{step_id}"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Get detailed status for a specific step"
+      operation_id: "getStepDetail"
+    };
+  }
+
+  // Stream status events for a run (SSE via tonic-rest).
+  rpc GetRunEvents(GetRunEventsRequest) returns (stream StatusEvent) {
+    option (google.api.http) = {
+      get: "/runs/{run_id}/events"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Stream run execution events via SSE"
+      operation_id: "getRunStatusStream"
+    };
+  }
+
+  // Cancel a running run.
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse) {
+    option (google.api.http) = {
+      post: "/runs/{run_id}/cancel"
+    };
+    option (gnostic.openapi.v3.operation) = {
+      summary: "Cancel a running execution"
+      operation_id: "cancelRun"
+    };
+  }
+}
+
+// --- CreateRun ---
+
+// Shared run creation parameters used by both RunsService.CreateRun (REST/gRPC)
+// and OrchestratorService.SubmitRun (worker callback for sub-flows).
+message CreateRunRequest {
+  // Flow blob ID to execute.
+  string flow_id = 1;
+
+  // Input data — one element per item (batch mode).
+  repeated google.protobuf.Value input = 2;
+
+  // Workflow overrides to apply (JSON Merge Patch per step).
+  // Keys are step IDs, values are override objects.
+  optional google.protobuf.Struct overrides = 3;
+
+  // Variables for variable references in the workflow.
+  map<string, google.protobuf.Value> variables = 4;
+
+  // Maximum concurrent item executions.
+  optional uint32 max_concurrency = 5;
+
+  // If true, block until the run completes.
+  bool wait = 6;
+
+  // Maximum seconds to wait when wait=true (default 300).
+  optional uint64 timeout_secs = 7;
+}
+
+// Response for create run.
+//
+// The summary fields are included directly (not nested) to match the existing
+// REST API's flattened JSON shape. tonic-rest serializes this as a flat object
+// where RunSummary fields appear at the top level alongside `results`.
+message CreateRunResponse {
+  // Run summary.
+  RunSummary summary = 1;
+
+  // Item results, populated when wait=true and the run completed.
+  repeated ItemResult results = 2;
+}
+
+// --- ListRuns ---
+
+message ListRunsRequest {
+  // Filter by execution status.
+  optional ExecutionStatus status = 1;
+
+  // Filter by flow name (not flow_id).
+  optional string flow_name = 2;
+
+  // Filter to runs under this root run (UUID). Includes the root itself.
+  optional string root_run_id = 3;
+
+  // Filter to direct children of this parent run (UUID).
+  optional string parent_run_id = 4;
+
+  // Filter to only root runs (runs where parent_run_id is None).
+  bool roots_only = 5;
+
+  // Maximum depth for hierarchy queries (0 = root only).
+  optional uint32 max_depth = 6;
+
+  // Maximum number of results.
+  optional uint32 limit = 7;
+
+  // Number of results to skip.
+  optional uint32 offset = 8;
+}
+
+// --- GetRun ---
+
+message GetRunRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+
+  // If true, block until the run completes.
+  bool wait = 2;
+
+  // Maximum seconds to wait when wait=true (default 300).
+  optional uint64 timeout_secs = 3;
+}
+
+message GetRunResponse {
+  RunSummary summary = 1;
+  repeated StepStatus steps = 2;
+}
+
+// --- DeleteRun ---
+
+message DeleteRunRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+}
+
+message DeleteRunResponse {}
+
+// --- GetRunItems ---
+
+message GetRunItemsRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+
+  // Result ordering.
+  ResultOrder result_order = 2;
+}
+
+message GetRunItemsResponse {
+  repeated ItemResult results = 1;
+}
+
+// --- GetRunFlow ---
+
+message GetRunFlowRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+}
+
+message GetRunFlowResponse {
+  google.protobuf.Struct flow = 1;
+  string flow_id = 2;
+}
+
+// --- GetRunSteps ---
+
+message GetRunStepsRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+  optional uint32 item_index = 2;
+}
+
+message GetRunStepsResponse {
+  repeated StepStatus steps = 1;
+}
+
+// --- GetStepDetail ---
+
+message GetStepDetailRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+  string step_id = 2;
+  optional uint32 item_index = 3;
+
+  // Read-after-write consistency: only return data if the store has
+  // processed at least this journal sequence number.
+  optional uint64 asof = 4;
+}
+
+message GetStepDetailResponse {
+  StepStatus step = 1;
+}
+
+// --- GetRunEvents (server-streaming → SSE) ---
+
+// Event type for filtering GetRunEventsRequest.
+enum StatusEventType {
+  STATUS_EVENT_TYPE_UNSPECIFIED = 0;
+  STATUS_EVENT_TYPE_RUN_CREATED = 1;
+  STATUS_EVENT_TYPE_STEP_STARTED = 2;
+  STATUS_EVENT_TYPE_STEP_COMPLETED = 3;
+  STATUS_EVENT_TYPE_STEP_READY = 4;
+  STATUS_EVENT_TYPE_ITEM_COMPLETED = 5;
+  STATUS_EVENT_TYPE_RUN_COMPLETED = 6;
+  STATUS_EVENT_TYPE_SUB_RUN_CREATED = 7;
+  STATUS_EVENT_TYPE_STEPS_NEEDED = 8;
+}
+
+message GetRunEventsRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+
+  // Resume from this sequence number (for SSE Last-Event-ID).
+  optional uint64 since = 2;
+
+  // Filter by event type. Empty list means all event types are included.
+  repeated StatusEventType event_types = 3;
+
+  // Include events from sub-runs.
+  bool include_sub_runs = 4;
+
+  // Include step/run results in events.
+  bool include_results = 5;
+}
+
+// --- CancelRun ---
+
+message CancelRunRequest {
+  // Run ID (UUID).
+  string run_id = 1;
+}
+
+message CancelRunResponse {
+  RunSummary summary = 1;
+}
+
+// --- ListRuns response ---
+
+message ListRunsResponse {
+  repeated RunSummary runs = 1;
+}
+
+// =============================================================================
+// Shared types
+// =============================================================================
+
+message RunSummary {
+  // Run ID (UUID).
+  string run_id = 1;
+  string flow_id = 2;
+  optional string flow_name = 3;
+  ExecutionStatus status = 4;
+  ItemStatistics items = 5;
+  google.protobuf.Timestamp created_at = 6;
+  optional google.protobuf.Timestamp completed_at = 7;
+
+  // Run hierarchy fields.
+  // Root run ID (UUID). For top-level runs, equals run_id.
+  string root_run_id = 8;
+  // Parent run ID (UUID). Present only for sub-flow runs.
+  optional string parent_run_id = 9;
+  // The orchestrator currently managing this run.
+  optional string orchestrator_id = 10;
+
+  // Journal sequence numbers for recovery and consistency.
+  uint64 created_at_seqno = 11;
+  optional uint64 finished_at_seqno = 12;
+}
+
+message StepStatus {
+  string step_id = 1;
+  uint32 step_index = 2;
+  // Item index (0-based). Required for batch runs.
+  uint32 item_index = 3;
+  ExecutionStatus status = 4;
+  optional string component = 5;
+
+  // Step result (present when completed or failed).
+  optional google.protobuf.Value output = 6;
+  optional string error_message = 7;
+  optional int32 error_code = 8;
+
+  optional google.protobuf.Timestamp started_at = 9;
+  optional google.protobuf.Timestamp completed_at = 10;
+
+  // Journal sequence number of the event that produced this status.
+  uint64 journal_seqno = 11;
+  // When this status was last updated.
+  optional google.protobuf.Timestamp updated_at = 12;
+}
+
+// =============================================================================
+// Status Events (strongly typed)
+// =============================================================================
+
+// A status event from the execution journal.
+//
+// Sent as SSE events with:
+// - id = sequence_number
+// - event = the event type name (e.g., "step_started")
+// - data = JSON-serialized StatusEvent
+message StatusEvent {
+  // Journal sequence number (used as SSE id).
+  uint64 sequence_number = 1;
+
+  // Timestamp when this event was recorded.
+  google.protobuf.Timestamp timestamp = 2;
+
+  // The event payload — exactly one of the following.
+  oneof event {
+    RunCreatedEvent run_created = 10;
+    StepStartedEvent step_started = 11;
+    StepCompletedEvent step_completed = 12;
+    StepReadyEvent step_ready = 13;
+    ItemCompletedEvent item_completed = 14;
+    RunCompletedEvent run_completed = 15;
+    SubRunCreatedEvent sub_run_created = 16;
+    StepsNeededEvent steps_needed = 17;
+  }
+}
+
+message RunCreatedEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  string flow_id = 2;
+  uint32 item_count = 3;
+}
+
+message StepStartedEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  uint32 item_index = 2;
+  uint32 step_index = 3;
+  optional string step_id = 4;
+  // Execution attempt number (1-based, >1 for retries).
+  uint32 attempt = 5;
+}
+
+message StepCompletedEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  uint32 item_index = 2;
+  uint32 step_index = 3;
+  optional string step_id = 4;
+  // Whether the step succeeded or failed.
+  ExecutionStatus status = 5;
+  // The step result. Only included when include_results=true.
+  optional google.protobuf.Value result = 6;
+}
+
+message StepReadyEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  uint32 item_index = 2;
+  uint32 step_index = 3;
+  optional string step_id = 4;
+}
+
+message ItemCompletedEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  uint32 item_index = 2;
+  // The item result. Only included when include_results=true.
+  optional google.protobuf.Value result = 3;
+}
+
+message RunCompletedEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  ExecutionStatus status = 2;
+}
+
+message SubRunCreatedEvent {
+  // The sub-run's ID (UUID).
+  string run_id = 1;
+  // Parent run ID (UUID) that spawned this sub-run.
+  string parent_run_id = 2;
+  // The flow being executed by the sub-run.
+  string flow_id = 3;
+  // Number of items in the sub-run.
+  uint32 item_count = 4;
+}
+
+message StepsNeededEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  // Item index (0-based).
+  uint32 item_index = 2;
+  // Step IDs that need to execute for this item.
+  // Emitted after flow analysis and whenever conditional branches change the
+  // needed step set.
+  repeated string step_ids = 3;
+}

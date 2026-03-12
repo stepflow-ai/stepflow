@@ -1,0 +1,70 @@
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        text:
+          type: string
+    output:
+      type: object
+      properties:
+        upper:
+          type: string
+        reversed:
+          type: string
+        echo_processed:
+          type: boolean
+steps:
+- id: to_upper
+  component: /python_grpc/transform
+  input:
+    text:
+      $input: text
+    operation: upper
+- id: reverse_it
+  component: /python_grpc/transform
+  input:
+    text:
+      $step: to_upper
+      path: result
+    operation: reverse
+- id: echo_result
+  component: /python_grpc/echo
+  input:
+    upper:
+      $step: to_upper
+      path: result
+    reversed:
+      $step: reverse_it
+      path: result
+output:
+  upper:
+    $step: echo_result
+    path: upper
+  reversed:
+    $step: echo_result
+    path: reversed
+  echo_processed:
+    $step: echo_result
+    path: processed
+test:
+  cases:
+  - name: "multi-step pipeline via gRPC"
+    input:
+      text: "hello"
+    output:
+      outcome: success
+      result:
+        upper: "HELLO"
+        reversed: "OLLEH"
+        echo_processed: true
+  - name: "multi-step with different input"
+    input:
+      text: "grpc"
+    output:
+      outcome: success
+      result:
+        upper: "GRPC"
+        reversed: "CPRG"
+        echo_processed: true

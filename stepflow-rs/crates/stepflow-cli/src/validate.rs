@@ -52,7 +52,7 @@ pub async fn validate(
         // Create executor to get plugin router for schema lookups
         let executor = WorkflowLoader::create_executor_from_config(config).await?;
         let plugin_router = executor.plugin_router();
-        let provider = PluginSchemaProvider::from_router(plugin_router).await;
+        let provider = PluginSchemaProvider::from_router(&plugin_router).await;
 
         // Run type checking
         let type_config = TypeCheckConfig { strict };

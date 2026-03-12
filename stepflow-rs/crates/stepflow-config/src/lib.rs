@@ -133,14 +133,25 @@ impl StepflowConfig {
 
     /// Create a StepflowEnvironment from this configuration.
     ///
+    /// `orchestrator_url` is the URL workers use to call back to this
+    /// orchestrator (e.g., for sub-run submission, task completion).
+    /// Typically resolved from `STEPFLOW_ORCHESTRATOR_URL` with a
+    /// `localhost:<port>` fallback by the caller.
+    ///
     /// If `orchestrator_id` is provided, it will be stored in the environment
     /// for distributed lease management (acquire/release during run execution).
     pub async fn create_environment(
         self,
         orchestrator_id: Option<stepflow_state::OrchestratorId>,
+        orchestrator_url: Option<String>,
     ) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
-        use stepflow_plugin::StepflowEnvironmentBuilder;
+        use std::sync::Arc as StdArc;
+        use stepflow_core::StepflowEnvironment;
         use stepflow_plugin::routing::PluginRouter;
+        use stepflow_plugin::{
+            BlobApiUrl, ExecutionConfig, OrchestratorServiceUrl, initialize_plugins,
+        };
+        use stepflow_state::ActiveExecutions;
 
         // Create metadata store, blob store, and execution journal from configuration
         let stores = self.storage_config.create_stores().await?;
@@ -172,26 +183,38 @@ impl StepflowConfig {
             .build()
             .change_context(ConfigError::Configuration)?;
 
-        // Create environment using the builder (this also initializes all plugins)
-        let mut builder = StepflowEnvironmentBuilder::new()
-            .metadata_store(stores.metadata_store)
-            .blob_store(stores.blob_store)
-            .execution_journal(stores.execution_journal)
-            .checkpoint_store(stores.checkpoint_store)
-            .checkpoint_interval(self.recovery.checkpoint_interval)
-            .lease_manager(lease_manager)
-            .working_directory(working_directory)
-            .plugin_router(plugin_router)
-            .blob_threshold(self.blob_api.effective_blob_threshold())
-            .blob_api_url(self.blob_api.url)
-            .retry(self.retry);
+        // Initialize the checkpoint store backend (e.g., create tables)
+        stores
+            .checkpoint_store
+            .initialize_checkpoint_store()
+            .await
+            .change_context(ConfigError::Configuration)?;
 
+        let env = Arc::new(StepflowEnvironment::new());
+        env.insert(stores.metadata_store);
+        env.insert(stores.blob_store);
+        env.insert(stores.execution_journal);
+        env.insert(stores.checkpoint_store);
+        env.insert(lease_manager);
+        env.insert(working_directory);
+        env.insert(StdArc::new(plugin_router) as StdArc<PluginRouter>);
+        let blob_threshold = self.blob_api.effective_blob_threshold();
+        env.insert(BlobApiUrl::new(self.blob_api.url, blob_threshold));
+        env.insert(OrchestratorServiceUrl::new(orchestrator_url));
+        env.insert(ExecutionConfig {
+            checkpoint_interval: self.recovery.checkpoint_interval,
+        });
+        env.insert(self.retry);
         if let Some(id) = orchestrator_id {
-            builder = builder.orchestrator_id(id);
+            env.insert(id);
         }
+        env.insert(ActiveExecutions::new());
 
-        let env = builder
-            .build()
+        // Insert the gRPC server for pull-based plugins.
+        // The server is started lazily when the first pull plugin initializes.
+        env.insert(StdArc::new(stepflow_grpc::StepflowGrpcServer::new()));
+
+        initialize_plugins(&env)
             .await
             .change_context(ConfigError::Configuration)?;
 

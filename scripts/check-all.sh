@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Complete CI check suite - runs all checks (Rust, Python, Docs, Licenses, Langflow, Integration)
+# Complete CI check suite - runs all checks (Rust, Python, Docs, Licenses, Langflow, Proto, Integration)
 #
 # Usage: ./scripts/check-all.sh [-v|--verbose]
 #   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
@@ -69,6 +69,7 @@ run_category "licenses" "check-licenses.sh" || true
 run_category "langflow" "check-langflow.sh" || true
 run_category "docling" "check-docling.sh" || true
 run_category "openapi" "check-openapi.sh" || true
+run_category "proto" "check-proto.sh" || true
 run_category "integration" "test-integration.sh" || true
 
 # =============================================================================
@@ -109,6 +110,9 @@ else
                 ;;
             "openapi")
                 echo "  ./scripts/check-openapi.sh -v"
+                ;;
+            "proto")
+                echo "  ./scripts/check-proto.sh -v"
                 ;;
             "integration")
                 echo "  ./scripts/test-integration.sh -v"

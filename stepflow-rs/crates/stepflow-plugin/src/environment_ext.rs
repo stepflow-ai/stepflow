@@ -42,22 +42,22 @@ pub trait PluginRouterExt {
     /// # Panics
     ///
     /// Panics if plugin router was not set during environment construction.
-    fn plugin_router(&self) -> &PluginRouter;
+    fn plugin_router(&self) -> Arc<PluginRouter>;
 
     /// Get a plugin and resolved component name for execution.
     fn get_plugin_and_component(
         &self,
         component: &Component,
         input: ValueRef,
-    ) -> Result<(&Arc<DynPlugin<'static>>, String)>;
+    ) -> Result<(Arc<DynPlugin<'static>>, String)>;
 
     /// List all registered plugins.
-    fn plugins(&self) -> Box<dyn Iterator<Item = &Arc<DynPlugin<'static>>> + Send + '_>;
+    fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>>;
 }
 
 impl PluginRouterExt for StepflowEnvironment {
-    fn plugin_router(&self) -> &PluginRouter {
-        self.get::<PluginRouter>()
+    fn plugin_router(&self) -> Arc<PluginRouter> {
+        self.get::<Arc<PluginRouter>>()
             .expect("PluginRouter not set in environment")
     }
 
@@ -65,13 +65,15 @@ impl PluginRouterExt for StepflowEnvironment {
         &self,
         component: &Component,
         input: ValueRef,
-    ) -> Result<(&Arc<DynPlugin<'static>>, String)> {
-        self.plugin_router()
+    ) -> Result<(Arc<DynPlugin<'static>>, String)> {
+        let router = self.plugin_router();
+        let (plugin, name) = router
             .get_plugin_and_component(component.path(), input)
-            .change_context(PluginError::InvalidInput)
+            .change_context(PluginError::InvalidInput)?;
+        Ok((plugin.clone(), name))
     }
 
-    fn plugins(&self) -> Box<dyn Iterator<Item = &Arc<DynPlugin<'static>>> + Send + '_> {
-        Box::new(self.plugin_router().plugins())
+    fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>> {
+        self.plugin_router().plugins().cloned().collect()
     }
 }

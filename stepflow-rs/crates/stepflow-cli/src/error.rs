@@ -59,6 +59,8 @@ pub enum MainError {
     Path,
     #[error("Internal error: {0}")]
     Internal(Cow<'static, str>),
+    #[error("{0} test(s) failed")]
+    TestFailures(usize),
 }
 
 pub type Result<T, E = error_stack::Report<MainError>> = std::result::Result<T, E>;

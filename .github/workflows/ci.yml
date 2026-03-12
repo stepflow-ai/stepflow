@@ -52,6 +52,7 @@ jobs:
       recovery: ${{ steps.filter.outputs.recovery }}
       openapi: ${{ steps.filter.outputs.openapi }}
       docling: ${{ steps.filter.outputs.docling }}
+      proto: ${{ steps.filter.outputs.proto }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -100,6 +101,13 @@ jobs:
               - 'scripts/check-docling.sh'
               - 'scripts/_lib.sh'
               - 'integrations/docling-step-worker/**'
+            proto:
+              - '.github/actions/proto-checks/**'
+              - 'scripts/check-proto.sh'
+              - 'scripts/_lib.sh'
+              - 'proto/**'
+              - 'buf.yaml'
+              - 'buf.lock'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
@@ -123,7 +131,7 @@ jobs:
   python-checks:
     name: Python SDK Checks
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.proto == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -154,6 +162,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/openapi-checks
+
+  # Proto checks (buf lint, breaking changes, OpenAPI freshness)
+  proto-checks:
+    name: Proto Checks
+    needs: changes
+    if: needs.changes.outputs.proto == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed for buf breaking change detection against main
+          fetch-depth: 0
+      - uses: ./.github/actions/proto-checks
 
   # Langflow integration checks
   langflow-checks:
@@ -201,7 +222,7 @@ jobs:
   integration-checks:
     name: Integration Tests
     needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.python == 'true' || needs.changes.outputs.proto == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -219,6 +240,10 @@ jobs:
         with:
           workspaces: |
             ./stepflow-rs
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ github.token }}
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -250,7 +275,7 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, openapi-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
+    needs: [changes, rust-checks, python-checks, docs-checks, openapi-checks, proto-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -271,6 +296,10 @@ jobs:
           fi
           if [[ "${{ needs.openapi-checks.result }}" == "failure" || "${{ needs.openapi-checks.result }}" == "cancelled" ]]; then
             echo "::error::OpenAPI schema checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.proto-checks.result }}" == "failure" || "${{ needs.proto-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Proto checks failed"
             exit 1
           fi
           if [[ "${{ needs.langflow-checks.result }}" == "failure" || "${{ needs.langflow-checks.result }}" == "cancelled" ]]; then
@@ -299,8 +328,8 @@ jobs:
             echo "::error::Rust changes detected but rust-checks was skipped"
             exit 1
           fi
-          if [[ "${{ needs.changes.outputs.python }}" == "true" && "${{ needs.python-checks.result }}" == "skipped" ]]; then
-            echo "::error::Python changes detected but python-checks was skipped"
+          if [[ ("${{ needs.changes.outputs.python }}" == "true" || "${{ needs.changes.outputs.proto }}" == "true") && "${{ needs.python-checks.result }}" == "skipped" ]]; then
+            echo "::error::Python or proto changes detected but python-checks was skipped"
             exit 1
           fi
           if [[ "${{ needs.changes.outputs.docs }}" == "true" && "${{ needs.docs-checks.result }}" == "skipped" ]]; then
@@ -311,6 +340,10 @@ jobs:
             echo "::error::OpenAPI changes detected but openapi-checks was skipped"
             exit 1
           fi
+          if [[ "${{ needs.changes.outputs.proto }}" == "true" && "${{ needs.proto-checks.result }}" == "skipped" ]]; then
+            echo "::error::Proto changes detected but proto-checks was skipped"
+            exit 1
+          fi
           if [[ "${{ needs.changes.outputs.langflow }}" == "true" && "${{ needs.langflow-checks.result }}" == "skipped" ]]; then
             echo "::error::Langflow changes detected but langflow-checks was skipped"
             exit 1
@@ -319,8 +352,8 @@ jobs:
             echo "::error::Docling changes detected but docling-checks was skipped"
             exit 1
           fi
-          if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true") && "${{ needs.integration-checks.result }}" == "skipped" ]]; then
-            echo "::error::Rust or Python changes detected but integration-checks was skipped"
+          if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true" || "${{ needs.changes.outputs.proto }}" == "true") && "${{ needs.integration-checks.result }}" == "skipped" ]]; then
+            echo "::error::Rust, Python, or proto changes detected but integration-checks was skipped"
             exit 1
           fi
           if [[ ("${{ needs.changes.outputs.rust }}" == "true" || "${{ needs.changes.outputs.python }}" == "true" || "${{ needs.changes.outputs.recovery }}" == "true") && "${{ needs.recovery-tests.result }}" == "skipped" ]]; then

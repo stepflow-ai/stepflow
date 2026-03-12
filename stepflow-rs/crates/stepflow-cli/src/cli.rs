@@ -698,7 +698,9 @@ impl Cli {
                 let failures =
                     crate::test::run_tests(&paths, config_args.config_path, test_options).await?;
                 if failures > 0 {
-                    std::process::exit(1);
+                    return Err(error_stack::report!(crate::MainError::TestFailures(
+                        failures
+                    )));
                 }
             }
             Command::ListComponents {

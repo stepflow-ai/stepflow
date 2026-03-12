@@ -20,7 +20,10 @@ pub mod routing;
 mod subflow;
 
 pub use context::RunContext;
-pub use environment_builder::{BlobApiUrl, StepflowEnvironmentBuilder};
+pub use environment_builder::{
+    BlobApiUrl, OrchestratorServiceUrl, StepflowEnvironmentBuilder, build_in_memory_environment,
+    initialize_plugins,
+};
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
 pub use execution_config::ExecutionConfig;

@@ -1,0 +1,15 @@
+name: 'Proto Checks'
+description: 'Validate Protocol Buffer definitions with buf'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install buf
+      uses: bufbuild/buf-action@v1
+      with:
+        setup_only: true
+
+    # Run proto checks using the shared script
+    - name: Run proto checks
+      shell: bash
+      run: ./scripts/check-proto.sh -v

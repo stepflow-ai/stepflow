@@ -54,7 +54,7 @@ pub async fn infer(
     let plugin_router = executor.plugin_router();
 
     // Build schema provider from plugins
-    let provider = PluginSchemaProvider::from_router(plugin_router).await;
+    let provider = PluginSchemaProvider::from_router(&plugin_router).await;
 
     // Run type checking
     let config = TypeCheckConfig { strict };

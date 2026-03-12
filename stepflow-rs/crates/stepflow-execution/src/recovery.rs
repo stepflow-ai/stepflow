@@ -139,14 +139,14 @@ pub async fn recover_orphaned_runs(
     limit: usize,
 ) -> Result<RecoveryResult> {
     let lease_manager = env.lease_manager();
-    let metadata_store = env.metadata_store().clone();
+    let metadata_store = env.metadata_store();
     let journal = env.execution_journal();
 
     // Find runs that need recovery by querying the metadata store for runs
     // with Running status, then attempting to acquire leases for each.
     // Only runs where the lease is successfully acquired are returned.
     let runs_to_recover =
-        claim_for_recovery(lease_manager, &metadata_store, &orchestrator_id, limit).await?;
+        claim_for_recovery(&lease_manager, &metadata_store, &orchestrator_id, limit).await?;
 
     // Filter out runs that are already being actively executed by this process.
     // This prevents the periodic recovery loop from re-recovering runs that are
@@ -176,7 +176,7 @@ pub async fn recover_orphaned_runs(
     for (root_run_id, root_info) in &trees {
         log::info!("Recovering execution tree rooted at {}", root_run_id);
 
-        match tree::recover_execution_tree(env, journal, root_info).await {
+        match tree::recover_execution_tree(env, &journal, root_info).await {
             Ok(()) => {
                 log::info!(
                     "Successfully recovered execution tree rooted at {}",

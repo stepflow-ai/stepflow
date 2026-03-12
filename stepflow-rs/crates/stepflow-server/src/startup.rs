@@ -15,6 +15,7 @@ use axum::extract::DefaultBodyLimit;
 use error_stack::ResultExt as _;
 use std::sync::Arc;
 use stepflow_config::{ConfigError, StepflowConfig};
+use stepflow_grpc::{ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl};
 use stepflow_plugin::StepflowEnvironment;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -52,19 +53,27 @@ impl AppConfig {
         let api_json = Arc::new(finalize_openapi(&api));
 
         // Add state to the router
-        let api_router = api_router.with_state(executor);
+        let api_router = api_router.with_state(executor.clone());
+
+        // Proto-generated REST routes (mounted at /proto/api/v1 for coexistence during migration).
+        // Proto annotations use relative paths (/health, /blobs, etc.) and are nested under
+        // a prefix. Once validated, change the nest path to /api/v1 and remove the aide routes.
+        let grpc_rest_router = create_grpc_rest_router(executor);
 
         // Create the full app router
-        let mut app = Router::new().nest("/api/v1/", api_router).route(
-            "/api/v1/openapi.json",
-            axum::routing::get({
-                let api_json = api_json.clone();
-                move || {
+        let mut app = Router::new()
+            .nest("/api/v1/", api_router)
+            .nest("/proto/api/v1", grpc_rest_router)
+            .route(
+                "/api/v1/openapi.json",
+                axum::routing::get({
                     let api_json = api_json.clone();
-                    async move { axum::Json(api_json.as_ref().clone()) }
-                }
-            }),
-        );
+                    move || {
+                        let api_json = api_json.clone();
+                        async move { axum::Json(api_json.as_ref().clone()) }
+                    }
+                }),
+            );
 
         // Add swagger if requested
         if self.include_swagger {
@@ -130,7 +139,20 @@ pub async fn create_environment(
         );
     }
 
-    config.create_environment(orchestrator_id).await
+    // Resolve orchestrator URL: STEPFLOW_ORCHESTRATOR_URL env var,
+    // falling back to localhost:<port>. Workers use this URL to call back
+    // to the orchestrator (e.g., submit sub-runs, report completion).
+    // In multi-orchestrator deployments, set STEPFLOW_ORCHESTRATOR_URL
+    // per-instance.
+    let orchestrator_url = std::env::var("STEPFLOW_ORCHESTRATOR_URL").unwrap_or_else(|_| {
+        let url = format!("127.0.0.1:{port}");
+        log::info!("STEPFLOW_ORCHESTRATOR_URL not set, defaulting to {url}");
+        url
+    });
+
+    config
+        .create_environment(orchestrator_id, Some(orchestrator_url))
+        .await
 }
 
 /// Start the HTTP server using axum + aide
@@ -171,6 +193,41 @@ pub async fn start_server(
     log::info!("Server shutdown complete");
 
     Ok(())
+}
+
+/// Create an Axum router with proto-generated REST routes backed by gRPC
+/// service implementations.
+///
+/// These routes are auto-generated from `google.api.http` annotations in the
+/// proto files and share the same business logic as the gRPC services.
+///
+/// The returned router has routes at `/api/v1/...` — the same paths as the
+/// existing aide-based API. To use it, either:
+/// - Replace the aide router with this one
+/// - Mount it at a different prefix (e.g., nest under `/proto`)
+pub fn create_grpc_rest_router(env: Arc<StepflowEnvironment>) -> Router {
+    let health_service = Arc::new(HealthServiceImpl::new());
+    let components_service = Arc::new(ComponentsServiceImpl::new(env.clone()));
+    let flows_service = Arc::new(FlowsServiceImpl::new(env.clone()));
+    let runs_service = Arc::new(RunsServiceImpl::new(env.clone()));
+
+    // Build per-service REST routes from proto annotations, skipping
+    // blob_service_rest_router (replaced by binary-aware routes below).
+    let proto_routes = stepflow_grpc::rest::health_service_rest_router(health_service)
+        .merge(stepflow_grpc::rest::components_service_rest_router(
+            components_service,
+        ))
+        .merge(stepflow_grpc::rest::flows_service_rest_router(
+            flows_service,
+        ))
+        .merge(stepflow_grpc::rest::runs_service_rest_router(runs_service));
+
+    // Hand-written blob routes support both JSON and binary (application/octet-stream)
+    // content negotiation. They replace the tonic-rest blob routes because tonic-rest
+    // doesn't support raw byte passthrough (HttpBody).
+    let blob_routes = stepflow_grpc::blob_binary_routes::blob_binary_routes(env);
+
+    proto_routes.merge(blob_routes)
 }
 
 /// Wait for a shutdown signal (SIGTERM or SIGINT).

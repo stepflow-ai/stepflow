@@ -127,6 +127,9 @@
         },
         {
           "$ref": "#/$defs/McpPluginConfig"
+        },
+        {
+          "$ref": "#/$defs/PullPluginConfig"
         }
       ],
       "discriminator": {
@@ -135,7 +138,8 @@
           "stepflow": "#/$defs/StepflowPluginConfig",
           "builtin": "#/$defs/BuiltinPluginConfig",
           "mock": "#/$defs/MockPlugin",
-          "mcp": "#/$defs/McpPluginConfig"
+          "mcp": "#/$defs/McpPluginConfig",
+          "pull": "#/$defs/PullPluginConfig"
         }
       }
     },
@@ -416,6 +420,65 @@
       "required": [
         "command",
         "args",
+        "type"
+      ]
+    },
+    "PullPluginConfig": {
+      "description": "Configuration for a gRPC pull-based plugin.\n\nWhen instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory\ntask queue. During `ensure_initialized`, registers its queue with the\norchestrator's [`StepflowGrpcServer`] and optionally spawns a worker\nsubprocess.\n\n# Config example\n\n```yaml\nplugins:\n  python:\n    type: pull\n    command: uv\n    args: [\"--project\", \"../sdks/python/stepflow-py\", \"run\", \"stepflow_py\", \"--grpc\"]\n    queueName: python\n```",
+      "type": "object",
+      "properties": {
+        "command": {
+          "description": "Command to launch the worker subprocess.\nIf not set, the plugin expects an external worker to connect.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "args": {
+          "description": "Arguments for the worker subprocess command.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Environment variables for the worker subprocess.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "queueName": {
+          "description": "Queue name the worker uses to receive tasks (matches plugin key in orchestrator config).\nDefaults to the plugin's key name in the config.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "queueTimeoutSecs": {
+          "description": "Maximum time (in seconds) a task can wait in the queue for a\nworker to call `StartTask`. If no worker picks up the task within\nthis window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0,
+          "default": 30
+        },
+        "executionTimeoutSecs": {
+          "description": "Maximum time (in seconds) from `StartTask` to `CompleteTask`.\nIf the worker does not complete within this window, the task is\ntreated as failed. Heartbeat-based crash detection (5s timeout)\nprovides faster detection of hard worker crashes.\n\nDefaults to `null` (no execution timeout — relies on heartbeat\ncrash detection only).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "type": {
+          "type": "string",
+          "const": "pull",
+          "default": "pull"
+        }
+      },
+      "required": [
         "type"
       ]
     },

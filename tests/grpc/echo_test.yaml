@@ -1,0 +1,41 @@
+schemas:
+  type: object
+  properties:
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+    output:
+      type: object
+      properties:
+        message:
+          type: string
+        processed:
+          type: boolean
+steps:
+- id: echo_step
+  component: /python_grpc/echo
+  input:
+    message:
+      $input: message
+output:
+  $step: echo_step
+test:
+  cases:
+  - name: echo via gRPC pull transport
+    input:
+      message: "hello from grpc"
+    output:
+      outcome: success
+      result:
+        message: "hello from grpc"
+        processed: true
+  - name: echo different message
+    input:
+      message: "testing pull transport"
+    output:
+      outcome: success
+      result:
+        message: "testing pull transport"
+        processed: true
