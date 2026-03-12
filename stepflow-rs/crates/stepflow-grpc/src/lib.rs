@@ -46,12 +46,12 @@ pub mod blob_binary_routes;
 pub mod conversions;
 pub mod error;
 pub mod grpc_plugin_config;
+pub mod grpc_server;
 pub mod in_memory_transport;
 pub mod pending_tasks;
 pub mod pull_task_queue;
 pub mod queue_plugin;
 mod services;
-pub mod grpc_server;
 pub mod task_transport;
 
 /// Generated REST route handlers from `google.api.http` annotations.
@@ -67,11 +67,11 @@ pub mod rest {
 
 // Re-export commonly used types at the crate root.
 pub use grpc_plugin_config::PullPluginConfig;
+pub use grpc_server::StepflowGrpcServer;
 pub use in_memory_transport::InMemoryTaskTransport;
 pub use pending_tasks::PendingTasks;
 pub use proto::stepflow::v1::*;
 pub use pull_task_queue::PullTaskQueue;
 pub use queue_plugin::StepflowQueuePlugin;
 pub use services::*;
-pub use grpc_server::StepflowGrpcServer;
 pub use task_transport::TaskTransport;

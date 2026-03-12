@@ -24,19 +24,21 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use stepflow_grpc::PullTaskQueue;
 use stepflow_grpc::grpc_server::StepflowGrpcServer;
 use stepflow_grpc::proto::stepflow::v1::blob_service_client::BlobServiceClient;
 use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::OrchestratorServiceClient;
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
-    CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, PullTasksRequest, PutBlobRequest,
-    GetBlobRequest, StartTaskRequest, TaskError, TaskHeartbeatRequest, TaskAssignment,
+    CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
+    PutBlobRequest, StartTaskRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
 };
-use stepflow_grpc::PullTaskQueue;
 
 /// Create an in-memory environment suitable for the gRPC server.
 async fn test_env() -> Arc<stepflow_core::StepflowEnvironment> {
-    stepflow_plugin::build_in_memory_environment().await.unwrap()
+    stepflow_plugin::build_in_memory_environment()
+        .await
+        .unwrap()
 }
 
 /// Start a `StepflowGrpcServer`, register two queues ("python" and "node"),
@@ -89,7 +91,10 @@ async fn test_two_plugins_share_same_address() {
     // Second plugin calls ensure_started — should get the same address
     let addr2 = server.ensure_started(&env).await.unwrap();
 
-    assert_eq!(addr1, addr2, "both plugins must get the same server address");
+    assert_eq!(
+        addr1, addr2,
+        "both plugins must get the same server address"
+    );
 }
 
 #[tokio::test]
@@ -254,10 +259,7 @@ async fn test_complete_task_success_round_trip() {
 
     match result {
         stepflow_core::FlowResult::Success(value) => {
-            assert_eq!(
-                value.as_ref(),
-                &serde_json::json!("hello from worker"),
-            );
+            assert_eq!(value.as_ref(), &serde_json::json!("hello from worker"),);
         }
         other => panic!("expected Success, got {other:?}"),
     }
@@ -461,8 +463,7 @@ async fn test_blob_not_found() {
 
     let result = blob_client
         .get_blob(GetBlobRequest {
-            blob_id: "0000000000000000000000000000000000000000000000000000000000000000"
-                .to_string(),
+            blob_id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
         })
         .await;
 

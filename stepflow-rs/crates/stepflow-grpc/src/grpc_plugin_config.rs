@@ -31,14 +31,18 @@ use stepflow_plugin::{
 };
 use tokio::sync::Mutex;
 
+use crate::grpc_server::StepflowGrpcServer;
 use crate::in_memory_transport::InMemoryTaskTransport;
 use crate::pull_task_queue::PullTaskQueue;
 use crate::queue_plugin::StepflowQueuePlugin;
-use crate::grpc_server::StepflowGrpcServer;
 use crate::task_transport::TaskTransport;
 
 /// Transport, queue timeout, and execution timeout — consumed once during initialization.
-type TransportInit = (Box<dyn TaskTransport>, std::time::Duration, Option<std::time::Duration>);
+type TransportInit = (
+    Box<dyn TaskTransport>,
+    std::time::Duration,
+    Option<std::time::Duration>,
+);
 
 /// Configuration for a gRPC pull-based plugin.
 ///
@@ -199,8 +203,12 @@ impl stepflow_plugin::Plugin for PullPlugin {
         shared_server.register_queue(queue_name.to_string(), self.queue.clone());
 
         // Build the inner StepflowQueuePlugin with the shared PendingTasks
-        let (transport, queue_timeout, execution_timeout) =
-            self.transport_and_timeouts.lock().await.take().ok_or_else(|| {
+        let (transport, queue_timeout, execution_timeout) = self
+            .transport_and_timeouts
+            .lock()
+            .await
+            .take()
+            .ok_or_else(|| {
                 error_stack::report!(PluginError::Initializing)
                     .attach_printable("transport already consumed (double initialization?)")
             })?;
@@ -270,8 +278,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
     async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
-            error_stack::report!(PluginError::Execution)
-                .attach_printable("plugin not initialized")
+            error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
         inner.list_components().await
     }
@@ -279,8 +286,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
-            error_stack::report!(PluginError::Execution)
-                .attach_printable("plugin not initialized")
+            error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
         inner.component_info(component).await
     }
@@ -295,8 +301,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
     ) -> Result<FlowResult> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
-            error_stack::report!(PluginError::Execution)
-                .attach_printable("plugin not initialized")
+            error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
         inner
             .execute(component, run_context, step, input, attempt)
@@ -306,8 +311,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
     async fn prepare_for_retry(&self) -> Result<()> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
-            error_stack::report!(PluginError::Execution)
-                .attach_printable("plugin not initialized")
+            error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
         inner.prepare_for_retry().await
     }

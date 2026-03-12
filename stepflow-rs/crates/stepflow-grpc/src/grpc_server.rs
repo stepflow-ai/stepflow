@@ -140,11 +140,7 @@ impl StepflowGrpcServer {
     ///
     /// Returns `None` if the server has not been started yet.
     pub async fn address(&self) -> Option<String> {
-        self.state
-            .lock()
-            .await
-            .as_ref()
-            .map(|s| s.address.clone())
+        self.state.lock().await.as_ref().map(|s| s.address.clone())
     }
 
     /// Start the gRPC server if not already running. Idempotent.

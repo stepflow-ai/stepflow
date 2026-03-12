@@ -31,9 +31,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::error as grpc_err;
+use crate::grpc_server::QueueRegistry;
 use crate::proto::stepflow::v1::tasks_service_server::TasksService;
 use crate::proto::stepflow::v1::{PullTasksRequest, TaskAssignment};
-use crate::grpc_server::QueueRegistry;
 
 /// gRPC implementation of [TasksService].
 ///
@@ -69,9 +69,10 @@ impl TasksService for TasksServiceImpl {
         }
 
         // Look up the queue for this worker's queue_name
-        let queue = self.registry.get(&req.queue_name).ok_or_else(|| {
-            grpc_err::not_found("queue", &req.queue_name)
-        })?;
+        let queue = self
+            .registry
+            .get(&req.queue_name)
+            .ok_or_else(|| grpc_err::not_found("queue", &req.queue_name))?;
 
         // Convert proto ComponentInfo to domain ComponentInfo
         let components: Vec<ComponentInfo> = req
