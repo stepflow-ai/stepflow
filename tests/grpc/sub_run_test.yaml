@@ -34,5 +34,5 @@ test:
     output:
       outcome: success
       result:
-        sub_run_status: "completed"
+        sub_run_status: "EXECUTION_STATUS_COMPLETED"
         has_results: true

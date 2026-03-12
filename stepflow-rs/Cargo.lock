@@ -4948,6 +4948,7 @@ dependencies = [
  "fastrace",
  "futures",
  "log",
+ "nix 0.29.0",
  "prost",
  "prost-build",
  "prost-types",

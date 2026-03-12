@@ -125,6 +125,7 @@ async def run_grpc_worker(
     semaphore = asyncio.Semaphore(max_concurrent)
 
     consecutive_failures = 0
+    had_successful_connection = False
     while True:
         try:
             await _pull_loop(
@@ -137,8 +138,21 @@ async def run_grpc_worker(
             )
             # Successful pull session — reset failure counter
             consecutive_failures = 0
+            had_successful_connection = True
         except grpc.aio.AioRpcError as e:
             consecutive_failures += 1
+
+            # If we previously had a successful connection and the server
+            # is now gone (UNAVAILABLE), exit cleanly. This happens when
+            # the orchestrator shuts down — no point retrying.
+            if had_successful_connection and e.code() == grpc.StatusCode.UNAVAILABLE:
+                logger.info(
+                    "gRPC server went away after successful session "
+                    "(code=%s). Shutting down.",
+                    e.code(),
+                )
+                return
+
             if consecutive_failures >= max_retries:
                 logger.error(
                     "gRPC worker giving up after %d consecutive failures "

@@ -143,17 +143,39 @@ impl PluginConfig for PullPluginConfig {
 ///
 /// When dropped, the worker subprocess is killed to prevent orphaned
 /// processes that spin on "Connection refused" after the orchestrator exits.
+/// Uses process group management on Unix to ensure the entire process tree
+/// (e.g., `uv` → `python`) is terminated, not just the direct child.
 struct WorkerState {
+    #[allow(dead_code)] // Kept alive for kill_on_drop behavior
     child: tokio::process::Child,
+    /// Process group ID on Unix, used to kill the entire tree.
+    #[cfg(unix)]
+    pgid: i32,
 }
 
 impl Drop for WorkerState {
     fn drop(&mut self) {
-        let pid = self.child.id();
-        if let Err(e) = self.child.start_kill() {
-            log::debug!("Failed to kill worker subprocess (pid={pid:?}): {e}");
-        } else {
-            log::debug!("Killed worker subprocess (pid={pid:?})");
+        // Kill the entire process group to ensure grandchildren are terminated.
+        // start_kill() only kills the direct child, not grandchildren
+        // (e.g., python spawned by uv).
+        #[cfg(unix)]
+        if self.pgid > 0 {
+            log::info!("Killing worker process group {}", self.pgid);
+            if let Err(e) = nix::sys::signal::killpg(
+                nix::unistd::Pid::from_raw(self.pgid),
+                nix::sys::signal::Signal::SIGTERM,
+            ) && e != nix::errno::Errno::ESRCH
+            {
+                log::warn!("Failed to kill worker process group {}: {e}", self.pgid);
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            let pid = self.child.id();
+            if let Err(e) = self.child.start_kill() {
+                log::debug!("Failed to kill worker subprocess (pid={pid:?}): {e}");
+            }
         }
     }
 }
@@ -232,6 +254,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
                 .current_dir(&self.working_directory)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::inherit())
+                .kill_on_drop(true)
                 // Set transport config via environment variables so the
                 // same worker binary works for all transport modes.
                 .env("STEPFLOW_TRANSPORT", "grpc")
@@ -241,6 +264,22 @@ impl stepflow_plugin::Plugin for PullPlugin {
                 // so use the same address as the tasks/orchestrator URL.
                 .env("STEPFLOW_BLOB_URL", &server_address);
 
+            // Create a new process group on Unix so we can kill the entire
+            // tree in Drop. This ensures grandchild processes (e.g., python
+            // spawned by uv) are also terminated.
+            #[cfg(unix)]
+            // SAFETY: setpgid before exec is safe and standard practice.
+            unsafe {
+                cmd.pre_exec(|| {
+                    nix::unistd::setpgid(
+                        nix::unistd::Pid::from_raw(0),
+                        nix::unistd::Pid::from_raw(0),
+                    )
+                    .map_err(std::io::Error::other)?;
+                    Ok(())
+                });
+            }
+
             for (k, v) in &self.env {
                 cmd.env(k, v);
             }
@@ -249,6 +288,9 @@ impl stepflow_plugin::Plugin for PullPlugin {
                 .spawn()
                 .change_context(PluginError::Initializing)
                 .attach_printable_lazy(|| format!("Failed to spawn gRPC worker: {command}"))?;
+
+            #[cfg(unix)]
+            let pgid = child.id().map(|pid| pid as i32).unwrap_or(0);
 
             log::info!(
                 "gRPC worker subprocess spawned (pid={:?}, queue={queue_name})",
@@ -269,7 +311,11 @@ impl stepflow_plugin::Plugin for PullPlugin {
             }
 
             log::info!("gRPC worker connected successfully");
-            *self.worker.lock().await = Some(WorkerState { child });
+            *self.worker.lock().await = Some(WorkerState {
+                child,
+                #[cfg(unix)]
+                pgid,
+            });
         }
 
         Ok(())

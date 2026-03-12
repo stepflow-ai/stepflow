@@ -38,6 +38,9 @@ tonic-types = "0.14"
 tonic-rest = "0.1.5"
 uuid.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
 [dev-dependencies]
 prost-wkt-types = "0.7"
 serde_json.workspace = true
