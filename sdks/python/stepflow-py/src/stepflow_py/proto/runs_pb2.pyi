@@ -805,6 +805,7 @@ class StatusEvent(_message.Message):
     ITEM_COMPLETED_FIELD_NUMBER: _builtins.int
     RUN_COMPLETED_FIELD_NUMBER: _builtins.int
     SUB_RUN_CREATED_FIELD_NUMBER: _builtins.int
+    STEPS_NEEDED_FIELD_NUMBER: _builtins.int
     sequence_number: _builtins.int
     """Journal sequence number (used as SSE id)."""
     @_builtins.property
@@ -825,6 +826,8 @@ class StatusEvent(_message.Message):
     def run_completed(self) -> Global___RunCompletedEvent: ...
     @_builtins.property
     def sub_run_created(self) -> Global___SubRunCreatedEvent: ...
+    @_builtins.property
+    def steps_needed(self) -> Global___StepsNeededEvent: ...
     def __init__(
         self,
         *,
@@ -837,12 +840,13 @@ class StatusEvent(_message.Message):
         item_completed: Global___ItemCompletedEvent | None = ...,
         run_completed: Global___RunCompletedEvent | None = ...,
         sub_run_created: Global___SubRunCreatedEvent | None = ...,
+        steps_needed: Global___StepsNeededEvent | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["event", b"event", "item_completed", b"item_completed", "run_completed", b"run_completed", "run_created", b"run_created", "step_completed", b"step_completed", "step_ready", b"step_ready", "step_started", b"step_started", "sub_run_created", b"sub_run_created", "timestamp", b"timestamp"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["event", b"event", "item_completed", b"item_completed", "run_completed", b"run_completed", "run_created", b"run_created", "step_completed", b"step_completed", "step_ready", b"step_ready", "step_started", b"step_started", "steps_needed", b"steps_needed", "sub_run_created", b"sub_run_created", "timestamp", b"timestamp"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["event", b"event", "item_completed", b"item_completed", "run_completed", b"run_completed", "run_created", b"run_created", "sequence_number", b"sequence_number", "step_completed", b"step_completed", "step_ready", b"step_ready", "step_started", b"step_started", "sub_run_created", b"sub_run_created", "timestamp", b"timestamp"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["event", b"event", "item_completed", b"item_completed", "run_completed", b"run_completed", "run_created", b"run_created", "sequence_number", b"sequence_number", "step_completed", b"step_completed", "step_ready", b"step_ready", "step_started", b"step_started", "steps_needed", b"steps_needed", "sub_run_created", b"sub_run_created", "timestamp", b"timestamp"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_event: _TypeAlias = _typing.Literal["run_created", "step_started", "step_completed", "step_ready", "item_completed", "run_completed", "sub_run_created"]  # noqa: Y015
+    _WhichOneofReturnType_event: _TypeAlias = _typing.Literal["run_created", "step_started", "step_completed", "step_ready", "item_completed", "run_completed", "sub_run_created", "steps_needed"]  # noqa: Y015
     _WhichOneofArgType_event: _TypeAlias = _typing.Literal["event", b"event"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_event) -> _WhichOneofReturnType_event | None: ...
 
@@ -1062,3 +1066,33 @@ class SubRunCreatedEvent(_message.Message):
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
 
 Global___SubRunCreatedEvent: _TypeAlias = SubRunCreatedEvent  # noqa: Y015
+
+@_typing.final
+class StepsNeededEvent(_message.Message):
+    DESCRIPTOR: _descriptor.Descriptor
+
+    RUN_ID_FIELD_NUMBER: _builtins.int
+    ITEM_INDEX_FIELD_NUMBER: _builtins.int
+    STEP_IDS_FIELD_NUMBER: _builtins.int
+    run_id: _builtins.str
+    """Run ID (UUID)."""
+    item_index: _builtins.int
+    """Item index (0-based)."""
+    @_builtins.property
+    def step_ids(self) -> _containers.RepeatedScalarFieldContainer[_builtins.str]:
+        """Step IDs that need to execute for this item.
+        Emitted after flow analysis and whenever conditional branches change the
+        needed step set.
+        """
+
+    def __init__(
+        self,
+        *,
+        run_id: _builtins.str = ...,
+        item_index: _builtins.int = ...,
+        step_ids: _abc.Iterable[_builtins.str] | None = ...,
+    ) -> None: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["item_index", b"item_index", "run_id", b"run_id", "step_ids", b"step_ids"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+
+Global___StepsNeededEvent: _TypeAlias = StepsNeededEvent  # noqa: Y015

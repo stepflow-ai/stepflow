@@ -591,7 +591,24 @@ fn journal_event_to_proto(
             }),
         )],
 
-        JournalEvent::StepsNeeded { .. } => vec![],
+        JournalEvent::StepsNeeded {
+            run_id,
+            item_index,
+            step_indices,
+        } => {
+            let step_ids: Vec<String> = step_indices
+                .iter()
+                .filter_map(|&idx| resolve_step_id(flow, idx))
+                .collect();
+            vec![(
+                *run_id,
+                proto::status_event::Event::StepsNeeded(proto::StepsNeededEvent {
+                    run_id: run_id.to_string(),
+                    item_index: *item_index,
+                    step_ids,
+                }),
+            )]
+        }
 
         JournalEvent::TasksStarted { runs } => {
             let mut events = Vec::new();
@@ -725,6 +742,7 @@ fn proto_event_type(event: &proto::status_event::Event) -> &'static str {
         proto::status_event::Event::ItemCompleted(_) => "item_completed",
         proto::status_event::Event::RunCompleted(_) => "run_completed",
         proto::status_event::Event::SubRunCreated(_) => "sub_run_created",
+        proto::status_event::Event::StepsNeeded(_) => "steps_needed",
     }
 }
 

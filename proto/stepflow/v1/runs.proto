@@ -400,6 +400,7 @@ message StatusEvent {
     ItemCompletedEvent item_completed = 14;
     RunCompletedEvent run_completed = 15;
     SubRunCreatedEvent sub_run_created = 16;
+    StepsNeededEvent steps_needed = 17;
   }
 }
 
@@ -463,4 +464,15 @@ message SubRunCreatedEvent {
   string flow_id = 3;
   // Number of items in the sub-run.
   uint32 item_count = 4;
+}
+
+message StepsNeededEvent {
+  // Run ID (UUID).
+  string run_id = 1;
+  // Item index (0-based).
+  uint32 item_index = 2;
+  // Step IDs that need to execute for this item.
+  // Emitted after flow analysis and whenever conditional branches change the
+  // needed step set.
+  repeated string step_ids = 3;
 }

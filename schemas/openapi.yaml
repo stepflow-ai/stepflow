@@ -1128,6 +1128,8 @@ components:
                     $ref: '#/components/schemas/RunCompletedEvent'
                 subRunCreated:
                     $ref: '#/components/schemas/SubRunCreatedEvent'
+                stepsNeeded:
+                    $ref: '#/components/schemas/StepsNeededEvent'
             description: |-
                 A status event from the execution journal.
 
@@ -1244,6 +1246,24 @@ components:
                     type: string
                     description: When this status was last updated.
                     format: date-time
+        StepsNeededEvent:
+            type: object
+            properties:
+                runId:
+                    type: string
+                    description: Run ID (UUID).
+                itemIndex:
+                    type: integer
+                    description: Item index (0-based).
+                    format: uint32
+                stepIds:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        Step IDs that need to execute for this item.
+                         Emitted after flow analysis and whenever conditional branches change the
+                         needed step set.
         StoreFlowRequest:
             type: object
             properties:
