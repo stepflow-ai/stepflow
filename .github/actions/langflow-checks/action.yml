@@ -39,6 +39,11 @@ runs:
         workspaces: |
           ./stepflow-rs
 
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ github.token }}
+
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
       run: cargo build -p stepflow-server --no-default-features
