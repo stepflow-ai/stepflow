@@ -291,6 +291,19 @@ message GetStepDetailResponse {
 
 // --- GetRunEvents (server-streaming → SSE) ---
 
+// Event type for filtering GetRunEventsRequest.
+enum StatusEventType {
+  STATUS_EVENT_TYPE_UNSPECIFIED = 0;
+  STATUS_EVENT_TYPE_RUN_CREATED = 1;
+  STATUS_EVENT_TYPE_STEP_STARTED = 2;
+  STATUS_EVENT_TYPE_STEP_COMPLETED = 3;
+  STATUS_EVENT_TYPE_STEP_READY = 4;
+  STATUS_EVENT_TYPE_ITEM_COMPLETED = 5;
+  STATUS_EVENT_TYPE_RUN_COMPLETED = 6;
+  STATUS_EVENT_TYPE_SUB_RUN_CREATED = 7;
+  STATUS_EVENT_TYPE_STEPS_NEEDED = 8;
+}
+
 message GetRunEventsRequest {
   // Run ID (UUID).
   string run_id = 1;
@@ -298,8 +311,8 @@ message GetRunEventsRequest {
   // Resume from this sequence number (for SSE Last-Event-ID).
   optional uint64 since = 2;
 
-  // Filter by event types (comma-separated).
-  optional string event_types = 3;
+  // Filter by event type. Empty list means all event types are included.
+  repeated StatusEventType event_types = 3;
 
   // Include events from sub-runs.
   bool include_sub_runs = 4;

@@ -449,14 +449,13 @@ impl RunsService for RunsServiceImpl {
         let include_sub_runs = req.include_sub_runs;
         let include_results = req.include_results;
 
-        // Parse event type filter
-        let event_type_filter: Option<Vec<String>> = req.event_types.map(|types| {
-            types
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        });
+        // Event type filter: empty list means all types included
+        let event_type_filter: Option<std::collections::HashSet<i32>> =
+            if req.event_types.is_empty() {
+                None
+            } else {
+                Some(req.event_types.into_iter().collect())
+            };
 
         let from_sequence = SequenceNumber::new(req.since.unwrap_or(0));
 
@@ -494,7 +493,7 @@ impl RunsService for RunsServiceImpl {
                         continue;
                     }
 
-                    // Check completion before applying event_type filter
+                    // Check completion before applying filters
                     if let proto::status_event::Event::RunCompleted(ref rc) = proto_event
                         && rc.run_id.parse::<uuid::Uuid>() == Ok(run_id)
                     {
@@ -502,9 +501,8 @@ impl RunsService for RunsServiceImpl {
                     }
 
                     // Filter by event type
-                    let event_type = proto_event_type(&proto_event);
                     if let Some(ref filter) = event_type_filter
-                        && !filter.iter().any(|f| f == event_type)
+                        && !filter.contains(&proto_event_type_enum(&proto_event))
                     {
                         continue;
                     }
@@ -732,17 +730,33 @@ fn journal_event_to_proto(
     }
 }
 
-/// Get the event type name for a proto status event.
-fn proto_event_type(event: &proto::status_event::Event) -> &'static str {
+/// Get the `StatusEventType` enum value for a proto status event (for filtering).
+fn proto_event_type_enum(event: &proto::status_event::Event) -> i32 {
     match event {
-        proto::status_event::Event::RunCreated(_) => "run_created",
-        proto::status_event::Event::StepStarted(_) => "step_started",
-        proto::status_event::Event::StepCompleted(_) => "step_completed",
-        proto::status_event::Event::StepReady(_) => "step_ready",
-        proto::status_event::Event::ItemCompleted(_) => "item_completed",
-        proto::status_event::Event::RunCompleted(_) => "run_completed",
-        proto::status_event::Event::SubRunCreated(_) => "sub_run_created",
-        proto::status_event::Event::StepsNeeded(_) => "steps_needed",
+        proto::status_event::Event::RunCreated(_) => {
+            proto::StatusEventType::RunCreated as i32
+        }
+        proto::status_event::Event::StepStarted(_) => {
+            proto::StatusEventType::StepStarted as i32
+        }
+        proto::status_event::Event::StepCompleted(_) => {
+            proto::StatusEventType::StepCompleted as i32
+        }
+        proto::status_event::Event::StepReady(_) => {
+            proto::StatusEventType::StepReady as i32
+        }
+        proto::status_event::Event::ItemCompleted(_) => {
+            proto::StatusEventType::ItemCompleted as i32
+        }
+        proto::status_event::Event::RunCompleted(_) => {
+            proto::StatusEventType::RunCompleted as i32
+        }
+        proto::status_event::Event::SubRunCreated(_) => {
+            proto::StatusEventType::SubRunCreated as i32
+        }
+        proto::status_event::Event::StepsNeeded(_) => {
+            proto::StatusEventType::StepsNeeded as i32
+        }
     }
 }
 

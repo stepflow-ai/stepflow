@@ -432,9 +432,22 @@ paths:
                     type: string
                 - name: eventTypes
                   in: query
-                  description: Filter by event types (comma-separated).
+                  description: Filter by event type. Empty list means all event types are included.
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        enum:
+                            - STATUS_EVENT_TYPE_UNSPECIFIED
+                            - STATUS_EVENT_TYPE_RUN_CREATED
+                            - STATUS_EVENT_TYPE_STEP_STARTED
+                            - STATUS_EVENT_TYPE_STEP_COMPLETED
+                            - STATUS_EVENT_TYPE_STEP_READY
+                            - STATUS_EVENT_TYPE_ITEM_COMPLETED
+                            - STATUS_EVENT_TYPE_RUN_COMPLETED
+                            - STATUS_EVENT_TYPE_SUB_RUN_CREATED
+                            - STATUS_EVENT_TYPE_STEPS_NEEDED
+                        type: string
+                        format: enum
                 - name: includeSubRuns
                   in: query
                   description: Include events from sub-runs.

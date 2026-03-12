@@ -22,6 +22,7 @@ from google.protobuf import message as _message
 from google.protobuf import struct_pb2 as _struct_pb2
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from . import common_pb2 as _common_pb2
 import builtins as _builtins
 import sys
@@ -33,6 +34,39 @@ else:
     from typing_extensions import TypeAlias as _TypeAlias
 
 DESCRIPTOR: _descriptor.FileDescriptor
+
+class _StatusEventType:
+    ValueType = _typing.NewType("ValueType", _builtins.int)
+    V: _TypeAlias = ValueType  # noqa: Y015
+
+class _StatusEventTypeEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[_StatusEventType.ValueType], _builtins.type):
+    DESCRIPTOR: _descriptor.EnumDescriptor
+    STATUS_EVENT_TYPE_UNSPECIFIED: _StatusEventType.ValueType  # 0
+    STATUS_EVENT_TYPE_RUN_CREATED: _StatusEventType.ValueType  # 1
+    STATUS_EVENT_TYPE_STEP_STARTED: _StatusEventType.ValueType  # 2
+    STATUS_EVENT_TYPE_STEP_COMPLETED: _StatusEventType.ValueType  # 3
+    STATUS_EVENT_TYPE_STEP_READY: _StatusEventType.ValueType  # 4
+    STATUS_EVENT_TYPE_ITEM_COMPLETED: _StatusEventType.ValueType  # 5
+    STATUS_EVENT_TYPE_RUN_COMPLETED: _StatusEventType.ValueType  # 6
+    STATUS_EVENT_TYPE_SUB_RUN_CREATED: _StatusEventType.ValueType  # 7
+    STATUS_EVENT_TYPE_STEPS_NEEDED: _StatusEventType.ValueType  # 8
+
+class StatusEventType(_StatusEventType, metaclass=_StatusEventTypeEnumTypeWrapper):
+    """--- GetRunEvents (server-streaming → SSE) ---
+
+    Event type for filtering GetRunEventsRequest.
+    """
+
+STATUS_EVENT_TYPE_UNSPECIFIED: StatusEventType.ValueType  # 0
+STATUS_EVENT_TYPE_RUN_CREATED: StatusEventType.ValueType  # 1
+STATUS_EVENT_TYPE_STEP_STARTED: StatusEventType.ValueType  # 2
+STATUS_EVENT_TYPE_STEP_COMPLETED: StatusEventType.ValueType  # 3
+STATUS_EVENT_TYPE_STEP_READY: StatusEventType.ValueType  # 4
+STATUS_EVENT_TYPE_ITEM_COMPLETED: StatusEventType.ValueType  # 5
+STATUS_EVENT_TYPE_RUN_COMPLETED: StatusEventType.ValueType  # 6
+STATUS_EVENT_TYPE_SUB_RUN_CREATED: StatusEventType.ValueType  # 7
+STATUS_EVENT_TYPE_STEPS_NEEDED: StatusEventType.ValueType  # 8
+Global___StatusEventType: _TypeAlias = StatusEventType  # noqa: Y015
 
 @_typing.final
 class CreateRunRequest(_message.Message):
@@ -505,8 +539,6 @@ Global___GetStepDetailResponse: _TypeAlias = GetStepDetailResponse  # noqa: Y015
 
 @_typing.final
 class GetRunEventsRequest(_message.Message):
-    """--- GetRunEvents (server-streaming → SSE) ---"""
-
     DESCRIPTOR: _descriptor.Descriptor
 
     RUN_ID_FIELD_NUMBER: _builtins.int
@@ -518,32 +550,29 @@ class GetRunEventsRequest(_message.Message):
     """Run ID (UUID)."""
     since: _builtins.int
     """Resume from this sequence number (for SSE Last-Event-ID)."""
-    event_types: _builtins.str
-    """Filter by event types (comma-separated)."""
     include_sub_runs: _builtins.bool
     """Include events from sub-runs."""
     include_results: _builtins.bool
     """Include step/run results in events."""
+    @_builtins.property
+    def event_types(self) -> _containers.RepeatedScalarFieldContainer[Global___StatusEventType.ValueType]:
+        """Filter by event type. Empty list means all event types are included."""
+
     def __init__(
         self,
         *,
         run_id: _builtins.str = ...,
         since: _builtins.int | None = ...,
-        event_types: _builtins.str | None = ...,
+        event_types: _abc.Iterable[Global___StatusEventType.ValueType] | None = ...,
         include_sub_runs: _builtins.bool = ...,
         include_results: _builtins.bool = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["_event_types", b"_event_types", "_since", b"_since", "event_types", b"event_types", "since", b"since"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_since", b"_since", "since", b"since"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_event_types", b"_event_types", "_since", b"_since", "event_types", b"event_types", "include_results", b"include_results", "include_sub_runs", b"include_sub_runs", "run_id", b"run_id", "since", b"since"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_since", b"_since", "event_types", b"event_types", "include_results", b"include_results", "include_sub_runs", b"include_sub_runs", "run_id", b"run_id", "since", b"since"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType__event_types: _TypeAlias = _typing.Literal["event_types"]  # noqa: Y015
-    _WhichOneofArgType__event_types: _TypeAlias = _typing.Literal["_event_types", b"_event_types"]  # noqa: Y015
     _WhichOneofReturnType__since: _TypeAlias = _typing.Literal["since"]  # noqa: Y015
     _WhichOneofArgType__since: _TypeAlias = _typing.Literal["_since", b"_since"]  # noqa: Y015
-    @_typing.overload
-    def WhichOneof(self, oneof_group: _WhichOneofArgType__event_types) -> _WhichOneofReturnType__event_types | None: ...
-    @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType__since) -> _WhichOneofReturnType__since | None: ...
 
 Global___GetRunEventsRequest: _TypeAlias = GetRunEventsRequest  # noqa: Y015
