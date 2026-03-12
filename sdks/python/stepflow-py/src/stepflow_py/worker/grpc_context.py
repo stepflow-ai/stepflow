@@ -33,16 +33,14 @@ from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict, ParseDict
 
 from stepflow_py.proto import (
+    CreateRunRequest,
+    GetBlobRequest,
     OrchestratorGetRunRequest,
     OrchestratorSubmitRunRequest,
-)
-from stepflow_py.proto.blobs_pb2 import (
-    GetBlobRequest,
     PutBlobRequest,
 )
 from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
-from stepflow_py.proto.runs_pb2 import CreateRunRequest
 from stepflow_py.worker.context import StepflowContext
 
 logger = logging.getLogger(__name__)
@@ -104,7 +102,7 @@ class GrpcContext(StepflowContext):
         try:
             stub = BlobServiceStub(channel)
             response = await stub.PutBlob(request)
-            return response.blob_id
+            return response.blob_id  # type: ignore[no-any-return]
         finally:
             await channel.close()
 

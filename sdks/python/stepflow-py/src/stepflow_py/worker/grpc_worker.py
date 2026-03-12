@@ -81,6 +81,7 @@ async def run_grpc_worker(
     tasks_url: str,
     queue_name: str,
     max_concurrent: int = 4,
+    max_retries: int = 15,
 ) -> None:
     """Run the gRPC pull-based worker.
 
@@ -96,6 +97,7 @@ async def run_grpc_worker(
         tasks_url: URL of any orchestrator hosting TasksService.
         queue_name: Queue name from orchestrator config (e.g., "python").
         max_concurrent: Maximum concurrent task executions.
+        max_retries: Maximum consecutive connection failures before giving up.
     """
     logger.info(
         "Starting gRPC worker: tasks_url=%s, queue=%s, max_concurrent=%d, "
@@ -122,6 +124,7 @@ async def run_grpc_worker(
     # Semaphore for concurrency control
     semaphore = asyncio.Semaphore(max_concurrent)
 
+    consecutive_failures = 0
     while True:
         try:
             await _pull_loop(
@@ -132,15 +135,42 @@ async def run_grpc_worker(
                 semaphore=semaphore,
                 max_concurrent=max_concurrent,
             )
+            # Successful pull session — reset failure counter
+            consecutive_failures = 0
         except grpc.aio.AioRpcError as e:
+            consecutive_failures += 1
+            if consecutive_failures >= max_retries:
+                logger.error(
+                    "gRPC worker giving up after %d consecutive failures "
+                    "(last: code=%s, %s)",
+                    consecutive_failures,
+                    e.code(),
+                    e.details(),
+                )
+                return
             logger.warning(
-                "gRPC connection lost (code=%s): %s. Reconnecting in 2s...",
+                "gRPC connection lost (code=%s): %s. Reconnecting in 2s... "
+                "(attempt %d/%d)",
                 e.code(),
                 e.details(),
+                consecutive_failures,
+                max_retries,
             )
             await asyncio.sleep(2)
         except Exception:
-            logger.exception("Unexpected error in pull loop. Reconnecting in 5s...")
+            consecutive_failures += 1
+            if consecutive_failures >= max_retries:
+                logger.error(
+                    "gRPC worker giving up after %d consecutive failures",
+                    consecutive_failures,
+                )
+                return
+            logger.exception(
+                "Unexpected error in pull loop. Reconnecting in 5s... "
+                "(attempt %d/%d)",
+                consecutive_failures,
+                max_retries,
+            )
             await asyncio.sleep(5)
 
 
@@ -313,7 +343,7 @@ async def _heartbeat_loop(
         while True:
             await asyncio.sleep(interval_secs)
             try:
-                response = await stub.TaskHeartbeat(  # type: ignore[misc]
+                response = await stub.TaskHeartbeat(
                     TaskHeartbeatRequest(task_id=task_id)
                 )
                 if response.should_cancel:
@@ -494,7 +524,7 @@ async def _complete_task_error(
         request = CompleteTaskRequest(
             task_id=task.task_id,
             error=TaskError(
-                code=4,  # type: ignore[arg-type]  # TASK_ERROR_CODE_COMPONENT_FAILED
+                code=4,  # TASK_ERROR_CODE_COMPONENT_FAILED
                 message=error_msg,
             ),
         )
