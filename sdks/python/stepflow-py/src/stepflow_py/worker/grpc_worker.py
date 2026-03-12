@@ -166,8 +166,7 @@ async def run_grpc_worker(
                 )
                 return
             logger.exception(
-                "Unexpected error in pull loop. Reconnecting in 5s... "
-                "(attempt %d/%d)",
+                "Unexpected error in pull loop. Reconnecting in 5s... (attempt %d/%d)",
                 consecutive_failures,
                 max_retries,
             )
