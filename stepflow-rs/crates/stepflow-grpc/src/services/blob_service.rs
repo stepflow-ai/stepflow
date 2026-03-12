@@ -23,7 +23,7 @@ use crate::proto::stepflow::v1::{
     GetBlobRequest, GetBlobResponse, PutBlobRequest, PutBlobResponse,
 };
 
-/// gRPC implementation of [BlobService].
+/// gRPC implementation of `BlobService`.
 #[derive(Debug)]
 pub struct BlobServiceImpl {
     env: Arc<StepflowEnvironment>,

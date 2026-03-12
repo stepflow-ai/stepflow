@@ -15,9 +15,9 @@
 //! [`StepflowGrpcServer`] is created once by the orchestrator and hosts all
 //! worker-facing gRPC services:
 //!
-//! - [`TasksService`] — streams task assignments to workers (multi-queue)
-//! - [`OrchestratorService`] — handles task completion, sub-runs, heartbeats
-//! - [`BlobService`] — blob storage operations
+//! - `TasksService` — streams task assignments to workers (multi-queue)
+//! - `OrchestratorService` — handles task completion, sub-runs, heartbeats
+//! - `BlobService` — blob storage operations
 //!
 //! The server is stored in the [`StepflowEnvironment`] and started lazily
 //! on first use. Plugins register their task queues via [`register_queue`].

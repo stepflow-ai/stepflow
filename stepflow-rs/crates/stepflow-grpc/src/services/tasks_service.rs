@@ -10,11 +10,11 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! gRPC implementation of [`TasksService`].
+//! gRPC implementation of `TasksService`.
 //!
 //! This service runs on the orchestrator and is consumed by workers (workers
 //! are *clients* of this service). It streams task assignments from a shared
-//! [`PullTaskQueue`] to connected workers.
+//! [`PullTaskQueue`](crate::pull_task_queue::PullTaskQueue) to connected workers.
 //!
 //! Static worker configuration (blob service URL, blobification threshold,
 //! etc.) is provided to workers via environment variables at deployment time,
@@ -35,9 +35,9 @@ use crate::grpc_server::QueueRegistry;
 use crate::proto::stepflow::v1::tasks_service_server::TasksService;
 use crate::proto::stepflow::v1::{PullTasksRequest, TaskAssignment};
 
-/// gRPC implementation of [TasksService].
+/// gRPC implementation of `TasksService`.
 ///
-/// Routes `PullTasks` requests to the correct [`PullTaskQueue`] based on
+/// Routes `PullTasks` requests to the correct [`PullTaskQueue`](crate::pull_task_queue::PullTaskQueue) based on
 /// the worker's `queue_name`. Each pull plugin registers its queue under
 /// a unique name in the shared [`QueueRegistry`].
 #[derive(Debug)]

@@ -34,7 +34,7 @@ use crate::proto::stepflow::v1::{
     TaskHeartbeatResponse,
 };
 
-/// gRPC implementation of [OrchestratorService].
+/// gRPC implementation of `OrchestratorService`.
 ///
 /// This service is called by workers during component execution to submit
 /// sub-runs, query run status, and report task completions. Workers reach
