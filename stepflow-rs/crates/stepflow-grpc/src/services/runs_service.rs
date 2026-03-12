@@ -591,7 +591,7 @@ fn journal_event_to_proto(
             }),
         )],
 
-        JournalEvent::RunInitialized { .. } => vec![],
+        JournalEvent::StepsNeeded { .. } => vec![],
 
         JournalEvent::TasksStarted { runs } => {
             let mut events = Vec::new();

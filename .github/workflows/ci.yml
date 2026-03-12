@@ -240,6 +240,10 @@ jobs:
         with:
           workspaces: |
             ./stepflow-rs
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ github.token }}
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:

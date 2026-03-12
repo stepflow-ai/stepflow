@@ -53,6 +53,13 @@ run_check "Lint" buf lint || true
 check_breaking() {
     local git_toplevel
     git_toplevel="$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel)"
+
+    # In CI PR checkouts, `main` may only exist as `refs/remotes/origin/main`.
+    # Fetch it as a local branch so buf can resolve `branch=main`.
+    if ! git -C "$git_toplevel" rev-parse --verify main >/dev/null 2>&1; then
+        git -C "$git_toplevel" fetch origin "refs/heads/main:refs/heads/main" 2>/dev/null || true
+    fi
+
     if ! buf breaking --against "${git_toplevel}/.git#branch=main,subdir=proto" 2>&1; then
         # If main has no proto files, that's not a breaking change
         local output
