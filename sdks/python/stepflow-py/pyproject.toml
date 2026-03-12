@@ -44,9 +44,8 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
     "httpx>=0.25.0",  # HTTP client for blob API
     # gRPC dependencies (for pull-based worker transport)
-    # Versions must match the generated stubs in worker/proto/
-    "grpcio>=1.75.1",
-    "protobuf>=6.31.1",
+    "grpcio>=1.67.0",
+    "protobuf>=5.26.0,<6",
     # API client dependencies (pydantic models, async HTTP)
     "pydantic>=2",
     "aiohttp>=3.9.0",
@@ -95,8 +94,8 @@ dev = [
     "httpx>=0.25.0",
     "pytest-mock>=3.14.1",
     "langchain-core>=0.3.72",
-    "grpcio-tools>=1.75.1",
-    "mypy-protobuf>=3.6.0",
+    "grpcio-tools>=1.67.0,<1.75.0",  # <1.75 to stay compatible with protobuf 5.x
+    "mypy-protobuf>=3.6.0,<5",  # <5 to stay compatible with protobuf 5.x
     "types-grpcio>=1.0.0",
 ]
 

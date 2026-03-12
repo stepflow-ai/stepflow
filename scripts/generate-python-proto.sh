@@ -44,16 +44,18 @@ echo "  Output dir: $OUT_DIR"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-# Generate Python + gRPC stubs + mypy type stubs.
+# Generate Python + gRPC stubs.
 # Include google/api and gnostic annotation protos so the generated
 # blobs_pb2.py and runs_pb2.py can import them at runtime.
+#
+# Note: mypy type stubs (--mypy_out/--mypy_grpc_out) are skipped because
+# mypy-protobuf requires matching protobuf major versions, and we pin
+# protobuf 5.x for langflow compatibility.
 cd "$ROOT_DIR/sdks/python"
 uv run --project stepflow-py python -m grpc_tools.protoc \
     --proto_path="$PROTO_DIR" \
     --python_out="$OUT_DIR" \
     --grpc_python_out="$OUT_DIR" \
-    --mypy_out="$OUT_DIR" \
-    --mypy_grpc_out="$OUT_DIR" \
     stepflow/v1/common.proto \
     stepflow/v1/tasks.proto \
     stepflow/v1/orchestrator.proto \

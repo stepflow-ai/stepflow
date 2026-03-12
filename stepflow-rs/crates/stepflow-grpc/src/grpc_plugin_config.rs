@@ -138,11 +138,32 @@ impl PluginConfig for PullPluginConfig {
 }
 
 /// Runtime state created during initialization.
+///
+/// When dropped, the gRPC server task is aborted and the worker subprocess
+/// is killed. This prevents orphaned worker processes that spin on
+/// "Connection refused" after the orchestrator exits.
 struct PullPluginState {
-    /// Worker subprocess handle (kept alive to prevent process termination).
-    _worker: Option<tokio::process::Child>,
-    /// gRPC server task handle.
-    _server: tokio::task::JoinHandle<()>,
+    /// Worker subprocess handle — killed on drop.
+    worker: Option<tokio::process::Child>,
+    /// gRPC server task handle — aborted on drop.
+    server: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for PullPluginState {
+    fn drop(&mut self) {
+        // Abort the gRPC server task so the listener is closed.
+        self.server.abort();
+
+        // Kill the worker subprocess to prevent orphaned processes.
+        if let Some(ref mut child) = self.worker {
+            let pid = child.id();
+            if let Err(e) = child.start_kill() {
+                log::debug!("Failed to kill worker subprocess (pid={pid:?}): {e}");
+            } else {
+                log::debug!("Killed worker subprocess (pid={pid:?})");
+            }
+        }
+    }
 }
 
 /// gRPC pull-based plugin that manages the lifecycle of a gRPC server and
@@ -252,8 +273,8 @@ impl stepflow_plugin::Plugin for PullPlugin {
         };
 
         *state = Some(PullPluginState {
-            _worker: worker,
-            _server: server_handle,
+            worker,
+            server: server_handle,
         });
 
         Ok(())
