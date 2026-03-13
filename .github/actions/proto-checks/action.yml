@@ -1,5 +1,5 @@
 name: 'Proto Checks'
-description: 'Validate Protocol Buffer definitions with buf'
+description: 'Validate Protocol Buffer definitions and OpenAPI spec'
 
 runs:
   using: 'composite'
@@ -8,6 +8,11 @@ runs:
       uses: bufbuild/buf-action@v1
       with:
         setup_only: true
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
     - name: Install uv
       uses: astral-sh/setup-uv@v5
