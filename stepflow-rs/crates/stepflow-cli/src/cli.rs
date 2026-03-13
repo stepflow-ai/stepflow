@@ -10,15 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use error_stack::ResultExt as _;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use stepflow_core::{
-    BlobId,
-    workflow::{Flow, WorkflowOverrides},
-};
-use url::Url;
-
 use crate::{
     args::{ConfigArgs, ExecutionArgs, InputArgs, OutputArgs, WorkflowLoader, load},
     error::Result,
@@ -30,6 +21,13 @@ use crate::{
     validate,
     validation_display::display_diagnostics,
     visualize,
+};
+use error_stack::ResultExt as _;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, WorkflowOverrides},
 };
 
 /// Stepflow command line application.
@@ -124,9 +122,9 @@ pub enum Command {
     ///
     /// stepflow submit --flow=workflow.yaml --input=input.json
     ///
-    /// # Submit to remote server
+    /// # Submit to remote server (gRPC)
     ///
-    /// stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input-json='{"key": "value"}'
+    /// stepflow submit --url=http://production-server:7841 --flow=workflow.yaml --input-json='{"key": "value"}'
     ///
     /// # Submit with inline YAML input
     ///
@@ -138,9 +136,9 @@ pub enum Command {
     ///
     /// ```
     Submit {
-        /// The URL of the Stepflow service to submit the workflow to.
-        #[arg(long, value_name = "URL", default_value = "http://localhost:7837", value_hint = clap::ValueHint::Url)]
-        url: Url,
+        /// The gRPC endpoint URL of the Stepflow service.
+        #[arg(long, value_name = "URL", default_value = "http://localhost:7838", value_hint = clap::ValueHint::Url)]
+        url: String,
 
         /// Path to the workflow file to submit.
         #[arg(long="flow", value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
@@ -640,7 +638,7 @@ impl Cli {
 
                 // Submit using the unified API (works for both single and batch)
                 let results = submit(
-                    url,
+                    &url,
                     flow,
                     inputs,
                     overrides.as_ref().unwrap_or(&WorkflowOverrides::new()),

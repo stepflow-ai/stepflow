@@ -10,14 +10,21 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! gRPC server for worker-facing services.
+//! gRPC server for Stepflow services.
 //!
 //! [`StepflowGrpcServer`] is created once by the orchestrator and hosts all
-//! worker-facing gRPC services:
+//! gRPC services — both worker-facing and client-facing:
 //!
+//! **Worker-facing:**
 //! - `TasksService` — streams task assignments to workers (multi-queue)
 //! - `OrchestratorService` — handles task completion, sub-runs, heartbeats
-//! - `BlobService` — blob storage operations
+//!
+//! **Client-facing:**
+//! - `FlowsService` — flow storage and retrieval
+//! - `RunsService` — run creation, listing, and event streaming
+//! - `HealthService` — health checks
+//! - `ComponentsService` — component discovery
+//! - `BlobService` — blob storage operations (shared)
 //!
 //! The server is stored in the [`StepflowEnvironment`] and started lazily
 //! on first use. Plugins register their task queues via [`register_queue`].
@@ -34,10 +41,17 @@ use tokio::sync::Mutex;
 
 use crate::pending_tasks::PendingTasks;
 use crate::proto::stepflow::v1::blob_service_server::BlobServiceServer;
+use crate::proto::stepflow::v1::components_service_server::ComponentsServiceServer;
+use crate::proto::stepflow::v1::flows_service_server::FlowsServiceServer;
+use crate::proto::stepflow::v1::health_service_server::HealthServiceServer;
 use crate::proto::stepflow::v1::orchestrator_service_server::OrchestratorServiceServer;
+use crate::proto::stepflow::v1::runs_service_server::RunsServiceServer;
 use crate::proto::stepflow::v1::tasks_service_server::TasksServiceServer;
 use crate::pull_task_queue::PullTaskQueue;
-use crate::services::{BlobServiceImpl, OrchestratorServiceImpl, TasksServiceImpl};
+use crate::services::{
+    BlobServiceImpl, ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl,
+    OrchestratorServiceImpl, RunsServiceImpl, TasksServiceImpl,
+};
 
 /// Registry mapping queue names to their [`PullTaskQueue`] instances.
 ///
@@ -60,11 +74,11 @@ impl QueueRegistry {
     }
 }
 
-/// gRPC server for all worker-facing services.
+/// gRPC server for all Stepflow services (worker-facing and client-facing).
 ///
 /// Created once and stored in the [`StepflowEnvironment`]. Plugins register
 /// their task queues via [`register_queue`] and workers connect to the
-/// single server address.
+/// single server address. CLI clients also connect for flow/run operations.
 ///
 /// [`register_queue`]: StepflowGrpcServer::register_queue
 pub struct StepflowGrpcServer {
@@ -79,6 +93,8 @@ pub struct StepflowGrpcServer {
 struct ServerState {
     /// Address the server is listening on (e.g., "127.0.0.1:12345").
     address: String,
+    /// The port that was requested (None = random, Some = fixed).
+    requested_port: Option<u16>,
     /// Server task handle — aborted on drop.
     server_handle: tokio::task::JoinHandle<()>,
 }
@@ -145,31 +161,55 @@ impl StepflowGrpcServer {
 
     /// Start the gRPC server if not already running. Idempotent.
     ///
-    /// Binds to `127.0.0.1:0` (random port), starts the server in a
-    /// background task, and returns the bound address.
+    /// When `port` is `Some`, binds to `0.0.0.0:{port}` (fixed port for
+    /// CLI/external clients). When `None`, binds to `127.0.0.1:0` (random
+    /// port for worker-only use).
+    ///
+    /// Returns the bound address.
     pub async fn ensure_started(
         &self,
         env: &Arc<StepflowEnvironment>,
+        port: Option<u16>,
     ) -> stepflow_plugin::Result<String> {
         let mut state = self.state.lock().await;
         if let Some(ref s) = *state {
+            if s.requested_port != port {
+                log::warn!(
+                    "gRPC server already running on {} (requested {:?}, now requesting {:?})",
+                    s.address,
+                    s.requested_port,
+                    port
+                );
+            }
             return Ok(s.address.clone());
         }
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        let bind_addr = match port {
+            Some(p) => format!("0.0.0.0:{p}"),
+            None => "127.0.0.1:0".to_string(),
+        };
+
+        let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await
             .change_context(PluginError::Initializing)
-            .attach_printable("Failed to bind gRPC server")?;
-        let port = listener
+            .attach_printable_lazy(|| format!("Failed to bind gRPC server to {bind_addr}"))?;
+        let actual_port = listener
             .local_addr()
             .change_context(PluginError::Initializing)?
             .port();
-        let address = format!("127.0.0.1:{port}");
+        let address = format!("127.0.0.1:{actual_port}");
 
+        // Worker-facing services
         let orchestrator_service =
             OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
         let tasks_service = TasksServiceImpl::new(self.queue_registry.clone());
+
+        // Client-facing services
         let blob_service = BlobServiceImpl::new(env.clone());
+        let flows_service = FlowsServiceImpl::new(env.clone());
+        let runs_service = RunsServiceImpl::new(env.clone());
+        let health_service = HealthServiceImpl::new();
+        let components_service = ComponentsServiceImpl::new(env.clone());
 
         let server_handle = tokio::spawn(async move {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
@@ -177,6 +217,10 @@ impl StepflowGrpcServer {
                 .add_service(OrchestratorServiceServer::new(orchestrator_service))
                 .add_service(TasksServiceServer::new(tasks_service))
                 .add_service(BlobServiceServer::new(blob_service))
+                .add_service(FlowsServiceServer::new(flows_service))
+                .add_service(RunsServiceServer::new(runs_service))
+                .add_service(HealthServiceServer::new(health_service))
+                .add_service(ComponentsServiceServer::new(components_service))
                 .serve_with_incoming(incoming)
                 .await
             {
@@ -189,6 +233,7 @@ impl StepflowGrpcServer {
         let addr = address.clone();
         *state = Some(ServerState {
             address,
+            requested_port: port,
             server_handle,
         });
 

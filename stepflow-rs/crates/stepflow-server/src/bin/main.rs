@@ -12,12 +12,14 @@
 
 use std::io::Read as _;
 use std::path::PathBuf;
+use std::sync::Arc as StdArc;
 
 use clap::Parser;
 use error_stack::{Report, ResultExt as _};
 use log::{info, warn};
 use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
+use stepflow_grpc::StepflowGrpcServer;
 use stepflow_observability::{ObservabilityConfig, init_observability};
 use stepflow_server::{heartbeat_loop, orphan_claiming_loop, shutdown_signal};
 use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
@@ -48,6 +50,10 @@ struct Args {
     /// Port to bind the HTTP server
     #[arg(short, long, default_value = "7840", env = "STEPFLOW_PORT")]
     port: u16,
+
+    /// Port for the gRPC server (defaults to HTTP port + 1)
+    #[arg(long, env = "STEPFLOW_GRPC_PORT")]
+    grpc_port: Option<u16>,
 
     /// Path to stepflow configuration file
     #[arg(short, long, env = "STEPFLOW_CONFIG", conflicts_with = "config_stdin")]
@@ -139,6 +145,23 @@ async fn main() {
                 .await
                 .change_context(ServerError::ExecutorError)
                 .attach_printable("Failed to create executor from configuration")?;
+
+        // Start gRPC server.
+        // When an explicit gRPC port is set, use it. Otherwise, derive from
+        // the *actual* bound HTTP port (not the CLI arg, which may be 0).
+        let http_port = listener
+            .local_addr()
+            .change_context(ServerError::ServerError)?
+            .port();
+        let grpc_port = args.grpc_port.unwrap_or(http_port + 1);
+        let grpc_server = executor
+            .get::<StdArc<StepflowGrpcServer>>()
+            .expect("StepflowGrpcServer must be in the environment");
+        grpc_server
+            .ensure_started(&executor, Some(grpc_port))
+            .await
+            .change_context(ServerError::ServerError)
+            .attach_printable("Failed to start gRPC server")?;
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
