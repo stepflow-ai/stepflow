@@ -6,7 +6,7 @@
 # - operation-4xx-response: Auto-generated spec uses a `default` error response
 #   (google.rpc.Status) which covers all non-2xx codes including 4xx
 extends:
-  - recommended
+  - recommended-strict
 
 rules:
   security-defined: off
