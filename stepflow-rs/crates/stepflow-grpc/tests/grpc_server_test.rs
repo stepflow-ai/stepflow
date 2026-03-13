@@ -58,7 +58,7 @@ async fn setup_two_queue_server() -> (
     server.register_queue("python".to_string(), python_queue.clone());
     server.register_queue("node".to_string(), node_queue.clone());
 
-    let address = server.ensure_started(&env).await.unwrap();
+    let address = server.ensure_started(&env, None).await.unwrap();
 
     (server, python_queue, node_queue, address)
 }
@@ -86,10 +86,10 @@ async fn test_two_plugins_share_same_address() {
     let server = Arc::new(StepflowGrpcServer::new());
 
     // First plugin calls ensure_started
-    let addr1 = server.ensure_started(&env).await.unwrap();
+    let addr1 = server.ensure_started(&env, None).await.unwrap();
 
     // Second plugin calls ensure_started — should get the same address
-    let addr2 = server.ensure_started(&env).await.unwrap();
+    let addr2 = server.ensure_started(&env, None).await.unwrap();
 
     assert_eq!(
         addr1, addr2,

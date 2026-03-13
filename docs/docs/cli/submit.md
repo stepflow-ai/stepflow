@@ -24,9 +24,9 @@ Submit a workflow to a running Stepflow server.
 
 stepflow submit --flow=workflow.yaml --input=input.json
 
-# Submit to remote server
+# Submit to remote server (gRPC)
 
-stepflow submit --url=http://production-server:7840 --flow=workflow.yaml --input-json='{"key": "value"}'
+stepflow submit --url=http://production-server:7841 --flow=workflow.yaml --input-json='{"key": "value"}'
 
 # Submit with inline YAML input
 
@@ -42,9 +42,9 @@ stepflow submit --flow=workflow.yaml --inputs=inputs.jsonl --output=results.json
 
 ###### **Options:**
 
-* `--url <URL>` — The URL of the Stepflow service to submit the workflow to
+* `--url <URL>` — The gRPC endpoint URL of the Stepflow service
 
-  Default value: `http://localhost:7837`
+  Default value: `http://localhost:7838`
 * `--flow <FILE>` — Path to the workflow file to submit
 * `--input <FILE>` — The path to the input file to execute the workflow with.
 

@@ -218,7 +218,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
         })?;
 
         // Start the server (idempotent — returns existing address if already running)
-        let server_address = shared_server.ensure_started(env).await?;
+        let server_address = shared_server.ensure_started(env, None).await?;
 
         // Register this plugin's queue with the shared server
         let queue_name = self.queue_name.as_deref().unwrap_or("python");
