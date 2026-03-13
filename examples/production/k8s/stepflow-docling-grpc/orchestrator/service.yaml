@@ -33,7 +33,7 @@ spec:
     port: 5001
     targetPort: facade
     protocol: TCP
-    nodePort: 30501
+    nodePort: 30080
   - name: http
     port: 7840
     targetPort: http

@@ -128,6 +128,9 @@ spec:
         # gRPC bind address — must be 0.0.0.0 for external worker pods
         - name: STEPFLOW_GRPC_BIND_ADDRESS
           value: "0.0.0.0:7837"
+        # Advertised gRPC URL for workers to call back (service DNS, not bind address)
+        - name: STEPFLOW_ORCHESTRATOR_GRPC_URL
+          value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
         # Pod metadata
         - name: POD_NAME
           valueFrom:

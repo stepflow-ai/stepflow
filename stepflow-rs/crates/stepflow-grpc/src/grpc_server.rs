@@ -186,18 +186,18 @@ impl StepflowGrpcServer {
 
         let bind_addr = match port {
             Some(p) => format!("0.0.0.0:{p}"),
-            None => "127.0.0.1:0".to_string(),
+            None => std::env::var("STEPFLOW_GRPC_BIND_ADDRESS")
+                .unwrap_or_else(|_| "127.0.0.1:0".to_string()),
         };
 
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await
             .change_context(PluginError::Initializing)
             .attach_printable_lazy(|| format!("Failed to bind gRPC server to {bind_addr}"))?;
-        let actual_port = listener
+        let local_addr = listener
             .local_addr()
-            .change_context(PluginError::Initializing)?
-            .port();
-        let address = format!("127.0.0.1:{actual_port}");
+            .change_context(PluginError::Initializing)?;
+        let address = local_addr.to_string();
 
         // Worker-facing services
         let orchestrator_service =

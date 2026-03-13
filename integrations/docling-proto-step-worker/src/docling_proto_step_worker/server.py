@@ -92,3 +92,7 @@ def entry_point() -> None:
     setup_observability()
     _configure_blob_store()
     sdk_main()
+
+
+if __name__ == "__main__":
+    entry_point()
