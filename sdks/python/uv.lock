@@ -1839,6 +1839,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "protobuf" },
     { name = "types-jsonschema" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -1893,6 +1894,7 @@ requires-dist = [
     { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
     { name = "stepflow-orchestrator", marker = "extra == 'local'", editable = "stepflow-orchestrator" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
+    { name = "typing-extensions", specifier = ">=4.7.1" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
 provides-extras = ["http", "langchain", "local"]

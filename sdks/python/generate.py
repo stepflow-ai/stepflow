@@ -138,6 +138,24 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
         # Combine license header with the filtered content
         new_content = "\n".join(header + filtered_lines)
 
+        # Add StrEnum compat for Python 3.10: (str, Enum) changes str() behavior
+        # compared to StrEnum, so we use a shim that preserves StrEnum semantics.
+        # Replace class bases first, then fix the import.
+        if "class " in new_content and "(str, Enum)" in new_content:
+            new_content = new_content.replace("(str, Enum)", "(StrEnum)")
+            new_content = new_content.replace(
+                "from enum import Enum, IntEnum",
+                "import sys\n"
+                "from enum import IntEnum\n\n"
+                "if sys.version_info >= (3, 11):\n"
+                "    from enum import StrEnum\n"
+                "else:\n"
+                "    from enum import Enum\n\n"
+                "    class StrEnum(str, Enum):\n"
+                "        def __str__(self) -> str:\n"
+                "            return self.value\n",
+            )
+
         # Fix forward references for recursive types
         new_content = new_content.replace("List[ValueExpr]", "List['ValueExpr']")
         new_content = new_content.replace(

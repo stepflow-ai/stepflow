@@ -24,9 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass, is_dataclass
 from typing import Any
 
-from typing_extensions import assert_never
-
 import msgspec
+from typing_extensions import assert_never
 
 from .generated_flow import (
     ErrorAction,

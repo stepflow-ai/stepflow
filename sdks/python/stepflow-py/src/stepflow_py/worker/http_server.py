@@ -27,9 +27,8 @@ import sys
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from typing_extensions import assert_never
-
 import msgspec
+from typing_extensions import assert_never
 
 from .context import StepflowContext
 from .exceptions import (
