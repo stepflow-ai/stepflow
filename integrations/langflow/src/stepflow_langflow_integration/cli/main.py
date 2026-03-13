@@ -448,14 +448,44 @@ async def _run_with_client(
         wait_timeout=timeout,
         populate_variables_from_env=True,
     )
-    return response.model_dump(by_alias=True, exclude_unset=True)
+    from stepflow_py.client import _from_proto_value
+
+    # Convert protobuf results to dict for CLI output
+    result_dict: dict = {
+        "run_id": response.summary.run_id,
+        "flow_id": response.summary.flow_id,
+        "status": response.summary.status,
+    }
+    if response.results:
+        result_dict["results"] = [
+            {
+                "item_index": r.item_index,
+                "status": r.status,
+                **(
+                    {"output": _from_proto_value(r.output)}
+                    if r.HasField("output")
+                    else {}
+                ),
+                **(
+                    {"error_message": r.error_message}
+                    if r.HasField("error_message")
+                    else {}
+                ),
+            }
+            for r in response.results
+        ]
+    return result_dict
 
 
 async def _show_variable_resolution(client: StepflowClient, flow_id: str) -> None:
     """Print which variables the flow needs and whether they are set."""
     try:
-        vars_response = await client._flow_api.get_flow_variables(flow_id)
-        env_vars = vars_response.env_vars or {}
+        vars_response = await client.get_flow_variables(flow_id)
+        # Build env_vars mapping from proto response
+        env_vars: dict[str, str] = {}
+        for var_name, var_def in vars_response.variables.items():
+            if var_def.HasField("env_var"):
+                env_vars[var_name] = var_def.env_var
         if not env_vars:
             click.echo("🔑 No environment variables required by this flow")
             return

@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Integration tests for SSE status event streaming.
+"""Integration tests for gRPC status event streaming.
 
 Tests cover:
 - Basic streaming of execution events
@@ -32,18 +32,16 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from stepflow_py import (
-    StatusEvent,
-    StatusEventRunCompleted,
-    StatusEventRunCreated,
-    StatusEventStepCompleted,
-    StepflowClient,
-)
+from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
     RouteRule,
     SqliteStoreConfig,
     StepflowConfig,
+)
+from stepflow_py.proto.runs_pb2 import (
+    StatusEvent,
+    StatusEventType,
 )
 
 
@@ -61,6 +59,11 @@ def _builtin_config(storage_config=None):
     )
 
 
+def _event_type(event: StatusEvent) -> str:
+    """Return the name of the oneof event field that is set."""
+    return event.WhichOneof("event") or "unknown"
+
+
 # A simple workflow that produces step events.
 SIMPLE_WORKFLOW = {
     "name": "sse_test",
@@ -76,7 +79,7 @@ SIMPLE_WORKFLOW = {
 
 
 # =============================================================================
-# Basic SSE streaming tests (in-memory storage, module-scoped orchestrator)
+# Basic streaming tests (in-memory storage, module-scoped orchestrator)
 # =============================================================================
 
 
@@ -93,7 +96,7 @@ async def completed_run(client):
     """Submit and complete a run, returning (flow_id, run_id)."""
     store_resp = await client.store_flow(SIMPLE_WORKFLOW)
     run_resp = await client.run(store_resp.flow_id, {"x": 1}, timeout=60.0)
-    return store_resp.flow_id, run_resp.run_id
+    return store_resp.flow_id, run_resp.summary.run_id
 
 
 @pytest.mark.asyncio
@@ -104,20 +107,20 @@ async def test_stream_completed_run(client, completed_run):
     async for ev in client.status_events(run_id):
         events.append(ev)
 
-    event_types = [e.event for e in events]
+    event_types = [_event_type(e) for e in events]
     assert "run_created" in event_types
     assert "run_completed" in event_types
 
-    # Should have typed events
-    assert isinstance(events[0], StatusEventRunCreated)
-    assert isinstance(events[-1], StatusEventRunCompleted)
+    # First should be run_created, last should be run_completed
+    assert _event_type(events[0]) == "run_created"
+    assert _event_type(events[-1]) == "run_completed"
 
     # All events should have sequence numbers and timestamps
     for ev in events:
-        assert ev.sequence_number is not None, (
-            f"Event {ev.event} missing sequenceNumber"
+        assert ev.sequence_number >= 0, (
+            f"Event {_event_type(ev)} has invalid sequence_number"
         )
-        assert ev.timestamp is not None, f"Event {ev.event} missing timestamp"
+        assert ev.HasField("timestamp"), f"Event {_event_type(ev)} missing timestamp"
 
     # Sequence numbers should be non-decreasing
     seqs = [ev.sequence_number for ev in events]
@@ -149,7 +152,7 @@ async def test_stream_resume_with_since(client, completed_run):
     for ev in resumed:
         assert ev.sequence_number >= resume_from
     # Should still end with run_completed
-    assert isinstance(resumed[-1], StatusEventRunCompleted)
+    assert _event_type(resumed[-1]) == "run_completed"
 
 
 @pytest.mark.asyncio
@@ -157,12 +160,15 @@ async def test_stream_event_type_filter(client, completed_run):
     """Filter stream to specific event types."""
     _, run_id = completed_run
     events: list[StatusEvent] = []
-    async for ev in client.status_events(run_id, event_types=["run_completed"]):
+    async for ev in client.status_events(
+        run_id,
+        event_types=[StatusEventType.STATUS_EVENT_TYPE_RUN_COMPLETED],
+    ):
         events.append(ev)
 
     assert len(events) >= 1
     for ev in events:
-        assert isinstance(ev, StatusEventRunCompleted)
+        assert _event_type(ev) == "run_completed"
 
 
 @pytest.mark.asyncio
@@ -175,23 +181,23 @@ async def test_stream_include_results(client, completed_run):
     async for ev in client.status_events(run_id, include_results=True):
         with_results.append(ev)
 
-    step_completed = [
-        e for e in with_results if isinstance(e, StatusEventStepCompleted)
-    ]
+    step_completed = [e for e in with_results if _event_type(e) == "step_completed"]
     assert len(step_completed) > 0, "Should have step_completed events"
     for ev in step_completed:
-        assert ev.result is not None, "step_completed should include result"
+        assert ev.step_completed.HasField("result"), (
+            "step_completed should include result"
+        )
 
     # Without results (default)
     without_results: list[StatusEvent] = []
     async for ev in client.status_events(run_id):
         without_results.append(ev)
 
-    step_completed = [
-        e for e in without_results if isinstance(e, StatusEventStepCompleted)
-    ]
+    step_completed = [e for e in without_results if _event_type(e) == "step_completed"]
     for ev in step_completed:
-        assert ev.result is None, "step_completed should not include result by default"
+        assert not ev.step_completed.HasField("result"), (
+            "step_completed should not include result by default"
+        )
 
 
 # =============================================================================
@@ -203,7 +209,7 @@ async def test_stream_include_results(client, completed_run):
 async def test_stream_after_restart():
     """Stream events for a run that completed before orchestrator restart.
 
-    Verifies that the journal is durable and the SSE stream can replay
+    Verifies that the journal is durable and the stream can replay
     events from a previous orchestrator lifetime.
     """
     _skip_if_no_binary()
@@ -221,7 +227,7 @@ async def test_stream_after_restart():
         async with StepflowClient.local(config, startup_timeout=60.0) as client:
             store_resp = await client.store_flow(SIMPLE_WORKFLOW)
             run_resp = await client.run(store_resp.flow_id, {"x": 1}, timeout=60.0)
-            run_id = run_resp.run_id
+            run_id = run_resp.summary.run_id
 
             original_events: list[StatusEvent] = []
             async for ev in client.status_events(run_id):
@@ -241,7 +247,9 @@ async def test_stream_after_restart():
             f"Replayed {len(replayed_events)} events, expected {len(original_events)}"
         )
         # Event types should match
-        assert [e.event for e in replayed_events] == [e.event for e in original_events]
+        assert [_event_type(e) for e in replayed_events] == [
+            _event_type(e) for e in original_events
+        ]
         # Sequence numbers should match
         assert [e.sequence_number for e in replayed_events] == [
             e.sequence_number for e in original_events
@@ -253,7 +261,7 @@ async def test_stream_resume_after_restart():
     """Resume a stream from a midpoint after orchestrator restart.
 
     Simulates a client that was receiving events, lost connection when
-    the orchestrator went down, and reconnects with ?since=<last_id>.
+    the orchestrator went down, and reconnects with since=<last_id>.
     """
     _skip_if_no_binary()
 
@@ -270,7 +278,7 @@ async def test_stream_resume_after_restart():
         async with StepflowClient.local(config, startup_timeout=60.0) as client:
             store_resp = await client.store_flow(SIMPLE_WORKFLOW)
             run_resp = await client.run(store_resp.flow_id, {"x": 1}, timeout=60.0)
-            run_id = run_resp.run_id
+            run_id = run_resp.summary.run_id
 
             all_events: list[StatusEvent] = []
             async for ev in client.status_events(run_id):
@@ -292,4 +300,4 @@ async def test_stream_resume_after_restart():
         for ev in resumed:
             assert ev.sequence_number >= midpoint_seq
         # Should end with run_completed
-        assert isinstance(resumed[-1], StatusEventRunCompleted)
+        assert _event_type(resumed[-1]) == "run_completed"

@@ -38,7 +38,41 @@ from .blobs_pb2 import (
 )
 from .runs_pb2 import (
     CreateRunRequest,
+    CreateRunResponse,
+    GetRunRequest,
+    GetRunResponse,
+    GetRunEventsRequest,
+    GetRunItemsRequest,
+    GetRunItemsResponse,
+    ListRunsRequest,
+    ListRunsResponse,
+    RunSummary,
+    StatusEvent,
+    StatusEventType,
 )
+from .flows_pb2 import (
+    StoreFlowRequest as StoreFlowRequestProto,
+    StoreFlowResponse as StoreFlowResponseProto,
+    GetFlowRequest,
+    GetFlowResponse,
+    GetFlowVariablesRequest,
+    GetFlowVariablesResponse,
+)
+from .health_pb2 import (
+    HealthCheckRequest,
+    HealthCheckResponse,
+)
+from .components_pb2 import (
+    ListRegisteredComponentsRequest,
+    ListRegisteredComponentsResponse,
+)
+
+# gRPC service stubs
+from .runs_pb2_grpc import RunsServiceStub
+from .flows_pb2_grpc import FlowsServiceStub
+from .health_pb2_grpc import HealthServiceStub
+from .blobs_pb2_grpc import BlobServiceStub
+from .components_pb2_grpc import ComponentsServiceStub
 
 __all__ = [
     "ObservabilityContext",
@@ -67,4 +101,30 @@ __all__ = [
     "PutBlobRequest",
     "PutBlobResponse",
     "CreateRunRequest",
+    "CreateRunResponse",
+    "GetRunRequest",
+    "GetRunResponse",
+    "GetRunEventsRequest",
+    "GetRunItemsRequest",
+    "GetRunItemsResponse",
+    "ListRunsRequest",
+    "ListRunsResponse",
+    "RunSummary",
+    "StatusEvent",
+    "StatusEventType",
+    "StoreFlowRequestProto",
+    "StoreFlowResponseProto",
+    "GetFlowRequest",
+    "GetFlowResponse",
+    "GetFlowVariablesRequest",
+    "GetFlowVariablesResponse",
+    "HealthCheckRequest",
+    "HealthCheckResponse",
+    "ListRegisteredComponentsRequest",
+    "ListRegisteredComponentsResponse",
+    "RunsServiceStub",
+    "FlowsServiceStub",
+    "HealthServiceStub",
+    "BlobServiceStub",
+    "ComponentsServiceStub",
 ]

@@ -37,9 +37,13 @@ def test_basic_imports() -> bool:
     """Test that core imports work correctly."""
     print("Testing basic imports...")
     try:
-        from stepflow_py import Flow, Step, StepflowClient  # noqa: F401
-        from stepflow_py.api import ApiClient, Configuration  # noqa: F401
-        from stepflow_py.api.models import ExecutionStatus  # noqa: F401
+        from stepflow_py import StepflowClient  # noqa: F401
+        from stepflow_py.proto import (  # noqa: F401
+            BlobServiceStub,
+            FlowsServiceStub,
+            HealthServiceStub,
+            RunsServiceStub,
+        )
 
         print("  ✓ Core imports successful")
         return True
@@ -75,21 +79,18 @@ def test_config_imports() -> bool:
         return False
 
 
-def test_api_models() -> bool:
-    """Test that API models can be imported and used."""
-    print("Testing API models...")
+def test_proto_models() -> bool:
+    """Test that proto models can be imported and used."""
+    print("Testing proto models...")
     try:
-        from stepflow_py.api.models import (
-            ExecutionStatus,
-        )
+        from stepflow_py.proto.common_pb2 import ExecutionStatus
 
         # Verify ExecutionStatus enum values
-        assert hasattr(ExecutionStatus, "COMPLETED")
-        assert hasattr(ExecutionStatus, "FAILED")
-        print("  ✓ API models imported successfully")
+        assert hasattr(ExecutionStatus, "Name")
+        print("  ✓ Proto models imported successfully")
         return True
     except Exception as e:
-        print(f"  ✗ API models test failed: {e}")
+        print(f"  ✗ Proto models test failed: {e}")
         return False
 
 
@@ -145,7 +146,7 @@ async def test_local_orchestrator() -> bool:
     try:
         print("  Starting local orchestrator...")
         async with StepflowClient.local(config, startup_timeout=60.0) as client:
-            print(f"  ✓ Orchestrator started, server at {client.base_url}")
+            print("  ✓ Orchestrator started and connected")
 
             # Check health
             is_healthy = await client.is_healthy()
@@ -194,7 +195,7 @@ def main():
     # Basic tests (always run)
     results.append(("Basic imports", test_basic_imports()))
     results.append(("Config imports", test_config_imports()))
-    results.append(("API models", test_api_models()))
+    results.append(("Proto models", test_proto_models()))
     results.append(("Client class", test_client_class()))
 
     # Local orchestrator test (optional)

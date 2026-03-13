@@ -159,6 +159,35 @@ impl StepflowGrpcServer {
         self.state.lock().await.as_ref().map(|s| s.address.clone())
     }
 
+    /// Build gRPC service routes as an [`axum::Router`] for multiplexing
+    /// with the HTTP server on a single port.
+    ///
+    /// The returned router handles all `application/grpc` requests via
+    /// tonic's path-based routing (`/{service_name}/{method}`).
+    pub fn build_grpc_router(&self, env: &Arc<StepflowEnvironment>) -> axum::Router {
+        // Worker-facing services
+        let orchestrator_service =
+            OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
+        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone());
+
+        // Client-facing services
+        let blob_service = BlobServiceImpl::new(env.clone());
+        let flows_service = FlowsServiceImpl::new(env.clone());
+        let runs_service = RunsServiceImpl::new(env.clone());
+        let health_service = HealthServiceImpl::new();
+        let components_service = ComponentsServiceImpl::new(env.clone());
+
+        tonic::service::Routes::new(OrchestratorServiceServer::new(orchestrator_service))
+            .add_service(TasksServiceServer::new(tasks_service))
+            .add_service(BlobServiceServer::new(blob_service))
+            .add_service(FlowsServiceServer::new(flows_service))
+            .add_service(RunsServiceServer::new(runs_service))
+            .add_service(HealthServiceServer::new(health_service))
+            .add_service(ComponentsServiceServer::new(components_service))
+            .prepare()
+            .into_axum_router()
+    }
+
     /// Start the gRPC server if not already running. Idempotent.
     ///
     /// When `port` is `Some`, binds to `0.0.0.0:{port}` (fixed port for

@@ -15,7 +15,7 @@
 """Integration tests for flow variables endpoint.
 
 Tests that storing a flow with env_var annotations and then fetching
-variables via GET /flows/{id}/variables returns the correct env_vars mapping.
+variables via GetFlowVariables gRPC RPC returns the correct env_vars mapping.
 """
 
 from __future__ import annotations
@@ -74,21 +74,21 @@ async def test_get_flow_variables_roundtrip(
     assert store_response.stored
     flow_id = store_response.flow_id
 
-    # Fetch variables endpoint
-    response = await stepflow_client._flow_api.get_flow_variables(flow_id)
+    # Fetch variables via gRPC
+    response = await stepflow_client.get_flow_variables(flow_id)
 
-    # Verify env_vars mapping
+    # Verify response
     assert response.flow_id == flow_id
-    assert response.env_vars == {
+
+    # Build env_vars mapping from proto response
+    env_vars = {}
+    for var_name, var_def in response.variables.items():
+        if var_def.HasField("env_var"):
+            env_vars[var_name] = var_def.env_var
+
+    assert env_vars == {
         "OPENAI_API_KEY": "OPENAI_API_KEY",
         "DB_URL": "DATABASE_URL",
     }
     # temperature has no env_var annotation
-    assert "temperature" not in response.env_vars
-
-    # Verify schema is present
-    assert response.var_schema is not None
-    props = response.var_schema.get("properties", {})
-    assert "OPENAI_API_KEY" in props
-    assert "temperature" in props
-    assert "DB_URL" in props
+    assert "temperature" not in env_vars

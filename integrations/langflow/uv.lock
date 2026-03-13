@@ -11473,7 +11473,7 @@ dev = [
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "langchain-core", specifier = ">=0.3.72" },
     { name = "mypy", specifier = "==1.19.1" },
-    { name = "mypy-protobuf", specifier = ">=3.6.0,<5" },
+    { name = "mypy-protobuf", specifier = ">=3.6.0,<4" },
     { name = "openai", specifier = ">=1.97.1" },
     { name = "poethepoet", specifier = ">=0.24.0" },
     { name = "pytest", specifier = ">=7.4.0" },

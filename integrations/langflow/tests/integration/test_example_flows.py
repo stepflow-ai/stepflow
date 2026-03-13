@@ -223,8 +223,7 @@ class TestExecutor:
         # Check for validation errors
         if store_response.diagnostics.num_fatal > 0:
             diagnostics_list = [
-                d.model_dump(by_alias=True, exclude_unset=True)
-                for d in store_response.diagnostics.diagnostics
+                d.formatted for d in store_response.diagnostics.diagnostics
             ]
             num_fatal = store_response.diagnostics.num_fatal
             raise AssertionError(
@@ -233,10 +232,10 @@ class TestExecutor:
             )
 
         if not store_response.flow_id:
-            diag_dict = store_response.diagnostics.model_dump(
-                by_alias=True, exclude_unset=True
+            raise AssertionError(
+                f"Failed to store workflow. Diagnostics: "
+                f"{[d.formatted for d in store_response.diagnostics.diagnostics]}"
             )
-            raise AssertionError(f"Failed to store workflow. Diagnostics: {diag_dict}")
 
         flow_id = store_response.flow_id
 
@@ -263,9 +262,12 @@ class TestExecutor:
         populate_variables_from_env: bool = False,
     ) -> dict:
         """Execute workflow with optional overrides using StepflowClient."""
-        from stepflow_py.api.models import ExecutionStatus
-        from stepflow_py.api.models.flow_result_failed import FlowResultFailed
-        from stepflow_py.api.models.flow_result_success import FlowResultSuccess
+        from google.protobuf import json_format
+        from stepflow_py.proto.common_pb2 import (
+            EXECUTION_STATUS_COMPLETED,
+            EXECUTION_STATUS_FAILED,
+            ExecutionStatus,
+        )
 
         response = await self.client.run(
             flow_id=flow_id,
@@ -276,27 +278,32 @@ class TestExecutor:
             populate_variables_from_env=populate_variables_from_env,
         )
 
-        if response.status != ExecutionStatus.COMPLETED:
-            dump = response.model_dump(by_alias=True, exclude_unset=True)
+        if response.summary.status != EXECUTION_STATUS_COMPLETED:
+            status_name = ExecutionStatus.Name(response.summary.status)
             raise AssertionError(
-                f"Workflow execution failed with status {response.status}. "
-                f"Full response: {dump}"
+                f"Workflow execution failed with status {status_name}."
             )
 
         if not response.results:
             raise AssertionError("No results in response")
 
-        flow_result = response.results[0].result
-        if flow_result is None:
-            raise AssertionError("No result in first item")
-
-        actual = flow_result.actual_instance
-        if isinstance(actual, FlowResultSuccess):
-            return {"outcome": "success", "result": actual.result}
-        elif isinstance(actual, FlowResultFailed):
-            raise AssertionError(f"Workflow execution failed: {actual.error}")
+        item_result = response.results[0]
+        if item_result.status == EXECUTION_STATUS_COMPLETED:
+            if item_result.HasField("output"):
+                result = json_format.MessageToDict(item_result.output)
+                return {"outcome": "success", "result": result}
+            else:
+                return {"outcome": "success", "result": None}
+        elif item_result.status == EXECUTION_STATUS_FAILED:
+            error_msg = (
+                item_result.error_message
+                if item_result.HasField("error_message")
+                else "unknown error"
+            )
+            raise AssertionError(f"Workflow execution failed: {error_msg}")
         else:
-            raise AssertionError(f"Unexpected result type: {type(actual)}")
+            status_name = ExecutionStatus.Name(item_result.status)
+            raise AssertionError(f"Unexpected item status: {status_name}")
 
 
 @pytest.fixture(scope="module")
@@ -332,12 +339,18 @@ async def test_flow_variables_roundtrip(converter, stepflow_client):
     assert store_response.stored, f"Failed to store flow: {store_response.diagnostics}"
     flow_id = store_response.flow_id
 
-    response = await stepflow_client._flow_api.get_flow_variables(flow_id)
+    response = await stepflow_client.get_flow_variables(flow_id)
 
-    assert "OPENAI_API_KEY" in response.env_vars, (
-        f"Expected OPENAI_API_KEY in env_vars, got: {response.env_vars}"
+    # Build env_vars mapping from proto response
+    env_vars = {}
+    for var_name, var_def in response.variables.items():
+        if var_def.HasField("env_var"):
+            env_vars[var_name] = var_def.env_var
+
+    assert "OPENAI_API_KEY" in env_vars, (
+        f"Expected OPENAI_API_KEY in env_vars, got: {env_vars}"
     )
-    assert response.env_vars["OPENAI_API_KEY"] == "OPENAI_API_KEY"
+    assert env_vars["OPENAI_API_KEY"] == "OPENAI_API_KEY"
 
 
 # API-dependent flows

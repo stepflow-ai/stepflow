@@ -64,6 +64,7 @@ def integration_config():
                     str(python_sdk_path),
                     "run",
                     "stepflow_worker",
+                    "--http",
                 ],
             ),
         },
