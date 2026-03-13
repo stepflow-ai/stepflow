@@ -10,13 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use error_stack::ResultExt as _;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use stepflow_core::{
-    BlobId,
-    workflow::{Flow, WorkflowOverrides},
-};
 use crate::{
     args::{ConfigArgs, ExecutionArgs, InputArgs, OutputArgs, WorkflowLoader, load},
     error::Result,
@@ -28,6 +21,13 @@ use crate::{
     validate,
     validation_display::display_diagnostics,
     visualize,
+};
+use error_stack::ResultExt as _;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use stepflow_core::{
+    BlobId,
+    workflow::{Flow, WorkflowOverrides},
 };
 
 /// Stepflow command line application.

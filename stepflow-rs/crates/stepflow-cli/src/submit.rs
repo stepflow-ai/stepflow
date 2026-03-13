@@ -16,8 +16,7 @@ use std::collections::HashMap;
 use stepflow_core::workflow::{Flow, ValueRef, WorkflowOverrides};
 use stepflow_core::{FlowError, FlowResult};
 use stepflow_grpc::proto::stepflow::v1::{
-    self as proto, flows_service_client::FlowsServiceClient,
-    runs_service_client::RunsServiceClient,
+    self as proto, flows_service_client::FlowsServiceClient, runs_service_client::RunsServiceClient,
 };
 
 /// Display gRPC error status with context.
@@ -91,7 +90,10 @@ fn proto_item_to_flow_result(item: &proto::ItemResult) -> Option<FlowResult> {
         Some(FlowResult::Success(value_ref))
     } else if let Some(ref error_msg) = item.error_message {
         let code = item.error_code.unwrap_or(500);
-        Some(FlowResult::Failed(FlowError::new(i64::from(code), error_msg.clone())))
+        Some(FlowResult::Failed(FlowError::new(
+            i64::from(code),
+            error_msg.clone(),
+        )))
     } else {
         None
     }
@@ -118,7 +120,11 @@ pub async fn submit(
         .connect()
         .await
         .map_err(|e| {
-            log::error!("Failed to connect to gRPC server at '{}': {}", service_url, e);
+            log::error!(
+                "Failed to connect to gRPC server at '{}': {}",
+                service_url,
+                e
+            );
             report!(MainError::Configuration)
         })?;
 
