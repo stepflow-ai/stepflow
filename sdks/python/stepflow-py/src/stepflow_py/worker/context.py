@@ -19,8 +19,10 @@ import uuid
 from typing import Any, TypeVar
 from uuid import uuid4
 
-from stepflow_py.api.models import Flow
+import msgspec
+
 from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA, BLOB_TYPE_FLOW
+from stepflow_py.worker.generated_flow import Flow
 from stepflow_py.worker.generated_protocol import (
     FlowResultFailed,
     FlowResultSuccess,
@@ -251,7 +253,7 @@ class StepflowContext:
             Exception: For system/runtime errors
         """
         # Convert Flow object to dict for blob storage
-        flow_dict = flow.model_dump()
+        flow_dict = msgspec.to_builtins(flow)
 
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
@@ -319,7 +321,7 @@ class StepflowContext:
             RunStatusProtocol with run status and optionally results if wait=True
         """
         # Convert Flow object to dict for blob storage
-        flow_dict = flow.model_dump()
+        flow_dict = msgspec.to_builtins(flow)
 
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
@@ -459,7 +461,7 @@ class StepflowContext:
             StepflowFailed: If any of the runs failed
         """
         # Convert Flow object to dict for blob storage
-        flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
+        flow_dict = msgspec.to_builtins(flow)
 
         # Store flow as a blob first
         flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)

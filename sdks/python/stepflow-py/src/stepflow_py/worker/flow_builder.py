@@ -12,7 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Flow builder for creating Stepflow workflows programmatically."""
+"""Flow builder for creating Stepflow workflows programmatically.
+
+Flows and steps use msgspec Struct types generated from schemas/flow.json.
+Serialize with ``msgspec.to_builtins(flow)`` to get a plain dict suitable
+for JSON/YAML or the ``store_flow`` API.
+"""
 
 from __future__ import annotations
 
@@ -21,15 +26,12 @@ from typing import Any, assert_never
 
 import msgspec
 
-from stepflow_py.api.models import (
+from .generated_flow import (
     ErrorAction,
     Flow,
     OnErrorDefault,
-    OnErrorFail,
-    OnErrorRetry,
     Step,
 )
-
 from .value import (
     JsonPath,
     StepReference,
@@ -37,25 +39,6 @@ from .value import (
     Value,
     WorkflowInput,
 )
-
-# Type alias for on_error parameter
-OnErrorType = OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None
-
-
-def _wrap_error_action(on_error: OnErrorType) -> ErrorAction | None:
-    """Wrap an on_error value in an ErrorAction wrapper if needed.
-
-    The generated Pydantic models use a oneOf pattern where the Step.on_error
-    field expects an ErrorAction wrapper around Fail, UseDefault, etc.
-    """
-    if on_error is None:
-        return None
-    if isinstance(on_error, ErrorAction):
-        return on_error
-    if isinstance(on_error, OnErrorFail | OnErrorDefault | OnErrorRetry):
-        return ErrorAction(actual_instance=on_error)
-    raise ValueError(f"Unsupported on_error type: {type(on_error)}")
-
 
 # Type alias for component (just a string in the API)
 Component = str
@@ -106,7 +89,7 @@ class FlowBuilder:
     - Use Value() constructor for converting any Valuable to a Value
     - Use builder.step(name) to access steps for analysis and reference creation
     - Use builder.get_references() for analyzing flows
-    - Use FlowBuilder.load(flow) to create a builder from an existing flow for analysis
+    - Use FlowBuilder.load(flow) to create a builder from an existing Flow or dict
 
     Examples:
         # Creating a new flow
@@ -149,8 +132,8 @@ class FlowBuilder:
         self._output_fields: dict[str, Valuable] = {}  # For incremental output building
 
     @classmethod
-    def load(cls, flow: Flow) -> FlowBuilder:
-        """Create a FlowBuilder from an existing Flow.
+    def load(cls, flow: Flow | dict[str, Any]) -> FlowBuilder:
+        """Create a FlowBuilder from an existing Flow or dict.
 
         This allows you to load an existing flow and analyze or modify it.
 
@@ -159,22 +142,36 @@ class FlowBuilder:
             references = builder.get_references()
             step_refs = builder.step("step_name").get_references()
         """
+        # Convert dict to Flow struct if needed
+        if isinstance(flow, dict):
+            flow = msgspec.convert(flow, Flow)
+
         builder = cls(
-            name=flow.name,
-            description=flow.description,
-            version=flow.version,
-            metadata=flow.metadata,
+            name=flow.name if flow.name is not msgspec.UNSET else None,
+            description=flow.description
+            if flow.description is not msgspec.UNSET
+            else None,
+            version=flow.version if flow.version is not msgspec.UNSET else None,
+            metadata=flow.metadata if flow.metadata is not msgspec.UNSET else None,
         )
-        # Extract schemas from the JSON Schema dict
-        if flow.schemas is not None:
-            props = flow.schemas.get("properties", {})
+        # Extract schemas from the FlowSchema struct
+        if flow.schemas is not msgspec.UNSET:
+            # FlowSchema is an open struct — convert to dict for inspection
+            schema_dict = msgspec.to_builtins(flow.schemas)
+            props = (
+                schema_dict.get("properties", {})
+                if isinstance(schema_dict, dict)
+                else {}
+            )
             builder.input_schema = props.get("input")
             builder.output_schema = props.get("output")
             builder.variables_schema = props.get("variables")
-        builder._output = flow.output
+        if flow.output is not msgspec.UNSET:
+            builder._output = flow.output
 
-        # Recreate steps as dict and step handles
-        for step in flow.steps or []:
+        # Recreate steps and step handles
+        steps = flow.steps if flow.steps is not msgspec.UNSET else []
+        for step in steps or []:
             builder.steps[step.id] = step
             builder._step_handles[step.id] = StepHandle(step, builder)
 
@@ -251,9 +248,7 @@ class FlowBuilder:
         id: str,
         component: Component,
         input_data: Any = None,  # Accept any data structure
-        on_error: (
-            OnErrorFail | OnErrorDefault | OnErrorRetry | ErrorAction | None
-        ) = None,
+        on_error: ErrorAction | None = None,
         must_execute: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> StepHandle:
@@ -263,7 +258,10 @@ class FlowBuilder:
         1. Ensures step ID is unique by adding suffix if needed
         2. Converts dataclasses/msgspec structs to JSON
         3. Handles step references properly
-        4. Wraps on_error in its oneOf wrapper type
+
+        Args:
+            on_error: Error handling — use OnErrorFail(), OnErrorDefault(), or
+                OnErrorRetry() from stepflow_py.worker.
         """
         # Ensure step ID is unique
         unique_id = self._ensure_unique_step_id(id)
@@ -274,18 +272,13 @@ class FlowBuilder:
         # Convert input data to JSON-compatible value
         input_expr = self._convert_to_value_expr(converted_input)
 
-        # Wrap on_error in ErrorAction if needed
-        wrapped_on_error = _wrap_error_action(on_error)
-
-        # Create the step using Pydantic model
-        # Note: Using Python names (on_error, must_execute) instead of aliases
-        # Works at runtime due to populate_by_name=True in model config
+        # Build Step struct
         step = Step(
             id=unique_id,
             component=component,
             input=input_expr,
-            on_error=wrapped_on_error,
-            must_execute=must_execute,
+            onError=on_error,
+            mustExecute=must_execute,
             metadata=metadata or {},
         )
 
@@ -374,9 +367,13 @@ class FlowBuilder:
         assert_never(input_data)
 
     def build(self) -> Flow:
-        """Build the Flow object."""
+        """Build the Flow as a msgspec Struct.
+
+        Serialize the result with ``msgspec.to_builtins(flow)`` to get a
+        plain dict suitable for JSON, YAML, or the ``store_flow`` API.
+        """
         # Determine output from either explicit output or accumulated fields
-        output_to_use = None
+        output_to_use: Any = msgspec.UNSET
         if self._output is not None:
             output_to_use = self._output
         elif self._output_fields:
@@ -389,7 +386,7 @@ class FlowBuilder:
             )
 
         # Build schemas dict in JSON Schema format if any schemas are set
-        schemas: dict[str, Any] | None = None
+        schemas: Any = msgspec.UNSET
         if (
             self.input_schema is not None
             or self.output_schema is not None
@@ -402,9 +399,10 @@ class FlowBuilder:
                 properties["output"] = self.output_schema
             if self.variables_schema is not None:
                 properties["variables"] = self.variables_schema
-            schemas = {"type": "object"}
+            schema_dict: dict[str, Any] = {"type": "object"}
             if properties:
-                schemas["properties"] = properties
+                schema_dict["properties"] = properties
+            schemas = schema_dict
 
         return Flow(
             name=self.name,
@@ -413,7 +411,7 @@ class FlowBuilder:
             schemas=schemas,
             steps=list(self.steps.values()),
             output=output_to_use,
-            metadata=self.metadata,
+            metadata=self.metadata if self.metadata else msgspec.UNSET,
         )
 
     def _convert_to_value_expr(self, data: Valuable) -> Any:
@@ -439,18 +437,20 @@ class FlowBuilder:
         references = []
 
         # Get references from step input
-        if step.input:
-            references.extend(self.get_value_expr_references(step.input))
+        step_input = step.input if step.input is not msgspec.UNSET else None
+        if step_input:
+            references.extend(self.get_value_expr_references(step_input))
 
         # Get references from onError default value
-        if (
-            step.on_error
-            and hasattr(step.on_error, "default_value")
-            and step.on_error.default_value
-        ):
-            references.extend(
-                self.get_value_expr_references(step.on_error.default_value)
+        on_error = step.onError if step.onError is not msgspec.UNSET else None
+        if on_error and isinstance(on_error, OnErrorDefault):
+            default_val = (
+                on_error.defaultValue
+                if on_error.defaultValue is not msgspec.UNSET
+                else None
             )
+            if default_val:
+                references.extend(self.get_value_expr_references(default_val))
 
         return references
 

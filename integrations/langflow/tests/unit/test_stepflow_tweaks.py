@@ -100,8 +100,10 @@ class TestStepflowTweaksIntegration:
             with open(fixture_path) as f:
                 langflow_data = json.load(f)
             # Convert to Flow object and get dict representation
+            import msgspec
+
             flow = converter.convert(langflow_data)
-            return flow.model_dump(mode="json", exclude_none=True)
+            return msgspec.to_builtins(flow)
         else:
             pytest.skip("basic_prompting.json fixture not found")
 

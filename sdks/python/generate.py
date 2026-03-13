@@ -15,8 +15,10 @@
 
 """Type generation script for Stepflow Python SDK.
 
-This script generates the protocol types from the JSON schema.
-Flow types are now provided by the Pydantic API models in stepflow_py.api.models.
+Generates msgspec Struct types from JSON schemas for:
+- Protocol types (component server communication)
+- Config types (orchestrator configuration)
+- Flow types (workflow definitions: Flow, Step, ErrorAction, etc.)
 """
 
 import argparse
@@ -142,6 +144,18 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
             "Dict[str, ValueExpr]", "Dict[str, 'ValueExpr']"
         )
 
+        # Fix msgspec constraint on union types: ge/le/gt/lt on `int | None`
+        # is not allowed by msgspec, so strip numeric constraint lines from
+        # Meta() annotations on nullable numeric types
+        import re
+
+        new_content = re.sub(
+            r"^\s+ge=\d+,?\n",
+            "",
+            new_content,
+            flags=re.MULTILINE,
+        )
+
         if verbose:
             print("✓ Added license header and generation documentation")
             print(f"✓ {schema_name.capitalize()} generation complete!")
@@ -200,11 +214,7 @@ def generate_types_from_schema(
 
 
 def main():
-    """Generate protocol types from JSON schema.
-
-    Note: Flow types are now provided by the Pydantic API models in stepflow_py.api.models,
-    which are generated from the OpenAPI spec using openapi-generator-cli.
-    """
+    """Generate typed models from JSON schemas."""
     parser = argparse.ArgumentParser(
         description="Generate Stepflow Python SDK types from JSON schemas"
     )
@@ -231,8 +241,14 @@ def main():
     if result != 0:
         return result
 
-    # Note: Flow types are no longer generated here.
-    # They are provided by stepflow_py.api.models (Pydantic models from OpenAPI spec)
+    # Generate flow types (msgspec-based, for workflow definitions)
+    result = generate_types_from_schema(
+        "flow",
+        "generated_flow.py",
+        check_only=args.check,
+    )
+    if result != 0:
+        return result
 
     return 0
 

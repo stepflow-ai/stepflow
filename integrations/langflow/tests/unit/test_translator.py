@@ -471,7 +471,9 @@ class TestPocFlowRegressions:
         import json
         from pathlib import Path
 
-        from stepflow_py.api.models.flow import Flow
+        import msgspec
+
+        from stepflow_py.worker import Flow
 
         converter = LangflowConverter()
         flow_path = (
@@ -488,7 +490,8 @@ class TestPocFlowRegressions:
         assert flow is not None
 
         # Round-trip through dict (this is the CLI code path that triggered the bug)
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
+        flow_dict = msgspec.to_builtins(flow)
+        reconstructed = msgspec.convert(flow_dict, Flow)
         assert reconstructed is not None
-        assert len(reconstructed.steps or []) > 0
+        steps = reconstructed.steps if reconstructed.steps is not msgspec.UNSET else []
+        assert len(steps) > 0

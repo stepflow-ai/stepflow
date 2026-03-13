@@ -28,14 +28,26 @@ JSON-compatible dicts.
 
 This bug manifested in the CLI `run` command which serializes a flow to YAML
 and back to a dict before calling client.store_flow(dict), triggering
-Flow.from_dict() -> Step.from_dict() for every step input.
+deserialization for every step input.
 """
 
-import json
+import msgspec
 
-from stepflow_py.api.models.flow import Flow
+from stepflow_py.worker import Flow
 from stepflow_py.worker.flow_builder import FlowBuilder
 from stepflow_py.worker.value import Value
+
+
+def _roundtrip(flow: Flow) -> Flow:
+    """Serialize a flow to dict and deserialize it back."""
+    flow_dict = msgspec.to_builtins(flow)
+    return msgspec.convert(flow_dict, Flow)
+
+
+def _get_steps(flow: Flow) -> list:
+    """Get steps list from a flow, handling UNSET."""
+    steps = flow.steps if flow.steps is not msgspec.UNSET else []
+    return list(steps or [])
 
 
 class TestFlowDictRoundTrip:
@@ -43,15 +55,9 @@ class TestFlowDictRoundTrip:
 
     This simulates the CLI path:
     1. LangflowConverter.convert() → Flow object
-    2. flow.model_dump_json(by_alias=True) → JSON string
-    3. json.loads(...) → plain dict
-    4. Flow.from_dict(plain_dict) → should work without errors
+    2. msgspec.to_builtins(flow) → plain dict
+    3. msgspec.convert(dict, Flow) → should work without errors
     """
-
-    def _roundtrip(self, flow: Flow) -> Flow:
-        """Serialize a flow to dict and deserialize it back."""
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        return Flow.from_dict(flow_dict)
 
     def test_simple_step_input_dict(self):
         """Plain dict step input round-trips without errors."""
@@ -65,9 +71,9 @@ class TestFlowDictRoundTrip:
         builder.set_output(step.result)
         flow = builder.build()
 
-        reconstructed = self._roundtrip(flow)
+        reconstructed = _roundtrip(flow)
         assert reconstructed is not None
-        assert len(reconstructed.steps or []) == 1
+        assert len(_get_steps(reconstructed)) == 1
 
     def test_step_with_nested_template_dict(self):
         """Complex nested dict step input (like Langflow templates) round-trips."""
@@ -92,9 +98,9 @@ class TestFlowDictRoundTrip:
         builder.set_output(step.result)
         flow = builder.build()
 
-        reconstructed = self._roundtrip(flow)
+        reconstructed = _roundtrip(flow)
         assert reconstructed is not None
-        step0 = (reconstructed.steps or [])[0]
+        step0 = _get_steps(reconstructed)[0]
         assert step0.input is not None
         assert step0.input["template"]["_type"] == "Component"
 
@@ -114,12 +120,12 @@ class TestFlowDictRoundTrip:
         builder.set_output(step2.result)
         flow = builder.build()
 
-        reconstructed = self._roundtrip(flow)
+        reconstructed = _roundtrip(flow)
         assert reconstructed is not None
-        assert len(reconstructed.steps or []) == 2
+        assert len(_get_steps(reconstructed)) == 2
 
         # Verify the step references are preserved
-        step2_input = (reconstructed.steps or [])[1].input
+        step2_input = _get_steps(reconstructed)[1].input
         assert step2_input is not None
         assert step2_input["data"] == {"$step": "step1", "path": "$.result"}
         assert step2_input["config"] == {"timeout": 30}
@@ -146,10 +152,10 @@ class TestFlowDictRoundTrip:
         builder.set_output({"result": {"$step": "step1"}})
         flow = builder.build()
 
-        reconstructed = self._roundtrip(flow)
+        reconstructed = _roundtrip(flow)
         assert reconstructed is not None
 
-        step_input = (reconstructed.steps or [])[0].input
+        step_input = _get_steps(reconstructed)[0].input
         assert step_input["step_ref"] == {"$step": "previous_step"}
         assert step_input["input_ref"] == {"$input": "$.message"}
         assert step_input["variable_ref"] == {"$variable": "api_key"}
@@ -175,9 +181,8 @@ class TestStepInputFormats:
         builder.set_output({"result": "done"})
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
-        assert (reconstructed.steps or [])[0].input == "just a string"
+        reconstructed = _roundtrip(flow)
+        assert _get_steps(reconstructed)[0].input == "just a string"
 
     def test_plain_dict_input(self):
         """Plain dict step input serializes correctly."""
@@ -190,9 +195,8 @@ class TestStepInputFormats:
         builder.set_output({"result": "done"})
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
-        step_input = (reconstructed.steps or [])[0].input
+        reconstructed = _roundtrip(flow)
+        step_input = _get_steps(reconstructed)[0].input
         assert step_input == {"message": "hello", "count": 3, "enabled": True}
 
     def test_step_ref_input(self):
@@ -206,9 +210,8 @@ class TestStepInputFormats:
         builder.set_output({"result": "done"})
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
-        step_input = (reconstructed.steps or [])[0].input
+        reconstructed = _roundtrip(flow)
+        step_input = _get_steps(reconstructed)[0].input
         assert step_input == {"$step": "previous_step", "path": "result"}
 
     def test_literal_escaped_input(self):
@@ -222,9 +225,8 @@ class TestStepInputFormats:
         builder.set_output({"result": "done"})
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
-        step_input = (reconstructed.steps or [])[0].input
+        reconstructed = _roundtrip(flow)
+        step_input = _get_steps(reconstructed)[0].input
         assert step_input == {"$literal": {"$step": "this_is_a_literal"}}
 
     def test_null_input(self):
@@ -238,11 +240,10 @@ class TestStepInputFormats:
         builder.set_output({"result": "done"})
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
+        reconstructed = _roundtrip(flow)
         # None input should be absent or None in the reconstructed step
-        step = (reconstructed.steps or [])[0]
-        assert step.input is None
+        step = _get_steps(reconstructed)[0]
+        assert step.input is None or step.input is msgspec.UNSET
 
 
 class TestFlowOutputFormats:
@@ -257,8 +258,7 @@ class TestFlowOutputFormats:
 
         assert flow.output == {"$step": "step1"}
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
+        reconstructed = _roundtrip(flow)
         assert reconstructed.output == {"$step": "step1"}
 
     def test_output_as_structured_dict(self):
@@ -274,8 +274,7 @@ class TestFlowOutputFormats:
         )
         flow = builder.build()
 
-        flow_dict = json.loads(flow.model_dump_json(by_alias=True))
-        reconstructed = Flow.from_dict(flow_dict)
+        reconstructed = _roundtrip(flow)
         assert reconstructed.output["result"] == {
             "$step": "step1",
             "path": "$.result",

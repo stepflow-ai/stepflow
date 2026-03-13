@@ -14,7 +14,16 @@
 
 """Test variables schema functionality in FlowBuilder."""
 
+import msgspec
+
 from stepflow_py.worker import FlowBuilder, Value
+
+
+def _schemas_dict(flow):
+    """Convert flow schemas to a plain dict for assertions."""
+    if flow.schemas is msgspec.UNSET or flow.schemas is None:
+        return None
+    return msgspec.to_builtins(flow.schemas)
 
 
 def test_variables_schema_from_dict():
@@ -53,8 +62,9 @@ def test_variables_schema_from_dict():
 
     flow = builder.build()
 
-    assert flow.schemas is not None
-    assert flow.schemas.get("properties", {}).get("variables") is not None
+    schemas = _schemas_dict(flow)
+    assert schemas is not None
+    assert schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_from_simple_dict():
@@ -79,8 +89,9 @@ def test_variables_schema_from_simple_dict():
 
     flow = builder.build()
 
-    assert flow.schemas is not None
-    assert flow.schemas.get("properties", {}).get("variables") is not None
+    schemas = _schemas_dict(flow)
+    assert schemas is not None
+    assert schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_load_flow():
@@ -115,8 +126,9 @@ def test_variables_schema_load_flow():
     # Build the loaded flow
     rebuilt_flow = loaded_builder.build()
 
-    assert rebuilt_flow.schemas is not None
-    assert rebuilt_flow.schemas.get("properties", {}).get("variables") is not None
+    schemas = _schemas_dict(rebuilt_flow)
+    assert schemas is not None
+    assert schemas.get("properties", {}).get("variables") is not None
 
 
 def test_variables_schema_method_chaining():
@@ -147,4 +159,5 @@ def test_variables_schema_none_by_default():
     flow = builder.build()
 
     # No schemas should be set if no input/output/variables schemas were provided
-    assert flow.schemas is None
+    schemas = _schemas_dict(flow)
+    assert schemas is None

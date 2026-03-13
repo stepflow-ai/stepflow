@@ -257,17 +257,18 @@ class StepflowClient:
         """Store a flow and return the response.
 
         Args:
-            flow: Flow definition as a dictionary or Pydantic model with
-                model_dump_json/model_dump methods.
+            flow: Flow definition as a dictionary or msgspec Struct.
             dry_run: If True, validate only without storing the flow
             timeout: Request timeout in seconds
 
         Returns:
             StoreFlowResponse with flow_id, stored flag, and diagnostics
         """
-        # Support Pydantic models (e.g., stepflow_py.api.models.Flow)
-        if not isinstance(flow, dict) and hasattr(flow, "model_dump"):
-            flow = json.loads(flow.model_dump_json(by_alias=True))
+        # Support msgspec Structs (e.g., stepflow_py.worker.Flow)
+        if not isinstance(flow, dict):
+            import msgspec
+
+            flow = msgspec.to_builtins(flow)
 
         request = flows_pb2.StoreFlowRequest(
             flow=_to_proto_struct(flow),
