@@ -15,47 +15,19 @@
 """Stepflow Python SDK.
 
 This package provides:
-- stepflow_py.api: API client for interacting with Stepflow orchestrator
+- stepflow_py.client: High-level gRPC client for Stepflow orchestrator
 - stepflow_py.worker: Component server (worker) implementation
+- stepflow_py.proto: Generated protobuf/gRPC stubs
+- stepflow_py.api: Legacy REST API client (deprecated, will be removed)
 """
 
 # Re-export key classes from submodules for convenience
-from stepflow_py.api import ApiClient, Configuration
-from stepflow_py.api.api import ComponentApi, FlowApi, HealthApi, RunApi
-from stepflow_py.api.models import Flow, Step
-from stepflow_py.api.models.status_event_item_completed import StatusEventItemCompleted
-from stepflow_py.api.models.status_event_run_completed import StatusEventRunCompleted
-from stepflow_py.api.models.status_event_run_created import StatusEventRunCreated
-from stepflow_py.api.models.status_event_step_completed import StatusEventStepCompleted
-from stepflow_py.api.models.status_event_step_ready import StatusEventStepReady
-from stepflow_py.api.models.status_event_step_started import StatusEventStepStarted
-from stepflow_py.api.models.status_event_sub_run_created import StatusEventSubRunCreated
-from stepflow_py.client import StatusEvent, StepflowClient
+from stepflow_py.client import StepflowClient
 from stepflow_py.worker.generated_protocol import ErrorCode
 
 __all__ = [
     # High-level client
     "StepflowClient",
-    # Status event types
-    "StatusEvent",
-    "StatusEventRunCreated",
-    "StatusEventStepStarted",
-    "StatusEventStepCompleted",
-    "StatusEventStepReady",
-    "StatusEventItemCompleted",
-    "StatusEventRunCompleted",
-    "StatusEventSubRunCreated",
-    # Low-level API client
-    "ApiClient",
-    "Configuration",
-    # API endpoints
-    "FlowApi",
-    "RunApi",
-    "ComponentApi",
-    "HealthApi",
-    # Models
-    "Flow",
-    "Step",
     # Error codes
     "ErrorCode",
 ]

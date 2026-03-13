@@ -40,20 +40,17 @@ pub enum ServerError {
 
 type Result<T> = std::result::Result<T, Report<ServerError>>;
 
-/// Stepflow HTTP Server
+/// Stepflow Server
 ///
-/// Provides a REST API for workflow execution and management.
+/// Provides both REST and gRPC APIs for workflow execution and management,
+/// multiplexed on a single port.
 #[derive(Parser, Debug)]
 #[command(name = "stepflow-server")]
-#[command(about = "Stepflow HTTP Server", long_about = None)]
+#[command(about = "Stepflow Server (HTTP + gRPC)", long_about = None)]
 struct Args {
-    /// Port to bind the HTTP server
+    /// Port to bind the server (serves both HTTP and gRPC)
     #[arg(short, long, default_value = "7840", env = "STEPFLOW_PORT")]
     port: u16,
-
-    /// Port for the gRPC server (defaults to HTTP port + 1)
-    #[arg(long, env = "STEPFLOW_GRPC_PORT")]
-    grpc_port: Option<u16>,
 
     /// Path to stepflow configuration file
     #[arg(short, long, env = "STEPFLOW_CONFIG", conflicts_with = "config_stdin")]
@@ -146,22 +143,11 @@ async fn main() {
                 .change_context(ServerError::ExecutorError)
                 .attach_printable("Failed to create executor from configuration")?;
 
-        // Start gRPC server.
-        // When an explicit gRPC port is set, use it. Otherwise, derive from
-        // the *actual* bound HTTP port (not the CLI arg, which may be 0).
-        let http_port = listener
-            .local_addr()
-            .change_context(ServerError::ServerError)?
-            .port();
-        let grpc_port = args.grpc_port.unwrap_or(http_port + 1);
+        // Build gRPC routes for multiplexing on the same port as HTTP.
         let grpc_server = executor
             .get::<StdArc<StepflowGrpcServer>>()
             .expect("StepflowGrpcServer must be in the environment");
-        grpc_server
-            .ensure_started(&executor, Some(grpc_port))
-            .await
-            .change_context(ServerError::ServerError)
-            .attach_printable("Failed to start gRPC server")?;
+        let grpc_router = grpc_server.build_grpc_router(&executor);
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
@@ -207,7 +193,7 @@ async fn main() {
 
         // Run server until shutdown signal
         tokio::select! {
-            result = stepflow_server::start_server(listener, executor.clone()) => {
+            result = stepflow_server::start_server(listener, executor.clone(), Some(grpc_router)) => {
                 result
                     .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
                     .change_context(ServerError::ServerError)?;

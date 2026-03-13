@@ -125,7 +125,7 @@ check_python_proto_freshness() {
     # Regenerate stubs
     "$SCRIPT_DIR/generate-python-proto.sh" > /dev/null 2>&1
 
-    if diff -rq "$tmpdir/before" "$committed" > /dev/null 2>&1; then
+    if diff -rq --exclude='__pycache__' "$tmpdir/before" "$committed" > /dev/null 2>&1; then
         return 0
     else
         echo "Python proto stubs are out of date. Regenerate with: ./scripts/generate-python-proto.sh"

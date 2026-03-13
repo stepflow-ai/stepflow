@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -56,25 +56,41 @@ def test_parse_env_value_empty_string():
     assert _parse_env_value("") == ""
 
 
+def _make_flow_variables_response(env_vars: dict[str, str]):
+    """Create a mock GetFlowVariablesResponse proto message."""
+    from stepflow_py.proto import flows_pb2
+
+    response = flows_pb2.GetFlowVariablesResponse(flow_id="test-flow-id")
+    for var_name, env_var_name in env_vars.items():
+        var_def = flows_pb2.FlowVariable(env_var=env_var_name)
+        response.variables[var_name].CopyFrom(var_def)
+    return response
+
+
+def _make_client_with_mock_stubs():
+    """Create a StepflowClient with a mocked gRPC channel and stubs."""
+    from stepflow_py.client import StepflowClient
+
+    client = StepflowClient.__new__(StepflowClient)
+    client._channel = MagicMock()
+    client._flows_stub = MagicMock()
+    client._runs_stub = MagicMock()
+    client._health_stub = MagicMock()
+    return client
+
+
 @pytest.mark.asyncio
 async def test_merge_env_variables_populates_from_env():
     """Test that _merge_env_variables reads env vars based on annotations."""
-    from stepflow_py.api.models.flow_variables_response import (
-        FlowVariablesResponse,
-    )
-    from stepflow_py.client import StepflowClient
-
-    mock_response = FlowVariablesResponse(
-        flow_id="test-flow-id",
-        env_vars={
+    mock_response = _make_flow_variables_response(
+        {
             "api_key": "OPENAI_API_KEY",
             "db_url": "DATABASE_URL",
-        },
+        }
     )
 
-    client = StepflowClient.__new__(StepflowClient)
-    client._flow_api = AsyncMock()
-    client._flow_api.get_flow_variables = AsyncMock(return_value=mock_response)
+    client = _make_client_with_mock_stubs()
+    client._flows_stub.GetFlowVariables = AsyncMock(return_value=mock_response)
 
     with patch.dict(
         "os.environ",
@@ -91,19 +107,10 @@ async def test_merge_env_variables_populates_from_env():
 @pytest.mark.asyncio
 async def test_merge_env_variables_explicit_wins():
     """Explicit variables take priority over environment values."""
-    from stepflow_py.api.models.flow_variables_response import (
-        FlowVariablesResponse,
-    )
-    from stepflow_py.client import StepflowClient
+    mock_response = _make_flow_variables_response({"api_key": "OPENAI_API_KEY"})
 
-    mock_response = FlowVariablesResponse(
-        flow_id="test-flow-id",
-        env_vars={"api_key": "OPENAI_API_KEY"},
-    )
-
-    client = StepflowClient.__new__(StepflowClient)
-    client._flow_api = AsyncMock()
-    client._flow_api.get_flow_variables = AsyncMock(return_value=mock_response)
+    client = _make_client_with_mock_stubs()
+    client._flows_stub.GetFlowVariables = AsyncMock(return_value=mock_response)
 
     with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-from-env"}):
         result = await client._merge_env_variables(
@@ -116,22 +123,15 @@ async def test_merge_env_variables_explicit_wins():
 @pytest.mark.asyncio
 async def test_merge_env_variables_missing_env_var():
     """Missing env vars are skipped."""
-    from stepflow_py.api.models.flow_variables_response import (
-        FlowVariablesResponse,
-    )
-    from stepflow_py.client import StepflowClient
-
-    mock_response = FlowVariablesResponse(
-        flow_id="test-flow-id",
-        env_vars={
+    mock_response = _make_flow_variables_response(
+        {
             "api_key": "OPENAI_API_KEY",
             "missing": "NONEXISTENT_VAR",
-        },
+        }
     )
 
-    client = StepflowClient.__new__(StepflowClient)
-    client._flow_api = AsyncMock()
-    client._flow_api.get_flow_variables = AsyncMock(return_value=mock_response)
+    client = _make_client_with_mock_stubs()
+    client._flows_stub.GetFlowVariables = AsyncMock(return_value=mock_response)
 
     with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}, clear=False):
         # Make sure NONEXISTENT_VAR is not set
@@ -146,19 +146,10 @@ async def test_merge_env_variables_missing_env_var():
 @pytest.mark.asyncio
 async def test_merge_env_variables_no_annotations():
     """Returns explicit_variables when flow has no env_var annotations."""
-    from stepflow_py.api.models.flow_variables_response import (
-        FlowVariablesResponse,
-    )
-    from stepflow_py.client import StepflowClient
+    mock_response = _make_flow_variables_response({})
 
-    mock_response = FlowVariablesResponse(
-        flow_id="test-flow-id",
-        env_vars={},
-    )
-
-    client = StepflowClient.__new__(StepflowClient)
-    client._flow_api = AsyncMock()
-    client._flow_api.get_flow_variables = AsyncMock(return_value=mock_response)
+    client = _make_client_with_mock_stubs()
+    client._flows_stub.GetFlowVariables = AsyncMock(return_value=mock_response)
 
     result = await client._merge_env_variables("test-flow-id", {"key": "value"})
     assert result == {"key": "value"}

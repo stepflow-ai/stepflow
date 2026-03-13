@@ -43,10 +43,10 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
     "httpx>=0.25.0",  # HTTP client for blob API
-    # gRPC dependencies (for pull-based worker transport)
+    # gRPC dependencies (API client + pull-based worker transport)
     "grpcio>=1.67.0",
     "protobuf>=5.26.0,<6",
-    # API client dependencies (pydantic models, async HTTP)
+    # API client dependencies (pydantic models for legacy REST client)
     "pydantic>=2",
     "aiohttp>=3.9.0",
     "aiohttp-retry>=2.8.0",

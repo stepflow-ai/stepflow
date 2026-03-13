@@ -15,13 +15,11 @@
 
 # Generate Python gRPC stubs from proto files.
 #
-# Generates stubs for protos needed by the Python worker:
-# common, tasks, orchestrator, blobs, runs.
+# Generates stubs for protos needed by the Python worker and API client:
+# common, tasks, orchestrator, blobs, runs, flows, health, components.
 #
-# Note: flows.proto and runs.proto use google.api.http annotations for REST
-# transcoding, but grpcio-tools handles them fine — it just ignores the
-# HTTP annotations. We need runs.proto for the shared CreateRunRequest
-# message, and blobs.proto for the BlobService gRPC client.
+# Note: Some protos use google.api.http annotations for REST transcoding,
+# but grpcio-tools handles them fine — it just ignores the HTTP annotations.
 #
 # Usage:
 #   ./scripts/generate-python-proto.sh
@@ -59,6 +57,9 @@ uv run --project stepflow-py python -m grpc_tools.protoc \
     stepflow/v1/orchestrator.proto \
     stepflow/v1/blobs.proto \
     stepflow/v1/runs.proto \
+    stepflow/v1/flows.proto \
+    stepflow/v1/health.proto \
+    stepflow/v1/components.proto \
     google/api/annotations.proto \
     google/api/http.proto \
     gnostic/openapi/v3/annotations.proto \
@@ -189,7 +190,41 @@ from .blobs_pb2 import (
 )
 from .runs_pb2 import (
     CreateRunRequest,
+    CreateRunResponse,
+    GetRunRequest,
+    GetRunResponse,
+    GetRunEventsRequest,
+    GetRunItemsRequest,
+    GetRunItemsResponse,
+    ListRunsRequest,
+    ListRunsResponse,
+    RunSummary,
+    StatusEvent,
+    StatusEventType,
 )
+from .flows_pb2 import (
+    StoreFlowRequest as StoreFlowRequestProto,
+    StoreFlowResponse as StoreFlowResponseProto,
+    GetFlowRequest,
+    GetFlowResponse,
+    GetFlowVariablesRequest,
+    GetFlowVariablesResponse,
+)
+from .health_pb2 import (
+    HealthCheckRequest,
+    HealthCheckResponse,
+)
+from .components_pb2 import (
+    ListRegisteredComponentsRequest,
+    ListRegisteredComponentsResponse,
+)
+
+# gRPC service stubs
+from .runs_pb2_grpc import RunsServiceStub
+from .flows_pb2_grpc import FlowsServiceStub
+from .health_pb2_grpc import HealthServiceStub
+from .blobs_pb2_grpc import BlobServiceStub
+from .components_pb2_grpc import ComponentsServiceStub
 
 __all__ = [
     "ObservabilityContext",
@@ -218,6 +253,32 @@ __all__ = [
     "PutBlobRequest",
     "PutBlobResponse",
     "CreateRunRequest",
+    "CreateRunResponse",
+    "GetRunRequest",
+    "GetRunResponse",
+    "GetRunEventsRequest",
+    "GetRunItemsRequest",
+    "GetRunItemsResponse",
+    "ListRunsRequest",
+    "ListRunsResponse",
+    "RunSummary",
+    "StatusEvent",
+    "StatusEventType",
+    "StoreFlowRequestProto",
+    "StoreFlowResponseProto",
+    "GetFlowRequest",
+    "GetFlowResponse",
+    "GetFlowVariablesRequest",
+    "GetFlowVariablesResponse",
+    "HealthCheckRequest",
+    "HealthCheckResponse",
+    "ListRegisteredComponentsRequest",
+    "ListRegisteredComponentsResponse",
+    "RunsServiceStub",
+    "FlowsServiceStub",
+    "HealthServiceStub",
+    "BlobServiceStub",
+    "ComponentsServiceStub",
 ]
 EOF
 

@@ -155,15 +155,27 @@ pub async fn create_environment(
         .await
 }
 
-/// Start the HTTP server using axum + aide
+/// Start the multiplexed HTTP + gRPC server.
+///
+/// Both REST/HTTP and gRPC services are served on a single port.
+/// gRPC requests (routed by tonic's path-based routing) coexist with
+/// the HTTP/REST API on the same listener.
 pub async fn start_server(
     listener: tokio::net::TcpListener,
     env: Arc<StepflowEnvironment>,
+    grpc_router: Option<Router>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let actual_port = listener.local_addr()?.port();
 
-    // Create the app with the actual port
-    let app = AppConfig::default().create_app_router(env, actual_port);
+    // Create the HTTP app with the actual port
+    let mut app = AppConfig::default().create_app_router(env, actual_port);
+
+    // Merge gRPC routes into the same router when provided.
+    // Tonic services register under /{package}.{ServiceName}/{Method},
+    // which don't collide with the /api/v1/... HTTP routes.
+    if let Some(grpc) = grpc_router {
+        app = app.merge(grpc);
+    }
 
     // Emit JSON port announcement to stdout for orchestrator/subprocess management
     // This MUST be the first line of stdout output

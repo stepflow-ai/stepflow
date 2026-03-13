@@ -20,14 +20,17 @@ batch workflows using the stepflow-server API.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any
 
 import pytest
+from google.protobuf import json_format
 
 from stepflow_py import StepflowClient
-
-if TYPE_CHECKING:
-    from stepflow_py.api.models import CreateRunResponse
+from stepflow_py.proto.common_pb2 import (
+    EXECUTION_STATUS_COMPLETED,
+    EXECUTION_STATUS_FAILED,
+)
+from stepflow_py.proto.runs_pb2 import CreateRunResponse
 
 
 @pytest.fixture
@@ -99,10 +102,7 @@ async def store_and_run_batch(
     max_concurrency: int | None = None,
     timeout: float = 120.0,
 ) -> CreateRunResponse:
-    """Helper to store workflow and run batch execution.
-
-    Returns the typed CreateRunResponse for better IDE support and type checking.
-    """
+    """Helper to store workflow and run batch execution."""
     # Store the workflow
     store_response = await client.store_flow(workflow)
     flow_id = store_response.flow_id
@@ -116,26 +116,27 @@ async def store_and_run_batch(
     )
 
 
-def get_result_items(response: CreateRunResponse) -> list[dict]:
-    """Extract item results from the response.
+def get_result_items(response: CreateRunResponse) -> list[dict[str, Any]]:
+    """Extract item results from the protobuf response.
 
-    With the async API, results are returned directly on the response as a list
-    of ItemResult objects (when wait=true). Each is converted to a dict with
-    'outcome', 'result', etc.
+    Converts each ItemResult protobuf message to a dict with
+    'outcome' and optionally 'result' keys for uniform access.
     """
-    if response.results is None:
-        return []
     items = []
     for item_result in response.results:
-        item_dict: dict = {}
-        if item_result.result is not None:
-            # FlowResult is a oneOf (Success/Failed) - dump to dict for uniform access
-            result_dict = item_result.result.model_dump(
-                by_alias=True, exclude_unset=True
-            )
-            item_dict.update(result_dict)
+        item_dict: dict[str, Any] = {}
+        if item_result.status == EXECUTION_STATUS_COMPLETED:
+            item_dict["outcome"] = "success"
+            if item_result.HasField("output"):
+                item_dict["result"] = json_format.MessageToDict(item_result.output)
+        elif item_result.status == EXECUTION_STATUS_FAILED:
+            item_dict["outcome"] = "failed"
+            if item_result.HasField("error_message"):
+                item_dict["error"] = item_result.error_message
         else:
-            item_dict["outcome"] = item_result.status.value
+            from stepflow_py.proto.common_pb2 import ExecutionStatus
+
+            item_dict["outcome"] = ExecutionStatus.Name(item_result.status)
         items.append(item_dict)
     return items
 
@@ -143,15 +144,14 @@ def get_result_items(response: CreateRunResponse) -> list[dict]:
 @pytest.mark.asyncio
 async def test_batch_execution_basic(stepflow_client, simple_workflow, batch_inputs):
     """Test basic batch execution with multiple inputs."""
-    from stepflow_py.api.models import ExecutionStatus
-
     response = await store_and_run_batch(stepflow_client, simple_workflow, batch_inputs)
 
-    # Use typed status comparison
-    assert response.status == ExecutionStatus.COMPLETED, (
-        f"Batch execution failed with status {response.status}"
+    assert response.summary.status == EXECUTION_STATUS_COMPLETED, (
+        f"Batch execution failed with status {response.summary.status}"
     )
-    assert response.items.total == 5, f"Expected 5 items, got {response.items.total}"
+    assert response.summary.items.total == 5, (
+        f"Expected 5 items, got {response.summary.items.total}"
+    )
 
     # For batch execution, result contains items array
     items = get_result_items(response)
@@ -167,16 +167,14 @@ async def test_batch_execution_with_max_concurrent(
     stepflow_client, simple_workflow, batch_inputs
 ):
     """Test batch execution with max_concurrent limit."""
-    from stepflow_py.api.models import ExecutionStatus
-
     response = await store_and_run_batch(
         stepflow_client, simple_workflow, batch_inputs, max_concurrency=2
     )
 
-    assert response.status == ExecutionStatus.COMPLETED, (
-        f"Batch execution failed with status {response.status}"
+    assert response.summary.status == EXECUTION_STATUS_COMPLETED, (
+        f"Batch execution failed with status {response.summary.status}"
     )
-    assert response.items.total == 5
+    assert response.summary.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -188,12 +186,10 @@ async def test_batch_execution_with_max_concurrent(
 @pytest.mark.asyncio
 async def test_batch_execution_results(stepflow_client, simple_workflow, batch_inputs):
     """Test batch execution returns correct results for each input."""
-    from stepflow_py.api.models import ExecutionStatus
-
     response = await store_and_run_batch(stepflow_client, simple_workflow, batch_inputs)
 
-    assert response.status == ExecutionStatus.COMPLETED
-    assert response.items.total == 5
+    assert response.summary.status == EXECUTION_STATUS_COMPLETED
+    assert response.summary.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -218,8 +214,6 @@ async def test_batch_execution_with_failures(stepflow_client, simple_workflow):
     The Python UDF will fail on invalid inputs (missing field or wrong type),
     demonstrating that batch execution properly handles partial failures.
     """
-    from stepflow_py.api.models import ExecutionStatus
-
     # Create various inputs - some will fail with Python UDF type checking
     inputs = [
         {"x": 1},  # Valid
@@ -232,10 +226,11 @@ async def test_batch_execution_with_failures(stepflow_client, simple_workflow):
     response = await store_and_run_batch(stepflow_client, simple_workflow, inputs)
 
     # Batch with failures may still complete (partial success)
-    assert response.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED], (
-        f"Unexpected status: {response.status}"
-    )
-    assert response.items.total == 5
+    assert response.summary.status in [
+        EXECUTION_STATUS_COMPLETED,
+        EXECUTION_STATUS_FAILED,
+    ], f"Unexpected status: {response.summary.status}"
+    assert response.summary.items.total == 5
 
     items = get_result_items(response)
     assert len(items) == 5, f"Expected 5 results, got {len(items)}"
@@ -265,14 +260,12 @@ async def test_batch_execution_with_failures(stepflow_client, simple_workflow):
 @pytest.mark.asyncio
 async def test_batch_execution_empty_inputs(stepflow_client, simple_workflow):
     """Test batch execution with empty input list."""
-    from stepflow_py.api.models import ExecutionStatus
-
     response = await store_and_run_batch(
         stepflow_client, simple_workflow, [], timeout=30.0
     )
 
-    assert response.status == ExecutionStatus.COMPLETED
-    assert response.items.total == 0
+    assert response.summary.status == EXECUTION_STATUS_COMPLETED
+    assert response.summary.items.total == 0
 
     items = get_result_items(response)
     assert len(items) == 0, f"Expected 0 results, got {len(items)}"
@@ -281,11 +274,9 @@ async def test_batch_execution_empty_inputs(stepflow_client, simple_workflow):
 @pytest.mark.asyncio
 async def test_single_input_execution(stepflow_client, simple_workflow):
     """Test that single input (non-batch) execution also works."""
-    from stepflow_py.api.models import ExecutionStatus
-
     # Store the workflow
     store_response = await stepflow_client.store_flow(simple_workflow)
-    assert store_response.flow_id is not None, "Failed to store workflow"
+    assert store_response.flow_id, "Failed to store workflow"
 
     # Run with single input (dict, not list)
     response = await stepflow_client.run(
@@ -294,10 +285,10 @@ async def test_single_input_execution(stepflow_client, simple_workflow):
         timeout=60.0,
     )
 
-    assert response.status == ExecutionStatus.COMPLETED, (
-        f"Execution failed with status {response.status}"
+    assert response.summary.status == EXECUTION_STATUS_COMPLETED, (
+        f"Execution failed with status {response.summary.status}"
     )
-    assert response.items.total == 1
+    assert response.summary.items.total == 1
 
     items = get_result_items(response)
     assert len(items) == 1, f"Expected 1 result, got {len(items)}"
