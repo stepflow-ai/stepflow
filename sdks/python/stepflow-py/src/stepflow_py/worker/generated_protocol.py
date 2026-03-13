@@ -155,7 +155,6 @@ class InitializeResult(Struct, kw_only=True):
         int,
         Meta(
             description='Version of the protocol being used by the component server.',
-            ge=0,
         ),
     ]
     supportsBlobRefs: (
@@ -383,7 +382,6 @@ class GetRunProtocolParams(Struct, kw_only=True):
             int | None,
             Meta(
                 description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -406,7 +404,6 @@ class InitializeParams(Struct, kw_only=True):
         int,
         Meta(
             description='Maximum version of the protocol being used by the Stepflow runtime.',
-            ge=0,
         ),
     ]
     observability: (
@@ -457,7 +454,6 @@ class ComponentExecuteParams(Struct, kw_only=True):
         int,
         Meta(
             description='The execution attempt number (1-based).\n\nA monotonically increasing counter that increments on every re-execution\nof this step, regardless of the reason:\n- **Transport error**: The subprocess crashed or a network failure occurred.\n- **Component error**: The component returned an error and the step has\n  `onError: { action: retry }`.\n- **Orchestrator recovery**: The orchestrator crashed and is re-executing\n  tasks that were in-flight.\n\nComponents can use this to implement idempotency guards or progressive\nfallback strategies.',
-            ge=0,
         ),
     ]
     observability: Annotated[
@@ -535,7 +531,6 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
             int | None,
             Meta(
                 description='Maximum seconds to wait when wait=true (default 300). If the timeout elapses,\nreturns the current run status rather than an error.',
-                ge=0,
             ),
         ]
         | UnsetType

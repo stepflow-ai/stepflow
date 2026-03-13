@@ -10,24 +10,11 @@ pip install stepflow-py
 
 ## Features
 
-- **API Client**: Type-safe client for the Stepflow REST API
+- **gRPC Client**: Type-safe client for the Stepflow gRPC API
 - **Worker Module**: Build component servers that extend Stepflow functionality
 - **Flow Builder**: Programmatically create and manipulate workflows
 
 ## Quick Start
-
-### Using the API Client
-
-```python
-from stepflow_py.api import ApiClient, Configuration, FlowApi
-
-config = Configuration(host="http://localhost:8080")
-client = ApiClient(configuration=config)
-flow_api = FlowApi(client)
-
-# Submit a workflow
-response = flow_api.submit_flow(flow_definition)
-```
 
 ### Building a Worker (Component Server)
 

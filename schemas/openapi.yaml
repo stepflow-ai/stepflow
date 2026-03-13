@@ -5,6 +5,9 @@ openapi: 3.0.3
 info:
     title: Stepflow API
     description: Stepflow orchestration engine REST API
+    license:
+        name: Apache-2.0
+        url: https://www.apache.org/licenses/LICENSE-2.0
     version: 0.0.1
 servers:
     - url: http://localhost:7837/api/v1

@@ -3,9 +3,12 @@
 # Known suppressions:
 # - security-defined: No authentication scheme yet (all operations trigger this)
 # - no-server-example.com: Default server is localhost which is correct for local dev
+# - operation-4xx-response: Auto-generated spec uses a `default` error response
+#   (google.rpc.Status) which covers all non-2xx codes including 4xx
 extends:
-  - recommended
+  - recommended-strict
 
 rules:
   security-defined: off
   no-server-example.com: off
+  operation-4xx-response: off

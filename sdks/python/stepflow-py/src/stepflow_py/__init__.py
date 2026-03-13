@@ -18,7 +18,6 @@ This package provides:
 - stepflow_py.client: High-level gRPC client for Stepflow orchestrator
 - stepflow_py.worker: Component server (worker) implementation
 - stepflow_py.proto: Generated protobuf/gRPC stubs
-- stepflow_py.api: Legacy REST API client (deprecated, will be removed)
 """
 
 # Re-export key classes from submodules for convenience

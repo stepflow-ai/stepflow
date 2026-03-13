@@ -19,6 +19,7 @@
 #   1. buf lint — validate proto style and conventions
 #   2. buf breaking — detect backwards-incompatible changes (against main branch)
 #   3. OpenAPI spec freshness — verify generated spec matches committed version
+#   4. OpenAPI lint — validate OpenAPI spec with Redocly CLI
 #
 # Usage: ./scripts/check-proto.sh [-v|--verbose]
 #   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
@@ -77,6 +78,9 @@ run_check "Breaking changes" \
     --fix "Review breaking changes and update proto files" \
     check_breaking || true
 
+# Return to project root so reproduce/fix commands aren't prefixed with "cd proto &&"
+cd "$PROJECT_ROOT"
+
 # Check OpenAPI spec freshness by regenerating to a temp file and diffing.
 check_openapi_freshness() {
     local committed="$PROJECT_ROOT/schemas/openapi.yaml"
@@ -103,6 +107,24 @@ check_openapi_freshness() {
 run_check "OpenAPI freshness" \
     --fix "./scripts/generate-openapi-proto.sh" \
     check_openapi_freshness || true
+
+# Lint the OpenAPI spec with Redocly CLI (if npx is available).
+check_openapi_lint() {
+    if ! command -v npx &>/dev/null; then
+        echo "npx not found — skipping OpenAPI lint"
+        return 0
+    fi
+
+    local spec="$PROJECT_ROOT/schemas/openapi.yaml"
+    if [ ! -f "$spec" ]; then
+        echo "No openapi.yaml found — skipping lint"
+        return 0
+    fi
+
+    npx @redocly/cli lint "$spec" --config "$PROJECT_ROOT/.redocly.yaml" 2>&1
+}
+
+run_check "OpenAPI lint" check_openapi_lint || true
 
 # Check Python proto stubs freshness by regenerating to a temp dir and diffing.
 check_python_proto_freshness() {

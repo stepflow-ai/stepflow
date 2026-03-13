@@ -20,7 +20,7 @@ engine.
 
 Example:
     >>> from stepflow_py.worker.expressions import ValueExpr
-    >>> from stepflow_py.api.models import Step
+    >>> from stepflow_py.worker import Step
     >>>
     >>> # Create a step that references another step's output
     >>> step = Step(

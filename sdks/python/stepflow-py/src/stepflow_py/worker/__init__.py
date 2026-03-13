@@ -12,7 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-from stepflow_py.api.models import (
+from . import blob_ref, blob_store, execution_context
+from .context import StepflowContext
+from .expressions import ValueExpr
+from .flow_builder import Component, FlowBuilder, StepHandle
+from .generated_flow import (
     ErrorAction,
     Flow,
     OnErrorDefault,
@@ -20,11 +24,6 @@ from stepflow_py.api.models import (
     OnErrorRetry,
     Step,
 )
-
-from . import blob_ref, blob_store, execution_context
-from .context import StepflowContext
-from .expressions import ValueExpr
-from .flow_builder import Component, FlowBuilder, StepHandle
 from .server import StepflowServer
 from .value import JsonPath, StepReference, Valuable, Value, WorkflowInput
 

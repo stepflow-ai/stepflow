@@ -22,6 +22,16 @@ import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "gnostic/openapi/v3/annotations.proto";
 
+// File-level OpenAPI document metadata (merged into the generated spec).
+option (gnostic.openapi.v3.document) = {
+  info: {
+    license: {
+      name: "Apache-2.0"
+      url: "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  }
+};
+
 // Service health check endpoint.
 service HealthService {
   // Check service health and return status, version, and timestamp.

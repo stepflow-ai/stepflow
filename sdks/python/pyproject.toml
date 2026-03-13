@@ -71,17 +71,11 @@ cmd = "uvx ${DEPTRY} src"
 
 [tool.poe.tasks.codegen-check]
 help = "Check that generated types are up-to-date"
-sequence = [
-    {cmd = "uv run python generate.py --check"},
-    {cmd = "uv run python scripts/generate_api_client.py check"},
-]
+cmd = "uv run python generate.py --check"
 
 [tool.poe.tasks.codegen-fix]
 help = "Regenerate types from schemas"
-sequence = [
-    {cmd = "uv run python generate.py"},
-    {cmd = "uv run python scripts/generate_api_client.py"},
-]
+cmd = "uv run python generate.py"
 
 [tool.poe.tasks.test]
 help = "Run tests for all packages"
@@ -109,7 +103,7 @@ sequence = ["lint", "test"]
 [tool.ruff]
 target-version = "py311"
 line-length = 88
-extend-exclude = ["**/generated_*.py", "**/stepflow-api/**", "stepflow-api"]
+extend-exclude = ["**/generated_*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "C4"]
@@ -137,9 +131,6 @@ opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 
 [tool.mypy]
 python_version = "3.11"
-# Enable pydantic plugin for proper handling of populate_by_name=True
-# This allows using Python field names instead of aliases in constructors
-plugins = ["pydantic.mypy"]
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
@@ -153,22 +144,12 @@ disallow_untyped_decorators = false
 no_implicit_optional = false
 strict_equality = false
 
-[tool.pydantic-mypy]
-# Allow using field names (not just aliases) when populate_by_name=True
-init_forbid_extra = true
-init_typed = true
-warn_required_dynamic_aliases = true
-
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = "stepflow_py.worker.generated_protocol"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "stepflow_py.api.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]

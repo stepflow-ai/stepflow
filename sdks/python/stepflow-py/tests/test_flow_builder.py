@@ -12,6 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+import msgspec
 import pytest
 
 from stepflow_py.worker import (
@@ -163,33 +164,32 @@ def test_error_handling():
     builder = FlowBuilder()
 
     # Add steps with different error handling
-    # Note: action field must be explicitly provided
     builder.add_step(
         id="fail_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=OnErrorFail(action="fail"),
+        on_error=OnErrorFail(),
     )
     builder.add_step(
         id="retry_step",
         component="/test/component",
         input_data={"value": 3},
-        on_error=OnErrorRetry(action="retry"),
+        on_error=OnErrorRetry(),
     )
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps or []) == 2
+    steps = list(flow.steps)
+    assert len(steps) == 2
 
     # Check that error actions were set correctly by type
-    # on_error is wrapped in ErrorAction, check actual_instance
-    fail_step = next(step for step in (flow.steps or []) if step.id == "fail_step")
-    assert isinstance(fail_step.on_error.actual_instance, OnErrorFail)
+    fail_step = next(step for step in steps if step.id == "fail_step")
+    assert isinstance(fail_step.onError, OnErrorFail)
 
-    retry_step = next(step for step in (flow.steps or []) if step.id == "retry_step")
-    assert isinstance(retry_step.on_error.actual_instance, OnErrorRetry)
+    retry_step = next(step for step in steps if step.id == "retry_step")
+    assert isinstance(retry_step.onError, OnErrorRetry)
 
 
 def test_error_default_handling():
@@ -197,25 +197,24 @@ def test_error_default_handling():
     builder = FlowBuilder()
 
     # Add step with UseDefault
-    # Note: action field must be explicitly provided
     builder.add_step(
         id="default_step",
         component="/test/component",
         input_data={"value": 1},
-        on_error=OnErrorDefault(action="useDefault", default_value="fallback_value"),
+        on_error=OnErrorDefault(defaultValue="fallback_value"),
     )
 
     # Set output to make the test complete
     builder.set_output({"result": "done"})
 
     flow = builder.build()
-    assert len(flow.steps or []) == 1
+    steps = list(flow.steps)
+    assert len(steps) == 1
 
     # Check that UseDefault was set correctly
-    # on_error is wrapped in ErrorAction, check actual_instance
-    default_step = (flow.steps or [])[0]
-    assert isinstance(default_step.on_error.actual_instance, OnErrorDefault)
-    assert default_step.on_error.actual_instance.default_value == "fallback_value"
+    default_step = steps[0]
+    assert isinstance(default_step.onError, OnErrorDefault)
+    assert default_step.onError.defaultValue == "fallback_value"
 
 
 def test_build_requires_output():
@@ -534,7 +533,7 @@ def test_flow_json_serialization():
     flow = builder.build()
 
     # Serialize the flow to dict (which would go to JSON)
-    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
+    flow_dict = msgspec.to_builtins(flow)
 
     # Verify structure
     assert flow_dict["name"] == "json_test"
@@ -580,7 +579,7 @@ def test_flow_json_round_trip():
     flow = builder.build()
 
     # Serialize to JSON string
-    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
+    flow_dict = msgspec.to_builtins(flow)
     json_str = json.dumps(flow_dict)
 
     # Parse back
@@ -594,12 +593,11 @@ def test_flow_json_round_trip():
     assert parsed["output"] == {"result": {"$step": "step1", "path": "$.output"}}
 
 
-def test_flow_serialization_uses_model_dump():
-    """Test that Flow serialization correctly uses model_dump with our customizations.
+def test_flow_serialization_to_builtins():
+    """Test that Flow serialization correctly uses msgspec.to_builtins.
 
     This is an integration test showing the full pipeline from FlowBuilder
-    to JSON-compatible dict output, demonstrating all the serialization
-    customizations working together.
+    to JSON-compatible dict output.
     """
     import json
 
@@ -629,10 +627,10 @@ def test_flow_serialization_uses_model_dump():
 
     flow = builder.build()
 
-    # Convert to dict using model_dump with proper options
-    flow_dict = flow.model_dump(by_alias=True, exclude_unset=True)
+    # Convert to dict using msgspec.to_builtins
+    flow_dict = msgspec.to_builtins(flow)
 
-    # Verify it's JSON-serializable (would fail if we had Pydantic objects)
+    # Verify it's JSON-serializable
     json_str = json.dumps(flow_dict)
     parsed = json.loads(json_str)
 

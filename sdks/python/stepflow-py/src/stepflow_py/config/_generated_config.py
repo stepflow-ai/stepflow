@@ -35,7 +35,6 @@ class HealthCheckConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -45,7 +44,6 @@ class HealthCheckConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Delay between health check attempts in milliseconds. Default: 100',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -160,7 +158,6 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
             int,
             Meta(
                 description='Maximum time (in seconds) a task can wait in the queue for a\nworker to call `StartTask`. If no worker picks up the task within\nthis window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -170,7 +167,6 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
             int | None,
             Meta(
                 description='Maximum time (in seconds) from `StartTask` to `CompleteTask`.\nIf the worker does not complete within this window, the task is\ntreated as failed. Heartbeat-based crash detection (5s timeout)\nprovides faster detection of hard worker crashes.\n\nDefaults to `null` (no execution timeout — relies on heartbeat\ncrash detection only).',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -226,7 +222,6 @@ class RecoveryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Interval in seconds between orphan check attempts.\n\nOnly used when `enabled` is true. Lower values mean faster recovery\nbut more overhead. Default: 30 seconds.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -236,7 +231,6 @@ class RecoveryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Maximum number of runs to recover on startup.\n\nLimits how many interrupted runs are recovered when the orchestrator\nstarts. Set to 0 to disable startup recovery. Default: 100.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -246,7 +240,6 @@ class RecoveryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Maximum number of orphaned runs to claim per check interval.\n\nLimits how many runs are claimed in each periodic check to avoid\noverwhelming a single orchestrator. Default: 10.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -256,7 +249,6 @@ class RecoveryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='TTL in seconds for the orchestrator lease and heartbeats.\n\nThe heartbeat interval is automatically set to `lease_ttl_secs / 3`.\nIf an orchestrator stops sending heartbeats, its lease expires after this\nduration and its runs become eligible for recovery. Default: 30 seconds.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -266,7 +258,6 @@ class RecoveryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description='Number of journal entries between checkpoints.\n\nThe executor periodically serializes execution state so that recovery\nonly needs to replay events after the checkpoint instead of from the\nbeginning. Set to 0 to disable. Default: 1000.',
-                ge=0,
             ),
         ]
         | UnsetType
@@ -297,7 +288,6 @@ class BlobApiConfig(Struct, kw_only=True):
             int | None,
             Meta(
                 description="Byte size threshold for automatic blobification of component inputs/outputs.\n\nWhen a top-level field in a component's input or output exceeds this size\n(in bytes of JSON serialization), it is automatically stored as a blob and\nreplaced with a `$blob` reference.\n\nSet to `0` to disable automatic blobification.\nDefault: 1 MB (1048576 bytes)",
-                ge=0,
             ),
         ]
         | UnsetType
@@ -531,7 +521,6 @@ class RetryConfig(Struct, kw_only=True):
             int,
             Meta(
                 description="Maximum number of retries for transport errors (default: 3).\n\nTransport errors are infrastructure-level failures — subprocess crashes,\nnetwork timeouts, connection refused — where the component never ran or\ndidn't complete.",
-                ge=0,
             ),
         ]
         | UnsetType

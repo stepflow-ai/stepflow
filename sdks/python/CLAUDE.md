@@ -8,9 +8,10 @@ See the root `/CLAUDE.md` for project overview, configuration, and workflow synt
 
 The Python SDK is organized into two packages:
 
-- **stepflow-py**: Main SDK with API client and worker modules
-  - `stepflow_py.api`: API client (Pydantic models generated from OpenAPI spec)
+- **stepflow-py**: Main SDK with gRPC client and worker modules
+  - `stepflow_py.client`: gRPC client for Stepflow orchestrator
   - `stepflow_py.worker`: Component server for Python components
+  - `stepflow_py.proto`: Generated protobuf/gRPC stubs
 - **stepflow-orchestrator**: Platform-specific wheels bundling the stepflow-server binary
 
 ## Development Commands
@@ -283,27 +284,6 @@ if __name__ == "__main__":
     asyncio.run(server.run(host=args.host, port=args.port))
 ```
 
-## Using the API Client
-
-The `stepflow_py.api` module provides a Pydantic-based API client for interacting with the Stepflow server:
-
-```python
-from stepflow_py.api import ApiClient, Configuration
-from stepflow_py.api.api import FlowApi, RunApi
-from stepflow_py.api.models import Flow, Step, ValueExpr
-
-# Connect to Stepflow server
-config = Configuration(host="http://localhost:8080")
-client = ApiClient(configuration=config)
-
-# Create API instances
-flow_api = FlowApi(client)
-run_api = RunApi(client)
-
-# List flows
-flows = flow_api.list_flows()
-```
-
 ## Using the FlowBuilder
 
 The `stepflow_py.worker` module provides a `FlowBuilder` for programmatically creating flows:
@@ -336,8 +316,8 @@ The Python SDK has undergone significant architectural improvements:
 2. **Context Inheritance**: `StepflowStreamingContext` inherits from `StepflowContext`
 3. **MessageDecoder Consolidation**: Single request/response correlation system
 4. **Clean Test Separation**: Core functionality vs transport layer testing
-5. **Pydantic API Models**: Flow types use Pydantic models from OpenAPI spec for better type safety
-6. **Unified Package**: API client and worker functionality in single `stepflow-py` package
+5. **msgspec Flow Types**: Flow types use msgspec Structs generated from `schemas/flow.json`
+6. **Unified Package**: gRPC client and worker functionality in single `stepflow-py` package
 
 This architecture ensures consistent behavior across transport modes while maintaining clean separation of concerns.
 
