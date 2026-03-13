@@ -50,6 +50,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       langflow: ${{ steps.filter.outputs.langflow }}
       recovery: ${{ steps.filter.outputs.recovery }}
+      openapi: ${{ steps.filter.outputs.openapi }}
       docling: ${{ steps.filter.outputs.docling }}
       proto: ${{ steps.filter.outputs.proto }}
     steps:
@@ -89,6 +90,12 @@ jobs:
               - 'scripts/check-recovery.sh'
               - 'scripts/_lib.sh'
               - 'tests/recovery/**'
+            openapi:
+              - '.github/actions/openapi-checks/**'
+              - 'scripts/check-openapi.sh'
+              - 'scripts/_lib.sh'
+              - 'schemas/openapi.yaml'
+              - '.redocly.yaml'
             docling:
               - '.github/actions/docling-step-worker/**'
               - 'scripts/check-docling.sh'
@@ -147,6 +154,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/docs-checks
+
+  # OpenAPI schema validation
+  openapi-checks:
+    name: OpenAPI Schema Checks
+    needs: changes
+    if: needs.changes.outputs.openapi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/openapi-checks
 
   # Proto checks (buf lint, breaking changes)
   proto-checks:
@@ -260,7 +277,7 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, proto-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
+    needs: [changes, rust-checks, python-checks, docs-checks, openapi-checks, proto-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -277,6 +294,10 @@ jobs:
           fi
           if [[ "${{ needs.docs-checks.result }}" == "failure" || "${{ needs.docs-checks.result }}" == "cancelled" ]]; then
             echo "::error::Documentation checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.openapi-checks.result }}" == "failure" || "${{ needs.openapi-checks.result }}" == "cancelled" ]]; then
+            echo "::error::OpenAPI schema checks failed"
             exit 1
           fi
           if [[ "${{ needs.proto-checks.result }}" == "failure" || "${{ needs.proto-checks.result }}" == "cancelled" ]]; then
@@ -315,6 +336,10 @@ jobs:
           fi
           if [[ "${{ needs.changes.outputs.docs }}" == "true" && "${{ needs.docs-checks.result }}" == "skipped" ]]; then
             echo "::error::Documentation changes detected but docs-checks was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.openapi }}" == "true" && "${{ needs.openapi-checks.result }}" == "skipped" ]]; then
+            echo "::error::OpenAPI changes detected but openapi-checks was skipped"
             exit 1
           fi
           if [[ "${{ needs.changes.outputs.proto }}" == "true" && "${{ needs.proto-checks.result }}" == "skipped" ]]; then
