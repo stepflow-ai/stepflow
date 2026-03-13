@@ -249,7 +249,7 @@ class Value:
         if data is None:
             return None
 
-        if isinstance(data, (bool, float, str, int)):
+        if isinstance(data, bool | float | str | int):
             return data
 
         if isinstance(data, Value):
@@ -282,7 +282,7 @@ class Value:
 
         Raises an error if this is not a reference.
         """
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(self._value[key])
         else:
             raise TypeError(f"Cannot index into {type(self._value).__name__}")
@@ -293,7 +293,7 @@ class Value:
 
         Raises an error if this is not a reference.
         """
-        if isinstance(self._value, (StepReference, WorkflowInput)):
+        if isinstance(self._value, StepReference | WorkflowInput):
             return Value(getattr(self._value, name))
         else:
             raise AttributeError(
