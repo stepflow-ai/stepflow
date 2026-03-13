@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use stepflow_core::BlobId;
 use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_plugin::{Plugin as _, PluginConfig as _, RunContext, StepflowEnvironmentBuilder};
+use stepflow_plugin::{Plugin as _, PluginConfig as _, RunContext, build_in_memory_environment};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
@@ -40,7 +40,7 @@ async fn test_http_plugin_creation_failure() {
         .await
         .expect("Should create HTTP plugin");
 
-    let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
+    let env = build_in_memory_environment().await.unwrap();
 
     // Try to initialize - this should fail since no server is running
     let result = plugin.ensure_initialized(&env).await;
@@ -107,7 +107,7 @@ async fn test_http_protocol_integration() {
         .await
         .expect("Should create HTTP plugin");
 
-    let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
+    let env = build_in_memory_environment().await.unwrap();
 
     // Test initialization
     let init_result = timeout(Duration::from_secs(10), plugin.ensure_initialized(&env)).await;
@@ -265,7 +265,7 @@ async fn test_http_plugin_lifecycle() {
         .await
         .expect("Should create HTTP plugin");
 
-    let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
+    let env = build_in_memory_environment().await.unwrap();
 
     // Test initialization without server - should fail
     let init_result = timeout(Duration::from_secs(2), plugin.ensure_initialized(&env)).await;

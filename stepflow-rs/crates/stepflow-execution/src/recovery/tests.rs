@@ -1018,21 +1018,20 @@ async fn build_env_with_checkpoint_interval(
         .build()
         .unwrap();
 
-    let metadata_store: Arc<dyn stepflow_state::MetadataStore> = store.clone();
-    let blob_store: Arc<dyn stepflow_state::BlobStore> = store.clone();
-    let journal: Arc<dyn stepflow_state::ExecutionJournal> = store.clone();
-    let checkpoint_store: Arc<dyn stepflow_state::CheckpointStore> = store.clone();
-    stepflow_plugin::StepflowEnvironmentBuilder::new()
-        .metadata_store(metadata_store)
-        .blob_store(blob_store)
-        .execution_journal(journal)
-        .checkpoint_store(checkpoint_store)
-        .checkpoint_interval(checkpoint_interval)
-        .working_directory(std::path::PathBuf::from("."))
-        .plugin_router(plugin_router)
-        .build()
+    let env = Arc::new(StepflowEnvironment::new());
+    env.insert(store.clone() as Arc<dyn stepflow_state::MetadataStore>);
+    env.insert(store.clone() as Arc<dyn stepflow_state::BlobStore>);
+    env.insert(store.clone() as Arc<dyn stepflow_state::ExecutionJournal>);
+    env.insert(store.clone() as Arc<dyn stepflow_state::CheckpointStore>);
+    env.insert(stepflow_plugin::ExecutionConfig {
+        checkpoint_interval,
+    });
+    env.insert(std::path::PathBuf::from("."));
+    env.insert(Arc::new(plugin_router) as Arc<stepflow_plugin::routing::PluginRouter>);
+    stepflow_plugin::initialize_environment(&env)
         .await
-        .expect("MockPlugin should always initialize successfully")
+        .expect("MockPlugin should always initialize successfully");
+    env
 }
 
 /// Create a mock plugin that returns success for common test inputs.

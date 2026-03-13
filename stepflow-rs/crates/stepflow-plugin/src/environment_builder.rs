@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Builder for constructing StepflowEnvironment with plugins.
+//! Environment initialization for Stepflow.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -19,14 +19,10 @@ use std::time::Duration;
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutions, BlobStore, CheckpointStore, ExecutionJournal, InMemoryStateStore,
-    LeaseManager, MetadataStore, NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
-    OrchestratorId,
+    ActiveExecutions, CheckpointStore, ExecutionJournal, InMemoryStateStore, LeaseManager,
+    NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
 };
 
-use stepflow_core::RetryConfig;
-
-use crate::execution_config::ExecutionConfig;
 use crate::routing::PluginRouter;
 use crate::{Plugin as _, PluginError, PluginRouterExt as _, Result};
 
@@ -79,311 +75,135 @@ impl BlobApiUrl {
     }
 }
 
-/// Initialize all plugins registered in the environment.
-/// Called after all resources are inserted into the environment.
-pub async fn initialize_plugins(env: &Arc<StepflowEnvironment>) -> Result<()> {
+/// Finalize a [`StepflowEnvironment`] by initializing stores and plugins.
+///
+/// Inserts defaults for optional resources (NoOp stores, default configs),
+/// initializes the checkpoint store backend, inserts `ActiveExecutions`
+/// tracking, and ensures all registered plugins are initialized.
+///
+/// Call this after inserting all required resources into the environment.
+///
+/// # Required resources
+///
+/// The environment must contain at minimum:
+/// - `Arc<dyn MetadataStore>`
+/// - `Arc<dyn BlobStore>`
+/// - `PathBuf` (working directory)
+/// - `Arc<PluginRouter>`
+///
+/// # Example
+///
+/// ```ignore
+/// use stepflow_plugin::initialize_environment;
+///
+/// let env = Arc::new(StepflowEnvironment::new());
+/// env.insert(metadata_store);
+/// env.insert(blob_store);
+/// env.insert(working_directory);
+/// env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
+/// initialize_environment(&env).await?;
+/// ```
+pub async fn initialize_environment(env: &Arc<StepflowEnvironment>) -> Result<()> {
+    use std::path::PathBuf;
+
+    use stepflow_core::RetryConfig;
+    use stepflow_state::{BlobStore, MetadataStore};
+
+    use crate::execution_config::ExecutionConfig;
+
+    // Validate required resources
+    if !env.contains::<Arc<dyn MetadataStore>>() {
+        return Err(error_stack::report!(PluginError::Initializing)
+            .attach_printable("metadata_store is required"));
+    }
+    if !env.contains::<Arc<dyn BlobStore>>() {
+        return Err(error_stack::report!(PluginError::Initializing)
+            .attach_printable("blob_store is required"));
+    }
+    if !env.contains::<PathBuf>() {
+        return Err(error_stack::report!(PluginError::Initializing)
+            .attach_printable("working_directory is required"));
+    }
+    if !env.contains::<Arc<PluginRouter>>() {
+        return Err(error_stack::report!(PluginError::Initializing)
+            .attach_printable("plugin_router is required"));
+    }
+
+    // Insert defaults for optional stores if not already set
+    if !env.contains::<Arc<dyn ExecutionJournal>>() {
+        env.insert::<Arc<dyn ExecutionJournal>>(Arc::new(NoOpJournal::new()));
+    }
+    if !env.contains::<Arc<dyn CheckpointStore>>() {
+        env.insert::<Arc<dyn CheckpointStore>>(Arc::new(NoOpCheckpointStore));
+    }
+    if !env.contains::<Arc<dyn LeaseManager>>() {
+        env.insert::<Arc<dyn LeaseManager>>(Arc::new(NoOpLeaseManager::new(Duration::from_secs(
+            30,
+        ))));
+    }
+
+    // Initialize the checkpoint store backend (e.g., create tables)
+    env.get::<Arc<dyn CheckpointStore>>()
+        .expect("checkpoint store was just inserted above")
+        .initialize_checkpoint_store()
+        .await
+        .change_context(PluginError::Initializing)?;
+
+    // Insert defaults for optional configuration if not already set
+    if !env.contains::<BlobApiUrl>() {
+        env.insert(BlobApiUrl::new(None, 0));
+    }
+    if !env.contains::<OrchestratorServiceUrl>() {
+        env.insert(OrchestratorServiceUrl::new(None));
+    }
+    if !env.contains::<ExecutionConfig>() {
+        env.insert(ExecutionConfig {
+            checkpoint_interval: 0,
+        });
+    }
+    if !env.contains::<RetryConfig>() {
+        env.insert(RetryConfig::default());
+    }
+
+    // Create ActiveExecutions for tracking running executions if not already set
+    if !env.contains::<ActiveExecutions>() {
+        env.insert(ActiveExecutions::new());
+    }
+
+    // Initialize all plugins
     for plugin in env.plugins() {
         plugin
             .ensure_initialized(env)
             .await
             .change_context(PluginError::Initializing)?;
     }
+
     Ok(())
 }
 
 /// Build an in-memory environment for testing.
+///
+/// Creates an environment with an in-memory state store (used for metadata,
+/// blobs, journal, and checkpoints), current directory as working directory,
+/// and an empty plugin router.
 pub async fn build_in_memory_environment() -> Result<Arc<StepflowEnvironment>> {
+    use stepflow_state::{BlobStore, MetadataStore};
+
     let plugin_router = PluginRouter::builder()
         .build()
         .change_context(PluginError::Initializing)?;
 
     let store = Arc::new(InMemoryStateStore::new());
+
     let env = Arc::new(StepflowEnvironment::new());
     env.insert(store.clone() as Arc<dyn MetadataStore>);
     env.insert(store.clone() as Arc<dyn BlobStore>);
     env.insert(store.clone() as Arc<dyn ExecutionJournal>);
-    env.insert(store.clone() as Arc<dyn CheckpointStore>);
-    env.insert(Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))) as Arc<dyn LeaseManager>);
+    env.insert(store as Arc<dyn CheckpointStore>);
     env.insert(PathBuf::from("."));
     env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
-    env.insert(BlobApiUrl::new(None, 0));
-    env.insert(OrchestratorServiceUrl::new(None));
-    env.insert(ExecutionConfig {
-        checkpoint_interval: 0,
-    });
-    env.insert(stepflow_core::RetryConfig::default());
-    env.insert(ActiveExecutions::new());
+
+    initialize_environment(&env).await?;
+
     Ok(env)
-}
-
-/// Builder for constructing a StepflowEnvironment.
-///
-/// This builder ensures all required resources are set before
-/// creating the environment, and handles plugin initialization.
-///
-/// # Example
-///
-/// ```ignore
-/// use stepflow_plugin::StepflowEnvironmentBuilder;
-///
-/// let env = StepflowEnvironmentBuilder::new()
-///     .state_store(state_store)
-///     .working_directory(PathBuf::from("/working/dir"))
-///     .plugin_router(plugin_router)
-///     .build()
-///     .await?;
-/// ```
-pub struct StepflowEnvironmentBuilder {
-    metadata_store: Option<Arc<dyn MetadataStore>>,
-    blob_store: Option<Arc<dyn BlobStore>>,
-    execution_journal: Option<Arc<dyn ExecutionJournal>>,
-    checkpoint_store: Option<Arc<dyn CheckpointStore>>,
-    lease_manager: Option<Arc<dyn LeaseManager>>,
-    working_directory: Option<PathBuf>,
-    plugin_router: Option<PluginRouter>,
-    blob_api_url: Option<String>,
-    blob_threshold: usize,
-    orchestrator_service_url: Option<String>,
-    orchestrator_id: Option<OrchestratorId>,
-    checkpoint_interval: usize,
-    transport_retry: RetryConfig,
-}
-
-impl Default for StepflowEnvironmentBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl StepflowEnvironmentBuilder {
-    /// Create a new builder.
-    pub fn new() -> Self {
-        Self {
-            metadata_store: None,
-            blob_store: None,
-            execution_journal: None,
-            checkpoint_store: None,
-            lease_manager: None,
-            working_directory: None,
-            plugin_router: None,
-            blob_api_url: None,
-            blob_threshold: 0,
-            orchestrator_service_url: None,
-            orchestrator_id: None,
-            checkpoint_interval: 0,
-            transport_retry: RetryConfig::default(),
-        }
-    }
-
-    /// Set the metadata store.
-    pub fn metadata_store(mut self, store: Arc<dyn MetadataStore>) -> Self {
-        self.metadata_store = Some(store);
-        self
-    }
-
-    /// Set the blob store for content-addressed storage.
-    ///
-    /// For implementations where the metadata store also implements BlobStore
-    /// (like InMemoryStateStore or SqliteStateStore), you can pass the same
-    /// object as both metadata_store and blob_store.
-    pub fn blob_store(mut self, store: Arc<dyn BlobStore>) -> Self {
-        self.blob_store = Some(store);
-        self
-    }
-
-    /// Set the execution journal for recovery.
-    ///
-    /// If not set, a no-op journal is used (events are discarded).
-    /// For implementations where the metadata store also implements
-    /// ExecutionJournal (like InMemoryStateStore or SqliteStateStore),
-    /// you can pass the same object as both.
-    pub fn execution_journal(mut self, journal: Arc<dyn ExecutionJournal>) -> Self {
-        self.execution_journal = Some(journal);
-        self
-    }
-
-    /// Set the checkpoint store for periodic state snapshots.
-    ///
-    /// If not set, a `NoOpCheckpointStore` is used (checkpoints are discarded).
-    /// For implementations where the metadata store also implements CheckpointStore
-    /// (like InMemoryStateStore or SqliteStateStore), you can pass the same object.
-    pub fn checkpoint_store(mut self, store: Arc<dyn CheckpointStore>) -> Self {
-        self.checkpoint_store = Some(store);
-        self
-    }
-
-    /// Set the lease manager for distributed run coordination.
-    ///
-    /// If not set, a `NoOpLeaseManager` is used which always grants leases
-    /// (single-orchestrator mode). For distributed deployments, use an
-    /// implementation like etcd-based lease management to coordinate run
-    /// ownership across orchestrators.
-    pub fn lease_manager(mut self, manager: Arc<dyn LeaseManager>) -> Self {
-        self.lease_manager = Some(manager);
-        self
-    }
-
-    /// Set the working directory.
-    pub fn working_directory(mut self, path: PathBuf) -> Self {
-        self.working_directory = Some(path);
-        self
-    }
-
-    /// Set the plugin router.
-    pub fn plugin_router(mut self, router: PluginRouter) -> Self {
-        self.plugin_router = Some(router);
-        self
-    }
-
-    /// Set the orchestrator ID for distributed lease management.
-    ///
-    /// When set, the orchestrator ID is stored in the environment and used
-    /// for lease acquisition/release during run execution.
-    pub fn orchestrator_id(mut self, id: OrchestratorId) -> Self {
-        self.orchestrator_id = Some(id);
-        self
-    }
-
-    /// Set the blob API URL for workers.
-    ///
-    /// When set, workers will use direct HTTP requests to this URL for blob operations.
-    ///
-    /// This URL must be the base blobs collection endpoint. Workers will:
-    /// - `POST {url}` to create a blob
-    /// - `GET {url}/{blob_id}` to fetch a blob
-    ///
-    /// Example: `http://localhost:7840/api/v1/blobs` or `http://blob-service/api/v1/blobs`
-    pub fn blob_api_url(mut self, url: Option<String>) -> Self {
-        self.blob_api_url = url;
-        self
-    }
-
-    /// Set the blob threshold for automatic blobification.
-    ///
-    /// When a top-level field in a component's input or output exceeds this size
-    /// (in bytes of JSON serialization), it is stored as a blob and replaced with
-    /// a `$blob` reference. Set to 0 to disable (default).
-    pub fn blob_threshold(mut self, threshold: usize) -> Self {
-        self.blob_threshold = threshold;
-        self
-    }
-
-    /// Set the orchestrator service URL for worker callbacks.
-    ///
-    /// Workers use this URL to call back to the orchestrator for sub-run
-    /// submission and status queries during component execution.
-    pub fn orchestrator_service_url(mut self, url: Option<String>) -> Self {
-        self.orchestrator_service_url = url;
-        self
-    }
-
-    /// Set the checkpoint interval for periodic state snapshots.
-    ///
-    /// When set to a non-zero value, the executor will create a checkpoint
-    /// every N journal entries. Set to 0 to disable (default).
-    pub fn checkpoint_interval(mut self, interval: usize) -> Self {
-        self.checkpoint_interval = interval;
-        self
-    }
-
-    /// Set the retry configuration.
-    ///
-    /// Controls backoff for all retries and the retry limit for transport
-    /// errors (subprocess crash, network timeout, connection refused).
-    pub fn retry(mut self, config: RetryConfig) -> Self {
-        self.transport_retry = config;
-        self
-    }
-
-    /// Build the environment, initializing all plugins.
-    ///
-    /// This is async because plugin initialization may require async operations
-    /// (e.g., connecting to external services).
-    pub async fn build(self) -> Result<Arc<StepflowEnvironment>> {
-        let metadata_store = self.metadata_store.ok_or_else(|| {
-            error_stack::report!(PluginError::Initializing)
-                .attach_printable("metadata_store is required")
-        })?;
-
-        let blob_store = self.blob_store.ok_or_else(|| {
-            error_stack::report!(PluginError::Initializing)
-                .attach_printable("blob_store is required")
-        })?;
-
-        let working_directory = self.working_directory.ok_or_else(|| {
-            error_stack::report!(PluginError::Initializing)
-                .attach_printable("working_directory is required")
-        })?;
-
-        let plugin_router = self.plugin_router.ok_or_else(|| {
-            error_stack::report!(PluginError::Initializing)
-                .attach_printable("plugin_router is required")
-        })?;
-
-        // Use provided journal or default to no-op (discards events)
-        let journal: Arc<dyn ExecutionJournal> = self
-            .execution_journal
-            .unwrap_or_else(|| Arc::new(NoOpJournal::new()));
-
-        // Use provided lease manager or default to no-op (single-orchestrator mode)
-        let lease_manager: Arc<dyn LeaseManager> = self
-            .lease_manager
-            .unwrap_or_else(|| Arc::new(NoOpLeaseManager::new(Duration::from_secs(30))));
-
-        // Use provided checkpoint store or default to no-op (checkpoints discarded)
-        let checkpoint_store: Arc<dyn CheckpointStore> = self
-            .checkpoint_store
-            .unwrap_or_else(|| Arc::new(NoOpCheckpointStore));
-
-        // Initialize the checkpoint store backend (e.g., create tables)
-        checkpoint_store
-            .initialize_checkpoint_store()
-            .await
-            .change_context(PluginError::Initializing)?;
-
-        let env = Arc::new(StepflowEnvironment::new());
-        env.insert(metadata_store);
-        env.insert(blob_store);
-        env.insert(journal);
-        env.insert(checkpoint_store);
-        env.insert(lease_manager);
-        env.insert(working_directory);
-        env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
-
-        // Store blob API configuration for workers
-        env.insert(BlobApiUrl::new(self.blob_api_url, self.blob_threshold));
-
-        // Store orchestrator service URL for worker callbacks
-        env.insert(OrchestratorServiceUrl::new(self.orchestrator_service_url));
-
-        // Store execution configuration
-        env.insert(ExecutionConfig {
-            checkpoint_interval: self.checkpoint_interval,
-        });
-
-        // Store transport retry configuration
-        env.insert(self.transport_retry);
-
-        // Store orchestrator ID if set (distributed mode)
-        if let Some(id) = self.orchestrator_id {
-            env.insert(id);
-        }
-
-        // Always create ActiveExecutions for tracking running executions
-        env.insert(ActiveExecutions::new());
-
-        // Initialize all plugins
-        initialize_plugins(&env).await?;
-
-        Ok(env)
-    }
-
-    /// Build an in-memory environment for testing.
-    ///
-    /// This creates an environment with an in-memory state store,
-    /// current directory as working directory, and empty plugin router.
-    /// The in-memory state store is also used as the execution journal and blob store.
-    pub async fn build_in_memory() -> Result<Arc<StepflowEnvironment>> {
-        build_in_memory_environment().await
-    }
 }
