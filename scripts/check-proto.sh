@@ -78,6 +78,9 @@ run_check "Breaking changes" \
     --fix "Review breaking changes and update proto files" \
     check_breaking || true
 
+# Return to project root so reproduce/fix commands aren't prefixed with "cd proto &&"
+cd "$PROJECT_ROOT"
+
 # Check OpenAPI spec freshness by regenerating to a temp file and diffing.
 check_openapi_freshness() {
     local committed="$PROJECT_ROOT/schemas/openapi.yaml"
