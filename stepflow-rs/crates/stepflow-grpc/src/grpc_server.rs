@@ -93,6 +93,8 @@ pub struct StepflowGrpcServer {
 struct ServerState {
     /// Address the server is listening on (e.g., "127.0.0.1:12345").
     address: String,
+    /// The port that was requested (None = random, Some = fixed).
+    requested_port: Option<u16>,
     /// Server task handle — aborted on drop.
     server_handle: tokio::task::JoinHandle<()>,
 }
@@ -171,6 +173,14 @@ impl StepflowGrpcServer {
     ) -> stepflow_plugin::Result<String> {
         let mut state = self.state.lock().await;
         if let Some(ref s) = *state {
+            if s.requested_port != port {
+                log::warn!(
+                    "gRPC server already running on {} (requested {:?}, now requesting {:?})",
+                    s.address,
+                    s.requested_port,
+                    port
+                );
+            }
             return Ok(s.address.clone());
         }
 
@@ -223,6 +233,7 @@ impl StepflowGrpcServer {
         let addr = address.clone();
         *state = Some(ServerState {
             address,
+            requested_port: port,
             server_handle,
         });
 

@@ -72,30 +72,47 @@ fn display_proto_diagnostics(diagnostics: &proto::Diagnostics) -> u32 {
 
 /// Convert a serializable value to a `prost_wkt_types::Struct`.
 fn to_proto_struct<T: serde::Serialize>(value: &T) -> Result<prost_wkt_types::Struct> {
-    let json = serde_json::to_value(value).map_err(|_| report!(MainError::ServerError))?;
-    serde_json::from_value(json).map_err(|_| report!(MainError::ServerError))
+    let json = serde_json::to_value(value)
+        .map_err(|e| report!(MainError::SerializationError).attach_printable(e.to_string()))?;
+    serde_json::from_value(json)
+        .map_err(|e| report!(MainError::SerializationError).attach_printable(e.to_string()))
 }
 
 /// Convert a serializable value to a `prost_wkt_types::Value`.
 fn to_proto_value<T: serde::Serialize>(value: &T) -> Result<prost_wkt_types::Value> {
-    let json = serde_json::to_value(value).map_err(|_| report!(MainError::ServerError))?;
-    serde_json::from_value(json).map_err(|_| report!(MainError::ServerError))
+    let json = serde_json::to_value(value)
+        .map_err(|e| report!(MainError::SerializationError).attach_printable(e.to_string()))?;
+    serde_json::from_value(json)
+        .map_err(|e| report!(MainError::SerializationError).attach_printable(e.to_string()))
 }
 
 /// Convert a proto `ItemResult` to a domain `FlowResult`.
-fn proto_item_to_flow_result(item: &proto::ItemResult) -> Option<FlowResult> {
+fn proto_item_to_flow_result(item: &proto::ItemResult) -> FlowResult {
     if let Some(ref output) = item.output {
-        let value: serde_json::Value = serde_json::to_value(output).ok()?;
-        let value_ref: ValueRef = serde_json::from_value(value).ok()?;
-        Some(FlowResult::Success(value_ref))
+        let value: serde_json::Value = match serde_json::to_value(output) {
+            Ok(v) => v,
+            Err(e) => {
+                return FlowResult::Failed(FlowError::new(
+                    500,
+                    format!("Failed to deserialize output: {e}"),
+                ));
+            }
+        };
+        match serde_json::from_value(value) {
+            Ok(value_ref) => FlowResult::Success(value_ref),
+            Err(e) => FlowResult::Failed(FlowError::new(
+                500,
+                format!("Failed to convert output to ValueRef: {e}"),
+            )),
+        }
     } else if let Some(ref error_msg) = item.error_message {
         let code = item.error_code.unwrap_or(500);
-        Some(FlowResult::Failed(FlowError::new(
-            i64::from(code),
-            error_msg.clone(),
-        )))
+        FlowResult::Failed(FlowError::new(i64::from(code), error_msg.clone()))
     } else {
-        None
+        FlowResult::Failed(FlowError::new(
+            500,
+            "Server returned item with no output or error",
+        ))
     }
 }
 
@@ -142,7 +159,7 @@ pub async fn submit(
         .await
         .map_err(|status| {
             display_grpc_error(&status, "storing workflow");
-            report!(MainError::Configuration)
+            report!(MainError::ServerError)
         })?
         .into_inner();
 
@@ -187,7 +204,16 @@ pub async fn submit(
         input: proto_inputs,
         overrides: proto_overrides,
         variables: proto_variables,
-        max_concurrency: max_concurrency.map(|n| n as u32),
+        max_concurrency: max_concurrency
+            .map(|n| {
+                u32::try_from(n).map_err(|_| {
+                    MainError::InvalidArgument(format!(
+                        "max_concurrency {n} exceeds maximum ({})",
+                        u32::MAX
+                    ))
+                })
+            })
+            .transpose()?,
         wait: true,
         timeout_secs: None,
     };
@@ -198,7 +224,7 @@ pub async fn submit(
         .await
         .map_err(|status| {
             display_grpc_error(&status, "executing workflow");
-            report!(MainError::Configuration)
+            report!(MainError::ServerError)
         })?
         .into_inner();
 
@@ -206,9 +232,9 @@ pub async fn submit(
     let items = create_response.results;
     if items.is_empty() {
         log::error!("No results in response");
-        return Err(MainError::Configuration.into());
+        return Err(MainError::ServerError.into());
     }
 
     // Extract FlowResult from each proto ItemResult
-    Ok(items.iter().filter_map(proto_item_to_flow_result).collect())
+    Ok(items.iter().map(proto_item_to_flow_result).collect())
 }
