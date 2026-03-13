@@ -62,6 +62,7 @@ from stepflow_py.proto import (
     TaskError,
     TaskHeartbeatRequest,
 )
+from stepflow_py.proto.orchestrator_pb2 import TASK_ERROR_CODE_COMPONENT_FAILED
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
 
@@ -347,7 +348,7 @@ async def _handle_task(
 
 
 async def _heartbeat_loop(
-    stub: OrchestratorServiceStub,
+    stub: Any,  # OrchestratorServiceStub (async variant)
     task_id: str,
     interval_secs: int,
 ) -> None:
@@ -537,7 +538,7 @@ async def _complete_task_error(
         request = CompleteTaskRequest(
             task_id=task.task_id,
             error=TaskError(
-                code=4,  # TASK_ERROR_CODE_COMPONENT_FAILED
+                code=TASK_ERROR_CODE_COMPONENT_FAILED,
                 message=error_msg,
             ),
         )

@@ -44,18 +44,16 @@ echo "  Output dir: $OUT_DIR"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-# Generate Python + gRPC stubs.
+# Generate Python + gRPC stubs with mypy type stubs for IDE support.
 # Include google/api and gnostic annotation protos so the generated
 # blobs_pb2.py and runs_pb2.py can import them at runtime.
-#
-# Note: mypy type stubs (--mypy_out/--mypy_grpc_out) are skipped because
-# mypy-protobuf requires matching protobuf major versions, and we pin
-# protobuf 5.x for langflow compatibility.
 cd "$ROOT_DIR/sdks/python"
 uv run --project stepflow-py python -m grpc_tools.protoc \
     --proto_path="$PROTO_DIR" \
     --python_out="$OUT_DIR" \
     --grpc_python_out="$OUT_DIR" \
+    --mypy_out="$OUT_DIR" \
+    --mypy_grpc_out="$OUT_DIR" \
     stepflow/v1/common.proto \
     stepflow/v1/tasks.proto \
     stepflow/v1/orchestrator.proto \
@@ -100,6 +98,17 @@ find "$OUT_DIR" -name "*.pyi" -exec perl -pi -e \
     's/from stepflow\.v1 import/from . import/g' \
     {} +
 
+# Fix .pyi bare imports and qualified references: mypy-protobuf generates
+# "import stepflow.v1.common_pb2" and "stepflow.v1.common_pb2.SomeType".
+# Rewrite to "from . import common_pb2" and "common_pb2.SomeType".
+find "$OUT_DIR" -maxdepth 1 -name "*.pyi" -exec perl -pi -e \
+    's/^import stepflow\.v1\.(\w+)/from . import $1/g' \
+    {} +
+
+find "$OUT_DIR" -maxdepth 1 -name "*.pyi" -exec perl -pi -e \
+    's/stepflow\.v1\.//g' \
+    {} +
+
 # Fix gnostic imports: generated files import "from gnostic.openapi.v3 import ..."
 # which isn't an installable Python package. Rewrite to relative imports.
 # Top-level files (blobs_pb2.py, runs_pb2.py) → ".gnostic.openapi.v3"
@@ -111,6 +120,15 @@ find "$OUT_DIR" -maxdepth 1 -name "*.pyi" -exec perl -pi -e \
     's/from gnostic\.openapi\.v3 import/from .gnostic.openapi.v3 import/g' \
     {} +
 
+# Fix gnostic bare imports in .pyi files
+find "$OUT_DIR" -maxdepth 1 -name "*.pyi" -exec perl -pi -e \
+    's/^import gnostic\.openapi\.v3\.(\w+)/from .gnostic.openapi.v3 import $1/g' \
+    {} +
+
+find "$OUT_DIR" -maxdepth 1 -name "*.pyi" -exec perl -pi -e \
+    's/gnostic\.openapi\.v3\.//g' \
+    {} +
+
 # Files within gnostic/openapi/v3/ → relative "from . import"
 find "$OUT_DIR/gnostic" -name "*.py" -exec perl -pi -e \
     's/from gnostic\.openapi\.v3 import/from . import/g' \
@@ -118,6 +136,15 @@ find "$OUT_DIR/gnostic" -name "*.py" -exec perl -pi -e \
 
 find "$OUT_DIR/gnostic" -name "*.pyi" -exec perl -pi -e \
     's/from gnostic\.openapi\.v3 import/from . import/g' \
+    {} +
+
+# Fix gnostic bare imports/refs in nested .pyi files
+find "$OUT_DIR/gnostic" -name "*.pyi" -exec perl -pi -e \
+    's/^import gnostic\.openapi\.v3\.(\w+)/from . import $1/g' \
+    {} +
+
+find "$OUT_DIR/gnostic" -name "*.pyi" -exec perl -pi -e \
+    's/gnostic\.openapi\.v3\.//g' \
     {} +
 
 # Create __init__.py with convenience re-exports

@@ -95,7 +95,7 @@ dev = [
     "pytest-mock>=3.14.1",
     "langchain-core>=0.3.72",
     "grpcio-tools>=1.67.0,<1.75.0",  # <1.75 to stay compatible with protobuf 5.x
-    "mypy-protobuf>=3.6.0,<5",  # <5 to stay compatible with protobuf 5.x
+    "mypy-protobuf>=3.6.0,<4",  # <4 because 4.0 requires protobuf 6.x gencode
     "types-grpcio>=1.0.0",
 ]
 

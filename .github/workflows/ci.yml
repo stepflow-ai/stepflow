@@ -104,8 +104,10 @@ jobs:
             proto:
               - '.github/actions/proto-checks/**'
               - 'scripts/check-proto.sh'
+              - 'scripts/generate-python-proto.sh'
               - 'scripts/_lib.sh'
               - 'proto/**'
+              - 'sdks/python/stepflow-py/src/stepflow_py/proto/**'
               - 'buf.yaml'
               - 'buf.lock'
 
