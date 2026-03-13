@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 import typing
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -137,7 +137,9 @@ class StructuredJsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with diagnostic context."""
         log_entry = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
             "level": record.levelname,
             "message": record.getMessage(),
             "logger": record.name,

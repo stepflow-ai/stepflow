@@ -22,9 +22,10 @@ for JSON/YAML or the ``store_flow`` API.
 from __future__ import annotations
 
 from dataclasses import dataclass, is_dataclass
-from typing import Any, assert_never
+from typing import Any
 
 import msgspec
+from typing_extensions import assert_never
 
 from .generated_flow import (
     ErrorAction,

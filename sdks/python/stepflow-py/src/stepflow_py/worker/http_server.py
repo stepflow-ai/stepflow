@@ -25,9 +25,10 @@ import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
-from typing import Any, assert_never
+from typing import Any
 
 import msgspec
+from typing_extensions import assert_never
 
 from .context import StepflowContext
 from .exceptions import (

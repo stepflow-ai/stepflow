@@ -10,7 +10,7 @@ authors = [
 maintainers = [
     {name = "DataStax Inc."}
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 keywords = [
     "workflow",
     "automation",
@@ -26,6 +26,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -43,6 +44,7 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
     "httpx>=0.25.0",  # HTTP client for blob API
+    "typing-extensions>=4.7.1",
     # gRPC dependencies (API client + pull-based worker transport)
     "grpcio>=1.67.0",
     "protobuf>=5.26.0,<6",
@@ -103,7 +105,7 @@ build-backend = "hatchling.build"
 packages = ["src/stepflow_py"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py310"
 line-length = 88
 extend-exclude = ["**/generated_*.py", "**/_generated_*.py", "**/api/**", "**/proto/**"]
 

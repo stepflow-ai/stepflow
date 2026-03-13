@@ -20,10 +20,11 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, assert_never
+from typing import Any
 
 import msgspec
 from msgspec import UnsetType
+from typing_extensions import assert_never
 
 from stepflow_py.worker.context import StepflowContext
 from stepflow_py.worker.exceptions import (

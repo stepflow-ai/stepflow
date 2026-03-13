@@ -23,7 +23,7 @@ The Python SDK is organized into two packages:
 cd sdks/python
 uv run poe test
 
-# Test across all supported versions (3.11, 3.12, 3.13)
+# Test across all supported versions (3.10, 3.11, 3.12, 3.13)
 ./scripts/test-python-versions.sh
 ```
 
@@ -57,7 +57,7 @@ uv run python generate.py --check
 
 ## Python Version Compatibility
 
-The Python SDK supports Python 3.11, 3.12, and 3.13. All versions are tested in CI.
+The Python SDK supports Python 3.10, 3.11, 3.12, and 3.13. All versions are tested in CI.
 
 ### Testing a Specific Python Version
 
@@ -65,10 +65,10 @@ The Python SDK supports Python 3.11, 3.12, and 3.13. All versions are tested in 
 cd sdks/python
 
 # Install specific Python version
-uv python install 3.11  # or 3.12, 3.13
+uv python install 3.10  # or 3.11, 3.12, 3.13
 
 # Pin the version for testing
-uv python pin 3.11
+uv python pin 3.10
 
 # Install dependencies and run tests
 uv sync --extra http --project stepflow-py

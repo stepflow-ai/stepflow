@@ -71,7 +71,7 @@ test_python_version() {
 }
 
 # Test each Python version
-versions=("3.11" "3.12" "3.13")
+versions=("3.10" "3.11" "3.12" "3.13")
 failed_versions=()
 
 for version in "${versions[@]}"; do
