@@ -472,7 +472,6 @@ class TestPocFlowRegressions:
         from pathlib import Path
 
         import msgspec
-
         from stepflow_py.worker import Flow
 
         converter = LangflowConverter()
