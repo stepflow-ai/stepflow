@@ -111,7 +111,16 @@ print_warn() {
 # Compute the reproduce command for a check
 # Usage: _make_reproduce_cmd command [args...]
 # Outputs: cd <relative_path> && command [args...]
+# Returns empty string if the command is a shell function (not user-runnable)
 _make_reproduce_cmd() {
+    local cmd_name="$1"
+
+    # Shell functions aren't user-runnable commands — skip them
+    if [ "$(type -t "$cmd_name" 2>/dev/null)" = "function" ]; then
+        echo ""
+        return
+    fi
+
     local cmd="$*"
     local rel_path=""
 
@@ -190,7 +199,9 @@ run_check() {
             reproduce_cmd="$(_make_reproduce_cmd "$@")"
             FAILED_CHECKS+=("$name")
             FAILED_CHECK_CMDS+=("$reproduce_cmd")
-            echo "    Check: $reproduce_cmd"
+            if [ -n "$reproduce_cmd" ]; then
+                echo "    Check: $reproduce_cmd"
+            fi
             if [ -n "$fix_cmd" ]; then
                 local full_fix_cmd
                 full_fix_cmd="$(_make_reproduce_cmd "$fix_cmd")"
@@ -256,7 +267,9 @@ print_summary() {
         echo ""
         for i in "${!FAILED_CHECKS[@]}"; do
             echo "  ${FAILED_CHECKS[$i]}:"
-            echo "    Check: ${FAILED_CHECK_CMDS[$i]}"
+            if [ -n "${FAILED_CHECK_CMDS[$i]}" ]; then
+                echo "    Check: ${FAILED_CHECK_CMDS[$i]}"
+            fi
             if [ -n "${FAILED_CHECK_FIXES[$i]}" ]; then
                 echo "    Fix:   ${FAILED_CHECK_FIXES[$i]}"
             fi
