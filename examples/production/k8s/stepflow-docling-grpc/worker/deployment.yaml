@@ -1,0 +1,103 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+# Docling proto step worker — gRPC pull-based transport.
+# Connects to orchestrator's TasksService to pull tasks.
+# No ports exposed — worker is a gRPC client, not a server.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docling-worker
+  namespace: stepflow-docling-grpc
+  labels:
+    app: docling-worker
+    component: document-processing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: docling-worker
+  template:
+    metadata:
+      labels:
+        app: docling-worker
+        component: document-processing
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+      - name: docling-proto-step-worker
+        image: localhost/stepflow-docling-proto-worker:latest
+        imagePullPolicy: Never
+        securityContext:
+          allowPrivilegeEscalation: false
+        # No ports — gRPC worker is a client
+        env:
+        # Transport selection
+        - name: STEPFLOW_TRANSPORT
+          value: "grpc"
+        # gRPC TasksService address (orchestrator)
+        - name: STEPFLOW_TASKS_URL
+          value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
+        # Queue name matching orchestrator plugin config
+        - name: STEPFLOW_QUEUE_NAME
+          value: "docling"
+        # Max concurrent task executions per pod
+        - name: STEPFLOW_MAX_CONCURRENT
+          value: "1"
+        # Thread contention prevention
+        - name: OMP_NUM_THREADS
+          value: "4"
+        # Blob store — explicit URL so workers can resolve $blob refs
+        - name: STEPFLOW_BLOB_API_URL
+          value: "http://docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7840/api/v1/blobs"
+        # Pod metadata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # Stepflow logging
+        - name: STEPFLOW_LOG_LEVEL
+          value: "debug"
+        - name: STEPFLOW_LOG_DESTINATION
+          value: "stderr,otlp"
+        - name: STEPFLOW_SERVICE_NAME
+          value: "docling-proto-step-worker"
+        - name: STEPFLOW_TRACE_ENABLED
+          value: "true"
+        # OpenTelemetry
+        - name: STEPFLOW_OTLP_ENDPOINT
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "docling-proto-step-worker"
+        - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
+          value: "true"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=kubernetes,service.namespace=stepflow-docling-grpc,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 4Gi
+        # No HTTP health probes — gRPC worker has no HTTP server.
+        # Liveness is implicit: if the pod crashes, K8s restarts it.
+        # The orchestrator detects worker disconnection via heartbeat timeout.
