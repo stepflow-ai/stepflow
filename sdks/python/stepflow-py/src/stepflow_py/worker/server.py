@@ -20,7 +20,9 @@ import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, assert_never
+from typing import Any
+
+from typing_extensions import assert_never
 
 import msgspec
 from msgspec import UnsetType
@@ -601,7 +603,8 @@ class StepflowServer:
 
                         # Convert Structs/dataclasses to dicts for blobification
                         if not isinstance(
-                            output, dict | list | str | int | float | bool | type(None)
+                            output,
+                            (dict, list, str, int, float, bool, type(None)),
                         ):
                             output = msgspec.to_builtins(output)
                         output, _created_ids = await blobify_inputs(

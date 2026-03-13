@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from enum import IntEnum, StrEnum
+from enum import Enum, IntEnum
 from typing import Annotated, Any, Literal, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, field
@@ -90,12 +90,12 @@ class ComponentInferSchemaResult(Struct, kw_only=True):
     ) = UNSET
 
 
-class OverrideType(StrEnum):
+class OverrideType(str, Enum):
     merge_patch = 'merge_patch'
     json_patch = 'json_patch'
 
 
-class ResultOrder(StrEnum):
+class ResultOrder(str, Enum):
     by_index = 'by_index'
     by_completion = 'by_completion'
 
@@ -110,7 +110,7 @@ class ItemStatistics(Struct, kw_only=True):
     cancelled: Annotated[int, Meta(description='Number of cancelled items.', ge=0)]
 
 
-class ExecutionStatus(StrEnum):
+class ExecutionStatus(str, Enum):
     running = 'running'
     completed = 'completed'
     failed = 'failed'
@@ -213,7 +213,7 @@ RequestId: TypeAlias = Annotated[
 ]
 
 
-class Method(StrEnum):
+class Method(str, Enum):
     initialize = 'initialize'
     initialized = 'initialized'
     components_list = 'components/list'

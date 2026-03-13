@@ -25,7 +25,9 @@ import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
-from typing import Any, assert_never
+from typing import Any
+
+from typing_extensions import assert_never
 
 import msgspec
 

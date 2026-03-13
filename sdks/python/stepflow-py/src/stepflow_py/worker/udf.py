@@ -14,7 +14,7 @@
 
 import inspect
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import msgspec
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class UdfCompilationError(CodeCompilationError):
     """Raised when UDF code compilation fails."""
 
-    def __init__(self, message: str, code: str, blob_id: str | None = None):
+    def __init__(self, message: str, code: str, blob_id: Optional[str] = None):
         super().__init__(message, code)
         self.blob_id = blob_id
         if blob_id:
@@ -400,7 +400,7 @@ async def udf(input: UdfInput, context: StepflowContext) -> Any:
 
 
 class _InputWrapper(dict):
-    def __init__(self, input_data: dict, path: list[str] | None = None):
+    def __init__(self, input_data: dict, path: Optional[list[str]] = None):
         super().__init__(input_data)
         self.path = path or []
 
