@@ -104,6 +104,42 @@ run_check "OpenAPI freshness" \
     --fix "./scripts/generate-openapi-proto.sh" \
     check_openapi_freshness || true
 
+# Check Python proto stubs freshness by regenerating to a temp dir and diffing.
+check_python_proto_freshness() {
+    local committed="$PROJECT_ROOT/sdks/python/stepflow-py/src/stepflow_py/proto"
+
+    if [ ! -d "$committed" ]; then
+        echo "No committed Python proto stubs found — skipping freshness check"
+        return 0
+    fi
+
+    require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    trap "rm -rf $tmpdir" RETURN
+
+    # Copy committed stubs to temp dir for comparison
+    cp -r "$committed" "$tmpdir/before"
+
+    # Regenerate stubs
+    "$SCRIPT_DIR/generate-python-proto.sh" > /dev/null 2>&1
+
+    if diff -rq "$tmpdir/before" "$committed" > /dev/null 2>&1; then
+        return 0
+    else
+        echo "Python proto stubs are out of date. Regenerate with: ./scripts/generate-python-proto.sh"
+        # Restore the committed version so the working tree stays clean
+        rm -rf "$committed"
+        cp -r "$tmpdir/before" "$committed"
+        return 1
+    fi
+}
+
+run_check "Python proto freshness" \
+    --fix "./scripts/generate-python-proto.sh" \
+    check_python_proto_freshness || true
+
 # =============================================================================
 # RESULTS SUMMARY
 # =============================================================================

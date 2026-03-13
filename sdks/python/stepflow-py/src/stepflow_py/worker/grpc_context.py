@@ -102,7 +102,7 @@ class GrpcContext(StepflowContext):
         try:
             stub = BlobServiceStub(channel)
             response = await stub.PutBlob(request)
-            return response.blob_id  # type: ignore[no-any-return]
+            return response.blob_id
         finally:
             await channel.close()
 
