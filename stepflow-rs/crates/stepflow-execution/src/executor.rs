@@ -234,12 +234,12 @@ pub async fn get_run(
 mod tests {
     use super::*;
     use serde_json::json;
-    use stepflow_plugin::StepflowEnvironmentBuilder;
+    use stepflow_plugin::build_in_memory_environment;
 
     #[tokio::test]
     async fn test_executor_context_blob_operations() {
         // Create executor with default state store
-        let executor = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
+        let executor = build_in_memory_environment().await.unwrap();
 
         // Test data
         let test_data = json!({"message": "Hello from executor!", "count": 123});
@@ -276,12 +276,12 @@ mod tests {
         let metadata_store: Arc<dyn MetadataStore> = store.clone();
         let blob_store: Arc<dyn BlobStore> = store;
         let plugin_router = PluginRouter::builder().build().unwrap();
-        let executor = StepflowEnvironmentBuilder::new()
-            .metadata_store(metadata_store)
-            .blob_store(blob_store.clone())
-            .working_directory(PathBuf::from("."))
-            .plugin_router(plugin_router)
-            .build()
+        let executor = Arc::new(StepflowEnvironment::new());
+        executor.insert(metadata_store);
+        executor.insert(blob_store.clone());
+        executor.insert(PathBuf::from("."));
+        executor.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
+        stepflow_plugin::initialize_environment(&executor)
             .await
             .unwrap();
 

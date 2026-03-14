@@ -21,8 +21,7 @@ mod subflow;
 
 pub use context::RunContext;
 pub use environment_builder::{
-    BlobApiUrl, OrchestratorServiceUrl, StepflowEnvironmentBuilder, build_in_memory_environment,
-    initialize_plugins,
+    BlobApiUrl, OrchestratorServiceUrl, build_in_memory_environment, initialize_environment,
 };
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};

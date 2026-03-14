@@ -145,13 +145,11 @@ impl StepflowConfig {
         orchestrator_id: Option<stepflow_state::OrchestratorId>,
         orchestrator_url: Option<String>,
     ) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
-        use std::sync::Arc as StdArc;
         use stepflow_core::StepflowEnvironment;
         use stepflow_plugin::routing::PluginRouter;
         use stepflow_plugin::{
-            BlobApiUrl, ExecutionConfig, OrchestratorServiceUrl, initialize_plugins,
+            BlobApiUrl, ExecutionConfig, OrchestratorServiceUrl, initialize_environment,
         };
-        use stepflow_state::ActiveExecutions;
 
         // Create metadata store, blob store, and execution journal from configuration
         let stores = self.storage_config.create_stores().await?;
@@ -183,13 +181,7 @@ impl StepflowConfig {
             .build()
             .change_context(ConfigError::Configuration)?;
 
-        // Initialize the checkpoint store backend (e.g., create tables)
-        stores
-            .checkpoint_store
-            .initialize_checkpoint_store()
-            .await
-            .change_context(ConfigError::Configuration)?;
-
+        // Build the environment directly
         let env = Arc::new(StepflowEnvironment::new());
         env.insert(stores.metadata_store);
         env.insert(stores.blob_store);
@@ -197,7 +189,7 @@ impl StepflowConfig {
         env.insert(stores.checkpoint_store);
         env.insert(lease_manager);
         env.insert(working_directory);
-        env.insert(StdArc::new(plugin_router) as StdArc<PluginRouter>);
+        env.insert(Arc::new(plugin_router) as Arc<PluginRouter>);
         let blob_threshold = self.blob_api.effective_blob_threshold();
         env.insert(BlobApiUrl::new(self.blob_api.url, blob_threshold));
         env.insert(OrchestratorServiceUrl::new(orchestrator_url));
@@ -208,13 +200,12 @@ impl StepflowConfig {
         if let Some(id) = orchestrator_id {
             env.insert(id);
         }
-        env.insert(ActiveExecutions::new());
 
         // Insert the gRPC server for pull-based plugins.
         // The server is started lazily when the first pull plugin initializes.
-        env.insert(StdArc::new(stepflow_grpc::StepflowGrpcServer::new()));
+        env.insert(Arc::new(stepflow_grpc::StepflowGrpcServer::new()));
 
-        initialize_plugins(&env)
+        initialize_environment(&env)
             .await
             .change_context(ConfigError::Configuration)?;
 

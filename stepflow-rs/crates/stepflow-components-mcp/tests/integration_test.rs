@@ -19,13 +19,13 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_plugin::{
-    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, StepflowEnvironmentBuilder,
+    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, build_in_memory_environment,
 };
 use uuid::Uuid;
 
 // Helper function to create a test context
 async fn create_test_context() -> (Arc<StepflowEnvironment>, Arc<RunContext>) {
-    let env = StepflowEnvironmentBuilder::build_in_memory().await.unwrap();
+    let env = build_in_memory_environment().await.unwrap();
     let run_id = Uuid::now_v7();
     let test_flow = Arc::new(Flow::default());
     let flow_id = BlobId::from_flow(&test_flow).expect("Flow should serialize");

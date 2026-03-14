@@ -23,7 +23,7 @@ use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::{Flow, FlowBuilder, StepBuilder};
 use stepflow_core::{FlowResult, StepflowEnvironment, ValueExpr};
 use stepflow_mock::{MockComponentBehavior, MockPlugin};
-use stepflow_plugin::StepflowEnvironmentBuilder;
+use stepflow_plugin::initialize_environment;
 use stepflow_state::{
     BlobStore, ExecutionJournal, InMemoryStateStore, MetadataStore, MetadataStoreExt as _,
 };
@@ -119,20 +119,25 @@ impl MockExecutorBuilder {
             .build()
             .unwrap();
 
-        let store = Arc::new(InMemoryStateStore::new());
-        let metadata_store: Arc<dyn MetadataStore> = store.clone();
-        let blob_store: Arc<dyn BlobStore> = store.clone();
-        let journal: Arc<dyn ExecutionJournal> = store;
-        StepflowEnvironmentBuilder::new()
-            .metadata_store(metadata_store)
-            .blob_store(blob_store)
-            .execution_journal(journal)
-            .working_directory(std::path::PathBuf::from("."))
-            .plugin_router(plugin_router)
-            .build()
-            .await
-            .expect("MockPlugin should always initialize successfully")
+        create_test_environment(plugin_router).await
     }
+}
+
+/// Create a test environment with the given plugin router and in-memory stores.
+async fn create_test_environment(
+    plugin_router: stepflow_plugin::routing::PluginRouter,
+) -> Arc<StepflowEnvironment> {
+    let store = Arc::new(InMemoryStateStore::new());
+    let env = Arc::new(StepflowEnvironment::new());
+    env.insert(store.clone() as Arc<dyn MetadataStore>);
+    env.insert(store.clone() as Arc<dyn BlobStore>);
+    env.insert(store as Arc<dyn ExecutionJournal>);
+    env.insert(std::path::PathBuf::from("."));
+    env.insert(Arc::new(plugin_router) as Arc<stepflow_plugin::routing::PluginRouter>);
+    initialize_environment(&env)
+        .await
+        .expect("MockPlugin should always initialize successfully");
+    env
 }
 
 /// Create a simple flow with the specified number of independent steps.
@@ -348,19 +353,7 @@ pub async fn create_executor_with_behaviors(
         .build()
         .unwrap();
 
-    let store = Arc::new(InMemoryStateStore::new());
-    let metadata_store: Arc<dyn MetadataStore> = store.clone();
-    let blob_store: Arc<dyn BlobStore> = store.clone();
-    let journal: Arc<dyn ExecutionJournal> = store;
-    StepflowEnvironmentBuilder::new()
-        .metadata_store(metadata_store)
-        .blob_store(blob_store)
-        .execution_journal(journal)
-        .working_directory(std::path::PathBuf::from("."))
-        .plugin_router(plugin_router)
-        .build()
-        .await
-        .expect("MockPlugin should always initialize successfully")
+    create_test_environment(plugin_router).await
 }
 
 /// Create a test environment with a wait signal for a specific input.
@@ -426,19 +419,7 @@ pub async fn create_env_with_wait_signal(
         .build()
         .unwrap();
 
-    let store = Arc::new(InMemoryStateStore::new());
-    let metadata_store: Arc<dyn MetadataStore> = store.clone();
-    let blob_store: Arc<dyn BlobStore> = store.clone();
-    let journal: Arc<dyn ExecutionJournal> = store;
-    let env = StepflowEnvironmentBuilder::new()
-        .metadata_store(metadata_store)
-        .blob_store(blob_store)
-        .execution_journal(journal)
-        .working_directory(std::path::PathBuf::from("."))
-        .plugin_router(plugin_router)
-        .build()
-        .await
-        .expect("MockPlugin should always initialize successfully");
+    let env = create_test_environment(plugin_router).await;
 
     (env, signal)
 }
