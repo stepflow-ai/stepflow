@@ -400,7 +400,11 @@ impl PendingTasks {
             {
                 if execution_timeout.is_some_and(|et| started_at.elapsed() >= et) {
                     timeout_execution.push(entry.key().clone());
-                } else if !self.heartbeat_tracker.was_seen(entry.key()) {
+                } else if started_at.elapsed() >= HEARTBEAT_TIMEOUT
+                    && !self.heartbeat_tracker.was_seen(entry.key())
+                {
+                    // Only timeout after grace period — newly started tasks
+                    // haven't had time to send their first heartbeat yet.
                     timeout_heartbeat.push(entry.key().clone());
                 }
             }
@@ -731,6 +735,47 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(60)).await;
         assert_eq!(registry.pending_count(), 1);
 
+        let value = ValueRef::new(serde_json::json!({"ok": true}));
+        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
+        assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
+    }
+
+    /// Verify that a newly started task is not timed out by the heartbeat
+    /// scanner before it has had a chance to send its first heartbeat.
+    ///
+    /// Regression test for: a task that transitions to Executing just before
+    /// a heartbeat scan fires would be immediately timed out because the
+    /// heartbeat tracker had no entry for it yet.
+    #[tokio::test]
+    async fn test_heartbeat_grace_period_for_newly_started_task() {
+        tokio::time::pause();
+
+        let registry = PendingTasks::new();
+        let rx = registry.register(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
+
+        // Advance past one heartbeat scan cycle so the scanner is primed.
+        tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
+        tokio::task::yield_now().await;
+
+        // Start the task right before the next scan fires.
+        registry.start_task("task-1").unwrap();
+
+        // Advance a short time (less than HEARTBEAT_TIMEOUT) to trigger
+        // the next scan cycle. The task has just started — no heartbeat
+        // yet, but the grace period should protect it.
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+
+        // Task must still be alive.
+        assert_eq!(registry.pending_count(), 1);
+
+        // Now send a heartbeat and complete normally.
+        assert!(registry.heartbeat("task-1").is_some());
         let value = ValueRef::new(serde_json::json!({"ok": true}));
         assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
