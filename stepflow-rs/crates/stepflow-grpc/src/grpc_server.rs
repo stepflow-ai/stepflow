@@ -186,8 +186,9 @@ impl StepflowGrpcServer {
 
         let bind_addr = match port {
             Some(p) => format!("0.0.0.0:{p}"),
-            None => std::env::var("STEPFLOW_GRPC_BIND_ADDRESS")
-                .unwrap_or_else(|_| "127.0.0.1:0".to_string()),
+            None => {
+                std::env::var("STEPFLOW_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".to_string())
+            }
         };
 
         let listener = tokio::net::TcpListener::bind(&bind_addr)

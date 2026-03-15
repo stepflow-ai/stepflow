@@ -12,14 +12,14 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Orchestrator pod: docling-facade (port 5001) + stepflow-server (port 7840 + gRPC 7837)
+# Orchestrator pod: docling-facade (port 5001) + stepflow-server (port 7840 HTTP + gRPC 7837)
 # The facade presents a docling-serve compatible API and delegates to the
 # co-located stepflow-server via localhost.
 #
 # No init container — orchestrator starts first; workers connect later via gRPC.
 #
-# PREREQUISITE: The Rust gRPC server must bind 0.0.0.0:7837 for external workers.
-# Set STEPFLOW_GRPC_BIND_ADDRESS=0.0.0.0:7837 or equivalent configuration.
+# PREREQUISITE: The pull plugin's gRPC server must bind 0.0.0.0:7837 for external workers.
+# Set STEPFLOW_BIND_ADDRESS=0.0.0.0:7837 in the stepflow-server container env.
 
 apiVersion: apps/v1
 kind: Deployment
@@ -125,11 +125,11 @@ spec:
           containerPort: 7837
           protocol: TCP
         env:
-        # gRPC bind address — must be 0.0.0.0 for external worker pods
-        - name: STEPFLOW_GRPC_BIND_ADDRESS
+        # Pull plugin gRPC bind address — must be 0.0.0.0 for external worker pods
+        - name: STEPFLOW_BIND_ADDRESS
           value: "0.0.0.0:7837"
-        # Advertised gRPC URL for workers to call back (service DNS, not bind address)
-        - name: STEPFLOW_ORCHESTRATOR_GRPC_URL
+        # Advertised URL for workers to call back (service DNS, not bind address)
+        - name: STEPFLOW_ORCHESTRATOR_URL
           value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
         # Pod metadata
         - name: POD_NAME

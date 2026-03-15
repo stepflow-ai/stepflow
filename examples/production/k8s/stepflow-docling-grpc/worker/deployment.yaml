@@ -49,7 +49,7 @@ spec:
         # Transport selection
         - name: STEPFLOW_TRANSPORT
           value: "grpc"
-        # gRPC TasksService address (orchestrator)
+        # gRPC TasksService address (orchestrator's pull-plugin gRPC server)
         - name: STEPFLOW_TASKS_URL
           value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
         # Queue name matching orchestrator plugin config
