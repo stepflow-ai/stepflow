@@ -128,10 +128,7 @@ spec:
         # Pull plugin gRPC bind address — must be 0.0.0.0 for external worker pods
         - name: STEPFLOW_BIND_ADDRESS
           value: "0.0.0.0:7837"
-        # Advertised URL for workers to call back (service DNS, not bind address)
-        - name: STEPFLOW_ORCHESTRATOR_URL
-          value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
-        # Pod metadata
+        # Pod metadata (defined first so later env vars can reference them)
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -140,6 +137,14 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        # Advertised URL for workers to call back (pod IP, not service DNS,
+        # so callbacks reach the specific pod that dispatched the task)
+        - name: STEPFLOW_ORCHESTRATOR_URL
+          value: "$(POD_IP):7837"
         # Stepflow logging
         - name: STEPFLOW_LOG_LEVEL
           value: "debug"
