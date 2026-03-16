@@ -591,6 +591,7 @@ mod tests {
             panic!("expected failure");
         };
         assert!(err.message.contains("timed out waiting for worker"));
+        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
         assert_eq!(registry.pending_count(), 0);
     }
 
@@ -631,6 +632,7 @@ mod tests {
             panic!("expected failure");
         };
         assert!(err.message.contains("no heartbeat received"));
+        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
         assert_eq!(registry.pending_count(), 0);
     }
 
@@ -694,6 +696,7 @@ mod tests {
             "unexpected: {}",
             err.message,
         );
+        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
         assert_eq!(registry.pending_count(), 0);
     }
 

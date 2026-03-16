@@ -231,6 +231,11 @@ impl PullPlugin {
             }
         }
 
+        // Capture the next worker generation *before* spawning so we wait
+        // specifically for the new worker, not a stale registration from
+        // a previous (crashed) connection that hasn't been cleaned up yet.
+        let generation = self.queue.next_worker_generation();
+
         let mut cmd = tokio::process::Command::new(command);
         cmd.args(&self.args)
             .current_dir(&self.working_directory)
@@ -276,25 +281,30 @@ impl PullPlugin {
             child.id()
         );
 
-        // Wait for the worker to connect
+        // Wrap in WorkerState immediately so the process group is killed
+        // on all exit paths (including timeout errors below).
+        let worker_state = WorkerState {
+            child,
+            #[cfg(unix)]
+            pgid,
+        };
+
+        // Wait for the *new* worker to connect (not a stale registration).
         let connected = tokio::time::timeout(
             std::time::Duration::from_secs(30),
-            self.queue.wait_for_worker(),
+            self.queue.wait_for_worker_since(generation),
         )
         .await;
 
         if connected.is_err() {
+            // worker_state is dropped here, killing the process group.
             log::error!("gRPC worker did not connect within 30 seconds");
             return Err(error_stack::report!(PluginError::Execution)
                 .attach_printable("gRPC worker did not connect within 30 seconds"));
         }
 
         log::info!("gRPC worker connected successfully");
-        *self.worker.lock().await = Some(WorkerState {
-            child,
-            #[cfg(unix)]
-            pgid,
-        });
+        *self.worker.lock().await = Some(worker_state);
 
         Ok(())
     }
