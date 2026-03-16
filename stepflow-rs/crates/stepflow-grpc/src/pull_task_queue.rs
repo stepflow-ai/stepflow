@@ -115,7 +115,7 @@ impl PullTaskQueue {
 
     /// Wait until a worker with ID >= `since` has registered.
     ///
-    /// Use [`next_worker_generation`] to capture the current generation
+    /// Use [`Self::next_worker_generation`] to capture the current generation
     /// *before* spawning a subprocess, then pass that value here to avoid
     /// returning early because a stale (crashed) worker is still registered.
     pub async fn wait_for_worker_since(&self, since: u64) {
@@ -133,7 +133,7 @@ impl PullTaskQueue {
     /// Return the next worker ID that will be assigned.
     ///
     /// Capture this *before* spawning a worker subprocess and pass it to
-    /// [`wait_for_worker_since`] to wait specifically for the new worker.
+    /// [`Self::wait_for_worker_since`] to wait specifically for the new worker.
     pub fn next_worker_generation(&self) -> u64 {
         self.next_worker_id.load(Ordering::Relaxed)
     }
