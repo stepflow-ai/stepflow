@@ -141,7 +141,9 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
         # Add StrEnum compat for Python 3.10: (str, Enum) changes str() behavior
         # compared to StrEnum, so we use a shim that preserves StrEnum semantics.
         # Handle both "(str, Enum)" bases and bare "StrEnum" imports.
-        if "class " in new_content and ("(str, Enum)" in new_content or "(StrEnum)" in new_content):
+        if "class " in new_content and (
+            "(str, Enum)" in new_content or "(StrEnum)" in new_content
+        ):
             new_content = new_content.replace("(str, Enum)", "(StrEnum)")
 
             # Build the compat shim for StrEnum
@@ -153,7 +155,7 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
                 "    from enum import Enum\n\n"
                 "    class StrEnum(str, Enum):\n"
                 "        def __str__(self) -> str:\n"
-                "            return self.value\n"
+                "            return self.value  # type: ignore[no-any-return]\n"
             )
 
             # Replace various import patterns that include StrEnum or Enum

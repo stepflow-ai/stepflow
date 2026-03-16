@@ -206,8 +206,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             }
             Some(TaskResult::Error(task_error)) => {
                 // Convert proto TaskErrorCode i32 to the TaskErrorCode enum.
-                let error_code = TaskErrorCode::try_from(task_error.code)
-                    .unwrap_or(TaskErrorCode::WorkerError);
+                let error_code =
+                    TaskErrorCode::try_from(task_error.code).unwrap_or(TaskErrorCode::WorkerError);
 
                 // Convert optional structured error data from proto Struct
                 let data = task_error.data.map(|s| {

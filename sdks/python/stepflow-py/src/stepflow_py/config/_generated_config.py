@@ -27,7 +27,7 @@ else:
 
     class StrEnum(str, Enum):
         def __str__(self) -> str:
-            return self.value
+            return self.value  # type: ignore[no-any-return]
 
 from typing import Annotated, Any, Literal, TypeAlias
 

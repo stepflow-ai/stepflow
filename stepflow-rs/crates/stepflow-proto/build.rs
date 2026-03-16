@@ -60,8 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.extern_path(".google.protobuf.Any", "::prost_wkt_types::Any");
     config.extern_path(".google.protobuf.FieldMask", "::prost_wkt_types::FieldMask");
 
-    tonic_rest_build::ProstSerdeConfig::new(&descriptor_bytes, &proto_file_refs)
-        .apply(&mut config);
+    tonic_rest_build::ProstSerdeConfig::new(&descriptor_bytes, &proto_file_refs).apply(&mut config);
 
     // Add schemars::JsonSchema derive and SCREAMING_SNAKE_CASE serde for TaskErrorCode.
     config.type_attribute(

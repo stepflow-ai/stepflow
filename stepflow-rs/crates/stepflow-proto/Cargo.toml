@@ -26,8 +26,7 @@ tonic-rest-build = "0.1.5"
 workspace = true
 
 [package.metadata.cargo-machete]
-# prost/prost-types/tonic-prost: used in protobuf-generated code loaded via include!() —
-#   machete cannot see through macros.
-# prost-build/tonic-prost-build/tonic-rest-build: build-time deps used in build.rs —
-#   machete does not verify build script usage.
-ignored = ["prost", "prost-types", "tonic-prost", "prost-build", "tonic-prost-build", "tonic-rest-build"]
+# prost/prost-types/prost-wkt-types/tonic-prost/schemars/serde: used in protobuf-generated
+#   code loaded via include!() — machete cannot see through macros.
+# prost-build/tonic-prost-build/tonic-rest-build: build-time deps used in build.rs.
+ignored = ["prost", "prost-types", "prost-wkt-types", "tonic-prost", "schemars", "serde", "prost-build", "tonic-prost-build", "tonic-rest-build"]

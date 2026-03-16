@@ -55,5 +55,6 @@ built = { version = "0.7", features = ["git2"] }
 workspace = true
 
 [package.metadata.cargo-machete]
-# built/tonic-rest-build: build-time deps used in build.rs — machete does not verify build script usage.
-ignored = ["built", "tonic-rest-build"]
+# tonic-rest: used in generated REST route code loaded via include!().
+# built/tonic-rest-build: build-time deps used in build.rs.
+ignored = ["tonic-rest", "built", "tonic-rest-build"]
