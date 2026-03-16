@@ -29,12 +29,14 @@ pub struct FlowError {
 
 impl std::fmt::Display for FlowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "error({}): {}",
-            self.code.as_str_name(),
-            self.message
-        )
+        // Use serde serialization name (e.g. "COMPONENT_FAILED") rather than
+        // the proto name (e.g. "TASK_ERROR_CODE_COMPONENT_FAILED").
+        let code_name = self
+            .code
+            .as_str_name()
+            .strip_prefix("TASK_ERROR_CODE_")
+            .unwrap_or(self.code.as_str_name());
+        write!(f, "error({code_name}): {}", self.message)
     }
 }
 

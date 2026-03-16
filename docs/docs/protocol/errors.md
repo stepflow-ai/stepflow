@@ -33,7 +33,7 @@ Errors in flow results use the `FlowError` structure:
   "error": {
     "code": "COMPONENT_FAILED",
     "message": "API call returned 503",
-    "data": { "stack": [...] }
+    "data": { "stack": [] }
   }
 }
 ```
