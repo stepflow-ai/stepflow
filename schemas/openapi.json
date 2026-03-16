@@ -2059,8 +2059,7 @@
             "format": "int64"
           },
           "message": {
-            "type": "string",
-            "default": ""
+            "type": "string"
           },
           "data": {
             "oneOf": [
@@ -2074,7 +2073,8 @@
           }
         },
         "required": [
-          "code"
+          "code",
+          "message"
         ]
       },
       "StatusEventStepsNeeded": {

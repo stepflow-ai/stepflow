@@ -22,7 +22,6 @@ use crate::workflow::ValueRef;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct FlowError {
     pub code: i64,
-    #[serde(default)]
     pub message: Cow<'static, str>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<ValueRef>,
