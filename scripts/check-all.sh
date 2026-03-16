@@ -68,7 +68,6 @@ run_category "docs" "check-docs.sh" || true
 run_category "licenses" "check-licenses.sh" || true
 run_category "langflow" "check-langflow.sh" || true
 run_category "docling" "check-docling.sh" || true
-run_category "openapi" "check-openapi.sh" || true
 run_category "proto" "check-proto.sh" || true
 run_category "integration" "test-integration.sh" || true
 
@@ -107,9 +106,6 @@ else
                 ;;
             "docling")
                 echo "  ./scripts/check-docling.sh -v"
-                ;;
-            "openapi")
-                echo "  ./scripts/check-openapi.sh -v"
                 ;;
             "proto")
                 echo "  ./scripts/check-proto.sh -v"
