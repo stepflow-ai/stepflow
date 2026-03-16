@@ -28,7 +28,9 @@ use serde::Serialize;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Step, StepId, ValueRef};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{DynPlugin, Plugin as _, PluginRouterExt as _, RunContext};
+use stepflow_plugin::{
+    DynPlugin, Plugin as _, PluginRouterExt as _, RunContext, TaskRegistryExt as _,
+};
 
 use crate::{ExecutionError, Result};
 
@@ -123,98 +125,6 @@ impl StepRunResult {
     }
 }
 
-/// Execute a single step asynchronously.
-///
-/// This is the core step execution function used by `StepRunner`.
-/// It handles:
-/// - Plugin execution
-/// - Error handling (useDefault, fail, retry)
-/// - Observability (tracing spans, logging)
-async fn execute_step_async(
-    plugin: &Arc<DynPlugin<'static>>,
-    step: &stepflow_core::workflow::Step,
-    resolved_component: &str,
-    input: ValueRef,
-    run_context: &Arc<RunContext>,
-    step_id: &StepId,
-    attempt: u32,
-) -> Result<FlowResult> {
-    use stepflow_observability::fastrace::prelude::*;
-
-    // Set step_id in diagnostic context for all logs in this step execution
-    let _step_guard = StepIdGuard::new(step.id.as_str());
-
-    // Create a span for this step execution
-    let span = Span::enter_with_local_parent("step")
-        .with_property(|| ("step_id", step.id.clone()))
-        .with_property(|| ("component", resolved_component.to_string()));
-
-    let result = async move {
-        log::debug!(
-            "Executing step: component={}, step_id={}",
-            resolved_component,
-            step.id
-        );
-
-        // Create a component from the resolved component name
-        let component = stepflow_core::workflow::Component::from_string(resolved_component);
-
-        // Execute the component
-        let result = match plugin
-            .execute(&component, run_context, Some(step_id), input, attempt)
-            .await
-        {
-            Ok(result) => result,
-            Err(error) => {
-                // Plugin returned Err — this is a transport/infrastructure error
-                // (subprocess crash, network timeout, etc.)
-                // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
-                // transport failures from component logic errors.
-                let mut flow_error = stepflow_core::FlowError::from_error_stack(
-                    error
-                        .change_context(ExecutionError::StepFailed {
-                            step: step.id.to_owned(),
-                        })
-                        .attach_printable(format!(
-                            "Component execution failed for step '{}'",
-                            step.id
-                        ))
-                        .attach_printable(format!("Component: {resolved_component}")),
-                );
-                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
-                // TODO: Map specific TransportError variants to sub-type codes
-                // (-32301 spawn, -32302 connection, -32303 protocol) for
-                // structured diagnostics.
-                FlowResult::Failed(flow_error)
-            }
-        };
-
-        log::debug!("Step execution completed: step_id={}", step.id);
-
-        Ok::<_, error_stack::Report<ExecutionError>>(result)
-    }
-    .in_span(span)
-    .await?;
-
-    match &result {
-        FlowResult::Failed(error) => match step.on_error_or_default() {
-            stepflow_core::workflow::ErrorAction::UseDefault { default_value } => {
-                log::debug!(
-                    "Step {} failed but using default value: {:?}",
-                    step.id,
-                    error
-                );
-                let value = default_value.clone().unwrap_or(serde_json::Value::Null);
-                Ok(FlowResult::Success(ValueRef::new(value)))
-            }
-            // Fail and Retry both pass through — the executor handles retry decisions
-            stepflow_core::workflow::ErrorAction::Fail
-            | stepflow_core::workflow::ErrorAction::Retry { .. } => Ok(result),
-        },
-        _ => Ok(result),
-    }
-}
-
 /// Executes a single step within a workflow.
 ///
 /// `StepRunner` encapsulates all the setup needed to execute a step:
@@ -235,6 +145,8 @@ pub struct StepRunner {
     step: Step,
     /// Index of the step in the flow.
     step_index: usize,
+    /// Unique task identifier for TaskRegistry tracking.
+    task_id: String,
     /// Resolved step input (may be Success or Failed).
     step_input: FlowResult,
     /// Run context containing run hierarchy, environment, flow, and subflow submission.
@@ -254,6 +166,7 @@ impl StepRunner {
     /// the flow and flow_id, environment access, and optionally a subflow submitter.
     pub fn new(
         step_index: usize,
+        task_id: String,
         step_input: FlowResult,
         run_context: Arc<RunContext>,
         attempt: u32,
@@ -262,6 +175,7 @@ impl StepRunner {
         Self {
             step,
             step_index,
+            task_id,
             step_input,
             run_context,
             attempt,
@@ -279,12 +193,17 @@ impl StepRunner {
     /// Callers should handle these differently:
     /// - Business failures (`FlowResult::Failed`) are expected and should be recorded
     /// - System errors (`Err`) indicate infrastructure issues and may warrant logging/alerting
-    pub async fn run(self) -> Result<StepRunResult> {
+    pub async fn run(mut self) -> Result<StepRunResult> {
         let step_id = StepId::for_step(self.run_context.flow.clone(), self.step_index);
         let component = self.step.component.to_string();
 
-        // Handle input resolution failure (business logic failure)
-        let input = match self.step_input {
+        // Handle input resolution failure (business logic failure).
+        // Take step_input out of self so we can still borrow self for execute().
+        let step_input = std::mem::replace(
+            &mut self.step_input,
+            FlowResult::Success(ValueRef::new(serde_json::Value::Null)),
+        );
+        let input = match step_input {
             FlowResult::Success(value) => value,
             FlowResult::Failed(error) => {
                 return Ok(StepRunResult::new(
@@ -303,17 +222,134 @@ impl StepRunner {
             .change_context(ExecutionError::RouterError)?;
 
         // Execute the step (system error if infrastructure fails)
-        let outcome = execute_step_async(
-            &plugin,
-            &self.step,
-            &resolved_component,
-            input,
-            &self.run_context,
-            &step_id,
-            self.attempt,
-        )
-        .await?;
+        let outcome = self
+            .execute(&plugin, &resolved_component, input, &step_id)
+            .await?;
 
         Ok(StepRunResult::new(step_id, component, outcome))
+    }
+
+    /// Dispatch the step to the plugin and await the result.
+    ///
+    /// Handles:
+    /// - Task registration in the shared TaskRegistry
+    /// - Plugin dispatch via `start_task`
+    /// - Result collection from the TaskRegistry
+    /// - Error handling (useDefault, fail, retry)
+    /// - Observability (tracing spans, logging)
+    async fn execute(
+        &self,
+        plugin: &Arc<DynPlugin<'static>>,
+        resolved_component: &str,
+        input: ValueRef,
+        step_id: &StepId,
+    ) -> Result<FlowResult> {
+        use stepflow_observability::fastrace::prelude::*;
+
+        let step = &self.step;
+        let task_id = &self.task_id;
+        let run_context = &self.run_context;
+        let attempt = self.attempt;
+
+        // Set step_id in diagnostic context for all logs in this step execution
+        let _step_guard = StepIdGuard::new(step.id.as_str());
+
+        // Create a span for this step execution
+        let span = Span::enter_with_local_parent("step")
+            .with_property(|| ("step_id", step.id.clone()))
+            .with_property(|| ("component", resolved_component.to_string()));
+
+        let result = async move {
+            log::debug!(
+                "Executing step: component={}, step_id={}, task_id={}",
+                resolved_component,
+                step.id,
+                task_id,
+            );
+
+            // Create a component from the resolved component name
+            let component = stepflow_core::workflow::Component::from_string(resolved_component);
+
+            // Register task in the shared TaskRegistry and get result receiver.
+            // This must happen before start_task to avoid a race where the result
+            // arrives before we're listening (e.g., for synchronous plugins).
+            let registry = run_context.env().task_registry();
+            let rx = registry.register(task_id.to_string());
+
+            // Dispatch the task to the plugin
+            if let Err(error) = plugin
+                .start_task(
+                    task_id,
+                    &component,
+                    run_context,
+                    Some(step_id),
+                    input,
+                    attempt,
+                )
+                .await
+            {
+                // Plugin returned Err — this is a transport/infrastructure error
+                // (subprocess crash, network timeout, etc.)
+                // Clean up the registry entry since no result will arrive.
+                registry.remove(task_id);
+
+                // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
+                // transport failures from component logic errors.
+                let mut flow_error = stepflow_core::FlowError::from_error_stack(
+                    error
+                        .change_context(ExecutionError::StepFailed {
+                            step: step.id.to_owned(),
+                        })
+                        .attach_printable(format!(
+                            "Component execution failed for step '{}'",
+                            step.id
+                        ))
+                        .attach_printable(format!("Component: {resolved_component}")),
+                );
+                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
+                return Ok(FlowResult::Failed(flow_error));
+            }
+
+            // Await the result from the TaskRegistry. For synchronous plugins
+            // (builtins, protocol, MCP), the result is already available. For
+            // queue-based plugins (gRPC pull), this blocks until the worker
+            // delivers the result via CompleteTask.
+            let result = match rx.await {
+                Ok(result) => result,
+                Err(_) => {
+                    // Sender was dropped without sending — task was cleaned up
+                    // (e.g., by a timeout handler or cancellation).
+                    let flow_error = stepflow_core::FlowError::new(
+                        stepflow_core::ErrorCode::TRANSPORT_ERROR,
+                        format!("task '{}' was cancelled or timed out", task_id),
+                    );
+                    FlowResult::Failed(flow_error)
+                }
+            };
+
+            log::debug!("Step execution completed: step_id={}", step.id);
+
+            Ok::<_, error_stack::Report<ExecutionError>>(result)
+        }
+        .in_span(span)
+        .await?;
+
+        match &result {
+            FlowResult::Failed(error) => match step.on_error_or_default() {
+                stepflow_core::workflow::ErrorAction::UseDefault { default_value } => {
+                    log::debug!(
+                        "Step {} failed but using default value: {:?}",
+                        step.id,
+                        error
+                    );
+                    let value = default_value.clone().unwrap_or(serde_json::Value::Null);
+                    Ok(FlowResult::Success(ValueRef::new(value)))
+                }
+                // Fail and Retry both pass through — the executor handles retry decisions
+                stepflow_core::workflow::ErrorAction::Fail
+                | stepflow_core::workflow::ErrorAction::Retry { .. } => Ok(result),
+            },
+            _ => Ok(result),
+        }
     }
 }

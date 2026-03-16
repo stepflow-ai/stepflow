@@ -33,6 +33,7 @@ use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
     PutBlobRequest, StartTaskRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
 };
+use stepflow_plugin::TaskRegistry;
 
 /// Create an in-memory environment suitable for the gRPC server.
 async fn test_env() -> Arc<stepflow_core::StepflowEnvironment> {
@@ -48,9 +49,11 @@ async fn setup_two_queue_server() -> (
     Arc<PullTaskQueue>,
     Arc<PullTaskQueue>,
     String,
+    Arc<TaskRegistry>,
 ) {
     let env = test_env().await;
-    let server = Arc::new(StepflowGrpcServer::new());
+    let task_registry = Arc::new(TaskRegistry::new());
+    let server = Arc::new(StepflowGrpcServer::new(task_registry.clone()));
 
     let python_queue = Arc::new(PullTaskQueue::new());
     let node_queue = Arc::new(PullTaskQueue::new());
@@ -60,7 +63,7 @@ async fn setup_two_queue_server() -> (
 
     let address = server.ensure_started(&env, None).await.unwrap();
 
-    (server, python_queue, node_queue, address)
+    (server, python_queue, node_queue, address, task_registry)
 }
 
 fn endpoint(addr: &str) -> tonic::transport::Endpoint {
@@ -83,7 +86,8 @@ fn make_component(name: &str) -> ComponentInfo {
 #[tokio::test]
 async fn test_two_plugins_share_same_address() {
     let env = test_env().await;
-    let server = Arc::new(StepflowGrpcServer::new());
+    let task_registry = Arc::new(TaskRegistry::new());
+    let server = Arc::new(StepflowGrpcServer::new(task_registry));
 
     // First plugin calls ensure_started
     let addr1 = server.ensure_started(&env, None).await.unwrap();
@@ -99,7 +103,8 @@ async fn test_two_plugins_share_same_address() {
 
 #[tokio::test]
 async fn test_queue_isolation() {
-    let (_server, python_queue, node_queue, address) = setup_two_queue_server().await;
+    let (_server, python_queue, node_queue, address, _task_registry) =
+        setup_two_queue_server().await;
 
     let channel = endpoint(&address).connect().await.unwrap();
 
@@ -172,7 +177,7 @@ async fn test_queue_isolation() {
 
 #[tokio::test]
 async fn test_unknown_queue_returns_not_found() {
-    let (_server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (_server, _pq, _nq, address, _task_registry) = setup_two_queue_server().await;
     let channel = endpoint(&address).connect().await.unwrap();
     let mut client = TasksServiceClient::new(channel);
 
@@ -191,10 +196,13 @@ async fn test_unknown_queue_returns_not_found() {
 
 #[tokio::test]
 async fn test_complete_task_success_round_trip() {
-    let (server, python_queue, _node_queue, address) = setup_two_queue_server().await;
+    let (server, python_queue, _node_queue, address, task_registry) =
+        setup_two_queue_server().await;
 
-    // Register a task in PendingTasks and get the receiver
-    let rx = server.pending_tasks().register(
+    // Register a task in TaskRegistry for result delivery
+    let rx = task_registry.register("task-1".to_string());
+    // Track the task in PendingTasks for gRPC timeout/heartbeat tracking
+    server.pending_tasks().track(
         "task-1".to_string(),
         "/python/transform".to_string(),
         Duration::from_secs(30),
@@ -267,16 +275,19 @@ async fn test_complete_task_success_round_trip() {
 
 #[tokio::test]
 async fn test_complete_task_error_code_mapping() {
-    let (server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
 
-    // Register tasks for different error codes
-    let rx_component_failed = server.pending_tasks().register(
+    // Register tasks in TaskRegistry for result delivery
+    let rx_component_failed = task_registry.register("task-err-component".to_string());
+    let rx_invalid_input = task_registry.register("task-err-input".to_string());
+    // Track tasks in PendingTasks for gRPC timeout/heartbeat tracking
+    server.pending_tasks().track(
         "task-err-component".to_string(),
         "/python/fail".to_string(),
         Duration::from_secs(30),
         None,
     );
-    let rx_invalid_input = server.pending_tasks().register(
+    server.pending_tasks().track(
         "task-err-input".to_string(),
         "/python/validate".to_string(),
         Duration::from_secs(30),
@@ -351,7 +362,7 @@ async fn test_complete_task_error_code_mapping() {
 
 #[tokio::test]
 async fn test_complete_unknown_task_returns_not_found() {
-    let (_server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (_server, _pq, _nq, address, _task_registry) = setup_two_queue_server().await;
     let channel = endpoint(&address).connect().await.unwrap();
     let mut orch_client = OrchestratorServiceClient::new(channel);
 
@@ -394,7 +405,7 @@ async fn test_complete_unknown_task_returns_not_found() {
 
 #[tokio::test]
 async fn test_blob_service_round_trip() {
-    let (_server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (_server, _pq, _nq, address, _task_registry) = setup_two_queue_server().await;
     let channel = endpoint(&address).connect().await.unwrap();
     let mut blob_client = BlobServiceClient::new(channel);
 
@@ -467,7 +478,7 @@ async fn test_blob_service_round_trip() {
 
 #[tokio::test]
 async fn test_blob_not_found() {
-    let (_server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (_server, _pq, _nq, address, _task_registry) = setup_two_queue_server().await;
     let channel = endpoint(&address).connect().await.unwrap();
     let mut blob_client = BlobServiceClient::new(channel);
 
@@ -483,10 +494,12 @@ async fn test_blob_not_found() {
 
 #[tokio::test]
 async fn test_start_task_and_heartbeat() {
-    let (server, _pq, _nq, address) = setup_two_queue_server().await;
+    let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
 
-    // Register a task
-    let _rx = server.pending_tasks().register(
+    // Register a task in TaskRegistry for result delivery
+    let _rx = task_registry.register("task-hb".to_string());
+    // Track the task in PendingTasks for gRPC timeout/heartbeat tracking
+    server.pending_tasks().track(
         "task-hb".to_string(),
         "/python/slow".to_string(),
         Duration::from_secs(30),

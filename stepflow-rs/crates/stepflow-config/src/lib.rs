@@ -201,9 +201,15 @@ impl StepflowConfig {
             env.insert(id);
         }
 
+        // Insert the shared task registry for result delivery.
+        let task_registry = Arc::new(stepflow_plugin::TaskRegistry::new());
+        env.insert(task_registry.clone());
+
         // Insert the gRPC server for pull-based plugins.
         // The server is started lazily when the first pull plugin initializes.
-        env.insert(Arc::new(stepflow_grpc::StepflowGrpcServer::new()));
+        env.insert(Arc::new(stepflow_grpc::StepflowGrpcServer::new(
+            task_registry,
+        )));
 
         initialize_environment(&env)
             .await

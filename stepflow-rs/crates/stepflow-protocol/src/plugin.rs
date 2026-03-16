@@ -24,7 +24,7 @@ use stepflow_core::{
 };
 use stepflow_plugin::{
     BlobApiUrl, DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext,
-    StepflowEnvironment,
+    StepflowEnvironment, TaskRegistryExt as _,
 };
 use stepflow_state::blob_ref_ops;
 use tokio::sync::RwLock;
@@ -456,14 +456,15 @@ impl Plugin for StepflowPlugin {
         Ok(response.info)
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
-    ) -> Result<FlowResult> {
+    ) -> Result<()> {
         // Blobify large input fields if the worker supports blob refs
         let should_blobify = self.should_blobify().await;
         let execute_input = if should_blobify {
@@ -487,6 +488,8 @@ impl Plugin for StepflowPlugin {
 
         // Get the client handle (will create if not initialized)
         let client_handle = self.get_or_create_client_handle().await?;
+
+        let registry = run_context.env().task_registry();
 
         // Single attempt — the orchestrator handles retries and provides the
         // monotonically increasing attempt number.
@@ -521,7 +524,8 @@ impl Plugin for StepflowPlugin {
                         message: message.clone().into(),
                         data: data.clone().map(ValueRef::new),
                     };
-                    return Ok(FlowResult::Failed(flow_error));
+                    registry.complete(task_id, FlowResult::Failed(flow_error));
+                    return Ok(());
                 }
                 // True transport error — propagate as Err for the step runner
                 // to tag as TRANSPORT_ERROR.
@@ -543,7 +547,8 @@ impl Plugin for StepflowPlugin {
         } else {
             response.output
         };
-        Ok(FlowResult::Success(output))
+        registry.complete(task_id, FlowResult::Success(output));
+        Ok(())
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

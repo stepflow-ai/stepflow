@@ -18,6 +18,7 @@ mod execution_config;
 mod plugin;
 pub mod routing;
 mod subflow;
+mod task_registry;
 
 pub use context::RunContext;
 pub use environment_builder::{
@@ -30,6 +31,7 @@ pub use plugin::{DynPlugin, Plugin, PluginConfig};
 pub use subflow::{
     SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,
 };
+pub use task_registry::{TaskRegistry, TaskRegistryExt};
 
 // Re-export StepflowEnvironment from core for convenience
 pub use stepflow_core::StepflowEnvironment;

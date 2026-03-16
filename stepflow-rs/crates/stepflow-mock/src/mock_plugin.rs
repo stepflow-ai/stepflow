@@ -23,6 +23,7 @@ use stepflow_core::{
 };
 use stepflow_plugin::{
     DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
+    TaskRegistryExt as _,
 };
 use tokio::sync::Mutex;
 
@@ -221,14 +222,15 @@ impl Plugin for MockPlugin {
         })
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
-        _run_context: &Arc<RunContext>,
+        run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
         input: ValueRef,
         _attempt: u32,
-    ) -> Result<FlowResult> {
+    ) -> Result<()> {
         let mock_component = self
             .components
             .get(component)
@@ -270,9 +272,13 @@ impl Plugin for MockPlugin {
                 format!("No behavior defined for {component} on {input_value}")
             })?;
 
+        let registry = run_context.env().task_registry();
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),
-            MockComponentBehavior::Result { result } => Ok(result.clone()),
+            MockComponentBehavior::Result { result } => {
+                registry.complete(task_id, result.clone());
+                Ok(())
+            }
         }
     }
 

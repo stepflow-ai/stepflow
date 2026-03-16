@@ -191,17 +191,16 @@ mod tests {
             })
         }
 
-        async fn execute(
+        async fn start_task(
             &self,
+            _task_id: &str,
             _component: &stepflow_core::workflow::Component,
             _run_context: &std::sync::Arc<crate::RunContext>,
             _step: Option<&stepflow_core::workflow::StepId>,
             _input: stepflow_core::workflow::ValueRef,
             _attempt: u32,
-        ) -> crate::Result<stepflow_core::FlowResult> {
-            Ok(stepflow_core::FlowResult::Success(
-                stepflow_core::workflow::ValueRef::new(json!({})),
-            ))
+        ) -> crate::Result<()> {
+            Ok(())
         }
 
         async fn prepare_for_retry(&self) -> crate::Result<()> {

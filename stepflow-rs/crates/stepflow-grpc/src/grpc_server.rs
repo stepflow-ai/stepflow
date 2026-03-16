@@ -115,22 +115,20 @@ impl std::fmt::Debug for StepflowGrpcServer {
     }
 }
 
-impl Default for StepflowGrpcServer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl StepflowGrpcServer {
     /// Create a new server (not yet started).
+    ///
+    /// The `task_registry` is the shared in-memory registry for result
+    /// delivery. It is passed to [`PendingTasks`] which adds gRPC-specific
+    /// timeout and heartbeat tracking on top.
     ///
     /// Call [`ensure_started`] to bind and start the gRPC server.
     ///
     /// [`ensure_started`]: StepflowGrpcServer::ensure_started
-    pub fn new() -> Self {
+    pub fn new(task_registry: Arc<stepflow_plugin::TaskRegistry>) -> Self {
         Self {
             queue_registry: Arc::new(QueueRegistry::default()),
-            pending_tasks: PendingTasks::new(),
+            pending_tasks: PendingTasks::new(task_registry),
             state: Mutex::new(None),
         }
     }

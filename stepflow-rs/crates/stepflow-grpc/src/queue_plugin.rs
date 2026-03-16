@@ -24,7 +24,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use error_stack::ResultExt as _;
-use stepflow_core::FlowResult;
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, StepId, ValueRef};
 use stepflow_plugin::{
@@ -116,17 +115,15 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         self.transport.component_info(component.path()).await
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
-    ) -> Result<FlowResult> {
-        // Generate a unique task ID
-        let task_id = uuid::Uuid::now_v7().to_string();
-
+    ) -> Result<()> {
         // Build observability context
         let observability = build_observability_context(run_context, step);
 
@@ -148,7 +145,7 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         let proto_input = value_ref_to_proto(&input)?;
 
         let task = proto::TaskAssignment {
-            task_id: task_id.clone(),
+            task_id: task_id.to_string(),
             request: Some(proto::ComponentExecuteRequest {
                 component: component.path().to_string(),
                 input: Some(proto_input),
@@ -161,11 +158,11 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
             execution_timeout_secs: self.execution_timeout.map_or(0, |d| d.as_secs() as u32),
         };
 
-        // Register waiter before sending (avoids race condition where
-        // CompleteTask arrives before we're listening).
-        // The registry handles queue timeout internally via a watcher task.
-        let rx = self.registry.register(
-            task_id.clone(),
+        // Set up timeout tracking in PendingTasks (heartbeat, queue timeout).
+        // The task is already registered in the shared TaskRegistry by the executor;
+        // PendingTasks adds gRPC-specific lifecycle tracking on top.
+        self.registry.track(
+            task_id.to_string(),
             component.path().to_string(),
             self.queue_timeout,
             self.execution_timeout,
@@ -173,35 +170,12 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
 
         // Dispatch the task via the configured transport
         if let Err(e) = self.transport.send_task(task).await {
-            // Clean up the registration on send failure
-            self.registry.remove(&task_id);
+            // Clean up the tracking on send failure
+            self.registry.untrack(task_id);
             return Err(e);
         }
 
-        // Wait for the result. The registry's timeout watchers will
-        // deliver a FlowResult::Failed if queue or heartbeat timeouts
-        // expire, so we just await the oneshot.
-        //
-        // As a safety net, if execution_timeout is set, apply a generous
-        // outer timeout to prevent truly indefinite hangs.
-        let safety_timeout = self.queue_timeout
-            + self.execution_timeout.unwrap_or(Duration::from_secs(3600))
-            + Duration::from_secs(30); // grace period
-
-        match tokio::time::timeout(safety_timeout, rx).await {
-            Ok(Ok(result)) => Ok(result),
-            Ok(Err(_)) => {
-                // Sender was dropped — task was cleaned up
-                Err(error_stack::report!(PluginError::Execution)
-                    .attach_printable(format!("task '{task_id}' was cancelled")))
-            }
-            Err(_elapsed) => {
-                // Safety net timeout — should not normally fire
-                self.registry.remove(&task_id);
-                Err(error_stack::report!(PluginError::Execution)
-                    .attach_printable(format!("task '{task_id}' exceeded safety timeout")))
-            }
-        }
+        Ok(())
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

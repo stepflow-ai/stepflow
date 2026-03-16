@@ -16,6 +16,7 @@ workspace = true
 doctest = false
 
 [dependencies]
+dashmap.workspace = true
 dynosaur.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true

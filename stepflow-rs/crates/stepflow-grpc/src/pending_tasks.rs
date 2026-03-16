@@ -10,18 +10,35 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Two-phase task tracking for queue-based component execution.
+//! gRPC-specific task lifecycle tracking for queue-based component execution.
+//!
+//! [`PendingTasks`] augments the shared [`TaskRegistry`] with gRPC-specific
+//! concerns: phase transitions, heartbeat monitoring, and timeout detection.
+//!
+//! **Separation of concerns:**
+//! - [`TaskRegistry`] (in `stepflow-plugin`) owns the oneshot channels for
+//!   result delivery. The executor registers task_ids there and awaits results.
+//! - `PendingTasks` (this module) tracks *how* each task is progressing through
+//!   the gRPC lifecycle: phase (Queued → Executing), heartbeat liveness, and
+//!   timeout deadlines. It holds its own `DashMap` keyed by task_id with only
+//!   phase/timeout/heartbeat state — no oneshot channels.
+//! - When a timeout fires, `PendingTasks` delivers a failure result through
+//!   `TaskRegistry.complete()`. When a worker calls CompleteTask,
+//!   `PendingTasks.complete()` records metrics, removes its tracking entry,
+//!   and delegates result delivery to `TaskRegistry.complete()`.
+//!
+//! # Task lifecycle
 //!
 //! [`PendingTasks`] tracks task lifecycle through two phases:
 //!
 //! 1. **Queued** — task dispatched, waiting for `StartTask` from a worker.
-//!    Subject to a per-task queue timeout set at [`register`] time.
+//!    Subject to a per-task queue timeout set at [`track`] time.
 //!
 //! 2. **Executing** — worker called `StartTask`, now running the component.
 //!    Subject to a heartbeat timeout (reset by each `TaskHeartbeat`).
 //!    Optionally subject to an execution timeout cap.
 //!
-//! # Design
+//! # Implementation
 //!
 //! Uses lock-free concurrent structures for all hot paths:
 //! - [`DashMap`] for the task table (sharded, no global lock).
@@ -41,7 +58,8 @@
 //! The scanner task is stored in `PendingTasks` and aborted on [`shutdown`] or
 //! when the last `Arc<PendingTasks>` is dropped.
 //!
-//! [`register`]: PendingTasks::register
+//! [`TaskRegistry`]: stepflow_plugin::TaskRegistry
+//! [`track`]: PendingTasks::track
 //! [`shutdown`]: PendingTasks::shutdown
 
 mod heartbeat_tracker;
@@ -54,7 +72,7 @@ use std::time::Duration;
 use dashmap::DashMap;
 use futures::StreamExt as _;
 use stepflow_core::{ErrorCode, FlowError, FlowResult};
-use tokio::sync::oneshot;
+use stepflow_plugin::TaskRegistry;
 use tokio::time::MissedTickBehavior;
 
 /// Heartbeat crash-detection timeout. Executing tasks that do not send a
@@ -83,7 +101,6 @@ enum TaskPhase {
 /// Internal entry for a tracked task.
 struct TaskEntry {
     phase: TaskPhase,
-    sender: Option<oneshot::Sender<FlowResult>>,
     /// Component path for metrics labeling.
     component: String,
     /// Optional cap on total execution time, stored at registration and applied
@@ -120,11 +137,13 @@ pub enum TimeoutKind {
 pub struct PendingTasks {
     tasks: DashMap<String, TaskEntry>,
     heartbeat_tracker: HeartbeatTracker,
+    /// Shared task registry for result delivery.
+    task_registry: Arc<TaskRegistry>,
     /// Sender for queue-timeout deadlines. Per-task timeouts are pushed at
-    /// [`register`] time; the `DelayQueue` in the scanner yields them in
+    /// [`track`] time; the `DelayQueue` in the scanner yields them in
     /// deadline order regardless of push order.
     ///
-    /// [`register`]: PendingTasks::register
+    /// [`track`]: PendingTasks::track
     deadline_tx: tokio::sync::mpsc::UnboundedSender<(String, Duration)>,
     /// Background scanner task (heartbeat + queue timeout combined).
     /// Aborted on [`shutdown`] or [`Drop`].
@@ -151,12 +170,17 @@ impl Drop for PendingTasks {
 
 impl PendingTasks {
     /// Create a new registry and start the background scanner task.
-    pub fn new() -> Arc<Self> {
+    ///
+    /// The `task_registry` is the shared in-memory registry used for result
+    /// delivery. Timeouts detected by this tracker will deliver failures
+    /// through the registry.
+    pub fn new(task_registry: Arc<TaskRegistry>) -> Arc<Self> {
         let (deadline_tx, deadline_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let registry = Arc::new(Self {
             tasks: DashMap::new(),
             heartbeat_tracker: HeartbeatTracker::new(),
+            task_registry,
             deadline_tx,
             scanner: Mutex::new(None),
         });
@@ -170,7 +194,7 @@ impl PendingTasks {
 
     /// Abort the background scanner task.
     ///
-    /// No further timeouts will fire after this returns. Existing registered
+    /// No further timeouts will fire after this returns. Existing tracked
     /// tasks remain in the map and can still be completed via [`complete`].
     ///
     /// [`complete`]: PendingTasks::complete
@@ -180,25 +204,25 @@ impl PendingTasks {
         }
     }
 
-    /// Register a new task in the Queued phase.
+    /// Start tracking a task's gRPC lifecycle (phase transitions, timeouts,
+    /// heartbeats).
+    ///
+    /// The task must already be registered in the shared [`TaskRegistry`]
+    /// by the executor. This method only sets up gRPC-specific timeout and
+    /// heartbeat tracking.
     ///
     /// - `queue_timeout` — how long the task may wait before a worker calls
     ///   StartTask.  Must be greater than zero.
     /// - `execution_timeout` — optional cap on execution time from StartTask
     ///   to CompleteTask.  `None` means no cap (heartbeat-only crash detection).
-    ///
-    /// Returns the receiver that will deliver the final result (success,
-    /// failure, or timeout).
-    pub fn register(
+    pub fn track(
         &self,
         task_id: String,
         component: String,
         queue_timeout: Duration,
         execution_timeout: Option<Duration>,
-    ) -> oneshot::Receiver<FlowResult> {
+    ) {
         debug_assert!(!queue_timeout.is_zero(), "queue_timeout must be > 0");
-
-        let (tx, rx) = oneshot::channel();
 
         self.tasks.insert(
             task_id.clone(),
@@ -206,7 +230,6 @@ impl PendingTasks {
                 phase: TaskPhase::Queued {
                     dispatched_at: tokio::time::Instant::now(),
                 },
-                sender: Some(tx),
                 component,
                 execution_timeout,
             },
@@ -215,20 +238,28 @@ impl PendingTasks {
         if self.deadline_tx.send((task_id, queue_timeout)).is_err() {
             log::debug!("deadline_tx send failed: scanner task has shut down");
         }
+    }
 
-        rx
+    /// Remove tracking for a task without completing it.
+    ///
+    /// Used when task dispatch fails and tracking should be cleaned up.
+    /// Does NOT remove the task from the shared TaskRegistry (the executor
+    /// handles that).
+    pub fn untrack(&self, task_id: &str) {
+        self.tasks.remove(task_id);
+        self.heartbeat_tracker.remove(task_id);
     }
 
     /// Transition a task from Queued to Executing (called by StartTask RPC).
     ///
-    /// The execution timeout stored at [`register`] time is applied here.
+    /// The execution timeout stored at [`track`] time is applied here.
     ///
     /// Returns:
     /// - `Some(false)` — task transitioned successfully, worker should execute.
     /// - `Some(true)` — task already started (idempotent).
     /// - `None` — task_id not found (already timed out or completed).
     ///
-    /// [`register`]: PendingTasks::register
+    /// [`track`]: PendingTasks::track
     pub fn start_task(&self, task_id: &str) -> Option<bool> {
         let mut entry = self.tasks.get_mut(task_id)?;
 
@@ -275,55 +306,49 @@ impl PendingTasks {
         }
     }
 
-    /// Complete a task by sending its result to the waiting caller.
+    /// Complete a task: record metrics, remove tracking, and deliver the
+    /// result via the shared [`TaskRegistry`].
     ///
-    /// Returns `true` if the task was found and the result delivered,
-    /// `false` if the task_id was not found (already timed out or removed).
+    /// Returns `true` if the result was delivered to the registry (the
+    /// executor received the result), `false` if the task_id was not found
+    /// in the registry (already completed, timed out, or removed by the
+    /// executor).
     pub fn complete(&self, task_id: &str, result: FlowResult) -> bool {
         let removed = self.tasks.remove(task_id);
         self.heartbeat_tracker.remove(task_id);
 
-        let Some((_, mut entry)) = removed else {
-            return false;
-        };
-
-        match &entry.phase {
-            TaskPhase::Executing { started_at, .. } => {
-                stepflow_observability::metrics::record_task_execution_duration(
-                    &entry.component,
-                    started_at.elapsed().as_secs_f64(),
-                );
+        // Record metrics if we were tracking this task.
+        if let Some((_, entry)) = removed {
+            match &entry.phase {
+                TaskPhase::Executing { started_at, .. } => {
+                    stepflow_observability::metrics::record_task_execution_duration(
+                        &entry.component,
+                        started_at.elapsed().as_secs_f64(),
+                    );
+                }
+                TaskPhase::Queued { dispatched_at } => {
+                    // Completed without StartTask (direct CompleteTask).
+                    stepflow_observability::metrics::record_task_queue_duration(
+                        &entry.component,
+                        dispatched_at.elapsed().as_secs_f64(),
+                    );
+                }
             }
-            TaskPhase::Queued { dispatched_at } => {
-                // Completed without StartTask (direct CompleteTask).
-                stepflow_observability::metrics::record_task_queue_duration(
-                    &entry.component,
-                    dispatched_at.elapsed().as_secs_f64(),
-                );
+
+            match &result {
+                FlowResult::Success(_) => {
+                    stepflow_observability::metrics::record_task_success(&entry.component);
+                }
+                FlowResult::Failed(_) => {
+                    stepflow_observability::metrics::record_task_failure(&entry.component);
+                }
             }
         }
 
-        match &result {
-            FlowResult::Success(_) => {
-                stepflow_observability::metrics::record_task_success(&entry.component);
-            }
-            FlowResult::Failed(_) => {
-                stepflow_observability::metrics::record_task_failure(&entry.component);
-            }
-        }
-
-        if let Some(sender) = entry.sender.take() {
-            let _ = sender.send(result);
-        }
-        true
-    }
-
-    /// Remove a task registration without completing it.
-    ///
-    /// Used when the plugin side decides to cancel or clean up.
-    pub fn remove(&self, task_id: &str) {
-        self.tasks.remove(task_id);
-        self.heartbeat_tracker.remove(task_id);
+        // Deliver via the shared registry. Returns false if the executor
+        // no longer has a listener for this task_id (e.g., already timed
+        // out or completed via another path).
+        self.task_registry.complete(task_id, result)
     }
 
     /// Number of tasks currently tracked (any phase).
@@ -352,7 +377,7 @@ impl PendingTasks {
         };
         self.heartbeat_tracker.remove(task_id);
 
-        let Some((_, mut entry)) = removed else {
+        let Some((_, entry)) = removed else {
             return; // Task already completed, started, or removed.
         };
 
@@ -376,14 +401,13 @@ impl PendingTasks {
 
         log::warn!("{message}");
 
-        // Use transport error code so the retry system classifies these as
-        // transport errors and triggers subprocess restart via prepare_for_retry().
-        if let Some(sender) = entry.sender.take() {
-            let _ = sender.send(FlowResult::Failed(FlowError::new(
-                ErrorCode::TRANSPORT_ERROR,
-                message,
-            )));
-        }
+        // Deliver timeout failure via the shared TaskRegistry. Uses transport
+        // error code so the retry system classifies these as transport errors
+        // and triggers subprocess restart via prepare_for_retry().
+        self.task_registry.complete(
+            task_id,
+            FlowResult::Failed(FlowError::new(ErrorCode::TRANSPORT_ERROR, message)),
+        );
     }
 
     /// Heartbeat scanner body — called once per `HEARTBEAT_TIMEOUT` cycle.
@@ -487,97 +511,94 @@ mod tests {
 
     const QUEUE_TIMEOUT: Duration = Duration::from_millis(50);
 
+    /// Helper: create a TaskRegistry + PendingTasks pair, track a task,
+    /// and return the (pending_tasks, task_registry_rx) tuple.
+    fn setup() -> (Arc<PendingTasks>, Arc<TaskRegistry>) {
+        let task_registry = Arc::new(TaskRegistry::new());
+        let pending = PendingTasks::new(task_registry.clone());
+        (pending, task_registry)
+    }
+
     #[tokio::test]
-    async fn test_register_and_complete() {
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+    async fn test_track_and_complete() {
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
-        assert_eq!(registry.pending_count(), 1);
+        assert_eq!(pending.pending_count(), 1);
 
         let value = ValueRef::new(serde_json::json!({"result": "ok"}));
-        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
+        assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
 
-        assert_eq!(registry.pending_count(), 0);
+        assert_eq!(pending.pending_count(), 0);
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
     }
 
     #[tokio::test]
     async fn test_complete_unknown_task() {
-        let registry = PendingTasks::new();
+        let (pending, _task_registry) = setup();
         let value = ValueRef::new(serde_json::json!(null));
-        assert!(!registry.complete("nonexistent", FlowResult::Success(value)));
+        assert!(!pending.complete("nonexistent", FlowResult::Success(value)));
     }
 
     #[tokio::test]
-    async fn test_remove_task() {
-        let registry = PendingTasks::new();
-        let _rx = registry.register(
+    async fn test_untrack_task() {
+        let (pending, task_registry) = setup();
+        let _rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
-        assert_eq!(registry.pending_count(), 1);
-        registry.remove("task-1");
-        assert_eq!(registry.pending_count(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_receiver_dropped_before_complete() {
-        let registry = PendingTasks::new();
-        let rx = registry.register(
-            "task-1".to_string(),
-            "test_component".to_string(),
-            QUEUE_TIMEOUT,
-            None,
-        );
-        drop(rx);
-        // complete() should succeed even though nobody is listening
-        let value = ValueRef::new(serde_json::json!(null));
-        assert!(registry.complete("task-1", FlowResult::Success(value)));
+        assert_eq!(pending.pending_count(), 1);
+        pending.untrack("task-1");
+        assert_eq!(pending.pending_count(), 0);
     }
 
     #[tokio::test]
     async fn test_full_lifecycle() {
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
 
-        assert!(registry.start_task("task-1").is_some());
-        assert!(registry.heartbeat("task-1").is_some());
+        assert!(pending.start_task("task-1").is_some());
+        assert!(pending.heartbeat("task-1").is_some());
 
         let value = ValueRef::new(serde_json::json!({"done": true}));
-        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
-        assert_eq!(registry.pending_count(), 0);
+        assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
+        assert_eq!(pending.pending_count(), 0);
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
     }
 
     #[tokio::test]
     async fn test_start_task_unknown_returns_none() {
-        let registry = PendingTasks::new();
-        assert!(registry.start_task("nonexistent").is_none());
+        let (pending, _task_registry) = setup();
+        assert!(pending.start_task("nonexistent").is_none());
     }
 
     #[tokio::test]
     async fn test_heartbeat_unknown_returns_none() {
-        let registry = PendingTasks::new();
-        assert!(registry.heartbeat("nonexistent").is_none());
+        let (pending, _task_registry) = setup();
+        assert!(pending.heartbeat("nonexistent").is_none());
     }
 
     #[tokio::test]
     async fn test_queue_timeout() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             Duration::from_millis(50),
@@ -592,15 +613,16 @@ mod tests {
         };
         assert!(err.message.contains("timed out waiting for worker"));
         assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
-        assert_eq!(registry.pending_count(), 0);
+        assert_eq!(pending.pending_count(), 0);
     }
 
     #[tokio::test]
     async fn test_start_task_after_queue_timeout_returns_not_found() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let _rx = registry.register(
+        let (pending, task_registry) = setup();
+        let _rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             Duration::from_millis(50),
@@ -609,21 +631,22 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(60)).await;
 
-        assert!(registry.start_task("task-1").is_none());
+        assert!(pending.start_task("task-1").is_none());
     }
 
     #[tokio::test]
     async fn test_heartbeat_timeout() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
-        registry.start_task("task-1").unwrap();
+        pending.start_task("task-1").unwrap();
 
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
         tokio::task::yield_now().await;
@@ -633,31 +656,32 @@ mod tests {
         };
         assert!(err.message.contains("no heartbeat received"));
         assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
-        assert_eq!(registry.pending_count(), 0);
+        assert_eq!(pending.pending_count(), 0);
     }
 
     #[tokio::test]
     async fn test_heartbeat_resets_timeout() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
-        registry.start_task("task-1").unwrap();
+        pending.start_task("task-1").unwrap();
 
         // Send heartbeats every 2s for 12s — spans multiple 5s scan cycles.
         for _ in 0..6 {
             tokio::time::advance(Duration::from_secs(2)).await;
             tokio::task::yield_now().await;
-            assert!(registry.heartbeat("task-1").is_some());
+            assert!(pending.heartbeat("task-1").is_some());
         }
 
         let value = ValueRef::new(serde_json::json!({"ok": true}));
-        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
+        assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
     }
 
@@ -665,24 +689,22 @@ mod tests {
     async fn test_execution_timeout() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             Some(Duration::from_millis(200)),
         );
-        registry.start_task("task-1").unwrap();
+        pending.start_task("task-1").unwrap();
 
-        // Heartbeat to keep the task alive past the heartbeat window,
-        // but let the execution cap (200ms) expire.
         for _ in 0..10 {
             tokio::time::advance(Duration::from_millis(50)).await;
             tokio::task::yield_now().await;
-            let _ = registry.heartbeat("task-1");
+            let _ = pending.heartbeat("task-1");
         }
 
-        // Trigger the heartbeat scanner — it sees started_at.elapsed() >= 200ms.
         tokio::time::advance(HEARTBEAT_TIMEOUT).await;
         for _ in 0..5 {
             tokio::task::yield_now().await;
@@ -694,98 +716,81 @@ mod tests {
         assert!(
             err.message.contains("exceeded execution timeout"),
             "unexpected: {}",
-            err.message,
+            err.message
         );
         assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
-        assert_eq!(registry.pending_count(), 0);
+        assert_eq!(pending.pending_count(), 0);
     }
 
     #[tokio::test]
     async fn test_many_tasks_all_cleaned_up_after_queue_timeout() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let _receivers: Vec<_> = (0..20)
-            .map(|i| {
-                registry.register(
-                    format!("task-{i}"),
-                    "test_component".to_string(),
-                    Duration::from_millis(50),
-                    None,
-                )
-            })
-            .collect();
+        let (pending, task_registry) = setup();
+        for i in 0..20 {
+            let _rx = task_registry.register(format!("task-{i}"));
+            pending.track(
+                format!("task-{i}"),
+                "test_component".to_string(),
+                Duration::from_millis(50),
+                None,
+            );
+        }
 
-        assert_eq!(registry.pending_count(), 20);
+        assert_eq!(pending.pending_count(), 20);
         tokio::time::sleep(Duration::from_millis(60)).await;
-        assert_eq!(registry.pending_count(), 0);
+        assert_eq!(pending.pending_count(), 0);
     }
 
-    /// Verify that a queue timeout that fires just as StartTask is called
-    /// does not incorrectly fail a task that is already executing.
     #[tokio::test]
     async fn test_start_task_beats_queue_timeout_race() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             Duration::from_millis(50),
             None,
         );
 
-        // StartTask before the queue timeout fires.
-        registry.start_task("task-1").unwrap();
+        pending.start_task("task-1").unwrap();
 
-        // Let the queue deadline pass — timeout_task uses remove_if(Queued),
-        // so the now-Executing task must NOT be failed.
         tokio::time::sleep(Duration::from_millis(60)).await;
-        assert_eq!(registry.pending_count(), 1);
+        assert_eq!(pending.pending_count(), 1);
 
         let value = ValueRef::new(serde_json::json!({"ok": true}));
-        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
+        assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
     }
 
-    /// Verify that a newly started task is not timed out by the heartbeat
-    /// scanner before it has had a chance to send its first heartbeat.
-    ///
-    /// Regression test for: a task that transitions to Executing just before
-    /// a heartbeat scan fires would be immediately timed out because the
-    /// heartbeat tracker had no entry for it yet.
     #[tokio::test]
     async fn test_heartbeat_grace_period_for_newly_started_task() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let rx = registry.register(
+        let (pending, task_registry) = setup();
+        let rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             QUEUE_TIMEOUT,
             None,
         );
 
-        // Advance past one heartbeat scan cycle so the scanner is primed.
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
         tokio::task::yield_now().await;
 
-        // Start the task right before the next scan fires.
-        registry.start_task("task-1").unwrap();
+        pending.start_task("task-1").unwrap();
 
-        // Advance a short time (less than HEARTBEAT_TIMEOUT) to trigger
-        // the next scan cycle. The task has just started — no heartbeat
-        // yet, but the grace period should protect it.
         tokio::time::advance(Duration::from_secs(1)).await;
         tokio::task::yield_now().await;
 
-        // Task must still be alive.
-        assert_eq!(registry.pending_count(), 1);
+        assert_eq!(pending.pending_count(), 1);
 
-        // Now send a heartbeat and complete normally.
-        assert!(registry.heartbeat("task-1").is_some());
+        assert!(pending.heartbeat("task-1").is_some());
         let value = ValueRef::new(serde_json::json!({"ok": true}));
-        assert!(registry.complete("task-1", FlowResult::Success(value.clone())));
+        assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));
     }
 
@@ -793,23 +798,22 @@ mod tests {
     async fn test_shutdown_stops_scanner() {
         tokio::time::pause();
 
-        let registry = PendingTasks::new();
-        let _rx = registry.register(
+        let (pending, task_registry) = setup();
+        let _rx = task_registry.register("task-1".to_string());
+        pending.track(
             "task-1".to_string(),
             "test_component".to_string(),
             Duration::from_millis(50),
             None,
         );
 
-        // Shut down before the queue timeout would fire.
-        registry.shutdown();
+        pending.shutdown();
 
-        // Advance past the timeout — scanner is gone, task stays registered.
         tokio::time::advance(Duration::from_millis(60)).await;
         tokio::task::yield_now().await;
 
         assert_eq!(
-            registry.pending_count(),
+            pending.pending_count(),
             1,
             "scanner was shut down; task should remain"
         );
