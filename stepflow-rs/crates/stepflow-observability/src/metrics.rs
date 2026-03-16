@@ -302,3 +302,56 @@ pub fn record_task_success(component: &str) {
 pub fn record_task_failure(component: &str) {
     TASK_FAILURE.add(1, &[KeyValue::new("component", component.to_string())]);
 }
+
+// =========================================================================
+// Pull Task Queue Operational Metrics
+// =========================================================================
+
+/// Current depth of the task queue (tasks waiting to be picked up).
+static TASK_QUEUE_DEPTH: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .i64_up_down_counter("task.queue_depth")
+        .with_description("Current number of tasks waiting in the pull queue")
+        .build()
+});
+
+/// Number of workers currently connected to the pull queue.
+static TASK_CONNECTED_WORKERS: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .i64_up_down_counter("task.connected_workers")
+        .with_description("Number of workers currently connected to the pull queue")
+        .build()
+});
+
+/// Total tasks dispatched into the pull queue.
+static TASK_DISPATCHED_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("task.dispatched_total")
+        .with_description("Total tasks dispatched into the pull queue")
+        .build()
+});
+
+/// Record a task pushed into the queue (increments depth and dispatched total).
+pub fn record_task_queue_push(queue_name: &str) {
+    let attrs = [KeyValue::new("queue_name", queue_name.to_string())];
+    TASK_QUEUE_DEPTH.add(1, &attrs);
+    TASK_DISPATCHED_TOTAL.add(1, &attrs);
+}
+
+/// Record a task popped from the queue (decrements depth).
+pub fn record_task_queue_pop(queue_name: &str) {
+    TASK_QUEUE_DEPTH.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+}
+
+/// Record a worker connecting to the queue.
+pub fn record_worker_connected(queue_name: &str) {
+    TASK_CONNECTED_WORKERS.add(1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+}
+
+/// Record a worker disconnecting from the queue.
+pub fn record_worker_disconnected(queue_name: &str) {
+    TASK_CONNECTED_WORKERS.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+}

@@ -71,7 +71,7 @@ data:
         options:
           path: /etc/grafana/provisioning/dashboards/docling
 
-      # Docling step worker dashboards (stepflow-native)
+      # Docling step worker dashboards (stepflow-native, HTTP push)
       - name: 'Docling Worker'
         orgId: 1
         folder: 'Stepflow'
@@ -81,3 +81,14 @@ data:
         allowUiUpdates: true
         options:
           path: /etc/grafana/provisioning/dashboards/docling-worker
+
+      # Docling gRPC worker dashboards (pull-based transport)
+      - name: 'Docling gRPC'
+        orgId: 1
+        folder: 'Stepflow'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 30
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/provisioning/dashboards/docling-grpc

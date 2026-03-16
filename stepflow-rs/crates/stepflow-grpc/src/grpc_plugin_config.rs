@@ -120,7 +120,8 @@ impl PluginConfig for PullPluginConfig {
         let execution_timeout = self
             .execution_timeout_secs
             .map(std::time::Duration::from_secs);
-        let queue = Arc::new(PullTaskQueue::new());
+        let resolved_queue_name = self.queue_name.as_deref().unwrap_or("python");
+        let queue = Arc::new(PullTaskQueue::new(resolved_queue_name));
         let transport = Box::new(InMemoryTaskTransport::new(queue.clone()));
 
         let plugin = PullPlugin {

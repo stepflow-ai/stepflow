@@ -52,8 +52,8 @@ async fn setup_two_queue_server() -> (
     let env = test_env().await;
     let server = Arc::new(StepflowGrpcServer::new());
 
-    let python_queue = Arc::new(PullTaskQueue::new());
-    let node_queue = Arc::new(PullTaskQueue::new());
+    let python_queue = Arc::new(PullTaskQueue::new("test"));
+    let node_queue = Arc::new(PullTaskQueue::new("test"));
 
     server.register_queue("python".to_string(), python_queue.clone());
     server.register_queue("node".to_string(), node_queue.clone());
