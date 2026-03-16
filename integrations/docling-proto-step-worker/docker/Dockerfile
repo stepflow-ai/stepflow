@@ -13,7 +13,7 @@
 # the License.
 
 # Base on docling-serve which has docling + models pre-installed
-FROM quay.io/docling-project/docling-serve-cpu:latest
+FROM quay.io/docling-project/docling-serve-cpu:v1.14.3
 
 USER 0
 
