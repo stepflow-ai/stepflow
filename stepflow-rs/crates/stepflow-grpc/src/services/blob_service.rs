@@ -57,7 +57,8 @@ impl BlobService for BlobServiceImpl {
 
         let content = match req.content {
             Some(crate::proto::stepflow::v1::put_blob_request::Content::JsonData(data)) => {
-                serde_json::to_vec(&data).map_err(|e| {
+                let json = crate::conversions::proto_value_to_json(&data);
+                serde_json::to_vec(&json).map_err(|e| {
                     grpc_err::internal(format!("failed to serialize blob data: {e}"))
                 })?
             }

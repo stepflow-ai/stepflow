@@ -22,6 +22,7 @@ import google.protobuf.descriptor
 import google.protobuf.internal.containers
 import google.protobuf.internal.enum_type_wrapper
 import google.protobuf.message
+import google.protobuf.struct_pb2
 import google.protobuf.timestamp_pb2
 from . import common_pb2
 from . import runs_pb2
@@ -68,6 +69,11 @@ class _TaskErrorCodeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._
     """The worker or component could not be reached (e.g., worker disconnected,
     gRPC channel broken). Typically retriable after backoff.
     """
+    TASK_ERROR_CODE_COMPONENT_NOT_FOUND: _TaskErrorCode.ValueType  # 7
+    """The requested component does not exist on the worker (e.g., unknown
+    component name, misconfigured route). Not retriable without fixing the
+    workflow or routing configuration.
+    """
 
 class TaskErrorCode(_TaskErrorCode, metaclass=_TaskErrorCodeEnumTypeWrapper):
     """--- CompleteTask ---
@@ -100,6 +106,11 @@ cancellation, step timeout policy). Not retriable.
 TASK_ERROR_CODE_UNAVAILABLE: TaskErrorCode.ValueType  # 6
 """The worker or component could not be reached (e.g., worker disconnected,
 gRPC channel broken). Typically retriable after backoff.
+"""
+TASK_ERROR_CODE_COMPONENT_NOT_FOUND: TaskErrorCode.ValueType  # 7
+"""The requested component does not exist on the worker (e.g., unknown
+component name, misconfigured route). Not retriable without fixing the
+workflow or routing configuration.
 """
 Global___TaskErrorCode: typing_extensions.TypeAlias = TaskErrorCode
 
@@ -244,17 +255,25 @@ class TaskError(google.protobuf.message.Message):
 
     CODE_FIELD_NUMBER: builtins.int
     MESSAGE_FIELD_NUMBER: builtins.int
+    DATA_FIELD_NUMBER: builtins.int
     code: Global___TaskErrorCode.ValueType
     """Error code categorizing the failure."""
     message: builtins.str
     """Human-readable error message."""
+    @property
+    def data(self) -> google.protobuf.struct_pb2.Struct:
+        """Optional structured error data (stack traces, error context, etc.)."""
+
     def __init__(
         self,
         *,
         code: Global___TaskErrorCode.ValueType = ...,
         message: builtins.str = ...,
+        data: google.protobuf.struct_pb2.Struct | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["code", b"code", "message", b"message"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_data", b"_data", "data", b"data"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_data", b"_data", "code", b"code", "data", b"data", "message", b"message"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["_data", b"_data"]) -> typing.Literal["data"] | None: ...
 
 Global___TaskError: typing_extensions.TypeAlias = TaskError
 

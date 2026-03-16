@@ -12,6 +12,7 @@
 
 use std::sync::Arc;
 
+use stepflow_core::error_code::ErrorCode;
 use stepflow_core::workflow::ValueRef;
 use stepflow_core::{
     BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowError, FlowResult, GetRunParams, SubmitRunParams,
@@ -77,16 +78,13 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let inputs: Vec<ValueRef> = run_req
             .input
             .into_iter()
-            .map(|v| {
-                let json: serde_json::Value = serde_json::to_value(&v)
-                    .map_err(|e| grpc_err::internal(format!("failed to convert input: {e}")))?;
-                Ok(ValueRef::new(json))
-            })
-            .collect::<Result<Vec<_>, Status>>()?;
+            .map(|v| ValueRef::new(crate::conversions::proto_value_to_json(&v)))
+            .collect();
 
         let overrides = if let Some(overrides_struct) = run_req.overrides {
-            let json: serde_json::Value = serde_json::to_value(&overrides_struct)
-                .map_err(|e| grpc_err::internal(format!("failed to convert overrides: {e}")))?;
+            let json = crate::conversions::proto_value_to_json(&prost_wkt_types::Value {
+                kind: Some(prost_wkt_types::value::Kind::StructValue(overrides_struct)),
+            });
             serde_json::from_value(json).map_err(|e| {
                 grpc_err::invalid_field("overrides", format!("invalid overrides: {e}"))
             })?
@@ -100,13 +98,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             let vars = run_req
                 .variables
                 .into_iter()
-                .map(|(k, v)| {
-                    let json: serde_json::Value = serde_json::to_value(&v).map_err(|e| {
-                        grpc_err::internal(format!("failed to convert variable: {e}"))
-                    })?;
-                    Ok((k, ValueRef::new(json)))
-                })
-                .collect::<Result<std::collections::HashMap<_, _>, Status>>()?;
+                .map(|(k, v)| (k, ValueRef::new(crate::conversions::proto_value_to_json(&v))))
+                .collect::<std::collections::HashMap<_, _>>();
             Some(vars)
         };
 
@@ -203,18 +196,39 @@ impl OrchestratorService for OrchestratorServiceImpl {
                         "response present but output is missing",
                     )
                 })?;
-                let json: serde_json::Value = serde_json::to_value(&output)
-                    .map_err(|e| grpc_err::internal(format!("failed to convert output: {e}")))?;
+                let json = crate::conversions::proto_value_to_json(&output);
                 FlowResult::Success(ValueRef::new(json))
             }
             Some(TaskResult::Error(task_error)) => {
-                // Map proto TaskErrorCode to HTTP-style error codes for FlowError.
-                // Proto enum values (0-5) are not HTTP codes; map them accordingly.
-                let http_code = match task_error.code {
-                    3 => 400, // INVALID_INPUT → Bad Request
-                    _ => 500, // INTERNAL, TIMEOUT, COMPONENT_FAILED, CANCELLED, etc.
+                // Map proto TaskErrorCode to Stepflow ErrorCode constants.
+                // This preserves fine-grained error categorization and retryability
+                // semantics, matching the behavior of the JSON-RPC transport.
+                let error_code = match task_error.code {
+                    1 => ErrorCode::WORKER_ERROR,                   // INTERNAL
+                    2 => ErrorCode::TRANSPORT_ERROR,                // TIMEOUT (retriable)
+                    3 => ErrorCode::COMPONENT_BAD_REQUEST,          // INVALID_INPUT
+                    4 => ErrorCode::COMPONENT_EXECUTION_FAILED,     // COMPONENT_FAILED
+                    5 => ErrorCode::WORKER_ERROR,                   // CANCELLED
+                    6 => ErrorCode::COMPONENT_RESOURCE_UNAVAILABLE, // UNAVAILABLE
+                    7 => ErrorCode::COMPONENT_NOT_FOUND,            // COMPONENT_NOT_FOUND
+                    _ => ErrorCode::COMPONENT_EXECUTION_FAILED,     // UNSPECIFIED/unknown
                 };
-                FlowResult::Failed(FlowError::new(http_code, task_error.message))
+
+                // Convert optional structured error data from proto Struct
+                let data = task_error.data.map(|s| {
+                    let json = crate::conversions::proto_value_to_json(
+                        &prost_wkt_types::Value {
+                            kind: Some(prost_wkt_types::value::Kind::StructValue(s)),
+                        },
+                    );
+                    ValueRef::new(json)
+                });
+
+                FlowResult::Failed(FlowError {
+                    code: error_code,
+                    message: task_error.message.into(),
+                    data,
+                })
             }
             None => {
                 return Err(grpc_err::invalid_argument(

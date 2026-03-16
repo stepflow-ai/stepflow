@@ -1,4 +1,3 @@
-schema: https://stepflow.org/schemas/v1/flow.json
 schemas:
   type: object
   properties:
@@ -23,7 +22,7 @@ steps:
   component: /builtin/put_blob
   input:
     data:
-      $input: user_data
+      $input: $.user_data
     blob_type: data
 - id: create_process_data_blob
   component: /builtin/put_blob
@@ -39,46 +38,61 @@ steps:
         required:
         - blob_id
         - config
-      code: "async def process_data(input, context):\n    # Retrieve the original\
-        \ data from blob\n    original_data = await context.get_blob(input['blob_id'])\n\
-        \n    # Process the data (example: add multiply numbers)\n    processed_data\
-        \ = {\n        'original': original_data,\n        'config': input['config']\n\
-        \    }\n\n    # If original data has numeric values, transform them\n    if\
-        \ isinstance(original_data, dict):\n        for key, value in original_data.items():\n\
-        \            if isinstance(value, (int, float)):\n                processed_data[f'{key}_doubled']\
-        \ = value * 2\n\n    # Store processed data as new blob\n    new_blob_id =\
-        \ await context.put_blob(processed_data)\n\n    return {\n        'original_blob_id':\
-        \ input['blob_id'],\n        'processed_blob_id': new_blob_id,\n        'summary':\
-        \ f'Processed {len(original_data)} fields'\n    }\nprocess_data\n"
+      code: |
+        async def process_data(input, context):
+            # Retrieve the original data from blob
+            original_data = await context.get_blob(input['blob_id'])
+
+            # Process the data (example: add multiply numbers)
+            processed_data = {
+                'original': original_data,
+                'config': input['config']
+            }
+
+            # If original data has numeric values, transform them
+            if isinstance(original_data, dict):
+                for key, value in original_data.items():
+                    if isinstance(value, (int, float)):
+                        processed_data[f'{key}_doubled'] = value * 2
+
+            # Store processed data as new blob
+            new_blob_id = await context.put_blob(processed_data)
+
+            return {
+                'original_blob_id': input['blob_id'],
+                'processed_blob_id': new_blob_id,
+                'summary': f'Processed {len(original_data)} fields'
+            }
+        process_data
     blob_type: data
 - id: process_blob_data
   component: /python/udf
   input:
     blob_id:
       $step: create_process_data_blob
-      path: blob_id
+      path: $.blob_id
     input:
       blob_id:
         $step: store_original_data
-        path: blob_id
+        path: $.blob_id
       config:
-        $input: processing_config
+        $input: $.processing_config
 - id: get_final_result
   component: /builtin/get_blob
   input:
     blob_id:
       $step: process_blob_data
-      path: processed_blob_id
+      path: $.processed_blob_id
 output:
   original_blob_id:
     $step: process_blob_data
-    path: original_blob_id
+    path: $.original_blob_id
   processed_blob_id:
     $step: process_blob_data
-    path: processed_blob_id
+    path: $.processed_blob_id
   final_result:
     $step: get_final_result
-    path: data
+    path: $.data
 test:
   cases:
   - name: alice
@@ -102,9 +116,9 @@ test:
             age: 30
             name: Alice
             score: 85.5
-          score_doubled: 171.0
+          score_doubled: 171
         original_blob_id: 63594fd7447aa6b7dd3940b06e90bd31452273588ee992cd2fed5de4df13d248
-        processed_blob_id: f3ab84807a096605614b040dcf8d498ced3fb582a8dfa5fc1cc952710fcb31f5
+        processed_blob_id: 5880cdd14a1588d5c547167b787d8dd50a7eccab61dc2d6ed71f3684ef2bf506
   - name: widget
     input:
       user_data:
@@ -128,4 +142,4 @@ test:
           price_doubled: 39.98
           quantity_doubled: 200
         original_blob_id: df428f6922868a5c400d451cf5f5a6a47b5f4103c808eb25046692b8d4acd5d1
-        processed_blob_id: ce9afef55eb9107330530a3283006e10f136fd795b346c16b151ecf7ed795358
+        processed_blob_id: 4f979630a936a5faf43bb12993781ea9b2541cfb36b4be31eb7f0bbf262e0012

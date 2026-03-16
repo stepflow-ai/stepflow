@@ -353,7 +353,8 @@
           "format": "int64"
         },
         "message": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         "data": {
           "oneOf": [
@@ -367,8 +368,7 @@
         }
       },
       "required": [
-        "code",
-        "message"
+        "code"
       ]
     },
     "MockPlugin": {

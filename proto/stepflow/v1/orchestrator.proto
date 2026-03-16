@@ -18,6 +18,7 @@ package stepflow.v1;
 
 option go_package = "github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1";
 
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "stepflow/v1/common.proto";
 import "stepflow/v1/tasks.proto";
@@ -150,6 +151,11 @@ enum TaskErrorCode {
   // The worker or component could not be reached (e.g., worker disconnected,
   // gRPC channel broken). Typically retriable after backoff.
   TASK_ERROR_CODE_UNAVAILABLE = 6;
+
+  // The requested component does not exist on the worker (e.g., unknown
+  // component name, misconfigured route). Not retriable without fixing the
+  // workflow or routing configuration.
+  TASK_ERROR_CODE_COMPONENT_NOT_FOUND = 7;
 }
 
 // Structured error type for task failures.
@@ -159,6 +165,9 @@ message TaskError {
 
   // Human-readable error message.
   string message = 2;
+
+  // Optional structured error data (stack traces, error context, etc.).
+  optional google.protobuf.Struct data = 3;
 }
 
 message CompleteTaskRequest {

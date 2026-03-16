@@ -286,7 +286,7 @@ async fn test_complete_task_error_code_mapping() {
     let channel = endpoint(&address).connect().await.unwrap();
     let mut orch_client = OrchestratorServiceClient::new(channel);
 
-    // Complete with COMPONENT_FAILED (proto enum value 4) → should map to HTTP 500
+    // Complete with COMPONENT_FAILED (proto enum value 4) → should map to COMPONENT_EXECUTION_FAILED
     orch_client
         .complete_task(CompleteTaskRequest {
             task_id: "task-err-component".to_string(),
@@ -295,6 +295,7 @@ async fn test_complete_task_error_code_mapping() {
                     TaskError {
                         code: 4, // COMPONENT_FAILED
                         message: "component crashed".to_string(),
+                        data: None,
                     },
                 ),
             ),
@@ -302,7 +303,7 @@ async fn test_complete_task_error_code_mapping() {
         .await
         .unwrap();
 
-    // Complete with INVALID_INPUT (proto enum value 3) → should map to HTTP 400
+    // Complete with INVALID_INPUT (proto enum value 3) → should map to COMPONENT_BAD_REQUEST
     orch_client
         .complete_task(CompleteTaskRequest {
             task_id: "task-err-input".to_string(),
@@ -311,6 +312,7 @@ async fn test_complete_task_error_code_mapping() {
                     TaskError {
                         code: 3, // INVALID_INPUT
                         message: "bad input".to_string(),
+                        data: None,
                     },
                 ),
             ),
@@ -318,21 +320,23 @@ async fn test_complete_task_error_code_mapping() {
         .await
         .unwrap();
 
-    // Verify COMPONENT_FAILED → 500
+    // Verify COMPONENT_FAILED → COMPONENT_EXECUTION_FAILED (-32100)
     let result = rx_component_failed.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
-            assert_eq!(err.code, 500, "COMPONENT_FAILED should map to HTTP 500");
+            assert_eq!(err.code, stepflow_core::error_code::ErrorCode::COMPONENT_EXECUTION_FAILED,
+                "COMPONENT_FAILED should map to COMPONENT_EXECUTION_FAILED");
             assert_eq!(err.message, "component crashed");
         }
         other => panic!("expected Failed, got {other:?}"),
     }
 
-    // Verify INVALID_INPUT → 400
+    // Verify INVALID_INPUT → COMPONENT_BAD_REQUEST (-32103)
     let result = rx_invalid_input.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
-            assert_eq!(err.code, 400, "INVALID_INPUT should map to HTTP 400");
+            assert_eq!(err.code, stepflow_core::error_code::ErrorCode::COMPONENT_BAD_REQUEST,
+                "INVALID_INPUT should map to COMPONENT_BAD_REQUEST");
             assert_eq!(err.message, "bad input");
         }
         other => panic!("expected Failed, got {other:?}"),
