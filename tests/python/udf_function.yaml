@@ -95,7 +95,7 @@ test:
       outcome: success
       result:
         analytics:
-          average: 94.0
+          average: 94
           count: 2
           max: 100
           min: 88

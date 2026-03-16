@@ -146,7 +146,7 @@ test:
           match: this
         - index: 8
           match: system
-        sentiment_score: 1.0
+        sentiment_score: 1
         word_analysis:
           avg_word_length: 4.33
           char_count: 65
@@ -186,9 +186,9 @@ test:
           match: hate
         - index: 4
           match: awful
-        sentiment_score: -1.0
+        sentiment_score: -1
         word_analysis:
-          avg_word_length: 4.0
+          avg_word_length: 4
           char_count: 48
           most_common_words:
           - count: 2

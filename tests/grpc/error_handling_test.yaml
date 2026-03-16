@@ -28,7 +28,7 @@ test:
     output:
       outcome: failed
       error:
-        code: 500
+        code: -32100
         message: "Intentional error: test error"
   - name: "RuntimeError is surfaced via gRPC"
     input:
@@ -37,7 +37,7 @@ test:
     output:
       outcome: failed
       error:
-        code: 500
+        code: -32100
         message: "Runtime failure: unexpected failure"
   - name: "Success case works normally"
     input:

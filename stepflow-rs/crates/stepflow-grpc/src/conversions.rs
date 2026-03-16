@@ -99,6 +99,51 @@ pub fn item_stats_to_proto(s: &stepflow_dtos::ItemStatistics) -> proto::ItemStat
     }
 }
 
+/// Convert a [`prost_wkt_types::Value`] to [`serde_json::Value`], preserving
+/// integer types for whole-number floats.
+///
+/// Protobuf `Value.number_value` is always f64. A naïve `serde_json::to_value`
+/// round-trip turns `42` into `42.0`. This function recovers integer
+/// representation when the float has no fractional part, matching the
+/// behaviour of JSON-based transports.
+pub fn proto_value_to_json(value: &prost_wkt_types::Value) -> serde_json::Value {
+    use prost_wkt_types::value::Kind;
+    match &value.kind {
+        Some(Kind::NullValue(_)) => serde_json::Value::Null,
+        Some(Kind::BoolValue(b)) => serde_json::Value::Bool(*b),
+        Some(Kind::NumberValue(n)) => {
+            let n = *n;
+            if n.is_finite() && n.fract() == 0.0 {
+                let i = n as i64;
+                if i as f64 == n {
+                    return serde_json::Value::Number(i.into());
+                }
+            }
+            serde_json::Number::from_f64(n)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null)
+        }
+        Some(Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
+        Some(Kind::StructValue(s)) => {
+            // Sort keys for deterministic serialization. Proto Struct uses
+            // HashMap internally, so iteration order is non-deterministic.
+            // Sorted keys ensure consistent blob hashes across runs.
+            let mut entries: Vec<_> = s
+                .fields
+                .iter()
+                .map(|(k, v)| (k.clone(), proto_value_to_json(v)))
+                .collect();
+            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            let map: serde_json::Map<String, serde_json::Value> = entries.into_iter().collect();
+            serde_json::Value::Object(map)
+        }
+        Some(Kind::ListValue(l)) => {
+            serde_json::Value::Array(l.values.iter().map(proto_value_to_json).collect())
+        }
+        None => serde_json::Value::Null,
+    }
+}
+
 /// Convert a domain `ItemResult` to proto.
 pub fn item_result_to_proto(r: &stepflow_dtos::ItemResult) -> proto::ItemResult {
     let (output, error_message, error_code) = match &r.result {

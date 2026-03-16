@@ -30,7 +30,7 @@ from typing import Any
 
 import grpc.aio
 from google.protobuf import struct_pb2
-from google.protobuf.json_format import MessageToDict, ParseDict
+from google.protobuf.json_format import MessageToDict
 
 from stepflow_py.proto import (
     CreateRunRequest,
@@ -159,7 +159,8 @@ class GrpcContext(StepflowContext):
         proto_overrides = None
         if overrides:
             proto_overrides = struct_pb2.Struct()
-            ParseDict(overrides, proto_overrides)
+            for k, v in overrides.items():
+                proto_overrides.fields[str(k)].CopyFrom(_python_to_proto_value(v))
 
         # Build the shared CreateRunRequest
         run_request = CreateRunRequest(
@@ -222,36 +223,24 @@ class GrpcContext(StepflowContext):
 
 
 def _python_to_proto_value(obj: Any) -> struct_pb2.Value:
-    """Convert a Python object to a protobuf Value."""
-    value = struct_pb2.Value()
-    if obj is None:
-        value.null_value = struct_pb2.NULL_VALUE
-    elif isinstance(obj, bool):
-        value.bool_value = obj
-    elif isinstance(obj, int | float):
-        value.number_value = float(obj)
-    elif isinstance(obj, str):
-        value.string_value = obj
-    elif isinstance(obj, dict):
-        struct = struct_pb2.Struct()
-        ParseDict(obj, struct)
-        value.struct_value.CopyFrom(struct)
-    elif isinstance(obj, list):
-        list_value = struct_pb2.ListValue()
-        for item in obj:
-            list_value.values.append(_python_to_proto_value(item))
-        value.list_value.CopyFrom(list_value)
-    else:
-        import json
+    """Convert a Python object to a protobuf Value.
 
-        try:
-            d = json.loads(json.dumps(obj, default=str))
-            return _python_to_proto_value(d)
-        except Exception:
-            value.string_value = str(obj)
-    return value
+    Delegates to grpc_worker's implementation which handles non-string dict keys.
+    """
+    from stepflow_py.worker.grpc_worker import (
+        _python_to_proto_value as _impl,
+    )
+
+    return _impl(obj)
 
 
 def _proto_value_to_python(value: struct_pb2.Value) -> Any:
-    """Convert a protobuf Value to a Python object."""
-    return MessageToDict(value, preserving_proto_field_name=True)
+    """Convert a protobuf Value to a Python object.
+
+    Delegates to grpc_worker's implementation which preserves integer types.
+    """
+    from stepflow_py.worker.grpc_worker import (
+        _proto_value_to_python as _impl,
+    )
+
+    return _impl(value)

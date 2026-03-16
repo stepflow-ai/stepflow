@@ -71,6 +71,7 @@ test:
         outcome: failed
         error:
           code: -32100
+          message: "Function execution failed: Intentional error: test error message"
 
     - name: "RuntimeError is wrapped and surfaced"
       input:
@@ -80,6 +81,7 @@ test:
         outcome: failed
         error:
           code: -32100
+          message: "Function execution failed: Unexpected runtime error: unexpected failure"
 
     - name: "Success case works normally"
       input:

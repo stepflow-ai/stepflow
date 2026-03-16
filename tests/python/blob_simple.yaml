@@ -1,4 +1,3 @@
-schema: https://stepflow.org/schemas/v1/flow.json
 schemas:
   type: object
   properties:
@@ -24,9 +23,9 @@ steps:
   input:
     data:
       message:
-        $input: message
+        $input: $.message
       number:
-        $input: number
+        $input: $.number
       timestamp: 2024-01-01 00:00:00+00:00
     blob_type: data
 - id: create_store_data_blob
@@ -43,39 +42,46 @@ steps:
         required:
         - message
         - number
-      code: "async def store_data(input, context):\n  # Create enhanced data\n  enhanced_data\
-        \ = {\n    'original_message': input['message'],\n    'number_squared': input['number']\
-        \ ** 2,\n    'processed_by': 'python_udf'\n  }\n  # Store as blob using context\n\
-        \  blob_id = await context.put_blob(enhanced_data)\n  return {'blob_id': blob_id,\
-        \ 'status': 'success'}\nstore_data\n"
+      code: |
+        async def store_data(input, context):
+          # Create enhanced data
+          enhanced_data = {
+            'original_message': input['message'],
+            'number_squared': input['number'] ** 2,
+            'processed_by': 'python_udf'
+          }
+          # Store as blob using context
+          blob_id = await context.put_blob(enhanced_data)
+          return {'blob_id': blob_id, 'status': 'success'}
+        store_data
     blob_type: data
 - id: store_with_python
   component: /python/udf
   input:
     blob_id:
       $step: create_store_data_blob
-      path: blob_id
+      path: $.blob_id
     input:
       message:
-        $input: message
+        $input: $.message
       number:
-        $input: number
+        $input: $.number
 - id: retrieve_with_builtin
   component: /builtin/get_blob
   input:
     blob_id:
       $step: store_with_builtin
-      path: blob_id
+      path: $.blob_id
 output:
   blob_id:
     $step: store_with_builtin
-    path: blob_id
+    path: $.blob_id
   retrieved_data:
     $step: retrieve_with_builtin
-    path: data
+    path: $.data
   python_blob_id:
     $step: store_with_python
-    path: blob_id
+    path: $.blob_id
 test:
   cases:
   - name: blobs_42
@@ -86,7 +92,7 @@ test:
       outcome: success
       result:
         blob_id: 7d1835be19f018f42ad769cab21e7b7c6906045c4a3f5366ee95a2618de608f4
-        python_blob_id: 5e7b9e2bb1fb695b22192e82e25b4b6b142f46548509b4c62cd051f0f21b082e
+        python_blob_id: 334218f4b25c36515c313f6c7e23cce968f3dc287eec3064187bd8f0f32379f5
         retrieved_data:
           message: Hello, blobs!
           number: 42
@@ -99,7 +105,7 @@ test:
       outcome: success
       result:
         blob_id: 2d8b694059de5ee6fc6dee331cd9e03656150acf76baf5c49c9a3821010df174
-        python_blob_id: c428d74033a44874f7b51b3404c793102712ac54b1cbbbcd25235491bcf49f93
+        python_blob_id: 2157bb753855a9983f1a2dfeed773a0b4ad5fb53e129970155d78ad8e526e5fc
         retrieved_data:
           message: Testing integration
           number: 100

@@ -14,6 +14,13 @@
 
 from typing import Any
 
+from stepflow_py.proto.orchestrator_pb2 import (
+    TASK_ERROR_CODE_COMPONENT_FAILED,
+    TASK_ERROR_CODE_COMPONENT_NOT_FOUND,
+    TASK_ERROR_CODE_INTERNAL,
+    TASK_ERROR_CODE_INVALID_INPUT,
+    TASK_ERROR_CODE_UNAVAILABLE,
+)
 from stepflow_py.worker.generated_protocol import ErrorCode
 
 
@@ -41,6 +48,18 @@ class StepflowError(Exception):
         """Default error code for this exception type."""
         return ErrorCode.WORKER_ERROR
 
+    @property
+    def task_error_code(self) -> int:
+        """Proto TaskErrorCode for this exception. Subclasses override."""
+        return TASK_ERROR_CODE_INTERNAL
+
+    def task_error_data(self) -> dict:
+        """Structured error data to include in TaskError.data."""
+        result: dict[str, Any] = {"exception_type": type(self).__name__}
+        if self.data:
+            result["details"] = self.data
+        return result
+
     def to_json_rpc_error(self) -> dict:
         """Convert to JSON-RPC error format."""
         return {"code": self.code.value, "message": self.message, "data": self.data}
@@ -53,6 +72,10 @@ class StepflowProtocolError(StepflowError):
     def default_code(self) -> ErrorCode:
         return ErrorCode.JSON_RPC_INVALID_REQUEST
 
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_INTERNAL
+
 
 class StepflowComponentError(StepflowError):
     """Errors related to component operations."""
@@ -60,6 +83,10 @@ class StepflowComponentError(StepflowError):
     @property
     def default_code(self) -> ErrorCode:
         return ErrorCode.COMPONENT_NOT_FOUND
+
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_COMPONENT_NOT_FOUND
 
 
 class StepflowValidationError(StepflowError):
@@ -69,6 +96,10 @@ class StepflowValidationError(StepflowError):
     def default_code(self) -> ErrorCode:
         return ErrorCode.INVALID_INPUT_SCHEMA
 
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_INVALID_INPUT
+
 
 class StepflowValueError(StepflowError):
     """Errors related to invalid values."""
@@ -76,6 +107,10 @@ class StepflowValueError(StepflowError):
     @property
     def default_code(self) -> ErrorCode:
         return ErrorCode.COMPONENT_VALUE_ERROR
+
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_INVALID_INPUT
 
 
 class StepflowExecutionError(StepflowError):
@@ -85,6 +120,10 @@ class StepflowExecutionError(StepflowError):
     def default_code(self) -> ErrorCode:
         return ErrorCode.COMPONENT_EXECUTION_FAILED
 
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_COMPONENT_FAILED
+
 
 class StepflowRuntimeError(StepflowError):
     """Errors from the Stepflow runtime."""
@@ -92,6 +131,10 @@ class StepflowRuntimeError(StepflowError):
     @property
     def default_code(self) -> ErrorCode:
         return ErrorCode.COMPONENT_RESOURCE_UNAVAILABLE
+
+    @property
+    def task_error_code(self) -> int:
+        return TASK_ERROR_CODE_UNAVAILABLE
 
 
 class ComponentNotFoundError(StepflowComponentError):

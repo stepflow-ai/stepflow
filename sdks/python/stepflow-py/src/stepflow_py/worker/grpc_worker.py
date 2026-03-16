@@ -44,6 +44,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import os
 import traceback
 from typing import TYPE_CHECKING, Any
@@ -62,7 +63,12 @@ from stepflow_py.proto import (
     TaskError,
     TaskHeartbeatRequest,
 )
-from stepflow_py.proto.orchestrator_pb2 import TASK_ERROR_CODE_COMPONENT_FAILED
+from stepflow_py.proto.orchestrator_pb2 import (
+    TASK_ERROR_CODE_COMPONENT_FAILED,
+    TASK_ERROR_CODE_INTERNAL,
+    TASK_ERROR_CODE_INVALID_INPUT,
+    TASK_ERROR_CODE_UNAVAILABLE,
+)
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
 
@@ -319,9 +325,12 @@ async def _handle_task(
             )
         except Exception as e:
             logger.error("Component %s failed: %s", req.component, e, exc_info=True)
+            error_code, error_data = _classify_exception(e)
             await _complete_task_error(
                 task,
                 str(e),
+                code=error_code,
+                data=error_data,
                 channel=orch_channel,
             )
 
@@ -331,6 +340,7 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 traceback.format_exc(),
+                code=TASK_ERROR_CODE_INTERNAL,
                 channel=orch_channel,
             )
         except Exception:
@@ -463,6 +473,42 @@ def _is_context_type(annotation: Any) -> bool:
     return False
 
 
+def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
+    """Map a Python exception to a proto TaskErrorCode and optional structured data.
+
+    Returns (error_code, error_data) where error_code is a TaskErrorCode int
+    and error_data is an optional dict with structured error context.
+
+    StepflowError subclasses define their own task_error_code and
+    task_error_data(); standard Python exceptions are mapped here.
+    """
+    from stepflow_py.worker.exceptions import StepflowError
+
+    # StepflowError hierarchy is self-describing
+    if isinstance(exc, StepflowError):
+        error_data = exc.task_error_data()
+        tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+        if tb:
+            error_data["traceback"] = "".join(tb)
+        return exc.task_error_code, error_data
+
+    # Standard Python exceptions
+    std_error_data: dict = {"exception_type": type(exc).__name__}
+    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    if tb:
+        std_error_data["traceback"] = "".join(tb)
+
+    if isinstance(exc, ValueError):
+        return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
+    if isinstance(exc, TypeError):
+        return TASK_ERROR_CODE_INVALID_INPUT, std_error_data
+    if isinstance(exc, ConnectionError | TimeoutError | OSError):
+        return TASK_ERROR_CODE_UNAVAILABLE, std_error_data
+
+    # Default: component failed
+    return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
+
+
 async def _complete_task_success(
     task: TaskAssignment,
     output: struct_pb2.Value,
@@ -512,6 +558,8 @@ async def _complete_task_error(
     task: TaskAssignment,
     error_msg: str,
     *,
+    code: int = TASK_ERROR_CODE_COMPONENT_FAILED,
+    data: dict | None = None,
     channel: grpc.aio.Channel | None = None,
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
@@ -535,15 +583,22 @@ async def _complete_task_error(
 
     try:
         stub = OrchestratorServiceStub(channel)
+        task_error = TaskError(
+            code=code,  # type: ignore[arg-type]
+            message=error_msg,
+        )
+        # Attach structured error data if provided
+        if data:
+            proto_data = struct_pb2.Struct()
+            for k, v in data.items():
+                proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
+            task_error.data.CopyFrom(proto_data)
         request = CompleteTaskRequest(
             task_id=task.task_id,
-            error=TaskError(
-                code=TASK_ERROR_CODE_COMPONENT_FAILED,
-                message=error_msg,
-            ),
+            error=task_error,
         )
         await stub.CompleteTask(request)
-        logger.debug("Completed task %s (error)", task.task_id)
+        logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
     except grpc.aio.AioRpcError as e:
         logger.error(
             "Failed to report error for task %s: %s (code=%s)",
@@ -601,17 +656,40 @@ def _set_execution_context(
 
 
 def _proto_value_to_python(value: struct_pb2.Value) -> Any:
-    """Convert a protobuf Value to a Python object."""
-    from google.protobuf.json_format import MessageToDict
+    """Convert a protobuf Value to a Python object.
 
-    # MessageToDict converts protobuf Value to Python dict/list/scalar
-    return MessageToDict(value, preserving_proto_field_name=True)
+    Preserves integer types: protobuf number_value is always f64, so
+    whole-number floats (e.g. 30.0) are converted back to int (30) to
+    maintain parity with JSON-RPC transport.
+    """
+    kind = value.WhichOneof("kind")
+    if kind == "null_value":
+        return None
+    elif kind == "bool_value":
+        return value.bool_value
+    elif kind == "number_value":
+        n = value.number_value
+        if n.is_integer() and math.isfinite(n):
+            return int(n)
+        return n
+    elif kind == "string_value":
+        return value.string_value
+    elif kind == "struct_value":
+        return {
+            k: _proto_value_to_python(v) for k, v in value.struct_value.fields.items()
+        }
+    elif kind == "list_value":
+        return [_proto_value_to_python(v) for v in value.list_value.values]
+    else:
+        return None
 
 
 def _python_to_proto_value(obj: Any) -> struct_pb2.Value:
-    """Convert a Python object to a protobuf Value."""
-    from google.protobuf.json_format import ParseDict
+    """Convert a Python object to a protobuf Value.
 
+    Handles dicts with non-string keys by converting them to strings,
+    since protobuf Struct only supports string keys.
+    """
     value = struct_pb2.Value()
     if obj is None:
         value.null_value = struct_pb2.NULL_VALUE
@@ -623,7 +701,8 @@ def _python_to_proto_value(obj: Any) -> struct_pb2.Value:
         value.string_value = obj
     elif isinstance(obj, dict):
         struct = struct_pb2.Struct()
-        ParseDict(obj, struct)
+        for k, v in obj.items():
+            struct.fields[str(k)].CopyFrom(_python_to_proto_value(v))
         value.struct_value.CopyFrom(struct)
     elif isinstance(obj, list):
         list_value = struct_pb2.ListValue()
