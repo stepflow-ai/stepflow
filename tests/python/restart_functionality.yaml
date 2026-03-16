@@ -59,21 +59,6 @@ output:
     $step: crash_test_execution
     path: message
 test:
-  # Process crash/restart tests require the subprocess-based transport since
-  # the pull transport doesn't restart the worker process after a crash.
-  config:
-    plugins:
-      builtin:
-        type: builtin
-      python:
-        type: stepflow
-        command: uv
-        args: [--project, "../../sdks/python/stepflow-py", run, stepflow_worker, --http]
-    routes:
-      "/python/{component}":
-        - plugin: python
-      "/builtin/{component}":
-        - plugin: builtin
   cases:
   - name: Test restart functionality with process crash
     input:

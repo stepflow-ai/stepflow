@@ -133,6 +133,7 @@ impl PluginConfig for PullPluginConfig {
             queue_name: self.queue_name,
             working_directory: working_directory.to_path_buf(),
             worker: Mutex::new(None),
+            server_address: Mutex::new(None),
         };
 
         Ok(DynPlugin::boxed(plugin))
@@ -198,6 +199,115 @@ pub struct PullPlugin {
     queue_name: Option<String>,
     working_directory: PathBuf,
     worker: Mutex<Option<WorkerState>>,
+    /// Server address stored during initialization, used for subprocess restarts.
+    server_address: Mutex<Option<String>>,
+}
+
+impl PullPlugin {
+    /// Spawn a worker subprocess and wait for it to connect.
+    ///
+    /// If a previous worker exists, it is dropped first (killing the process
+    /// group). The new process inherits the same command, args, env, and
+    /// server address from the plugin configuration.
+    async fn spawn_worker(&self) -> Result<()> {
+        let command = self.command.as_deref().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("Cannot spawn worker: no command configured")
+        })?;
+
+        let server_address = self.server_address.lock().await.clone().ok_or_else(|| {
+            error_stack::report!(PluginError::Execution)
+                .attach_printable("Cannot spawn worker: not initialized (no server address)")
+        })?;
+
+        let queue_name = self.queue_name.as_deref().unwrap_or("python");
+
+        // Drop old worker first (kills process group via SIGTERM)
+        {
+            let mut worker = self.worker.lock().await;
+            if let Some(old) = worker.take() {
+                log::info!("Killing previous worker subprocess");
+                drop(old);
+            }
+        }
+
+        // Capture the next worker generation *before* spawning so we wait
+        // specifically for the new worker, not a stale registration from
+        // a previous (crashed) connection that hasn't been cleaned up yet.
+        let generation = self.queue.next_worker_generation();
+
+        let mut cmd = tokio::process::Command::new(command);
+        cmd.args(&self.args)
+            .current_dir(&self.working_directory)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit())
+            .kill_on_drop(true)
+            // Set transport config via environment variables so the
+            // same worker binary works for all transport modes.
+            .env("STEPFLOW_TRANSPORT", "grpc")
+            .env("STEPFLOW_TASKS_URL", &server_address)
+            .env("STEPFLOW_QUEUE_NAME", queue_name)
+            // The blob service is hosted on the same shared gRPC server,
+            // so use the same address as the tasks/orchestrator URL.
+            .env("STEPFLOW_BLOB_URL", &server_address);
+
+        // Create a new process group on Unix so we can kill the entire
+        // tree in Drop. This ensures grandchild processes (e.g., python
+        // spawned by uv) are also terminated.
+        #[cfg(unix)]
+        // SAFETY: setpgid before exec is safe and standard practice.
+        unsafe {
+            cmd.pre_exec(|| {
+                nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))
+                    .map_err(std::io::Error::other)?;
+                Ok(())
+            });
+        }
+
+        for (k, v) in &self.env {
+            cmd.env(k, v);
+        }
+
+        let child = cmd
+            .spawn()
+            .change_context(PluginError::Execution)
+            .attach_printable_lazy(|| format!("Failed to spawn gRPC worker: {command}"))?;
+
+        #[cfg(unix)]
+        let pgid = child.id().map(|pid| pid as i32).unwrap_or(0);
+
+        log::info!(
+            "gRPC worker subprocess spawned (pid={:?}, queue={queue_name})",
+            child.id()
+        );
+
+        // Wrap in WorkerState immediately so the process group is killed
+        // on all exit paths (including timeout errors below).
+        let worker_state = WorkerState {
+            child,
+            #[cfg(unix)]
+            pgid,
+        };
+
+        // Wait for the *new* worker to connect (not a stale registration).
+        let connected = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.queue.wait_for_worker_since(generation),
+        )
+        .await;
+
+        if connected.is_err() {
+            // worker_state is dropped here, killing the process group.
+            log::error!("gRPC worker did not connect within 30 seconds");
+            return Err(error_stack::report!(PluginError::Execution)
+                .attach_printable("gRPC worker did not connect within 30 seconds"));
+        }
+
+        log::info!("gRPC worker connected successfully");
+        *self.worker.lock().await = Some(worker_state);
+
+        Ok(())
+    }
 }
 
 impl stepflow_plugin::Plugin for PullPlugin {
@@ -219,6 +329,9 @@ impl stepflow_plugin::Plugin for PullPlugin {
 
         // Start the server (idempotent — returns existing address if already running)
         let server_address = shared_server.ensure_started(env, None).await?;
+
+        // Store server address for subprocess restarts
+        *self.server_address.lock().await = Some(server_address.clone());
 
         // Register this plugin's queue with the shared server
         let queue_name = self.queue_name.as_deref().unwrap_or("python");
@@ -252,74 +365,8 @@ impl stepflow_plugin::Plugin for PullPlugin {
         *self.inner.lock().await = Some(inner_plugin);
 
         // Spawn worker subprocess if command is configured
-        if let Some(command) = &self.command {
-            let mut cmd = tokio::process::Command::new(command);
-            cmd.args(&self.args)
-                .current_dir(&self.working_directory)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::inherit())
-                .kill_on_drop(true)
-                // Set transport config via environment variables so the
-                // same worker binary works for all transport modes.
-                .env("STEPFLOW_TRANSPORT", "grpc")
-                .env("STEPFLOW_TASKS_URL", &server_address)
-                .env("STEPFLOW_QUEUE_NAME", queue_name)
-                // The blob service is hosted on the same shared gRPC server,
-                // so use the same address as the tasks/orchestrator URL.
-                .env("STEPFLOW_BLOB_URL", &server_address);
-
-            // Create a new process group on Unix so we can kill the entire
-            // tree in Drop. This ensures grandchild processes (e.g., python
-            // spawned by uv) are also terminated.
-            #[cfg(unix)]
-            // SAFETY: setpgid before exec is safe and standard practice.
-            unsafe {
-                cmd.pre_exec(|| {
-                    nix::unistd::setpgid(
-                        nix::unistd::Pid::from_raw(0),
-                        nix::unistd::Pid::from_raw(0),
-                    )
-                    .map_err(std::io::Error::other)?;
-                    Ok(())
-                });
-            }
-
-            for (k, v) in &self.env {
-                cmd.env(k, v);
-            }
-
-            let child = cmd
-                .spawn()
-                .change_context(PluginError::Initializing)
-                .attach_printable_lazy(|| format!("Failed to spawn gRPC worker: {command}"))?;
-
-            #[cfg(unix)]
-            let pgid = child.id().map(|pid| pid as i32).unwrap_or(0);
-
-            log::info!(
-                "gRPC worker subprocess spawned (pid={:?}, queue={queue_name})",
-                child.id()
-            );
-
-            // Wait for the worker to connect
-            let connected = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
-                self.queue.wait_for_worker(),
-            )
-            .await;
-
-            if connected.is_err() {
-                log::error!("gRPC worker did not connect within 30 seconds");
-                return Err(error_stack::report!(PluginError::Initializing)
-                    .attach_printable("gRPC worker did not connect within 30 seconds"));
-            }
-
-            log::info!("gRPC worker connected successfully");
-            *self.worker.lock().await = Some(WorkerState {
-                child,
-                #[cfg(unix)]
-                pgid,
-            });
+        if self.command.is_some() {
+            self.spawn_worker().await?;
         }
 
         Ok(())
@@ -359,10 +406,11 @@ impl stepflow_plugin::Plugin for PullPlugin {
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {
-        let inner = self.inner.lock().await;
-        let inner = inner.as_ref().ok_or_else(|| {
-            error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
-        })?;
-        inner.prepare_for_retry().await
+        if self.command.is_some() {
+            log::info!("Restarting pull worker subprocess for retry");
+            self.spawn_worker().await?;
+        }
+        // Remote mode (no command): no-op — external orchestration handles restart.
+        Ok(())
     }
 }
