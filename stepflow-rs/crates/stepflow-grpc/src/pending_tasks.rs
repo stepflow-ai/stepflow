@@ -53,7 +53,7 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 use futures::StreamExt as _;
-use stepflow_core::{FlowError, FlowResult};
+use stepflow_core::{ErrorCode, FlowError, FlowResult};
 use tokio::sync::oneshot;
 use tokio::time::MissedTickBehavior;
 
@@ -376,8 +376,13 @@ impl PendingTasks {
 
         log::warn!("{message}");
 
+        // Use transport error code so the retry system classifies these as
+        // transport errors and triggers subprocess restart via prepare_for_retry().
         if let Some(sender) = entry.sender.take() {
-            let _ = sender.send(FlowResult::Failed(FlowError::new(504, message)));
+            let _ = sender.send(FlowResult::Failed(FlowError::new(
+                ErrorCode::TRANSPORT_ERROR,
+                message,
+            )));
         }
     }
 
