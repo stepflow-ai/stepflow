@@ -31,11 +31,9 @@ impl std::fmt::Display for FlowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Use serde serialization name (e.g. "COMPONENT_FAILED") rather than
         // the proto name (e.g. "TASK_ERROR_CODE_COMPONENT_FAILED").
-        let code_name = self
-            .code
-            .as_str_name()
-            .strip_prefix("TASK_ERROR_CODE_")
-            .unwrap_or(self.code.as_str_name());
+        let proto_name = self.code.as_str_name();
+        debug_assert!(proto_name.starts_with("TASK_ERROR_CODE_"));
+        let code_name = &proto_name["TASK_ERROR_CODE_".len()..];
         write!(f, "error({code_name}): {}", self.message)
     }
 }
@@ -404,35 +402,32 @@ mod tests {
 
     #[test]
     fn test_is_transport_error() {
-        assert!(FlowResult::Failed(FlowError::new(TaskErrorCode::Unreachable, "test"))
-            .is_transport_error());
         assert!(
-            FlowResult::Failed(FlowError::new(TaskErrorCode::Timeout, "test"))
+            FlowResult::Failed(FlowError::new(TaskErrorCode::Unreachable, "test"))
                 .is_transport_error()
         );
-        assert!(!FlowResult::Failed(FlowError::new(
-            TaskErrorCode::ComponentFailed,
-            "test"
-        ))
-        .is_transport_error());
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::Timeout, "test")).is_transport_error()
+        );
+        assert!(
+            !FlowResult::Failed(FlowError::new(TaskErrorCode::ComponentFailed, "test"))
+                .is_transport_error()
+        );
     }
 
     #[test]
     fn test_is_component_execution_error() {
-        assert!(FlowResult::Failed(FlowError::new(
-            TaskErrorCode::ComponentFailed,
-            "test"
-        ))
-        .is_component_execution_error());
-        assert!(FlowResult::Failed(FlowError::new(
-            TaskErrorCode::ResourceUnavailable,
-            "test"
-        ))
-        .is_component_execution_error());
-        assert!(!FlowResult::Failed(FlowError::new(
-            TaskErrorCode::Unreachable,
-            "test"
-        ))
-        .is_component_execution_error());
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::ComponentFailed, "test"))
+                .is_component_execution_error()
+        );
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::ResourceUnavailable, "test"))
+                .is_component_execution_error()
+        );
+        assert!(
+            !FlowResult::Failed(FlowError::new(TaskErrorCode::Unreachable, "test"))
+                .is_component_execution_error()
+        );
     }
 }
