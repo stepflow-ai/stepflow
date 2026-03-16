@@ -493,20 +493,20 @@ def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
         return exc.task_error_code, error_data
 
     # Standard Python exceptions
-    error_data: dict = {"exception_type": type(exc).__name__}
+    std_error_data: dict = {"exception_type": type(exc).__name__}
     tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
     if tb:
-        error_data["traceback"] = "".join(tb)
+        std_error_data["traceback"] = "".join(tb)
 
     if isinstance(exc, ValueError):
-        return TASK_ERROR_CODE_COMPONENT_FAILED, error_data
+        return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
     if isinstance(exc, TypeError):
-        return TASK_ERROR_CODE_INVALID_INPUT, error_data
-    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
-        return TASK_ERROR_CODE_UNAVAILABLE, error_data
+        return TASK_ERROR_CODE_INVALID_INPUT, std_error_data
+    if isinstance(exc, ConnectionError | TimeoutError | OSError):
+        return TASK_ERROR_CODE_UNAVAILABLE, std_error_data
 
     # Default: component failed
-    return TASK_ERROR_CODE_COMPONENT_FAILED, error_data
+    return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
 
 
 async def _complete_task_success(
@@ -584,7 +584,7 @@ async def _complete_task_error(
     try:
         stub = OrchestratorServiceStub(channel)
         task_error = TaskError(
-            code=code,
+            code=code,  # type: ignore[arg-type]
             message=error_msg,
         )
         # Attach structured error data if provided
@@ -676,8 +676,7 @@ def _proto_value_to_python(value: struct_pb2.Value) -> Any:
         return value.string_value
     elif kind == "struct_value":
         return {
-            k: _proto_value_to_python(v)
-            for k, v in value.struct_value.fields.items()
+            k: _proto_value_to_python(v) for k, v in value.struct_value.fields.items()
         }
     elif kind == "list_value":
         return [_proto_value_to_python(v) for v in value.list_value.values]

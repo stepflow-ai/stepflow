@@ -324,8 +324,11 @@ async fn test_complete_task_error_code_mapping() {
     let result = rx_component_failed.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
-            assert_eq!(err.code, stepflow_core::error_code::ErrorCode::COMPONENT_EXECUTION_FAILED,
-                "COMPONENT_FAILED should map to COMPONENT_EXECUTION_FAILED");
+            assert_eq!(
+                err.code,
+                stepflow_core::error_code::ErrorCode::COMPONENT_EXECUTION_FAILED,
+                "COMPONENT_FAILED should map to COMPONENT_EXECUTION_FAILED"
+            );
             assert_eq!(err.message, "component crashed");
         }
         other => panic!("expected Failed, got {other:?}"),
@@ -335,8 +338,11 @@ async fn test_complete_task_error_code_mapping() {
     let result = rx_invalid_input.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
-            assert_eq!(err.code, stepflow_core::error_code::ErrorCode::COMPONENT_BAD_REQUEST,
-                "INVALID_INPUT should map to COMPONENT_BAD_REQUEST");
+            assert_eq!(
+                err.code,
+                stepflow_core::error_code::ErrorCode::COMPONENT_BAD_REQUEST,
+                "INVALID_INPUT should map to COMPONENT_BAD_REQUEST"
+            );
             assert_eq!(err.message, "bad input");
         }
         other => panic!("expected Failed, got {other:?}"),

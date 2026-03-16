@@ -98,7 +98,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
             let vars = run_req
                 .variables
                 .into_iter()
-                .map(|(k, v)| (k, ValueRef::new(crate::conversions::proto_value_to_json(&v))))
+                .map(|(k, v)| {
+                    (
+                        k,
+                        ValueRef::new(crate::conversions::proto_value_to_json(&v)),
+                    )
+                })
                 .collect::<std::collections::HashMap<_, _>>();
             Some(vars)
         };
@@ -216,11 +221,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
 
                 // Convert optional structured error data from proto Struct
                 let data = task_error.data.map(|s| {
-                    let json = crate::conversions::proto_value_to_json(
-                        &prost_wkt_types::Value {
-                            kind: Some(prost_wkt_types::value::Kind::StructValue(s)),
-                        },
-                    );
+                    let json = crate::conversions::proto_value_to_json(&prost_wkt_types::Value {
+                        kind: Some(prost_wkt_types::value::Kind::StructValue(s)),
+                    });
                     ValueRef::new(json)
                 });
 
