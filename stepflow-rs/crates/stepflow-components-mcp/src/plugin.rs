@@ -25,6 +25,7 @@ use stepflow_core::{
 };
 use stepflow_plugin::{
     DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
+    TaskRegistryExt as _,
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -436,14 +437,15 @@ impl Plugin for McpPlugin {
         mcp_tool_to_component_info(tool).change_context(PluginError::ComponentInfo)
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
-        _run_context: &Arc<RunContext>,
+        run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
         input: ValueRef,
         _attempt: u32,
-    ) -> Result<FlowResult> {
+    ) -> Result<()> {
         let tool_name = component_path_to_tool_name(component.path())
             .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
 
@@ -459,6 +461,8 @@ impl Plugin for McpPlugin {
             "arguments": input.clone_value()
         });
 
+        let registry = run_context.env().task_registry();
+
         let call_result = match mcp_client.send_request("tools/call", call_params).await {
             Ok(result) => result,
             Err(err) => {
@@ -467,10 +471,14 @@ impl Plugin for McpPlugin {
                     && matches!(mcp_error, McpError::ToolExecution)
                 {
                     // This is a tool execution failure, not an implementation failure
-                    return Ok(FlowResult::Failed(FlowError::new(
-                        stepflow_core::ErrorCode::INTERNAL_ERROR,
-                        format!("Tool '{tool_name}' execution failed"),
-                    )));
+                    registry.complete(
+                        task_id,
+                        FlowResult::Failed(FlowError::new(
+                            stepflow_core::ErrorCode::INTERNAL_ERROR,
+                            format!("Tool '{tool_name}' execution failed"),
+                        )),
+                    );
+                    return Ok(());
                 }
                 // For other errors (timeouts, connection issues, etc.), propagate as implementation errors
                 return Err(err.change_context(PluginError::Execution));
@@ -483,7 +491,8 @@ impl Plugin for McpPlugin {
             call_result.clone()
         });
 
-        Ok(FlowResult::Success(ValueRef::new(content)))
+        registry.complete(task_id, FlowResult::Success(ValueRef::new(content)));
+        Ok(())
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

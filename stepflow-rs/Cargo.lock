@@ -5036,6 +5036,7 @@ dependencies = [
 name = "stepflow-plugin"
 version = "0.11.1"
 dependencies = [
+ "dashmap",
  "dynosaur",
  "error-stack",
  "indexmap 2.13.0",

@@ -831,8 +831,11 @@ impl FlowExecutor {
             RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
         );
 
+        // Generate a unique task ID for TaskRegistry tracking
+        let task_id = uuid::Uuid::now_v7().to_string();
+
         // Create step runner with all execution context
-        let runner = StepRunner::new(task.step_index, step_input, run_context, attempt);
+        let runner = StepRunner::new(task.step_index, task_id, step_input, run_context, attempt);
 
         // Create an owned future that runs the step and handles errors
         let future = async move {

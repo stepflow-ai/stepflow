@@ -15,7 +15,6 @@ use std::{path::Path, sync::Arc};
 use crate::{Result, RunContext, StepflowEnvironment};
 use serde::{Serialize, de::DeserializeOwned};
 use stepflow_core::{
-    FlowResult,
     component::ComponentInfo,
     workflow::{Component, StepId, ValueRef},
 };
@@ -39,11 +38,20 @@ pub trait Plugin: Send + Sync {
     /// Return the outputs for the given component.
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo>;
 
-    /// Execute the step and return the resulting arguments.
+    /// Start a task for the given component.
     ///
-    /// The arguments should be fully resolved.
+    /// The plugin dispatches work and delivers the result via the shared
+    /// [`TaskRegistry`] (accessed through `run_context.env().task_registry()`).
+    /// The executor registers the task_id in the registry *before* calling
+    /// this method and awaits the result via the registry's oneshot channel.
+    ///
+    /// For synchronous plugins (builtins, protocol, MCP), this executes the
+    /// component inline and calls `task_registry.complete(task_id, result)`.
+    /// For queue-based plugins (gRPC pull), this dispatches to the queue and
+    /// returns immediately — the worker delivers the result later.
     ///
     /// # Arguments
+    /// * `task_id` - Unique task identifier (registered in TaskRegistry by the executor)
     /// * `component` - The component to execute
     /// * `run_context` - The run context with flow, environment, and subflow submission
     /// * `step` - The step being executed (None for workflow-level operations)
@@ -52,14 +60,17 @@ pub trait Plugin: Send + Sync {
     ///   increasing counter that increments on every re-execution of this step,
     ///   regardless of the reason (transport error, component error, or
     ///   orchestrator recovery).
-    async fn execute(
+    ///
+    /// [`TaskRegistry`]: crate::TaskRegistry
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
-    ) -> Result<FlowResult>;
+    ) -> Result<()>;
 
     /// Prepare the plugin for a retry after a transport error.
     ///

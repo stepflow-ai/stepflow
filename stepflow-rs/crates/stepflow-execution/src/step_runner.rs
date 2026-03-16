@@ -28,7 +28,7 @@ use serde::Serialize;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Step, StepId, ValueRef};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{DynPlugin, Plugin as _, PluginRouterExt as _, RunContext};
+use stepflow_plugin::{DynPlugin, Plugin as _, PluginRouterExt as _, RunContext, TaskRegistryExt as _};
 
 use crate::{ExecutionError, Result};
 
@@ -127,10 +127,13 @@ impl StepRunResult {
 ///
 /// This is the core step execution function used by `StepRunner`.
 /// It handles:
-/// - Plugin execution
+/// - Task registration in the shared TaskRegistry
+/// - Plugin dispatch via `start_task`
+/// - Result collection from the TaskRegistry
 /// - Error handling (useDefault, fail, retry)
 /// - Observability (tracing spans, logging)
 async fn execute_step_async(
+    task_id: &str,
     plugin: &Arc<DynPlugin<'static>>,
     step: &stepflow_core::workflow::Step,
     resolved_component: &str,
@@ -151,40 +154,61 @@ async fn execute_step_async(
 
     let result = async move {
         log::debug!(
-            "Executing step: component={}, step_id={}",
+            "Executing step: component={}, step_id={}, task_id={}",
             resolved_component,
-            step.id
+            step.id,
+            task_id,
         );
 
         // Create a component from the resolved component name
         let component = stepflow_core::workflow::Component::from_string(resolved_component);
 
-        // Execute the component
-        let result = match plugin
-            .execute(&component, run_context, Some(step_id), input, attempt)
+        // Register task in the shared TaskRegistry and get result receiver.
+        // This must happen before start_task to avoid a race where the result
+        // arrives before we're listening (e.g., for synchronous plugins).
+        let registry = run_context.env().task_registry();
+        let rx = registry.register(task_id.to_string());
+
+        // Dispatch the task to the plugin
+        if let Err(error) = plugin
+            .start_task(task_id, &component, run_context, Some(step_id), input, attempt)
             .await
         {
+            // Plugin returned Err — this is a transport/infrastructure error
+            // (subprocess crash, network timeout, etc.)
+            // Clean up the registry entry since no result will arrive.
+            registry.remove(task_id);
+
+            // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
+            // transport failures from component logic errors.
+            let mut flow_error = stepflow_core::FlowError::from_error_stack(
+                error
+                    .change_context(ExecutionError::StepFailed {
+                        step: step.id.to_owned(),
+                    })
+                    .attach_printable(format!(
+                        "Component execution failed for step '{}'",
+                        step.id
+                    ))
+                    .attach_printable(format!("Component: {resolved_component}")),
+            );
+            flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
+            return Ok(FlowResult::Failed(flow_error));
+        }
+
+        // Await the result from the TaskRegistry. For synchronous plugins
+        // (builtins, protocol, MCP), the result is already available. For
+        // queue-based plugins (gRPC pull), this blocks until the worker
+        // delivers the result via CompleteTask.
+        let result = match rx.await {
             Ok(result) => result,
-            Err(error) => {
-                // Plugin returned Err — this is a transport/infrastructure error
-                // (subprocess crash, network timeout, etc.)
-                // Use the FLOW_ERROR_TRANSPORT code so the executor can distinguish
-                // transport failures from component logic errors.
-                let mut flow_error = stepflow_core::FlowError::from_error_stack(
-                    error
-                        .change_context(ExecutionError::StepFailed {
-                            step: step.id.to_owned(),
-                        })
-                        .attach_printable(format!(
-                            "Component execution failed for step '{}'",
-                            step.id
-                        ))
-                        .attach_printable(format!("Component: {resolved_component}")),
+            Err(_) => {
+                // Sender was dropped without sending — task was cleaned up
+                // (e.g., by a timeout handler or cancellation).
+                let flow_error = stepflow_core::FlowError::new(
+                    stepflow_core::ErrorCode::TRANSPORT_ERROR,
+                    format!("task '{}' was cancelled or timed out", task_id),
                 );
-                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
-                // TODO: Map specific TransportError variants to sub-type codes
-                // (-32301 spawn, -32302 connection, -32303 protocol) for
-                // structured diagnostics.
                 FlowResult::Failed(flow_error)
             }
         };
@@ -235,6 +259,8 @@ pub struct StepRunner {
     step: Step,
     /// Index of the step in the flow.
     step_index: usize,
+    /// Unique task identifier for TaskRegistry tracking.
+    task_id: String,
     /// Resolved step input (may be Success or Failed).
     step_input: FlowResult,
     /// Run context containing run hierarchy, environment, flow, and subflow submission.
@@ -254,6 +280,7 @@ impl StepRunner {
     /// the flow and flow_id, environment access, and optionally a subflow submitter.
     pub fn new(
         step_index: usize,
+        task_id: String,
         step_input: FlowResult,
         run_context: Arc<RunContext>,
         attempt: u32,
@@ -262,6 +289,7 @@ impl StepRunner {
         Self {
             step,
             step_index,
+            task_id,
             step_input,
             run_context,
             attempt,
@@ -304,6 +332,7 @@ impl StepRunner {
 
         // Execute the step (system error if infrastructure fails)
         let outcome = execute_step_async(
+            &self.task_id,
             &plugin,
             &self.step,
             &resolved_component,

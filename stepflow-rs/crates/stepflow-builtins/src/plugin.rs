@@ -17,12 +17,12 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::StepId;
 use stepflow_core::{
-    FlowResult,
     component::ComponentInfo,
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
     DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
+    TaskRegistryExt as _,
 };
 
 /// The struct that implements the `Plugin` trait.
@@ -73,19 +73,22 @@ impl Plugin for Builtins {
             .change_context(PluginError::ComponentInfo)
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
         _attempt: u32,
-    ) -> Result<FlowResult> {
+    ) -> Result<()> {
         let component = registry::get_component(component)?;
-        component
+        let result = component
             .execute(run_context, step, input)
             .await
-            .change_context(PluginError::UdfExecution)
+            .change_context(PluginError::UdfExecution)?;
+        run_context.env().task_registry().complete(task_id, result);
+        Ok(())
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_core::FlowResult;
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, StepId, ValueRef};
 use stepflow_plugin::{
@@ -388,20 +387,21 @@ impl stepflow_plugin::Plugin for PullPlugin {
         inner.component_info(component).await
     }
 
-    async fn execute(
+    async fn start_task(
         &self,
+        task_id: &str,
         component: &Component,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
-    ) -> Result<FlowResult> {
+    ) -> Result<()> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
             error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
         inner
-            .execute(component, run_context, step, input, attempt)
+            .start_task(task_id, component, run_context, step, input, attempt)
             .await
     }
 

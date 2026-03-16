@@ -165,6 +165,11 @@ pub async fn initialize_environment(env: &Arc<StepflowEnvironment>) -> Result<()
         env.insert(RetryConfig::default());
     }
 
+    // Create TaskRegistry for task result delivery if not already set
+    if !env.contains::<Arc<crate::TaskRegistry>>() {
+        env.insert(Arc::new(crate::TaskRegistry::new()));
+    }
+
     // Create ActiveExecutions for tracking running executions if not already set
     if !env.contains::<ActiveExecutions>() {
         env.insert(ActiveExecutions::new());

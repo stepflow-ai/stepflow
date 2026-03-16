@@ -19,7 +19,8 @@ use stepflow_core::{
     workflow::{Component, Flow, ValueRef},
 };
 use stepflow_plugin::{
-    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, build_in_memory_environment,
+    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, TaskRegistryExt as _,
+    build_in_memory_environment,
 };
 use uuid::Uuid;
 
@@ -80,10 +81,14 @@ async fn test_mcp_tool_execution() {
         "message": "Hello, MCP!"
     }));
 
-    let result = plugin
-        .execute(&echo_component, &run_context, None, echo_input, 1)
+    let task_id = Uuid::now_v7().to_string();
+    let registry = run_context.env().task_registry();
+    let rx = registry.register(task_id.clone());
+    plugin
+        .start_task(&task_id, &echo_component, &run_context, None, echo_input, 1)
         .await
         .unwrap();
+    let result = rx.await.unwrap();
 
     match result {
         FlowResult::Success(result) => {
@@ -104,10 +109,14 @@ async fn test_mcp_tool_execution() {
         "b": 3
     }));
 
-    let result = plugin
-        .execute(&add_component, &run_context, None, add_input, 1)
+    let task_id = Uuid::now_v7().to_string();
+    let registry = run_context.env().task_registry();
+    let rx = registry.register(task_id.clone());
+    plugin
+        .start_task(&task_id, &add_component, &run_context, None, add_input, 1)
         .await
         .unwrap();
+    let result = rx.await.unwrap();
 
     match result {
         FlowResult::Success(result) => {
@@ -140,15 +149,19 @@ async fn test_mcp_error_handling() {
     let bad_component = Component::from_string("/mock-server/nonexistent");
     let input = ValueRef::new(json!({}));
 
-    let result = plugin
-        .execute(&bad_component, &run_context, None, input, 1)
+    let task_id = Uuid::now_v7().to_string();
+    let registry = run_context.env().task_registry();
+    let rx = registry.register(task_id.clone());
+    let start_result = plugin
+        .start_task(&task_id, &bad_component, &run_context, None, input, 1)
         .await;
     assert!(
-        result.is_ok(),
-        "Expected Ok(FlowResult::Failed), got Err: {result:?}"
+        start_result.is_ok(),
+        "Expected Ok, got Err: {start_result:?}"
     );
+    let result = rx.await.unwrap();
 
-    match result.unwrap() {
+    match result {
         FlowResult::Failed(error) => {
             let error_message = format!("{error}");
             assert!(error_message.contains("nonexistent"));
