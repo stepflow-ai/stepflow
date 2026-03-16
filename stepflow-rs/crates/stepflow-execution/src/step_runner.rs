@@ -28,7 +28,9 @@ use serde::Serialize;
 use stepflow_core::FlowResult;
 use stepflow_core::workflow::{Step, StepId, ValueRef};
 use stepflow_observability::StepIdGuard;
-use stepflow_plugin::{DynPlugin, Plugin as _, PluginRouterExt as _, RunContext, TaskRegistryExt as _};
+use stepflow_plugin::{
+    DynPlugin, Plugin as _, PluginRouterExt as _, RunContext, TaskRegistryExt as _,
+};
 
 use crate::{ExecutionError, Result};
 
@@ -276,7 +278,14 @@ impl StepRunner {
 
             // Dispatch the task to the plugin
             if let Err(error) = plugin
-                .start_task(task_id, &component, run_context, Some(step_id), input, attempt)
+                .start_task(
+                    task_id,
+                    &component,
+                    run_context,
+                    Some(step_id),
+                    input,
+                    attempt,
+                )
                 .await
             {
                 // Plugin returned Err — this is a transport/infrastructure error

@@ -26,7 +26,6 @@ use std::time::Duration;
 
 use stepflow_grpc::PullTaskQueue;
 use stepflow_grpc::grpc_server::StepflowGrpcServer;
-use stepflow_plugin::TaskRegistry;
 use stepflow_grpc::proto::stepflow::v1::blob_service_client::BlobServiceClient;
 use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::OrchestratorServiceClient;
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
@@ -34,6 +33,7 @@ use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
     PutBlobRequest, StartTaskRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
 };
+use stepflow_plugin::TaskRegistry;
 
 /// Create an in-memory environment suitable for the gRPC server.
 async fn test_env() -> Arc<stepflow_core::StepflowEnvironment> {
@@ -103,7 +103,8 @@ async fn test_two_plugins_share_same_address() {
 
 #[tokio::test]
 async fn test_queue_isolation() {
-    let (_server, python_queue, node_queue, address, _task_registry) = setup_two_queue_server().await;
+    let (_server, python_queue, node_queue, address, _task_registry) =
+        setup_two_queue_server().await;
 
     let channel = endpoint(&address).connect().await.unwrap();
 
@@ -195,7 +196,8 @@ async fn test_unknown_queue_returns_not_found() {
 
 #[tokio::test]
 async fn test_complete_task_success_round_trip() {
-    let (server, python_queue, _node_queue, address, task_registry) = setup_two_queue_server().await;
+    let (server, python_queue, _node_queue, address, task_registry) =
+        setup_two_queue_server().await;
 
     // Register a task in TaskRegistry for result delivery
     let rx = task_registry.register("task-1".to_string());

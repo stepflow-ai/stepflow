@@ -19,7 +19,9 @@ use std::sync::Arc;
 
 use stepflow_core::BlobId;
 use stepflow_core::workflow::{Flow, ValueRef};
-use stepflow_plugin::{Plugin as _, PluginConfig as _, RunContext, TaskRegistryExt as _, build_in_memory_environment};
+use stepflow_plugin::{
+    Plugin as _, PluginConfig as _, RunContext, TaskRegistryExt as _, build_in_memory_environment,
+};
 use stepflow_protocol::{StepflowPluginConfig, StepflowTransport};
 use tokio::process::Command;
 use tokio::time::{sleep, timeout};
@@ -170,13 +172,21 @@ async fn test_http_protocol_integration() {
                                 let registry = env.task_registry();
                                 let rx = registry.register(task_id.clone());
 
-                                let execute_result = timeout(
-                                    Duration::from_secs(5),
-                                    async {
-                                        plugin.start_task(&task_id, component, &run_context, None, input_ref, 1).await?;
-                                        Ok::<_, error_stack::Report<stepflow_plugin::PluginError>>(rx.await)
-                                    },
-                                )
+                                let execute_result = timeout(Duration::from_secs(5), async {
+                                    plugin
+                                        .start_task(
+                                            &task_id,
+                                            component,
+                                            &run_context,
+                                            None,
+                                            input_ref,
+                                            1,
+                                        )
+                                        .await?;
+                                    Ok::<_, error_stack::Report<stepflow_plugin::PluginError>>(
+                                        rx.await,
+                                    )
+                                })
                                 .await;
 
                                 match execute_result {

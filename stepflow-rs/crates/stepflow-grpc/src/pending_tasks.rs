@@ -252,14 +252,14 @@ impl PendingTasks {
 
     /// Transition a task from Queued to Executing (called by StartTask RPC).
     ///
-    /// The execution timeout stored at [`register`] time is applied here.
+    /// The execution timeout stored at [`track`] time is applied here.
     ///
     /// Returns:
     /// - `Some(false)` — task transitioned successfully, worker should execute.
     /// - `Some(true)` — task already started (idempotent).
     /// - `None` — task_id not found (already timed out or completed).
     ///
-    /// [`register`]: PendingTasks::register
+    /// [`track`]: PendingTasks::track
     pub fn start_task(&self, task_id: &str) -> Option<bool> {
         let mut entry = self.tasks.get_mut(task_id)?;
 
@@ -523,7 +523,12 @@ mod tests {
     async fn test_track_and_complete() {
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
         assert_eq!(pending.pending_count(), 1);
 
         let value = ValueRef::new(serde_json::json!({"result": "ok"}));
@@ -544,7 +549,12 @@ mod tests {
     async fn test_untrack_task() {
         let (pending, task_registry) = setup();
         let _rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
         assert_eq!(pending.pending_count(), 1);
         pending.untrack("task-1");
         assert_eq!(pending.pending_count(), 0);
@@ -554,7 +564,12 @@ mod tests {
     async fn test_full_lifecycle() {
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
 
         assert!(pending.start_task("task-1").is_some());
         assert!(pending.heartbeat("task-1").is_some());
@@ -583,7 +598,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), Duration::from_millis(50), None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            Duration::from_millis(50),
+            None,
+        );
 
         tokio::time::advance(Duration::from_millis(60)).await;
         tokio::task::yield_now().await;
@@ -602,7 +622,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let _rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), Duration::from_millis(50), None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            Duration::from_millis(50),
+            None,
+        );
 
         tokio::time::sleep(Duration::from_millis(60)).await;
 
@@ -615,7 +640,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
         pending.start_task("task-1").unwrap();
 
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
@@ -635,7 +665,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
         pending.start_task("task-1").unwrap();
 
         // Send heartbeats every 2s for 12s — spans multiple 5s scan cycles.
@@ -656,7 +691,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, Some(Duration::from_millis(200)));
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            Some(Duration::from_millis(200)),
+        );
         pending.start_task("task-1").unwrap();
 
         for _ in 0..10 {
@@ -673,7 +713,11 @@ mod tests {
         let FlowResult::Failed(err) = rx.await.unwrap() else {
             panic!("expected failure");
         };
-        assert!(err.message.contains("exceeded execution timeout"), "unexpected: {}", err.message);
+        assert!(
+            err.message.contains("exceeded execution timeout"),
+            "unexpected: {}",
+            err.message
+        );
         assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
         assert_eq!(pending.pending_count(), 0);
     }
@@ -685,7 +729,12 @@ mod tests {
         let (pending, task_registry) = setup();
         for i in 0..20 {
             let _rx = task_registry.register(format!("task-{i}"));
-            pending.track(format!("task-{i}"), "test_component".to_string(), Duration::from_millis(50), None);
+            pending.track(
+                format!("task-{i}"),
+                "test_component".to_string(),
+                Duration::from_millis(50),
+                None,
+            );
         }
 
         assert_eq!(pending.pending_count(), 20);
@@ -699,7 +748,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), Duration::from_millis(50), None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            Duration::from_millis(50),
+            None,
+        );
 
         pending.start_task("task-1").unwrap();
 
@@ -717,7 +771,12 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), QUEUE_TIMEOUT, None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
 
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
         tokio::task::yield_now().await;
@@ -741,13 +800,22 @@ mod tests {
 
         let (pending, task_registry) = setup();
         let _rx = task_registry.register("task-1".to_string());
-        pending.track("task-1".to_string(), "test_component".to_string(), Duration::from_millis(50), None);
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            Duration::from_millis(50),
+            None,
+        );
 
         pending.shutdown();
 
         tokio::time::advance(Duration::from_millis(60)).await;
         tokio::task::yield_now().await;
 
-        assert_eq!(pending.pending_count(), 1, "scanner was shut down; task should remain");
+        assert_eq!(
+            pending.pending_count(),
+            1,
+            "scanner was shut down; task should remain"
+        );
     }
 }
