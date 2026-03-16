@@ -132,6 +132,7 @@ impl StepRunResult {
 /// - Result collection from the TaskRegistry
 /// - Error handling (useDefault, fail, retry)
 /// - Observability (tracing spans, logging)
+#[allow(clippy::too_many_arguments)]
 async fn execute_step_async(
     task_id: &str,
     plugin: &Arc<DynPlugin<'static>>,

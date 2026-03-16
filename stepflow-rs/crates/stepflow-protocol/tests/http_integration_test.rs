@@ -199,14 +199,17 @@ async fn test_http_protocol_integration() {
                                         }
                                     }
                                     Ok(Ok(Err(_))) => {
+                                        registry.remove(&task_id);
                                         eprintln!("✗ Task result channel closed unexpectedly");
                                     }
                                     Ok(Err(e)) => {
+                                        registry.remove(&task_id);
                                         eprintln!(
                                             "✗ Streamable HTTP component execution failed: {e:?}"
                                         );
                                     }
                                     Err(_) => {
+                                        registry.remove(&task_id);
                                         eprintln!(
                                             "✗ Streamable HTTP component execution timed out"
                                         );

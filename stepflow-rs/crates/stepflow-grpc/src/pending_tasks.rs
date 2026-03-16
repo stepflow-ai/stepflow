@@ -309,47 +309,46 @@ impl PendingTasks {
     /// Complete a task: record metrics, remove tracking, and deliver the
     /// result via the shared [`TaskRegistry`].
     ///
-    /// Returns `true` if the task was being tracked (and the result was
-    /// delivered to the registry), `false` if the task_id was not found
-    /// in this tracker (already timed out or never tracked here).
+    /// Returns `true` if the result was delivered to the registry (the
+    /// executor received the result), `false` if the task_id was not found
+    /// in the registry (already completed, timed out, or removed by the
+    /// executor).
     pub fn complete(&self, task_id: &str, result: FlowResult) -> bool {
         let removed = self.tasks.remove(task_id);
         self.heartbeat_tracker.remove(task_id);
 
-        let Some((_, entry)) = removed else {
-            // Not tracked here — still try to deliver via the registry
-            // (the task might have been registered in TaskRegistry but not
-            // tracked in PendingTasks, e.g., for non-queue plugins).
-            return self.task_registry.complete(task_id, result);
-        };
-
-        match &entry.phase {
-            TaskPhase::Executing { started_at, .. } => {
-                stepflow_observability::metrics::record_task_execution_duration(
-                    &entry.component,
-                    started_at.elapsed().as_secs_f64(),
-                );
+        // Record metrics if we were tracking this task.
+        if let Some((_, entry)) = removed {
+            match &entry.phase {
+                TaskPhase::Executing { started_at, .. } => {
+                    stepflow_observability::metrics::record_task_execution_duration(
+                        &entry.component,
+                        started_at.elapsed().as_secs_f64(),
+                    );
+                }
+                TaskPhase::Queued { dispatched_at } => {
+                    // Completed without StartTask (direct CompleteTask).
+                    stepflow_observability::metrics::record_task_queue_duration(
+                        &entry.component,
+                        dispatched_at.elapsed().as_secs_f64(),
+                    );
+                }
             }
-            TaskPhase::Queued { dispatched_at } => {
-                // Completed without StartTask (direct CompleteTask).
-                stepflow_observability::metrics::record_task_queue_duration(
-                    &entry.component,
-                    dispatched_at.elapsed().as_secs_f64(),
-                );
+
+            match &result {
+                FlowResult::Success(_) => {
+                    stepflow_observability::metrics::record_task_success(&entry.component);
+                }
+                FlowResult::Failed(_) => {
+                    stepflow_observability::metrics::record_task_failure(&entry.component);
+                }
             }
         }
 
-        match &result {
-            FlowResult::Success(_) => {
-                stepflow_observability::metrics::record_task_success(&entry.component);
-            }
-            FlowResult::Failed(_) => {
-                stepflow_observability::metrics::record_task_failure(&entry.component);
-            }
-        }
-
-        self.task_registry.complete(task_id, result);
-        true
+        // Deliver via the shared registry. Returns false if the executor
+        // no longer has a listener for this task_id (e.g., already timed
+        // out or completed via another path).
+        self.task_registry.complete(task_id, result)
     }
 
     /// Number of tasks currently tracked (any phase).

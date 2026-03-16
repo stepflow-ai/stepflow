@@ -54,10 +54,20 @@ impl TaskRegistry {
     /// # Arguments
     /// * `task_id` - Unique identifier for the task
     ///
+    /// # Panics
+    ///
+    /// Panics if a task with the same ID is already registered. Duplicate
+    /// task_ids indicate a bug in the executor — each task must have a
+    /// unique ID.
+    ///
     /// [`complete`]: TaskRegistry::complete
     pub fn register(&self, task_id: String) -> oneshot::Receiver<FlowResult> {
         let (tx, rx) = oneshot::channel();
-        self.tasks.insert(task_id, tx);
+        let old = self.tasks.insert(task_id, tx);
+        assert!(
+            old.is_none(),
+            "duplicate task_id registered — previous waiter will hang"
+        );
         rx
     }
 
