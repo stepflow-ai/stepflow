@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from pathlib import Path
 from typing import Any
 
 from stepflow_py.worker.context import StepflowContext
@@ -85,12 +87,44 @@ def _configure_blob_store() -> None:
     logger.info("Blob store URL configured on server instance: %s", blob_url)
 
 
+READY_SENTINEL = Path("/tmp/worker-ready")
+
+
+def _write_ready_sentinel() -> None:
+    """Touch the sentinel file so K8s probes can detect readiness."""
+    READY_SENTINEL.touch()
+    logger.info("Ready sentinel written to %s", READY_SENTINEL)
+
+
+def _warmup_models() -> None:
+    """Eagerly load ONNX models before the asyncio event loop starts.
+
+    DocumentConverter lazy-loads ONNX Runtime sessions on first use, which
+    takes 15-45s of synchronous CPU-bound work. Running this before
+    ``sdk_main()`` (which calls ``asyncio.run()``) ensures models are loaded
+    before the pull loop can receive any tasks, avoiding heartbeat timeouts.
+    """
+    logger.info("Warming up DocumentConverter models...")
+    start = time.monotonic()
+    try:
+        converter_cache.get_by_config_name("default")
+        elapsed = time.monotonic() - start
+        logger.info("Model warm-up completed in %.1fs", elapsed)
+    except Exception:
+        elapsed = time.monotonic() - start
+        logger.exception(
+            "Model warm-up failed after %.1fs (proceeding anyway)", elapsed
+        )
+    _write_ready_sentinel()
+
+
 def entry_point() -> None:
     """CLI entry point for the gRPC pull-based docling worker."""
     from stepflow_py.worker.observability import setup_observability
 
     setup_observability()
     _configure_blob_store()
+    _warmup_models()
     sdk_main()
 
 
