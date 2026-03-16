@@ -159,7 +159,8 @@ class GrpcContext(StepflowContext):
         proto_overrides = None
         if overrides:
             proto_overrides = struct_pb2.Struct()
-            ParseDict(overrides, proto_overrides)
+            for k, v in overrides.items():
+                proto_overrides.fields[str(k)].CopyFrom(_python_to_proto_value(v))
 
         # Build the shared CreateRunRequest
         run_request = CreateRunRequest(
