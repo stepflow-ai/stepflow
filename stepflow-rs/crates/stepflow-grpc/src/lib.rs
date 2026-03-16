@@ -18,19 +18,12 @@
 //! - Queue-based plugin for dispatching tasks to workers
 //! - Task completion registry for correlating results
 
-/// Generated protobuf types for the Stepflow v1 protocol.
+/// Proto types and gRPC service definitions re-exported from `stepflow-proto`.
+///
+/// Preserves the `crate::proto::stepflow::v1::*` path that existing code and
+/// generated REST route handlers reference.
 pub mod proto {
-    pub mod stepflow {
-        pub mod v1 {
-            tonic::include_proto!("stepflow.v1");
-        }
-    }
-
-    pub mod google {
-        pub mod api {
-            tonic::include_proto!("google.api");
-        }
-    }
+    pub use stepflow_proto::*;
 }
 
 // Re-export so generated REST routes can use `crate::stepflow::v1::*`

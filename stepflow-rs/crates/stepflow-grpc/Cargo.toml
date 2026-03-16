@@ -24,6 +24,7 @@ dashmap.workspace = true
 serde_json.workspace = true
 stepflow-analysis.workspace = true
 stepflow-core.workspace = true
+stepflow-proto.workspace = true
 stepflow-observability.workspace = true
 stepflow-dtos.workspace = true
 stepflow-execution.workspace = true
@@ -50,17 +51,12 @@ tokio = { workspace = true, features = ["test-util"] }
 tonic = { version = "0.14", features = ["transport"] }
 
 [build-dependencies]
-tonic-prost-build = "0.14"
 tonic-rest-build = "0.1.5"
-prost-build = "0.14"
 built = { version = "0.7", features = ["git2"] }
 
 [lints]
 workspace = true
 
 [package.metadata.cargo-machete]
-# prost/tonic-prost/tonic-rest: used in protobuf-generated code loaded via include!() —
-#   machete cannot see through macros.
-# built/prost-build/tonic-prost-build/tonic-rest-build: build-time deps used in build.rs —
-#   machete does not verify build script usage.
-ignored = ["prost", "prost-types", "tonic-prost", "tonic-rest", "built", "prost-build", "tonic-prost-build", "tonic-rest-build"]
+# built/tonic-rest-build: build-time deps used in build.rs — machete does not verify build script usage.
+ignored = ["built", "tonic-rest-build"]

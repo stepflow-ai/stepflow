@@ -4816,9 +4816,9 @@ dependencies = [
  "stepflow-config",
  "stepflow-core",
  "stepflow-execution",
- "stepflow-grpc",
  "stepflow-observability",
  "stepflow-plugin",
+ "stepflow-proto",
  "stepflow-server",
  "stepflow-typecheck",
  "strum",
@@ -4896,6 +4896,7 @@ dependencies = [
  "serde_yaml_ng",
  "sha2",
  "similar-asserts",
+ "stepflow-proto",
  "strum",
  "thiserror 2.0.18",
 ]
@@ -4951,7 +4952,6 @@ dependencies = [
  "log",
  "nix 0.29.0",
  "prost",
- "prost-build",
  "prost-types",
  "prost-wkt-types",
  "schemars 1.2.1",
@@ -4963,13 +4963,13 @@ dependencies = [
  "stepflow-execution",
  "stepflow-observability",
  "stepflow-plugin",
+ "stepflow-proto",
  "stepflow-state",
  "tokio",
  "tokio-stream",
  "tokio-util",
  "tonic",
  "tonic-prost",
- "tonic-prost-build",
  "tonic-rest",
  "tonic-rest-build",
  "tonic-types",
@@ -5053,6 +5053,22 @@ dependencies = [
  "tokio",
  "trait-variant",
  "uuid",
+]
+
+[[package]]
+name = "stepflow-proto"
+version = "0.11.1"
+dependencies = [
+ "prost",
+ "prost-build",
+ "prost-types",
+ "prost-wkt-types",
+ "schemars 1.2.1",
+ "serde",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tonic-rest-build",
 ]
 
 [[package]]

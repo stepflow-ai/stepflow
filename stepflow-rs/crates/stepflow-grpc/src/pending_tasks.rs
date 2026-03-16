@@ -71,7 +71,7 @@ use std::time::Duration;
 
 use dashmap::DashMap;
 use futures::StreamExt as _;
-use stepflow_core::{ErrorCode, FlowError, FlowResult};
+use stepflow_core::{FlowError, FlowResult};
 use stepflow_plugin::TaskRegistry;
 use tokio::time::MissedTickBehavior;
 
@@ -401,12 +401,15 @@ impl PendingTasks {
 
         log::warn!("{message}");
 
-        // Deliver timeout failure via the shared TaskRegistry. Uses transport
+        // Deliver timeout failure via the shared TaskRegistry. Uses Timeout
         // error code so the retry system classifies these as transport errors
         // and triggers subprocess restart via prepare_for_retry().
         self.task_registry.complete(
             task_id,
-            FlowResult::Failed(FlowError::new(ErrorCode::TRANSPORT_ERROR, message)),
+            FlowResult::Failed(FlowError::new(
+                stepflow_core::TaskErrorCode::Timeout,
+                message,
+            )),
         );
     }
 
@@ -507,6 +510,7 @@ impl PendingTasks {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use stepflow_core::TaskErrorCode;
     use stepflow_core::workflow::ValueRef;
 
     const QUEUE_TIMEOUT: Duration = Duration::from_millis(50);
@@ -612,7 +616,7 @@ mod tests {
             panic!("expected failure");
         };
         assert!(err.message.contains("timed out waiting for worker"));
-        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
+        assert_eq!(err.code, TaskErrorCode::Timeout);
         assert_eq!(pending.pending_count(), 0);
     }
 
@@ -655,7 +659,7 @@ mod tests {
             panic!("expected failure");
         };
         assert!(err.message.contains("no heartbeat received"));
-        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
+        assert_eq!(err.code, TaskErrorCode::Timeout);
         assert_eq!(pending.pending_count(), 0);
     }
 
@@ -718,7 +722,7 @@ mod tests {
             "unexpected: {}",
             err.message
         );
-        assert_eq!(err.code, ErrorCode::TRANSPORT_ERROR);
+        assert_eq!(err.code, TaskErrorCode::Timeout);
         assert_eq!(pending.pending_count(), 0);
     }
 

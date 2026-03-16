@@ -18,8 +18,9 @@
 
 from __future__ import annotations
 
-import sys
 from enum import IntEnum
+
+import sys
 
 if sys.version_info >= (3, 11):
     from enum import StrEnum
@@ -134,10 +135,18 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
     result: Value
 
 
-class FlowError(Struct, kw_only=True):
-    code: int
-    message: str
-    data: Value | None | UnsetType = UNSET
+class TaskErrorCode(StrEnum):
+    UNSPECIFIED = 'UNSPECIFIED'
+    TIMEOUT = 'TIMEOUT'
+    INVALID_INPUT = 'INVALID_INPUT'
+    COMPONENT_FAILED = 'COMPONENT_FAILED'
+    CANCELLED = 'CANCELLED'
+    UNREACHABLE = 'UNREACHABLE'
+    COMPONENT_NOT_FOUND = 'COMPONENT_NOT_FOUND'
+    RESOURCE_UNAVAILABLE = 'RESOURCE_UNAVAILABLE'
+    EXPRESSION_FAILURE = 'EXPRESSION_FAILURE'
+    ORCHESTRATOR_ERROR = 'ORCHESTRATOR_ERROR'
+    WORKER_ERROR = 'WORKER_ERROR'
 
 
 class RuntimeCapabilities(Struct, kw_only=True):
@@ -406,8 +415,10 @@ class GetRunProtocolParams(Struct, kw_only=True):
     ) = UNSET
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    error: FlowError
+class FlowError(Struct, kw_only=True):
+    code: TaskErrorCode
+    message: str
+    data: Value | None | UnsetType = UNSET
 
 
 class InitializeParams(Struct, kw_only=True):
@@ -484,7 +495,8 @@ class WorkflowOverrides(Struct, kw_only=True):
     ]
 
 
-FlowResult: TypeAlias = FlowResultSuccess | FlowResultFailed
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    error: FlowError
 
 
 MethodResponse: TypeAlias = Annotated[
@@ -553,6 +565,9 @@ class SubmitRunProtocolParams(Struct, kw_only=True):
         ]
         | UnsetType
     ) = UNSET
+
+
+FlowResult: TypeAlias = FlowResultSuccess | FlowResultFailed
 
 
 class ItemResult(Struct, kw_only=True):

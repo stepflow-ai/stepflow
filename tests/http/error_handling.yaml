@@ -59,7 +59,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32100
+          code: COMPONENT_FAILED
 
     - name: "RuntimeError is wrapped and surfaced"
       input:
@@ -68,7 +68,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32100
+          code: COMPONENT_FAILED
 
     - name: "Success case works normally"
       input:

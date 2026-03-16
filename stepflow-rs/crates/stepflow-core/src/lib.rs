@@ -33,6 +33,7 @@ pub use blob::{BlobData, BlobId, BlobMetadata, BlobType};
 pub use blob_ref::BlobRef;
 pub use environment::StepflowEnvironment;
 pub use error_code::ErrorCode;
+pub use stepflow_proto::TaskErrorCode;
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use run_params::{DEFAULT_WAIT_TIMEOUT_SECS, GetRunParams, ResultOrder, SubmitRunParams};
 pub use transport_retry::RetryConfig;

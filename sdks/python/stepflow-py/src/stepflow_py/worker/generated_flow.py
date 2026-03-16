@@ -18,6 +18,17 @@
 
 from __future__ import annotations
 
+import sys
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        def __str__(self) -> str:
+            return self.value
+
 from typing import Annotated, Any, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType
@@ -56,10 +67,18 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
     result: Value
 
 
-class FlowError(Struct, kw_only=True):
-    code: int
-    message: str
-    data: Value | None | UnsetType = UNSET
+class TaskErrorCode(StrEnum):
+    UNSPECIFIED = 'UNSPECIFIED'
+    TIMEOUT = 'TIMEOUT'
+    INVALID_INPUT = 'INVALID_INPUT'
+    COMPONENT_FAILED = 'COMPONENT_FAILED'
+    CANCELLED = 'CANCELLED'
+    UNREACHABLE = 'UNREACHABLE'
+    COMPONENT_NOT_FOUND = 'COMPONENT_NOT_FOUND'
+    RESOURCE_UNAVAILABLE = 'RESOURCE_UNAVAILABLE'
+    EXPRESSION_FAILURE = 'EXPRESSION_FAILURE'
+    ORCHESTRATOR_ERROR = 'ORCHESTRATOR_ERROR'
+    WORKER_ERROR = 'WORKER_ERROR'
 
 
 class ExampleInput(Struct, kw_only=True):
@@ -102,8 +121,10 @@ ErrorAction: TypeAlias = Annotated[
 ]
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    error: FlowError
+class FlowError(Struct, kw_only=True):
+    code: TaskErrorCode
+    message: str
+    data: Value | None | UnsetType = UNSET
 
 
 class Step(Struct, kw_only=True):
@@ -137,6 +158,10 @@ class Step(Struct, kw_only=True):
         ]
         | UnsetType
     ) = UNSET
+
+
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    error: FlowError
 
 
 FlowResult: TypeAlias = FlowResultSuccess | FlowResultFailed

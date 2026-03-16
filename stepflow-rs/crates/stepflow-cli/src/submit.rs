@@ -14,8 +14,8 @@ use crate::{Result, error::MainError};
 use error_stack::report;
 use std::collections::HashMap;
 use stepflow_core::workflow::{Flow, ValueRef, WorkflowOverrides};
-use stepflow_core::{FlowError, FlowResult};
-use stepflow_grpc::proto::stepflow::v1::{
+use stepflow_core::{FlowError, FlowResult, TaskErrorCode};
+use stepflow_proto::stepflow::v1::{
     self as proto, flows_service_client::FlowsServiceClient, runs_service_client::RunsServiceClient,
 };
 
@@ -93,7 +93,7 @@ fn proto_item_to_flow_result(item: &proto::ItemResult) -> FlowResult {
             Ok(v) => v,
             Err(e) => {
                 return FlowResult::Failed(FlowError::new(
-                    500,
+                    TaskErrorCode::OrchestratorError,
                     format!("Failed to deserialize output: {e}"),
                 ));
             }
@@ -101,16 +101,19 @@ fn proto_item_to_flow_result(item: &proto::ItemResult) -> FlowResult {
         match serde_json::from_value(value) {
             Ok(value_ref) => FlowResult::Success(value_ref),
             Err(e) => FlowResult::Failed(FlowError::new(
-                500,
+                TaskErrorCode::OrchestratorError,
                 format!("Failed to convert output to ValueRef: {e}"),
             )),
         }
     } else if let Some(ref error_msg) = item.error_message {
-        let code = item.error_code.unwrap_or(500);
-        FlowResult::Failed(FlowError::new(i64::from(code), error_msg.clone()))
+        let code = item
+            .error_code
+            .and_then(|c| TaskErrorCode::try_from(c).ok())
+            .unwrap_or(TaskErrorCode::OrchestratorError);
+        FlowResult::Failed(FlowError::new(code, error_msg.clone()))
     } else {
         FlowResult::Failed(FlowError::new(
-            500,
+            TaskErrorCode::OrchestratorError,
             "Server returned item with no output or error",
         ))
     }

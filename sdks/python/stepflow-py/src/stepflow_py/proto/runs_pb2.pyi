@@ -670,7 +670,7 @@ class StepStatus(google.protobuf.message.Message):
     status: common_pb2.ExecutionStatus.ValueType
     component: builtins.str
     error_message: builtins.str
-    error_code: builtins.int
+    error_code: common_pb2.TaskErrorCode.ValueType
     journal_seqno: builtins.int
     """Journal sequence number of the event that produced this status."""
     @property
@@ -695,7 +695,7 @@ class StepStatus(google.protobuf.message.Message):
         component: builtins.str | None = ...,
         output: google.protobuf.struct_pb2.Value | None = ...,
         error_message: builtins.str | None = ...,
-        error_code: builtins.int | None = ...,
+        error_code: common_pb2.TaskErrorCode.ValueType | None = ...,
         started_at: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         completed_at: google.protobuf.timestamp_pb2.Timestamp | None = ...,
         journal_seqno: builtins.int = ...,

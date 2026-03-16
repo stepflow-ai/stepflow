@@ -1,0 +1,33 @@
+[package]
+name = "stepflow-proto"
+description = "Generated protobuf types and gRPC service definitions for Stepflow"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+prost = "0.14"
+prost-types = "0.14"
+prost-wkt-types = "0.7"
+schemars.workspace = true
+serde = { version = "1", features = ["derive"] }
+tonic = { version = "0.14", features = ["transport"] }
+tonic-prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+tonic-prost-build = "0.14"
+tonic-rest-build = "0.1.5"
+
+[lints]
+workspace = true
+
+[package.metadata.cargo-machete]
+# prost/prost-types/tonic-prost: used in protobuf-generated code loaded via include!() —
+#   machete cannot see through macros.
+# prost-build/tonic-prost-build/tonic-rest-build: build-time deps used in build.rs —
+#   machete does not verify build script usage.
+ignored = ["prost", "prost-types", "tonic-prost", "prost-build", "tonic-prost-build", "tonic-rest-build"]

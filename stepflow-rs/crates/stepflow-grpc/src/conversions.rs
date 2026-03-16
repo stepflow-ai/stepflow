@@ -156,7 +156,7 @@ pub fn item_result_to_proto(r: &stepflow_dtos::ItemResult) -> proto::ItemResult 
         Some(stepflow_core::FlowResult::Failed(error)) => (
             None,
             Some(error.message.to_string()),
-            Some(error.code as i32),
+            Some(error.code.into()),
         ),
         _ => (None, None, None),
     };

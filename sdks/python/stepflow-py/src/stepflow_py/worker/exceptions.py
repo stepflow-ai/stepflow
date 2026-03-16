@@ -14,12 +14,12 @@
 
 from typing import Any
 
-from stepflow_py.proto.orchestrator_pb2 import (
+from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_COMPONENT_FAILED,
     TASK_ERROR_CODE_COMPONENT_NOT_FOUND,
-    TASK_ERROR_CODE_INTERNAL,
     TASK_ERROR_CODE_INVALID_INPUT,
-    TASK_ERROR_CODE_UNAVAILABLE,
+    TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
+    TASK_ERROR_CODE_WORKER_ERROR,
 )
 from stepflow_py.worker.generated_protocol import ErrorCode
 
@@ -51,7 +51,7 @@ class StepflowError(Exception):
     @property
     def task_error_code(self) -> int:
         """Proto TaskErrorCode for this exception. Subclasses override."""
-        return TASK_ERROR_CODE_INTERNAL
+        return TASK_ERROR_CODE_WORKER_ERROR
 
     def task_error_data(self) -> dict:
         """Structured error data to include in TaskError.data."""
@@ -74,7 +74,7 @@ class StepflowProtocolError(StepflowError):
 
     @property
     def task_error_code(self) -> int:
-        return TASK_ERROR_CODE_INTERNAL
+        return TASK_ERROR_CODE_WORKER_ERROR
 
 
 class StepflowComponentError(StepflowError):
@@ -134,7 +134,7 @@ class StepflowRuntimeError(StepflowError):
 
     @property
     def task_error_code(self) -> int:
-        return TASK_ERROR_CODE_UNAVAILABLE
+        return TASK_ERROR_CODE_RESOURCE_UNAVAILABLE
 
 
 class ComponentNotFoundError(StepflowComponentError):

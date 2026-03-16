@@ -18,6 +18,17 @@
 
 from __future__ import annotations
 
+import sys
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        def __str__(self) -> str:
+            return self.value
+
 from typing import Annotated, Any, Literal, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, convert, field
@@ -101,10 +112,18 @@ Value: TypeAlias = Annotated[
 ]
 
 
-class FlowError(Struct, kw_only=True):
-    code: int
-    message: str
-    data: Value | None | UnsetType = UNSET
+class TaskErrorCode(StrEnum):
+    UNSPECIFIED = 'UNSPECIFIED'
+    TIMEOUT = 'TIMEOUT'
+    INVALID_INPUT = 'INVALID_INPUT'
+    COMPONENT_FAILED = 'COMPONENT_FAILED'
+    CANCELLED = 'CANCELLED'
+    UNREACHABLE = 'UNREACHABLE'
+    COMPONENT_NOT_FOUND = 'COMPONENT_NOT_FOUND'
+    RESOURCE_UNAVAILABLE = 'RESOURCE_UNAVAILABLE'
+    EXPRESSION_FAILURE = 'EXPRESSION_FAILURE'
+    ORCHESTRATOR_ERROR = 'ORCHESTRATOR_ERROR'
+    WORKER_ERROR = 'WORKER_ERROR'
 
 
 class McpPluginConfig(Struct, kw_only=True, tag_field='type', tag='mcp'):
@@ -390,8 +409,10 @@ class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'
     result: Value
 
 
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    error: FlowError
+class FlowError(Struct, kw_only=True):
+    code: TaskErrorCode
+    message: str
+    data: Value | None | UnsetType = UNSET
 
 
 class InputCondition(Struct, kw_only=True):
@@ -428,19 +449,8 @@ BackoffConfig: TypeAlias = Annotated[
 ]
 
 
-MockComponentResult: TypeAlias = Annotated[
-    FlowResultSuccess | FlowResultFailed,
-    Meta(
-        description='Return the given result (success or flow-error).',
-        title='MockComponentResult',
-    ),
-]
-
-
-MockComponentBehavior: TypeAlias = Annotated[
-    MockComponentError | MockComponentResult,
-    Meta(description='Enumeration of behaviors for the mock components.'),
-]
+class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
+    error: FlowError
 
 
 class RouteRule(Struct, kw_only=True):
@@ -540,6 +550,21 @@ class RetryConfig(Struct, kw_only=True):
             'maxDelayMs': 10000,
         }
     )
+
+
+MockComponentResult: TypeAlias = Annotated[
+    FlowResultSuccess | FlowResultFailed,
+    Meta(
+        description='Return the given result (success or flow-error).',
+        title='MockComponentResult',
+    ),
+]
+
+
+MockComponentBehavior: TypeAlias = Annotated[
+    MockComponentError | MockComponentResult,
+    Meta(description='Enumeration of behaviors for the mock components.'),
+]
 
 
 class MockComponent(Struct, kw_only=True):

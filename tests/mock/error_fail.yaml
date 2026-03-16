@@ -27,7 +27,7 @@ test:
     output:
       outcome: failed
       error:
-        code: 8
+        code: COMPONENT_FAILED
         message: error
   - name: test success case
     input:

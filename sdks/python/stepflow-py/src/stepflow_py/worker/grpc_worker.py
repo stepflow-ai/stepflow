@@ -63,11 +63,11 @@ from stepflow_py.proto import (
     TaskError,
     TaskHeartbeatRequest,
 )
-from stepflow_py.proto.orchestrator_pb2 import (
+from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_COMPONENT_FAILED,
-    TASK_ERROR_CODE_INTERNAL,
     TASK_ERROR_CODE_INVALID_INPUT,
-    TASK_ERROR_CODE_UNAVAILABLE,
+    TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
+    TASK_ERROR_CODE_WORKER_ERROR,
 )
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
@@ -340,7 +340,7 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 traceback.format_exc(),
-                code=TASK_ERROR_CODE_INTERNAL,
+                code=TASK_ERROR_CODE_WORKER_ERROR,
                 channel=orch_channel,
             )
         except Exception:
@@ -503,7 +503,7 @@ def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
     if isinstance(exc, TypeError):
         return TASK_ERROR_CODE_INVALID_INPUT, std_error_data
     if isinstance(exc, ConnectionError | TimeoutError | OSError):
-        return TASK_ERROR_CODE_UNAVAILABLE, std_error_data
+        return TASK_ERROR_CODE_RESOURCE_UNAVAILABLE, std_error_data
 
     # Default: component failed
     return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data

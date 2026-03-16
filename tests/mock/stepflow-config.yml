@@ -57,7 +57,7 @@ plugins:
         behaviors:
           { mode: "error" }:
             outcome: failed
-            error: {code: 8, message: "error"}
+            error: {code: COMPONENT_FAILED, message: "error"}
           { mode: "succeed" }:
             outcome: success
             result: {output: "succeeded"}

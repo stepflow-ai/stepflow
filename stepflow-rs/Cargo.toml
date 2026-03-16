@@ -123,6 +123,7 @@ stepflow-grpc = { path = "./crates/stepflow-grpc" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-observability = { path = "./crates/stepflow-observability" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
+stepflow-proto = { path = "./crates/stepflow-proto" }
 stepflow-protocol = { path = "./crates/stepflow-protocol" }
 stepflow-server = { path = "./crates/stepflow-server", default-features = false }
 stepflow-state = { path = "./crates/stepflow-state" }

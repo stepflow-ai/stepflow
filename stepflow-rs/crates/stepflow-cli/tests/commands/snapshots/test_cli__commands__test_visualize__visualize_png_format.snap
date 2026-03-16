@@ -6,8 +6,8 @@ info:
     - "--log-file=/dev/null"
     - "--omit-stack-trace"
     - visualize
-    - "--flow=tests/mock/basic.yaml"
-    - "--output=/var/folders/0v/lmpzpmsn4kn8ty1hrz0xr7h00000gn/T/stepflow_test_basic_output.png"
+    - tests/mock/basic.yaml
+    - "--output=/var/folders/zk/lxqpq1490bb5xkvpdg25058r0000gn/T/stepflow_test_basic_output.png"
     - "--format=png"
   env:
     STEPFLOW_LOG_DESTINATION: ""
