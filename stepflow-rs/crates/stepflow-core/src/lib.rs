@@ -35,5 +35,6 @@ pub use environment::StepflowEnvironment;
 pub use error_code::ErrorCode;
 pub use error_stack::{ErrorStack, ErrorStackEntry};
 pub use run_params::{DEFAULT_WAIT_TIMEOUT_SECS, GetRunParams, ResultOrder, SubmitRunParams};
+pub use stepflow_proto::TaskErrorCode;
 pub use transport_retry::RetryConfig;
 pub use values::ValueExpr;

@@ -76,6 +76,66 @@ enum ResultOrder {
 }
 
 // =============================================================================
+// Error codes
+// =============================================================================
+
+// Error codes for task and step failures.
+//
+// Each variant encodes retryability semantics:
+//   - Always retried (transport): UNREACHABLE, TIMEOUT
+//   - Retried with onError policy: COMPONENT_FAILED, RESOURCE_UNAVAILABLE
+//   - Never retried: all others
+enum TaskErrorCode {
+  // Default value; should not be used explicitly.
+  TASK_ERROR_CODE_UNSPECIFIED = 0;
+
+  // The task exceeded its execution deadline or heartbeat timeout.
+  // Always retried (transport-level).
+  TASK_ERROR_CODE_TIMEOUT = 1;
+
+  // The component rejected its input (e.g., missing required fields, schema
+  // validation failure). Not retriable without correcting the input.
+  TASK_ERROR_CODE_INVALID_INPUT = 2;
+
+  // The component executed but returned a business-logic failure (e.g., an API
+  // call returned an error, a transformation produced an invalid result).
+  // Retriable with onError: retry policy.
+  TASK_ERROR_CODE_COMPONENT_FAILED = 3;
+
+  // The task was explicitly cancelled by the orchestrator (e.g., run
+  // cancellation, step timeout policy). Not retriable.
+  TASK_ERROR_CODE_CANCELLED = 4;
+
+  // The worker or component could not be reached (e.g., worker disconnected,
+  // subprocess crash, network timeout). The component never executed.
+  // Always retried (transport-level).
+  TASK_ERROR_CODE_UNREACHABLE = 5;
+
+  // The requested component does not exist on the worker (e.g., unknown
+  // component name, misconfigured route). Not retriable without fixing the
+  // workflow or routing configuration.
+  TASK_ERROR_CODE_COMPONENT_NOT_FOUND = 6;
+
+  // A resource required by the component was not available during execution
+  // (e.g., external API down, database connection failed).
+  // Retriable with onError: retry policy.
+  TASK_ERROR_CODE_RESOURCE_UNAVAILABLE = 7;
+
+  // The orchestrator failed to resolve a value expression (e.g., $step
+  // reference to unknown step, path to nonexistent field).
+  // Not retriable — the flow definition must be corrected.
+  TASK_ERROR_CODE_EXPRESSION_FAILURE = 8;
+
+  // Catch-all for unexpected orchestrator errors (e.g., internal state
+  // corruption, serialization failure). Not retriable.
+  TASK_ERROR_CODE_ORCHESTRATOR_ERROR = 9;
+
+  // Catch-all for unexpected worker/SDK errors (e.g., serialization failure,
+  // panic, protocol violation). Not retriable.
+  TASK_ERROR_CODE_WORKER_ERROR = 10;
+}
+
+// =============================================================================
 // Shared types used across services
 // =============================================================================
 
@@ -103,7 +163,7 @@ message ItemResult {
   optional string error_message = 4;
 
   // Error code (present when failed).
-  optional int32 error_code = 5;
+  optional TaskErrorCode error_code = 5;
 
   // When this item completed.
   optional google.protobuf.Timestamp completed_at = 6;

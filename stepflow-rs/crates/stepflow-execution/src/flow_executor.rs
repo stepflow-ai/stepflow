@@ -1440,7 +1440,10 @@ mod tests {
         let behaviors = vec![
             (
                 json!({"x": 1}),
-                FlowResult::Failed(stepflow_core::FlowError::new(500, "Item 1 failed")),
+                FlowResult::Failed(stepflow_core::FlowError::new(
+                    stepflow_core::TaskErrorCode::ComponentFailed,
+                    "Item 1 failed",
+                )),
             ),
             (
                 json!({"x": 2}),
@@ -1501,7 +1504,10 @@ mod tests {
             ),
             (
                 json!({"x": 2}),
-                FlowResult::Failed(stepflow_core::FlowError::new(500, "Middle item failed")),
+                FlowResult::Failed(stepflow_core::FlowError::new(
+                    stepflow_core::TaskErrorCode::ComponentFailed,
+                    "Middle item failed",
+                )),
             ),
             (
                 json!({"x": 3}),
@@ -1656,15 +1662,24 @@ mod tests {
         let behaviors = vec![
             (
                 json!({"x": 1}),
-                FlowResult::Failed(stepflow_core::FlowError::new(500, "Error 1")),
+                FlowResult::Failed(stepflow_core::FlowError::new(
+                    stepflow_core::TaskErrorCode::ComponentFailed,
+                    "Error 1",
+                )),
             ),
             (
                 json!({"x": 2}),
-                FlowResult::Failed(stepflow_core::FlowError::new(500, "Error 2")),
+                FlowResult::Failed(stepflow_core::FlowError::new(
+                    stepflow_core::TaskErrorCode::ComponentFailed,
+                    "Error 2",
+                )),
             ),
             (
                 json!({"x": 3}),
-                FlowResult::Failed(stepflow_core::FlowError::new(500, "Error 3")),
+                FlowResult::Failed(stepflow_core::FlowError::new(
+                    stepflow_core::TaskErrorCode::ComponentFailed,
+                    "Error 3",
+                )),
             ),
         ];
 

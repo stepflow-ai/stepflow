@@ -123,42 +123,8 @@ message OrchestratorRunStatus {
 
 // --- CompleteTask ---
 
-// Error codes for task failures.
-enum TaskErrorCode {
-  // Default value; should not be used explicitly.
-  TASK_ERROR_CODE_UNSPECIFIED = 0;
-
-  // An unexpected internal error in the worker or runtime (e.g., serialization
-  // failure, panic, OOM). Generally not retriable without a fix.
-  TASK_ERROR_CODE_INTERNAL = 1;
-
-  // The task exceeded its execution deadline or heartbeat timeout. The
-  // orchestrator may retry depending on the configured retry policy.
-  TASK_ERROR_CODE_TIMEOUT = 2;
-
-  // The component rejected its input (e.g., missing required fields, schema
-  // validation failure). Not retriable without correcting the input.
-  TASK_ERROR_CODE_INVALID_INPUT = 3;
-
-  // The component executed but returned a business-logic failure (e.g., an API
-  // call returned an error, a transformation produced an invalid result).
-  TASK_ERROR_CODE_COMPONENT_FAILED = 4;
-
-  // The task was explicitly cancelled by the orchestrator (e.g., run
-  // cancellation, step timeout policy). Not retriable.
-  TASK_ERROR_CODE_CANCELLED = 5;
-
-  // The worker or component could not be reached (e.g., worker disconnected,
-  // gRPC channel broken). Typically retriable after backoff.
-  TASK_ERROR_CODE_UNAVAILABLE = 6;
-
-  // The requested component does not exist on the worker (e.g., unknown
-  // component name, misconfigured route). Not retriable without fixing the
-  // workflow or routing configuration.
-  TASK_ERROR_CODE_COMPONENT_NOT_FOUND = 7;
-}
-
 // Structured error type for task failures.
+// TaskErrorCode is defined in common.proto.
 message TaskError {
   // Error code categorizing the failure.
   TaskErrorCode code = 1;

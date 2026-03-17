@@ -82,7 +82,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32300
+          code: UNREACHABLE
           message: step "failing_step" failed
           data:
             stack:

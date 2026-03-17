@@ -960,9 +960,21 @@ components:
                     type: string
                     description: Error message (present when failed).
                 errorCode:
-                    type: integer
+                    enum:
+                        - TASK_ERROR_CODE_UNSPECIFIED
+                        - TASK_ERROR_CODE_TIMEOUT
+                        - TASK_ERROR_CODE_INVALID_INPUT
+                        - TASK_ERROR_CODE_COMPONENT_FAILED
+                        - TASK_ERROR_CODE_CANCELLED
+                        - TASK_ERROR_CODE_UNREACHABLE
+                        - TASK_ERROR_CODE_COMPONENT_NOT_FOUND
+                        - TASK_ERROR_CODE_RESOURCE_UNAVAILABLE
+                        - TASK_ERROR_CODE_EXPRESSION_FAILURE
+                        - TASK_ERROR_CODE_ORCHESTRATOR_ERROR
+                        - TASK_ERROR_CODE_WORKER_ERROR
+                    type: string
                     description: Error code (present when failed).
-                    format: int32
+                    format: enum
                 completedAt:
                     type: string
                     description: When this item completed.
@@ -1247,8 +1259,20 @@ components:
                 errorMessage:
                     type: string
                 errorCode:
-                    type: integer
-                    format: int32
+                    enum:
+                        - TASK_ERROR_CODE_UNSPECIFIED
+                        - TASK_ERROR_CODE_TIMEOUT
+                        - TASK_ERROR_CODE_INVALID_INPUT
+                        - TASK_ERROR_CODE_COMPONENT_FAILED
+                        - TASK_ERROR_CODE_CANCELLED
+                        - TASK_ERROR_CODE_UNREACHABLE
+                        - TASK_ERROR_CODE_COMPONENT_NOT_FOUND
+                        - TASK_ERROR_CODE_RESOURCE_UNAVAILABLE
+                        - TASK_ERROR_CODE_EXPRESSION_FAILURE
+                        - TASK_ERROR_CODE_ORCHESTRATOR_ERROR
+                        - TASK_ERROR_CODE_WORKER_ERROR
+                    type: string
+                    format: enum
                 startedAt:
                     type: string
                     format: date-time

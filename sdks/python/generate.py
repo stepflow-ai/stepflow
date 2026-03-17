@@ -140,21 +140,40 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
 
         # Add StrEnum compat for Python 3.10: (str, Enum) changes str() behavior
         # compared to StrEnum, so we use a shim that preserves StrEnum semantics.
-        # Replace class bases first, then fix the import.
-        if "class " in new_content and "(str, Enum)" in new_content:
+        # Handle both "(str, Enum)" bases and bare "StrEnum" imports.
+        if "class " in new_content and (
+            "(str, Enum)" in new_content or "(StrEnum)" in new_content
+        ):
             new_content = new_content.replace("(str, Enum)", "(StrEnum)")
-            new_content = new_content.replace(
-                "from enum import Enum, IntEnum",
-                "import sys\n"
-                "from enum import IntEnum\n\n"
+
+            # Build the compat shim for StrEnum
+            strenum_compat = (
+                "import sys\n\n"
                 "if sys.version_info >= (3, 11):\n"
                 "    from enum import StrEnum\n"
                 "else:\n"
                 "    from enum import Enum\n\n"
                 "    class StrEnum(str, Enum):\n"
                 "        def __str__(self) -> str:\n"
-                "            return self.value\n",
+                "            return self.value  # type: ignore[no-any-return]\n"
             )
+
+            # Replace various import patterns that include StrEnum or Enum
+            if "from enum import Enum, IntEnum" in new_content:
+                new_content = new_content.replace(
+                    "from enum import Enum, IntEnum",
+                    f"from enum import IntEnum\n\n{strenum_compat}",
+                )
+            elif "from enum import Enum" in new_content:
+                new_content = new_content.replace(
+                    "from enum import Enum",
+                    strenum_compat,
+                )
+            elif "from enum import StrEnum" in new_content:
+                new_content = new_content.replace(
+                    "from enum import StrEnum",
+                    strenum_compat,
+                )
 
         # Fix forward references for recursive types
         new_content = new_content.replace("List[ValueExpr]", "List['ValueExpr']")

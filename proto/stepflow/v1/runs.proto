@@ -376,7 +376,7 @@ message StepStatus {
   // Step result (present when completed or failed).
   optional google.protobuf.Value output = 6;
   optional string error_message = 7;
-  optional int32 error_code = 8;
+  optional TaskErrorCode error_code = 8;
 
   optional google.protobuf.Timestamp started_at = 9;
   optional google.protobuf.Timestamp completed_at = 10;

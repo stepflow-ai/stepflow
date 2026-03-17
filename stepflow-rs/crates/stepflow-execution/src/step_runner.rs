@@ -306,7 +306,7 @@ impl StepRunner {
                         ))
                         .attach_printable(format!("Component: {resolved_component}")),
                 );
-                flow_error.code = stepflow_core::ErrorCode::TRANSPORT_ERROR;
+                flow_error.code = stepflow_core::TaskErrorCode::Unreachable;
                 return Ok(FlowResult::Failed(flow_error));
             }
 
@@ -320,7 +320,7 @@ impl StepRunner {
                     // Sender was dropped without sending — task was cleaned up
                     // (e.g., by a timeout handler or cancellation).
                     let flow_error = stepflow_core::FlowError::new(
-                        stepflow_core::ErrorCode::TRANSPORT_ERROR,
+                        stepflow_core::TaskErrorCode::Unreachable,
                         format!("task '{}' was cancelled or timed out", task_id),
                     );
                     FlowResult::Failed(flow_error)

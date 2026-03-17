@@ -85,6 +85,122 @@ RESULT_ORDER_BY_COMPLETION: ResultOrder.ValueType  # 2
 """Order results by completion time."""
 Global___ResultOrder: typing_extensions.TypeAlias = ResultOrder
 
+class _TaskErrorCode:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _TaskErrorCodeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_TaskErrorCode.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    TASK_ERROR_CODE_UNSPECIFIED: _TaskErrorCode.ValueType  # 0
+    """Default value; should not be used explicitly."""
+    TASK_ERROR_CODE_TIMEOUT: _TaskErrorCode.ValueType  # 1
+    """The task exceeded its execution deadline or heartbeat timeout.
+    Always retried (transport-level).
+    """
+    TASK_ERROR_CODE_INVALID_INPUT: _TaskErrorCode.ValueType  # 2
+    """The component rejected its input (e.g., missing required fields, schema
+    validation failure). Not retriable without correcting the input.
+    """
+    TASK_ERROR_CODE_COMPONENT_FAILED: _TaskErrorCode.ValueType  # 3
+    """The component executed but returned a business-logic failure (e.g., an API
+    call returned an error, a transformation produced an invalid result).
+    Retriable with onError: retry policy.
+    """
+    TASK_ERROR_CODE_CANCELLED: _TaskErrorCode.ValueType  # 4
+    """The task was explicitly cancelled by the orchestrator (e.g., run
+    cancellation, step timeout policy). Not retriable.
+    """
+    TASK_ERROR_CODE_UNREACHABLE: _TaskErrorCode.ValueType  # 5
+    """The worker or component could not be reached (e.g., worker disconnected,
+    subprocess crash, network timeout). The component never executed.
+    Always retried (transport-level).
+    """
+    TASK_ERROR_CODE_COMPONENT_NOT_FOUND: _TaskErrorCode.ValueType  # 6
+    """The requested component does not exist on the worker (e.g., unknown
+    component name, misconfigured route). Not retriable without fixing the
+    workflow or routing configuration.
+    """
+    TASK_ERROR_CODE_RESOURCE_UNAVAILABLE: _TaskErrorCode.ValueType  # 7
+    """A resource required by the component was not available during execution
+    (e.g., external API down, database connection failed).
+    Retriable with onError: retry policy.
+    """
+    TASK_ERROR_CODE_EXPRESSION_FAILURE: _TaskErrorCode.ValueType  # 8
+    """The orchestrator failed to resolve a value expression (e.g., $step
+    reference to unknown step, path to nonexistent field).
+    Not retriable — the flow definition must be corrected.
+    """
+    TASK_ERROR_CODE_ORCHESTRATOR_ERROR: _TaskErrorCode.ValueType  # 9
+    """Catch-all for unexpected orchestrator errors (e.g., internal state
+    corruption, serialization failure). Not retriable.
+    """
+    TASK_ERROR_CODE_WORKER_ERROR: _TaskErrorCode.ValueType  # 10
+    """Catch-all for unexpected worker/SDK errors (e.g., serialization failure,
+    panic, protocol violation). Not retriable.
+    """
+
+class TaskErrorCode(_TaskErrorCode, metaclass=_TaskErrorCodeEnumTypeWrapper):
+    """=============================================================================
+    Error codes
+    =============================================================================
+
+    Error codes for task and step failures.
+
+    Each variant encodes retryability semantics:
+      - Always retried (transport): UNREACHABLE, TIMEOUT
+      - Retried with onError policy: COMPONENT_FAILED, RESOURCE_UNAVAILABLE
+      - Never retried: all others
+    """
+
+TASK_ERROR_CODE_UNSPECIFIED: TaskErrorCode.ValueType  # 0
+"""Default value; should not be used explicitly."""
+TASK_ERROR_CODE_TIMEOUT: TaskErrorCode.ValueType  # 1
+"""The task exceeded its execution deadline or heartbeat timeout.
+Always retried (transport-level).
+"""
+TASK_ERROR_CODE_INVALID_INPUT: TaskErrorCode.ValueType  # 2
+"""The component rejected its input (e.g., missing required fields, schema
+validation failure). Not retriable without correcting the input.
+"""
+TASK_ERROR_CODE_COMPONENT_FAILED: TaskErrorCode.ValueType  # 3
+"""The component executed but returned a business-logic failure (e.g., an API
+call returned an error, a transformation produced an invalid result).
+Retriable with onError: retry policy.
+"""
+TASK_ERROR_CODE_CANCELLED: TaskErrorCode.ValueType  # 4
+"""The task was explicitly cancelled by the orchestrator (e.g., run
+cancellation, step timeout policy). Not retriable.
+"""
+TASK_ERROR_CODE_UNREACHABLE: TaskErrorCode.ValueType  # 5
+"""The worker or component could not be reached (e.g., worker disconnected,
+subprocess crash, network timeout). The component never executed.
+Always retried (transport-level).
+"""
+TASK_ERROR_CODE_COMPONENT_NOT_FOUND: TaskErrorCode.ValueType  # 6
+"""The requested component does not exist on the worker (e.g., unknown
+component name, misconfigured route). Not retriable without fixing the
+workflow or routing configuration.
+"""
+TASK_ERROR_CODE_RESOURCE_UNAVAILABLE: TaskErrorCode.ValueType  # 7
+"""A resource required by the component was not available during execution
+(e.g., external API down, database connection failed).
+Retriable with onError: retry policy.
+"""
+TASK_ERROR_CODE_EXPRESSION_FAILURE: TaskErrorCode.ValueType  # 8
+"""The orchestrator failed to resolve a value expression (e.g., $step
+reference to unknown step, path to nonexistent field).
+Not retriable — the flow definition must be corrected.
+"""
+TASK_ERROR_CODE_ORCHESTRATOR_ERROR: TaskErrorCode.ValueType  # 9
+"""Catch-all for unexpected orchestrator errors (e.g., internal state
+corruption, serialization failure). Not retriable.
+"""
+TASK_ERROR_CODE_WORKER_ERROR: TaskErrorCode.ValueType  # 10
+"""Catch-all for unexpected worker/SDK errors (e.g., serialization failure,
+panic, protocol violation). Not retriable.
+"""
+Global___TaskErrorCode: typing_extensions.TypeAlias = TaskErrorCode
+
 @typing.final
 class ObservabilityContext(google.protobuf.message.Message):
     """=============================================================================
@@ -200,7 +316,7 @@ class ItemResult(google.protobuf.message.Message):
     """Execution status of this item."""
     error_message: builtins.str
     """Error message (present when failed)."""
-    error_code: builtins.int
+    error_code: Global___TaskErrorCode.ValueType
     """Error code (present when failed)."""
     @property
     def output(self) -> google.protobuf.struct_pb2.Value:
@@ -217,7 +333,7 @@ class ItemResult(google.protobuf.message.Message):
         status: Global___ExecutionStatus.ValueType = ...,
         output: google.protobuf.struct_pb2.Value | None = ...,
         error_message: builtins.str | None = ...,
-        error_code: builtins.int | None = ...,
+        error_code: Global___TaskErrorCode.ValueType | None = ...,
         completed_at: google.protobuf.timestamp_pb2.Timestamp | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_completed_at", b"_completed_at", "_error_code", b"_error_code", "_error_message", b"_error_message", "_output", b"_output", "completed_at", b"completed_at", "error_code", b"error_code", "error_message", b"error_message", "output", b"output"]) -> builtins.bool: ...

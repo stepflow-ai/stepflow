@@ -20,7 +20,6 @@ import builtins
 import collections.abc
 import google.protobuf.descriptor
 import google.protobuf.internal.containers
-import google.protobuf.internal.enum_type_wrapper
 import google.protobuf.message
 import google.protobuf.struct_pb2
 import google.protobuf.timestamp_pb2
@@ -36,83 +35,6 @@ else:
     import typing_extensions
 
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
-
-class _TaskErrorCode:
-    ValueType = typing.NewType("ValueType", builtins.int)
-    V: typing_extensions.TypeAlias = ValueType
-
-class _TaskErrorCodeEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_TaskErrorCode.ValueType], builtins.type):
-    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
-    TASK_ERROR_CODE_UNSPECIFIED: _TaskErrorCode.ValueType  # 0
-    """Default value; should not be used explicitly."""
-    TASK_ERROR_CODE_INTERNAL: _TaskErrorCode.ValueType  # 1
-    """An unexpected internal error in the worker or runtime (e.g., serialization
-    failure, panic, OOM). Generally not retriable without a fix.
-    """
-    TASK_ERROR_CODE_TIMEOUT: _TaskErrorCode.ValueType  # 2
-    """The task exceeded its execution deadline or heartbeat timeout. The
-    orchestrator may retry depending on the configured retry policy.
-    """
-    TASK_ERROR_CODE_INVALID_INPUT: _TaskErrorCode.ValueType  # 3
-    """The component rejected its input (e.g., missing required fields, schema
-    validation failure). Not retriable without correcting the input.
-    """
-    TASK_ERROR_CODE_COMPONENT_FAILED: _TaskErrorCode.ValueType  # 4
-    """The component executed but returned a business-logic failure (e.g., an API
-    call returned an error, a transformation produced an invalid result).
-    """
-    TASK_ERROR_CODE_CANCELLED: _TaskErrorCode.ValueType  # 5
-    """The task was explicitly cancelled by the orchestrator (e.g., run
-    cancellation, step timeout policy). Not retriable.
-    """
-    TASK_ERROR_CODE_UNAVAILABLE: _TaskErrorCode.ValueType  # 6
-    """The worker or component could not be reached (e.g., worker disconnected,
-    gRPC channel broken). Typically retriable after backoff.
-    """
-    TASK_ERROR_CODE_COMPONENT_NOT_FOUND: _TaskErrorCode.ValueType  # 7
-    """The requested component does not exist on the worker (e.g., unknown
-    component name, misconfigured route). Not retriable without fixing the
-    workflow or routing configuration.
-    """
-
-class TaskErrorCode(_TaskErrorCode, metaclass=_TaskErrorCodeEnumTypeWrapper):
-    """--- CompleteTask ---
-
-    Error codes for task failures.
-    """
-
-TASK_ERROR_CODE_UNSPECIFIED: TaskErrorCode.ValueType  # 0
-"""Default value; should not be used explicitly."""
-TASK_ERROR_CODE_INTERNAL: TaskErrorCode.ValueType  # 1
-"""An unexpected internal error in the worker or runtime (e.g., serialization
-failure, panic, OOM). Generally not retriable without a fix.
-"""
-TASK_ERROR_CODE_TIMEOUT: TaskErrorCode.ValueType  # 2
-"""The task exceeded its execution deadline or heartbeat timeout. The
-orchestrator may retry depending on the configured retry policy.
-"""
-TASK_ERROR_CODE_INVALID_INPUT: TaskErrorCode.ValueType  # 3
-"""The component rejected its input (e.g., missing required fields, schema
-validation failure). Not retriable without correcting the input.
-"""
-TASK_ERROR_CODE_COMPONENT_FAILED: TaskErrorCode.ValueType  # 4
-"""The component executed but returned a business-logic failure (e.g., an API
-call returned an error, a transformation produced an invalid result).
-"""
-TASK_ERROR_CODE_CANCELLED: TaskErrorCode.ValueType  # 5
-"""The task was explicitly cancelled by the orchestrator (e.g., run
-cancellation, step timeout policy). Not retriable.
-"""
-TASK_ERROR_CODE_UNAVAILABLE: TaskErrorCode.ValueType  # 6
-"""The worker or component could not be reached (e.g., worker disconnected,
-gRPC channel broken). Typically retriable after backoff.
-"""
-TASK_ERROR_CODE_COMPONENT_NOT_FOUND: TaskErrorCode.ValueType  # 7
-"""The requested component does not exist on the worker (e.g., unknown
-component name, misconfigured route). Not retriable without fixing the
-workflow or routing configuration.
-"""
-Global___TaskErrorCode: typing_extensions.TypeAlias = TaskErrorCode
 
 @typing.final
 class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
@@ -249,14 +171,18 @@ Global___OrchestratorRunStatus: typing_extensions.TypeAlias = OrchestratorRunSta
 
 @typing.final
 class TaskError(google.protobuf.message.Message):
-    """Structured error type for task failures."""
+    """--- CompleteTask ---
+
+    Structured error type for task failures.
+    TaskErrorCode is defined in common.proto.
+    """
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     CODE_FIELD_NUMBER: builtins.int
     MESSAGE_FIELD_NUMBER: builtins.int
     DATA_FIELD_NUMBER: builtins.int
-    code: Global___TaskErrorCode.ValueType
+    code: common_pb2.TaskErrorCode.ValueType
     """Error code categorizing the failure."""
     message: builtins.str
     """Human-readable error message."""
@@ -267,7 +193,7 @@ class TaskError(google.protobuf.message.Message):
     def __init__(
         self,
         *,
-        code: Global___TaskErrorCode.ValueType = ...,
+        code: common_pb2.TaskErrorCode.ValueType = ...,
         message: builtins.str = ...,
         data: google.protobuf.struct_pb2.Struct | None = ...,
     ) -> None: ...

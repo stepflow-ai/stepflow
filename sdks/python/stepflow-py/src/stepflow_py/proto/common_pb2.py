@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18stepflow/v1/common.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc0\x01\n\x14ObservabilityContext\x12\x15\n\x08trace_id\x18\x01 \x01(\tH\x00\x88\x01\x01\x12\x14\n\x07span_id\x18\x02 \x01(\tH\x01\x88\x01\x01\x12\x13\n\x06run_id\x18\x03 \x01(\tH\x02\x88\x01\x01\x12\x14\n\x07\x66low_id\x18\x04 \x01(\tH\x03\x88\x01\x01\x12\x14\n\x07step_id\x18\x05 \x01(\tH\x04\x88\x01\x01\x42\x0b\n\t_trace_idB\n\n\x08_span_idB\t\n\x07_run_idB\n\n\x08_flow_idB\n\n\x08_step_id\"f\n\x0eItemStatistics\x12\r\n\x05total\x18\x01 \x01(\r\x12\x11\n\tcompleted\x18\x02 \x01(\r\x12\x0f\n\x07running\x18\x03 \x01(\r\x12\x0e\n\x06\x66\x61iled\x18\x04 \x01(\r\x12\x11\n\tcancelled\x18\x05 \x01(\r\"\xa4\x02\n\nItemResult\x12\x12\n\nitem_index\x18\x01 \x01(\r\x12,\n\x06status\x18\x02 \x01(\x0e\x32\x1c.stepflow.v1.ExecutionStatus\x12+\n\x06output\x18\x03 \x01(\x0b\x32\x16.google.protobuf.ValueH\x00\x88\x01\x01\x12\x1a\n\rerror_message\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x17\n\nerror_code\x18\x05 \x01(\x05H\x02\x88\x01\x01\x12\x35\n\x0c\x63ompleted_at\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x03\x88\x01\x01\x42\t\n\x07_outputB\x10\n\x0e_error_messageB\r\n\x0b_error_codeB\x0f\n\r_completed_at*\xf1\x01\n\x0f\x45xecutionStatus\x12 \n\x1c\x45XECUTION_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x45XECUTION_STATUS_RUNNING\x10\x01\x12\x1e\n\x1a\x45XECUTION_STATUS_COMPLETED\x10\x02\x12\x1b\n\x17\x45XECUTION_STATUS_FAILED\x10\x03\x12\x1e\n\x1a\x45XECUTION_STATUS_CANCELLED\x10\x04\x12\x1b\n\x17\x45XECUTION_STATUS_PAUSED\x10\x05\x12$\n EXECUTION_STATUS_RECOVERY_FAILED\x10\x06*f\n\x0bResultOrder\x12\x1c\n\x18RESULT_ORDER_UNSPECIFIED\x10\x00\x12\x19\n\x15RESULT_ORDER_BY_INDEX\x10\x01\x12\x1e\n\x1aRESULT_ORDER_BY_COMPLETION\x10\x02\x42;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18stepflow/v1/common.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc0\x01\n\x14ObservabilityContext\x12\x15\n\x08trace_id\x18\x01 \x01(\tH\x00\x88\x01\x01\x12\x14\n\x07span_id\x18\x02 \x01(\tH\x01\x88\x01\x01\x12\x13\n\x06run_id\x18\x03 \x01(\tH\x02\x88\x01\x01\x12\x14\n\x07\x66low_id\x18\x04 \x01(\tH\x03\x88\x01\x01\x12\x14\n\x07step_id\x18\x05 \x01(\tH\x04\x88\x01\x01\x42\x0b\n\t_trace_idB\n\n\x08_span_idB\t\n\x07_run_idB\n\n\x08_flow_idB\n\n\x08_step_id\"f\n\x0eItemStatistics\x12\r\n\x05total\x18\x01 \x01(\r\x12\x11\n\tcompleted\x18\x02 \x01(\r\x12\x0f\n\x07running\x18\x03 \x01(\r\x12\x0e\n\x06\x66\x61iled\x18\x04 \x01(\r\x12\x11\n\tcancelled\x18\x05 \x01(\r\"\xc0\x02\n\nItemResult\x12\x12\n\nitem_index\x18\x01 \x01(\r\x12,\n\x06status\x18\x02 \x01(\x0e\x32\x1c.stepflow.v1.ExecutionStatus\x12+\n\x06output\x18\x03 \x01(\x0b\x32\x16.google.protobuf.ValueH\x00\x88\x01\x01\x12\x1a\n\rerror_message\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x33\n\nerror_code\x18\x05 \x01(\x0e\x32\x1a.stepflow.v1.TaskErrorCodeH\x02\x88\x01\x01\x12\x35\n\x0c\x63ompleted_at\x18\x06 \x01(\x0b\x32\x1a.google.protobuf.TimestampH\x03\x88\x01\x01\x42\t\n\x07_outputB\x10\n\x0e_error_messageB\r\n\x0b_error_codeB\x0f\n\r_completed_at*\xf1\x01\n\x0f\x45xecutionStatus\x12 \n\x1c\x45XECUTION_STATUS_UNSPECIFIED\x10\x00\x12\x1c\n\x18\x45XECUTION_STATUS_RUNNING\x10\x01\x12\x1e\n\x1a\x45XECUTION_STATUS_COMPLETED\x10\x02\x12\x1b\n\x17\x45XECUTION_STATUS_FAILED\x10\x03\x12\x1e\n\x1a\x45XECUTION_STATUS_CANCELLED\x10\x04\x12\x1b\n\x17\x45XECUTION_STATUS_PAUSED\x10\x05\x12$\n EXECUTION_STATUS_RECOVERY_FAILED\x10\x06*f\n\x0bResultOrder\x12\x1c\n\x18RESULT_ORDER_UNSPECIFIED\x10\x00\x12\x19\n\x15RESULT_ORDER_BY_INDEX\x10\x01\x12\x1e\n\x1aRESULT_ORDER_BY_COMPLETION\x10\x02*\x9b\x03\n\rTaskErrorCode\x12\x1f\n\x1bTASK_ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1b\n\x17TASK_ERROR_CODE_TIMEOUT\x10\x01\x12!\n\x1dTASK_ERROR_CODE_INVALID_INPUT\x10\x02\x12$\n TASK_ERROR_CODE_COMPONENT_FAILED\x10\x03\x12\x1d\n\x19TASK_ERROR_CODE_CANCELLED\x10\x04\x12\x1f\n\x1bTASK_ERROR_CODE_UNREACHABLE\x10\x05\x12\'\n#TASK_ERROR_CODE_COMPONENT_NOT_FOUND\x10\x06\x12(\n$TASK_ERROR_CODE_RESOURCE_UNAVAILABLE\x10\x07\x12&\n\"TASK_ERROR_CODE_EXPRESSION_FAILURE\x10\x08\x12&\n\"TASK_ERROR_CODE_ORCHESTRATOR_ERROR\x10\t\x12 \n\x1cTASK_ERROR_CODE_WORKER_ERROR\x10\nB;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,14 +34,16 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'stepflow.v1.common_pb2', _g
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1'
-  _globals['_EXECUTIONSTATUS']._serialized_start=699
-  _globals['_EXECUTIONSTATUS']._serialized_end=940
-  _globals['_RESULTORDER']._serialized_start=942
-  _globals['_RESULTORDER']._serialized_end=1044
+  _globals['_EXECUTIONSTATUS']._serialized_start=727
+  _globals['_EXECUTIONSTATUS']._serialized_end=968
+  _globals['_RESULTORDER']._serialized_start=970
+  _globals['_RESULTORDER']._serialized_end=1072
+  _globals['_TASKERRORCODE']._serialized_start=1075
+  _globals['_TASKERRORCODE']._serialized_end=1486
   _globals['_OBSERVABILITYCONTEXT']._serialized_start=105
   _globals['_OBSERVABILITYCONTEXT']._serialized_end=297
   _globals['_ITEMSTATISTICS']._serialized_start=299
   _globals['_ITEMSTATISTICS']._serialized_end=401
   _globals['_ITEMRESULT']._serialized_start=404
-  _globals['_ITEMRESULT']._serialized_end=696
+  _globals['_ITEMRESULT']._serialized_end=724
 # @@protoc_insertion_point(module_scope)

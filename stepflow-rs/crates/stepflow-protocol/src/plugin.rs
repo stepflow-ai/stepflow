@@ -520,7 +520,7 @@ impl Plugin for StepflowPlugin {
                     .find_map(|f| f.downcast_ref::<TransportError>())
                 {
                     let flow_error = stepflow_core::FlowError {
-                        code: *code,
+                        code: stepflow_core::error_code::task_error_code_from_legacy(*code),
                         message: message.clone().into(),
                         data: data.clone().map(ValueRef::new),
                     };

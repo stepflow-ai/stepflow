@@ -304,7 +304,7 @@ async fn test_complete_task_error_code_mapping() {
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
                     TaskError {
-                        code: 4, // COMPONENT_FAILED
+                        code: stepflow_core::TaskErrorCode::ComponentFailed.into(),
                         message: "component crashed".to_string(),
                         data: None,
                     },
@@ -314,14 +314,14 @@ async fn test_complete_task_error_code_mapping() {
         .await
         .unwrap();
 
-    // Complete with INVALID_INPUT (proto enum value 3) → should map to COMPONENT_BAD_REQUEST
+    // Complete with INVALID_INPUT → should map to InvalidInput
     orch_client
         .complete_task(CompleteTaskRequest {
             task_id: "task-err-input".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
                     TaskError {
-                        code: 3, // INVALID_INPUT
+                        code: stepflow_core::TaskErrorCode::InvalidInput.into(),
                         message: "bad input".to_string(),
                         data: None,
                     },
@@ -331,28 +331,28 @@ async fn test_complete_task_error_code_mapping() {
         .await
         .unwrap();
 
-    // Verify COMPONENT_FAILED → COMPONENT_EXECUTION_FAILED (-32100)
+    // Verify COMPONENT_FAILED → ComponentFailed
     let result = rx_component_failed.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
             assert_eq!(
                 err.code,
-                stepflow_core::error_code::ErrorCode::COMPONENT_EXECUTION_FAILED,
-                "COMPONENT_FAILED should map to COMPONENT_EXECUTION_FAILED"
+                stepflow_core::TaskErrorCode::ComponentFailed,
+                "COMPONENT_FAILED should map to ComponentFailed"
             );
             assert_eq!(err.message, "component crashed");
         }
         other => panic!("expected Failed, got {other:?}"),
     }
 
-    // Verify INVALID_INPUT → COMPONENT_BAD_REQUEST (-32103)
+    // Verify INVALID_INPUT → InvalidInput
     let result = rx_invalid_input.await.unwrap();
     match result {
         stepflow_core::FlowResult::Failed(err) => {
             assert_eq!(
                 err.code,
-                stepflow_core::error_code::ErrorCode::COMPONENT_BAD_REQUEST,
-                "INVALID_INPUT should map to COMPONENT_BAD_REQUEST"
+                stepflow_core::TaskErrorCode::InvalidInput,
+                "INVALID_INPUT should map to InvalidInput"
             );
             assert_eq!(err.message, "bad input");
         }

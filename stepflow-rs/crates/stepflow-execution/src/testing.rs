@@ -321,7 +321,7 @@ pub fn create_diamond_flow() -> Flow {
 /// ```ignore
 /// let executor = create_executor_with_behaviors(vec![
 ///     (json!({"x": 1}), FlowResult::Success(ValueRef::new(json!({"y": 2})))),
-///     (json!({"y": 2}), FlowResult::Failed(FlowError::new(500, "step2 failed"))),
+///     (json!({"y": 2}), FlowResult::Failed(FlowError::new(TaskErrorCode::ComponentFailed, "step2 failed"))),
 /// ]).await;
 /// ```
 pub async fn create_executor_with_behaviors(

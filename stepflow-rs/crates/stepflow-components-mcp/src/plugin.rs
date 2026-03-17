@@ -474,7 +474,7 @@ impl Plugin for McpPlugin {
                     registry.complete(
                         task_id,
                         FlowResult::Failed(FlowError::new(
-                            stepflow_core::ErrorCode::INTERNAL_ERROR,
+                            stepflow_core::TaskErrorCode::ComponentFailed,
                             format!("Tool '{tool_name}' execution failed"),
                         )),
                     );

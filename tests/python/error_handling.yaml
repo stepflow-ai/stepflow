@@ -70,7 +70,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32100
+          code: COMPONENT_FAILED
           message: "Function execution failed: Intentional error: test error message"
 
     - name: "RuntimeError is wrapped and surfaced"
@@ -80,7 +80,7 @@ test:
       output:
         outcome: failed
         error:
-          code: -32100
+          code: COMPONENT_FAILED
           message: "Function execution failed: Unexpected runtime error: unexpected failure"
 
     - name: "Success case works normally"

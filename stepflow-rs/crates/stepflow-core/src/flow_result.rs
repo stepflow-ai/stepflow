@@ -13,15 +13,15 @@
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
+use stepflow_proto::TaskErrorCode;
 
-use crate::error_code::ErrorCode;
 use crate::error_stack::ErrorStack;
 use crate::workflow::ValueRef;
 
 /// An error reported from within a flow or step.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct FlowError {
-    pub code: i64,
+    pub code: TaskErrorCode,
     pub message: Cow<'static, str>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<ValueRef>,
@@ -29,12 +29,17 @@ pub struct FlowError {
 
 impl std::fmt::Display for FlowError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error({}): {}", self.code, self.message)
+        // Use serde serialization name (e.g. "COMPONENT_FAILED") rather than
+        // the proto name (e.g. "TASK_ERROR_CODE_COMPONENT_FAILED").
+        let proto_name = self.code.as_str_name();
+        debug_assert!(proto_name.starts_with("TASK_ERROR_CODE_"));
+        let code_name = &proto_name["TASK_ERROR_CODE_".len()..];
+        write!(f, "error({code_name}): {}", self.message)
     }
 }
 
 impl FlowError {
-    pub fn new(code: i64, message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn new(code: TaskErrorCode, message: impl Into<Cow<'static, str>>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -65,7 +70,7 @@ impl FlowError {
         };
 
         Self {
-            code: ErrorCode::INTERNAL_ERROR,
+            code: TaskErrorCode::OrchestratorError,
             message: message.into(),
             data,
         }
@@ -231,15 +236,21 @@ impl FlowResult {
         }
     }
 
-    /// Returns true if this is a transport/infrastructure error.
+    /// Returns true if this is a transport/infrastructure error (always retried).
     pub fn is_transport_error(&self) -> bool {
-        matches!(self, Self::Failed(e) if ErrorCode::is_transport(e.code))
+        matches!(
+            self,
+            Self::Failed(e) if matches!(e.code, TaskErrorCode::Unreachable | TaskErrorCode::Timeout)
+        )
     }
 
     /// Returns true if this is a component execution error
     /// (retryable with `onError: { action: retry }`).
     pub fn is_component_execution_error(&self) -> bool {
-        matches!(self, Self::Failed(e) if ErrorCode::is_component_execution(e.code))
+        matches!(
+            self,
+            Self::Failed(e) if matches!(e.code, TaskErrorCode::ComponentFailed | TaskErrorCode::ResourceUnavailable)
+        )
     }
 
     /// Unwrap a successful result, panicking if the result is not Success.
@@ -283,7 +294,7 @@ mod tests {
         let flow_error = FlowError::from_error_stack(report);
 
         // Verify basic fields
-        assert_eq!(flow_error.code, ErrorCode::INTERNAL_ERROR);
+        assert_eq!(flow_error.code, TaskErrorCode::OrchestratorError);
         assert_eq!(flow_error.message, "TestError: higher level error");
         assert!(flow_error.data.is_some());
 
@@ -386,6 +397,37 @@ mod tests {
         assert_eq!(
             last_entry.get("error").unwrap().as_str(),
             Some("TestError: database connection failed")
+        );
+    }
+
+    #[test]
+    fn test_is_transport_error() {
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::Unreachable, "test"))
+                .is_transport_error()
+        );
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::Timeout, "test")).is_transport_error()
+        );
+        assert!(
+            !FlowResult::Failed(FlowError::new(TaskErrorCode::ComponentFailed, "test"))
+                .is_transport_error()
+        );
+    }
+
+    #[test]
+    fn test_is_component_execution_error() {
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::ComponentFailed, "test"))
+                .is_component_execution_error()
+        );
+        assert!(
+            FlowResult::Failed(FlowError::new(TaskErrorCode::ResourceUnavailable, "test"))
+                .is_component_execution_error()
+        );
+        assert!(
+            !FlowResult::Failed(FlowError::new(TaskErrorCode::Unreachable, "test"))
+                .is_component_execution_error()
         );
     }
 }

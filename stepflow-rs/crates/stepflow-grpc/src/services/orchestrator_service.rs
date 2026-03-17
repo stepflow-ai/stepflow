@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use stepflow_core::error_code::ErrorCode;
+use stepflow_core::TaskErrorCode;
 use stepflow_core::workflow::ValueRef;
 use stepflow_core::{
     BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowError, FlowResult, GetRunParams, SubmitRunParams,
@@ -205,19 +205,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
                 FlowResult::Success(ValueRef::new(json))
             }
             Some(TaskResult::Error(task_error)) => {
-                // Map proto TaskErrorCode to Stepflow ErrorCode constants.
-                // This preserves fine-grained error categorization and retryability
-                // semantics, matching the behavior of the JSON-RPC transport.
-                let error_code = match task_error.code {
-                    1 => ErrorCode::WORKER_ERROR,                   // INTERNAL
-                    2 => ErrorCode::TRANSPORT_ERROR,                // TIMEOUT (retriable)
-                    3 => ErrorCode::COMPONENT_BAD_REQUEST,          // INVALID_INPUT
-                    4 => ErrorCode::COMPONENT_EXECUTION_FAILED,     // COMPONENT_FAILED
-                    5 => ErrorCode::WORKER_ERROR,                   // CANCELLED
-                    6 => ErrorCode::COMPONENT_RESOURCE_UNAVAILABLE, // UNAVAILABLE
-                    7 => ErrorCode::COMPONENT_NOT_FOUND,            // COMPONENT_NOT_FOUND
-                    _ => ErrorCode::COMPONENT_EXECUTION_FAILED,     // UNSPECIFIED/unknown
-                };
+                // Convert proto TaskErrorCode i32 to the TaskErrorCode enum.
+                let error_code =
+                    TaskErrorCode::try_from(task_error.code).unwrap_or(TaskErrorCode::WorkerError);
 
                 // Convert optional structured error data from proto Struct
                 let data = task_error.data.map(|s| {

@@ -636,7 +636,7 @@ impl JournalComplianceTests {
                 item_index: 0,
                 step_index: 1,
                 result: FlowResult::Failed(FlowError {
-                    code: 1,
+                    code: stepflow_core::TaskErrorCode::ComponentFailed,
                     message: "test error".into(),
                     data: None,
                 }),

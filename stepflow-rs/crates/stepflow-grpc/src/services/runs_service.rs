@@ -81,7 +81,7 @@ fn step_status_to_proto(entry: &stepflow_dtos::StepStatusEntry) -> proto::StepSt
         Some(FlowResult::Failed(error)) => (
             None,
             Some(error.message.to_string()),
-            Some(error.code as i32),
+            Some(error.code.into()),
         ),
         _ => (None, None, None),
     };
