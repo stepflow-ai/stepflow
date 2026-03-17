@@ -527,7 +527,7 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(!resp.should_abort);
-    assert_eq!(resp.status, 0); // TASK_STATUS_IN_PROGRESS
+    assert_eq!(resp.status, 1); // TASK_STATUS_IN_PROGRESS
 
     // Subsequent heartbeat — same worker
     let resp = orch_client
@@ -554,7 +554,7 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(resp.should_abort);
-    assert_eq!(resp.status, 1); // TASK_STATUS_ALREADY_CLAIMED
+    assert_eq!(resp.status, 2); // TASK_STATUS_ALREADY_CLAIMED
 
     // Heartbeat for unknown task — should get NotFound status
     let resp = orch_client
@@ -568,5 +568,5 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(resp.should_abort);
-    assert_eq!(resp.status, 4); // TASK_STATUS_NOT_FOUND
+    assert_eq!(resp.status, 5); // TASK_STATUS_NOT_FOUND
 }

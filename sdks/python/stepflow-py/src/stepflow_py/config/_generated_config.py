@@ -176,7 +176,7 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
         Annotated[
             int,
             Meta(
-                description='Maximum time (in seconds) a task can wait in the queue for a\nworker to call `StartTask`. If no worker picks up the task within\nthis window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.',
+                description='Maximum time (in seconds) a task can wait in the queue for a\nworker to send its first heartbeat. If no worker picks up the task\nwithin this window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.',
             ),
         ]
         | UnsetType
@@ -185,7 +185,7 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
         Annotated[
             int | None,
             Meta(
-                description='Maximum time (in seconds) from `StartTask` to `CompleteTask`.\nIf the worker does not complete within this window, the task is\ntreated as failed. Heartbeat-based crash detection (5s timeout)\nprovides faster detection of hard worker crashes.\n\nDefaults to `null` (no execution timeout — relies on heartbeat\ncrash detection only).',
+                description='Maximum time (in seconds) from first heartbeat to `CompleteTask`.\nIf the worker does not complete within this window, the task is\ntreated as failed. Heartbeat-based crash detection (5s timeout)\nprovides faster detection of hard worker crashes.\n\nDefaults to `null` (no execution timeout — relies on heartbeat\ncrash detection only).',
             ),
         ]
         | UnsetType

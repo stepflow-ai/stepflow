@@ -157,24 +157,27 @@ message CompleteTaskResponse {}
 
 // Status of a task from the orchestrator's perspective.
 enum TaskStatus {
+  // Unspecified / default value.
+  TASK_STATUS_UNSPECIFIED = 0;
+
   // Task is in progress — the calling worker owns it.
-  TASK_STATUS_IN_PROGRESS = 0;
+  TASK_STATUS_IN_PROGRESS = 1;
 
   // Task is already being executed by a different worker.
   // The calling worker should abort and not call CompleteTask.
-  TASK_STATUS_ALREADY_CLAIMED = 1;
+  TASK_STATUS_ALREADY_CLAIMED = 2;
 
   // Task already has a result (completed or failed).
   // The calling worker should abort.
-  TASK_STATUS_COMPLETED = 2;
+  TASK_STATUS_COMPLETED = 3;
 
   // Task timed out in the queue before any worker claimed it.
   // The calling worker should abort.
-  TASK_STATUS_TIMED_OUT = 3;
+  TASK_STATUS_TIMED_OUT = 4;
 
   // Task ID not recognized — never existed or already cleaned up.
   // The calling worker should abort.
-  TASK_STATUS_NOT_FOUND = 4;
+  TASK_STATUS_NOT_FOUND = 5;
 }
 
 message TaskHeartbeatRequest {

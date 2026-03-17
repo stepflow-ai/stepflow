@@ -43,21 +43,23 @@ class _TaskStatus:
 
 class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_TaskStatus.ValueType], builtins.type):
     DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
-    TASK_STATUS_IN_PROGRESS: _TaskStatus.ValueType  # 0
+    TASK_STATUS_UNSPECIFIED: _TaskStatus.ValueType  # 0
+    """Unspecified / default value."""
+    TASK_STATUS_IN_PROGRESS: _TaskStatus.ValueType  # 1
     """Task is in progress — the calling worker owns it."""
-    TASK_STATUS_ALREADY_CLAIMED: _TaskStatus.ValueType  # 1
+    TASK_STATUS_ALREADY_CLAIMED: _TaskStatus.ValueType  # 2
     """Task is already being executed by a different worker.
     The calling worker should abort and not call CompleteTask.
     """
-    TASK_STATUS_COMPLETED: _TaskStatus.ValueType  # 2
+    TASK_STATUS_COMPLETED: _TaskStatus.ValueType  # 3
     """Task already has a result (completed or failed).
     The calling worker should abort.
     """
-    TASK_STATUS_TIMED_OUT: _TaskStatus.ValueType  # 3
+    TASK_STATUS_TIMED_OUT: _TaskStatus.ValueType  # 4
     """Task timed out in the queue before any worker claimed it.
     The calling worker should abort.
     """
-    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 4
+    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 5
     """Task ID not recognized — never existed or already cleaned up.
     The calling worker should abort.
     """
@@ -68,21 +70,23 @@ class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
     Status of a task from the orchestrator's perspective.
     """
 
-TASK_STATUS_IN_PROGRESS: TaskStatus.ValueType  # 0
+TASK_STATUS_UNSPECIFIED: TaskStatus.ValueType  # 0
+"""Unspecified / default value."""
+TASK_STATUS_IN_PROGRESS: TaskStatus.ValueType  # 1
 """Task is in progress — the calling worker owns it."""
-TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 1
+TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 2
 """Task is already being executed by a different worker.
 The calling worker should abort and not call CompleteTask.
 """
-TASK_STATUS_COMPLETED: TaskStatus.ValueType  # 2
+TASK_STATUS_COMPLETED: TaskStatus.ValueType  # 3
 """Task already has a result (completed or failed).
 The calling worker should abort.
 """
-TASK_STATUS_TIMED_OUT: TaskStatus.ValueType  # 3
+TASK_STATUS_TIMED_OUT: TaskStatus.ValueType  # 4
 """Task timed out in the queue before any worker claimed it.
 The calling worker should abort.
 """
-TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 4
+TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 5
 """Task ID not recognized — never existed or already cleaned up.
 The calling worker should abort.
 """
