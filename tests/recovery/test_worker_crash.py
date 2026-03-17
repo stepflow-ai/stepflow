@@ -211,3 +211,68 @@ async def test_worker_and_orchestrator_crash(compose_env):
     assert step3_records[-1]["attempt"] == 1, (
         "step3 should be attempt 1 (fresh dispatch after recovery)"
     )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_crash_worker_delivers_result(compose_env):
+    """Scenario G: Orchestrator crashes while worker has in-flight task.
+
+    The worker completes the task, but CompleteTask fails because the
+    orchestrator is down. The worker retries CompleteTask with exponential
+    backoff. When the orchestrator recovers, it re-registers the same
+    task_id (from the journal), and the worker's retry delivers the result
+    without re-executing the step.
+
+    This tests the full task_id journalling + CompleteTask retry path:
+    1. Task_id is journalled in TasksStarted before dispatch
+    2. On recovery, the same task_id is re-registered in TaskRegistry
+    3. Worker's CompleteTask retry with the original task_id lands
+    4. Step is NOT re-executed
+    """
+    # 1. Submit a sequential run and wait for step1 to be held, then release
+    flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
+    run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "orch_crash_result"}})
+
+    poll_for_delay("step1", run_id=run_id, timeout=15)
+    release_delay("step1", run_id=run_id)
+
+    # 2. Wait for step2 to be held — step1 is now durably complete
+    poll_for_delay("step2", run_id=run_id, timeout=15)
+
+    # 3. Kill orchestrator while step2 is in-flight on the worker
+    docker_kill("orchestrator-1")
+
+    # 4. Release step2 — the worker completes execution but CompleteTask
+    #    fails (orchestrator down). The worker starts retrying.
+    release_delay("step2", run_id=run_id)
+
+    # 5. Give the worker a moment to attempt CompleteTask and start retrying
+    await asyncio.sleep(3)
+
+    # 6. Restart orchestrator — it recovers from journal and re-registers
+    #    the same task_id for step2 in the TaskRegistry.
+    docker_start("orchestrator-1")
+    wait_for_health(ORCH1_URL, timeout=30)
+
+    # 7. The worker's CompleteTask retry should land, delivering step2's
+    #    result without re-execution. Then step3 gets dispatched.
+    poll_for_delay("step3", run_id=run_id, timeout=60)
+    release_delay("step3", run_id=run_id)
+
+    # 8. Wait for the run to complete
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
+    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+
+    # 9. Key assertion: step2 should have exactly 1 tracker record.
+    #    If the worker's CompleteTask retry landed successfully, the
+    #    orchestrator accepted the result and did NOT re-dispatch step2.
+    records = read_tracker_records()
+    step2_count = count_step_executions(records, "step2", run_id)
+    assert step2_count == 1, (
+        f"step2 should have been executed exactly once (worker delivered result "
+        f"via CompleteTask retry), but was executed {step2_count} times"
+    )
+
+    # step1 completed before crash, step3 dispatched after recovery
+    assert count_step_executions(records, "step1", run_id) == 1
+    assert count_step_executions(records, "step3", run_id) >= 1
