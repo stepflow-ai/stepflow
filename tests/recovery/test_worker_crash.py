@@ -141,7 +141,8 @@ async def test_worker_crash_exhausts_retries(compose_env):
     docker_kill("worker")
 
     # 4. The run should have failed (all retries exhausted).
-    #    With pull transport: heartbeat timeout (5s) + 3 retries * queue timeout (10s) ≈ 35s
+    #    With pull transport: heartbeat timeout (5s) + 3 retries *
+    #    (queue timeout 3s + fibonacci backoff 2-10s) ≈ 20-35s
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
     assert result["status"] == "failed", f"Expected failed, got {result['status']}"
 
