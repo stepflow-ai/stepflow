@@ -635,6 +635,64 @@ def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
     return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
 
 
+async def _complete_task_with_retry(
+    orchestrator_url: str,
+    request: CompleteTaskRequest,
+    task_id: str,
+    *,
+    max_retries: int = 5,
+    base_delay: float = 2.0,
+) -> bool:
+    """Send CompleteTask with retry on transient failures.
+
+    Retries on:
+    - UNAVAILABLE: orchestrator is down (restarting). Reconnects channel.
+    - NOT_FOUND: orchestrator is up but hasn't re-registered this task_id
+      yet (recovery in progress). Retries until the task is re-registered.
+
+    Returns True if the result was delivered, False if all retries failed.
+    """
+    channel = grpc.aio.insecure_channel(orchestrator_url)
+    try:
+        stub = OrchestratorServiceStub(channel)
+        for attempt in range(max_retries + 1):
+            try:
+                await stub.CompleteTask(request)
+                return True
+            except grpc.aio.AioRpcError as e:
+                retriable = e.code() in (
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.NOT_FOUND,
+                )
+                if retriable and attempt < max_retries:
+                    delay = min(base_delay * (2**attempt), 30.0)
+                    logger.warning(
+                        "CompleteTask %s for %s, retry in %.1fs (%d/%d)",
+                        e.code(),
+                        task_id,
+                        delay,
+                        attempt + 1,
+                        max_retries,
+                    )
+                    await asyncio.sleep(delay)
+                    # Reconnect on UNAVAILABLE (server may have restarted)
+                    if e.code() == grpc.StatusCode.UNAVAILABLE:
+                        await channel.close()
+                        channel = grpc.aio.insecure_channel(orchestrator_url)
+                        stub = OrchestratorServiceStub(channel)
+                else:
+                    logger.error(
+                        "CompleteTask failed for %s: %s (code=%s)",
+                        task_id,
+                        e.details(),
+                        e.code(),
+                    )
+                    return False
+    finally:
+        await channel.close()
+    return False
+
+
 async def _complete_task_success(
     task: TaskAssignment,
     output: struct_pb2.Value,
@@ -654,32 +712,18 @@ async def _complete_task_success(
         )
         return
 
-    # Reuse shared channel if available, otherwise create a new one
-    own_channel = False
-    if channel is None:
-        channel = grpc.aio.insecure_channel(orchestrator_url)
-        own_channel = True
-
-    try:
-        stub = OrchestratorServiceStub(channel)
-        request = CompleteTaskRequest(
-            task_id=task.task_id,
-            response=ComponentExecuteResponse(output=output),
-        )
-        await stub.CompleteTask(request)
+    request = CompleteTaskRequest(
+        task_id=task.task_id,
+        response=ComponentExecuteResponse(output=output),
+    )
+    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+        logger.debug("Completed task %s (success)", task.task_id)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "success"})
-        logger.debug("Completed task %s (success)", task.task_id)
-    except grpc.aio.AioRpcError as e:
-        logger.error(
-            "Failed to report completion for task %s: %s (code=%s)",
-            task.task_id,
-            e.details(),
-            e.code(),
-        )
-    finally:
-        if own_channel:
-            await channel.close()
+
+    # Close the shared channel if one was passed in (caller manages lifecycle)
+    if channel is not None:
+        await channel.close()
 
 
 async def _complete_task_error(
@@ -703,42 +747,28 @@ async def _complete_task_error(
         )
         return
 
-    # Reuse shared channel if available, otherwise create a new one
-    own_channel = False
-    if channel is None:
-        channel = grpc.aio.insecure_channel(orchestrator_url)
-        own_channel = True
-
-    try:
-        stub = OrchestratorServiceStub(channel)
-        task_error = TaskError(
-            code=code,  # type: ignore[arg-type]
-            message=error_msg,
-        )
-        # Attach structured error data if provided
-        if data:
-            proto_data = struct_pb2.Struct()
-            for k, v in data.items():
-                proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
-            task_error.data.CopyFrom(proto_data)
-        request = CompleteTaskRequest(
-            task_id=task.task_id,
-            error=task_error,
-        )
-        await stub.CompleteTask(request)
+    task_error = TaskError(
+        code=code,  # type: ignore[arg-type]
+        message=error_msg,
+    )
+    # Attach structured error data if provided
+    if data:
+        proto_data = struct_pb2.Struct()
+        for k, v in data.items():
+            proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
+        task_error.data.CopyFrom(proto_data)
+    request = CompleteTaskRequest(
+        task_id=task.task_id,
+        error=task_error,
+    )
+    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+        logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "error"})
-        logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
-    except grpc.aio.AioRpcError as e:
-        logger.error(
-            "Failed to report error for task %s: %s (code=%s)",
-            task.task_id,
-            e.details(),
-            e.code(),
-        )
-    finally:
-        if own_channel:
-            await channel.close()
+
+    # Close the shared channel if one was passed in (caller manages lifecycle)
+    if channel is not None:
+        await channel.close()
 
 
 def _build_component_info_list(
