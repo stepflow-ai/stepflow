@@ -67,6 +67,13 @@ pub(super) struct RecoveredState {
     /// store after replay. This ensures the metadata reflects "at least this
     /// point in the journal has been processed."
     pub last_sequence: Option<SequenceNumber>,
+    /// Task IDs for in-flight tasks (started but not completed).
+    ///
+    /// Maps `(run_id, item_index, step_index) → task_id` for tasks that
+    /// had a `TasksStarted` event without a matching `TaskCompleted`.
+    /// The executor reuses these when re-dispatching so a worker retrying
+    /// CompleteTask can deliver its result.
+    pub recovered_task_ids: HashMap<(uuid::Uuid, u32, usize), String>,
 }
 
 /// Shared context for execution state recovery.
@@ -168,6 +175,7 @@ impl<'a> Recovery<'a> {
             runs_needing_step_updates: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
+            recovered_task_ids: HashMap::new(),
         };
 
         // Replay from the root run's start sequence.
@@ -277,6 +285,16 @@ impl<'a> Recovery<'a> {
             .journal
             .stream_from(self.root_run_id, stored_cp.sequence.next());
 
+        // Restore in-flight task_ids from the checkpoint as the baseline.
+        // Tail replay will update this (TasksStarted adds, TaskCompleted removes).
+        let mut checkpoint_task_ids: HashMap<(uuid::Uuid, u32, usize), String> = HashMap::new();
+        for entry in &checkpoint_data.in_flight_task_ids {
+            checkpoint_task_ids.insert(
+                (entry.run_id, entry.item_index, entry.step_index),
+                entry.task_id.clone(),
+            );
+        }
+
         // Checkpoint-restored subflows already had StepsNeeded written (they
         // wouldn't be in a checkpoint otherwise). Start with an empty set;
         // tail replay will populate it for any new SubRunCreated events.
@@ -287,6 +305,7 @@ impl<'a> Recovery<'a> {
             runs_needing_step_updates: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
+            recovered_task_ids: checkpoint_task_ids,
         };
 
         // Checkpoint recovery: use the checkpoint sequence as a lower bound to
@@ -450,6 +469,36 @@ impl<'a> Recovery<'a> {
                 && *rid != self.root_run_id
             {
                 recovered.runs_needing_step_updates.remove(rid);
+            }
+
+            // Track in-flight task_ids for recovery.
+            // TasksStarted: record task_ids; TaskCompleted: remove them.
+            // After replay, remaining entries are tasks that were dispatched but
+            // not completed — the executor will reuse their task_ids.
+            match &event {
+                stepflow_state::JournalEvent::TasksStarted { runs } => {
+                    for run_tasks in runs {
+                        for task in &run_tasks.tasks {
+                            if !task.task_id.is_empty() {
+                                recovered.recovered_task_ids.insert(
+                                    (run_tasks.run_id, task.item_index, task.step_index),
+                                    task.task_id.clone(),
+                                );
+                            }
+                        }
+                    }
+                }
+                stepflow_state::JournalEvent::TaskCompleted {
+                    run_id,
+                    item_index,
+                    step_index,
+                    ..
+                } => {
+                    recovered
+                        .recovered_task_ids
+                        .remove(&(*run_id, *item_index, *step_index));
+                }
+                _ => {}
             }
 
             // Sync step statuses to metadata for events in the replay window.

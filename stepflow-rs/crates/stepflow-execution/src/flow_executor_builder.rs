@@ -76,6 +76,8 @@ pub struct FlowExecutorBuilder {
     recovered_subflows: HashMap<(uuid::Uuid, u32, usize, uuid::Uuid), uuid::Uuid>,
     /// Recovered run IDs that still need a `StepsNeeded` event written.
     runs_needing_step_updates: std::collections::HashSet<uuid::Uuid>,
+    /// Recovered task IDs from journal replay for in-flight tasks.
+    recovered_task_ids: HashMap<(uuid::Uuid, u32, usize), String>,
 }
 
 impl FlowExecutorBuilder {
@@ -93,6 +95,7 @@ impl FlowExecutorBuilder {
             additional_runs: HashMap::new(),
             recovered_subflows: HashMap::new(),
             runs_needing_step_updates: std::collections::HashSet::new(),
+            recovered_task_ids: HashMap::new(),
         }
     }
 
@@ -137,6 +140,20 @@ impl FlowExecutorBuilder {
         self.additional_runs = additional_runs;
         self.recovered_subflows = recovered_subflows;
         self.runs_needing_step_updates = runs_needing_step_updates;
+        self
+    }
+
+    /// Set recovered task IDs for in-flight tasks from journal replay.
+    ///
+    /// Maps `(run_id, item_index, step_index) → task_id` for tasks that were
+    /// dispatched but not completed before the crash. The executor reuses these
+    /// task_ids when re-dispatching so a worker retrying CompleteTask can
+    /// deliver its result.
+    pub fn with_recovered_task_ids(
+        mut self,
+        recovered_task_ids: HashMap<(uuid::Uuid, u32, usize), String>,
+    ) -> Self {
+        self.recovered_task_ids = recovered_task_ids;
         self
     }
 
@@ -217,6 +234,7 @@ impl FlowExecutorBuilder {
             submit_receiver,
             self.recovered_subflows,
             self.runs_needing_step_updates,
+            self.recovered_task_ids,
             checkpointer,
         ))
     }

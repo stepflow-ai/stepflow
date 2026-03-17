@@ -59,6 +59,26 @@ pub struct CheckpointData {
     pub runs: Vec<RunCheckpoint>,
     /// Subflow deduplication map entries.
     pub subflow_map: Vec<SubflowMapping>,
+    /// Task IDs for in-flight tasks at checkpoint time.
+    ///
+    /// These are tasks that had a `TasksStarted` journal event but no
+    /// matching `TaskCompleted`. On recovery, the executor reuses these
+    /// task_ids so a worker retrying CompleteTask can deliver its result.
+    #[serde(default)]
+    pub in_flight_task_ids: Vec<InFlightTaskId>,
+}
+
+/// A task ID for an in-flight task, persisted in checkpoint data.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InFlightTaskId {
+    /// The run this task belongs to.
+    pub run_id: Uuid,
+    /// The item index within the run.
+    pub item_index: u32,
+    /// The step index within the workflow.
+    pub step_index: usize,
+    /// The task ID registered in the TaskRegistry.
+    pub task_id: String,
 }
 
 /// Checkpoint of a single run's state.
@@ -129,6 +149,7 @@ impl CheckpointData {
     pub fn capture(
         runs: &HashMap<Uuid, RunState>,
         subflow_map: &HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        in_flight_task_ids: &HashMap<(Uuid, u32, usize), String>,
         sequence: SequenceNumber,
     ) -> Self {
         // Sort runs by run_id for deterministic checkpoint output.
@@ -152,12 +173,24 @@ impl CheckpointData {
                 },
             )
             .collect();
+        let task_ids = in_flight_task_ids
+            .iter()
+            .map(
+                |(&(run_id, item_index, step_index), task_id)| InFlightTaskId {
+                    run_id,
+                    item_index,
+                    step_index,
+                    task_id: task_id.clone(),
+                },
+            )
+            .collect();
 
         Self {
             version: CHECKPOINT_VERSION,
             sequence,
             runs: run_checkpoints,
             subflow_map: subflow_mappings,
+            in_flight_task_ids: task_ids,
         }
     }
 
@@ -239,7 +272,7 @@ mod tests {
         let subflow_map = HashMap::new();
         let sequence = SequenceNumber::new(42);
 
-        let checkpoint = CheckpointData::capture(&runs, &subflow_map, sequence);
+        let checkpoint = CheckpointData::capture(&runs, &subflow_map, &HashMap::new(), sequence);
         assert_eq!(checkpoint.version, CHECKPOINT_VERSION);
         assert_eq!(checkpoint.sequence, sequence);
         assert_eq!(checkpoint.runs.len(), 1);
@@ -296,7 +329,12 @@ mod tests {
         let mut runs = HashMap::new();
         runs.insert(run_id, state);
 
-        let checkpoint = CheckpointData::capture(&runs, &HashMap::new(), SequenceNumber::new(5));
+        let checkpoint = CheckpointData::capture(
+            &runs,
+            &HashMap::new(),
+            &HashMap::new(),
+            SequenceNumber::new(5),
+        );
         let bytes = checkpoint.serialize().expect("serialize");
         let restored = CheckpointData::deserialize(&bytes).expect("deserialize");
 
@@ -319,7 +357,12 @@ mod tests {
         let mut subflow_map = HashMap::new();
         subflow_map.insert((run_id, 0u32, 0usize, subflow_key), subflow_run_id);
 
-        let checkpoint = CheckpointData::capture(&runs, &subflow_map, SequenceNumber::new(10));
+        let checkpoint = CheckpointData::capture(
+            &runs,
+            &subflow_map,
+            &HashMap::new(),
+            SequenceNumber::new(10),
+        );
         assert_eq!(checkpoint.subflow_map.len(), 1);
 
         let bytes = checkpoint.serialize().expect("serialize");
@@ -378,6 +421,7 @@ mod tests {
             sequence: SequenceNumber::new(5),
             runs: vec![checkpoint],
             subflow_map: vec![],
+            in_flight_task_ids: vec![],
         };
         let bytes = checkpoint_data.serialize().expect("serialize");
         let restored_data = CheckpointData::deserialize(&bytes).expect("deserialize");
@@ -424,6 +468,7 @@ mod tests {
             sequence: SequenceNumber::new(0),
             runs: Vec::new(),
             subflow_map: Vec::new(),
+            in_flight_task_ids: vec![],
         };
 
         let bytes = checkpoint.serialize().expect("serialize");
@@ -441,6 +486,7 @@ mod tests {
             sequence: SequenceNumber::new(0),
             runs: Vec::new(),
             subflow_map: Vec::new(),
+            in_flight_task_ids: vec![],
         };
 
         let bytes = rmp_serde::to_vec_named(&checkpoint).expect("serialize");
@@ -476,8 +522,10 @@ mod tests {
         }
 
         let subflow_map = HashMap::new();
-        let cp1 = CheckpointData::capture(&runs, &subflow_map, SequenceNumber::new(1));
-        let cp2 = CheckpointData::capture(&runs, &subflow_map, SequenceNumber::new(1));
+        let cp1 =
+            CheckpointData::capture(&runs, &subflow_map, &HashMap::new(), SequenceNumber::new(1));
+        let cp2 =
+            CheckpointData::capture(&runs, &subflow_map, &HashMap::new(), SequenceNumber::new(1));
 
         let ids1: Vec<_> = cp1.runs.iter().map(|r| r.run_id).collect();
         let ids2: Vec<_> = cp2.runs.iter().map(|r| r.run_id).collect();

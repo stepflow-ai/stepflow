@@ -87,6 +87,7 @@ impl Checkpointer {
         &mut self,
         runs: &HashMap<Uuid, RunState>,
         subflow_map: &HashMap<(Uuid, u32, usize, Uuid), Uuid>,
+        in_flight_task_ids: &HashMap<(Uuid, u32, usize), String>,
     ) -> Result<()> {
         if self.interval == 0 {
             return Ok(());
@@ -101,7 +102,7 @@ impl Checkpointer {
         })?;
 
         let entries_written = self.entries_since_checkpoint;
-        let checkpoint = CheckpointData::capture(runs, subflow_map, sequence);
+        let checkpoint = CheckpointData::capture(runs, subflow_map, in_flight_task_ids, sequence);
         let data = checkpoint
             .serialize()
             .change_context(ExecutionError::CheckpointError)?;

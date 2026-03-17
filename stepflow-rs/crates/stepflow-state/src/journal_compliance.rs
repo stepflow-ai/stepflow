@@ -622,7 +622,10 @@ impl JournalComplianceTests {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![TaskAttempt::new(0, 0, 1), TaskAttempt::new(0, 1, 1)],
+                    tasks: vec![
+                        TaskAttempt::new(0, 0, 1, String::new()),
+                        TaskAttempt::new(0, 1, 1, String::new()),
+                    ],
                 }],
             },
             JournalEvent::TaskCompleted {
