@@ -285,6 +285,16 @@ impl<'a> Recovery<'a> {
             .journal
             .stream_from(self.root_run_id, stored_cp.sequence.next());
 
+        // Restore in-flight task_ids from the checkpoint as the baseline.
+        // Tail replay will update this (TasksStarted adds, TaskCompleted removes).
+        let mut checkpoint_task_ids: HashMap<(uuid::Uuid, u32, usize), String> = HashMap::new();
+        for entry in &checkpoint_data.in_flight_task_ids {
+            checkpoint_task_ids.insert(
+                (entry.run_id, entry.item_index, entry.step_index),
+                entry.task_id.clone(),
+            );
+        }
+
         // Checkpoint-restored subflows already had StepsNeeded written (they
         // wouldn't be in a checkpoint otherwise). Start with an empty set;
         // tail replay will populate it for any new SubRunCreated events.
@@ -295,7 +305,7 @@ impl<'a> Recovery<'a> {
             runs_needing_step_updates: HashSet::new(),
             root_terminal_status: None,
             last_sequence: None,
-            recovered_task_ids: HashMap::new(),
+            recovered_task_ids: checkpoint_task_ids,
         };
 
         // Checkpoint recovery: use the checkpoint sequence as a lower bound to

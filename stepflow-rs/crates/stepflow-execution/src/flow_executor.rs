@@ -109,6 +109,11 @@ pub struct FlowExecutor {
     /// these tasks, it reuses the journalled task_id so a worker retrying
     /// CompleteTask can deliver its result.
     recovered_task_ids: HashMap<(Uuid, u32, usize), String>,
+    /// Currently in-flight task IDs.
+    /// Maps (run_id, item_index, step_index) → task_id for tasks that have
+    /// been dispatched but not yet completed. Included in checkpoints so
+    /// checkpoint-accelerated recovery can reuse them.
+    in_flight_task_ids: HashMap<(Uuid, u32, usize), String>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -149,6 +154,7 @@ impl FlowExecutor {
             runs_needing_step_updates,
             recovered_run_ids,
             recovered_task_ids,
+            in_flight_task_ids: HashMap::new(),
             checkpointer,
         }
     }
@@ -338,7 +344,11 @@ impl FlowExecutor {
                         in_flight.push(retry_future);
                     }
                     self.checkpointer
-                        .maybe_checkpoint(&self.runs, &self.recovered_subflows)
+                        .maybe_checkpoint(
+                            &self.runs,
+                            &self.recovered_subflows,
+                            &self.in_flight_task_ids,
+                        )
                         .await?;
                 }
                 return Ok(());
@@ -413,7 +423,9 @@ impl FlowExecutor {
                             attempt,
                             task_id.clone(),
                         ));
-                    task_ids.push(task_id);
+                    task_ids.push(task_id.clone());
+                    self.in_flight_task_ids
+                        .insert((task.run_id, task.item_index, task.step_index), task_id);
                 }
 
                 // Write a single TasksStarted event — this must be durable before we spawn
@@ -460,7 +472,7 @@ impl FlowExecutor {
                         // Only count fuel for actual completions, not retries
                         *r = r.saturating_sub(1);
                     }
-                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows).await?;
+                    self.checkpointer.maybe_checkpoint(&self.runs, &self.recovered_subflows, &self.in_flight_task_ids).await?;
                 }
                 // Handle subflow submission
                 Some(submit_request) = self.submit_receiver.recv() => {
@@ -893,6 +905,10 @@ impl FlowExecutor {
         let run_id = task.run_id;
         let component_path = task_result.step.component().to_string();
 
+        // Remove from in-flight tracking (used by checkpoints)
+        self.in_flight_task_ids
+            .remove(&(task.run_id, task.item_index, task.step_index));
+
         // Record step execution metric
         let outcome = if task_result.is_success() {
             "success"
@@ -1238,7 +1254,11 @@ impl FlowExecutor {
             delay
         );
 
-        // 6. Build retry future: sleep then re-execute
+        // 6. Track in-flight and build retry future: sleep then re-execute
+        self.in_flight_task_ids.insert(
+            (task.run_id, task.item_index, task.step_index),
+            task_id.clone(),
+        );
         let task_future = self.prepare_task_future(task, task_id)?;
         let component_for_metric = component_path.to_string();
         let retry_future = async move {

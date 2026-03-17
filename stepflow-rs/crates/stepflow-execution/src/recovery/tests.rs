@@ -2809,3 +2809,422 @@ async fn test_completed_subflow_not_in_needing_updates() {
         "Completed subflow RunState should be evicted"
     );
 }
+
+// ============================================================================
+// Task ID recovery tests
+// ============================================================================
+
+/// Test that journal replay recovers task_ids for in-flight tasks.
+///
+/// When a TasksStarted event contains a non-empty task_id and there is
+/// no matching TaskCompleted, the task_id should appear in
+/// RecoveredState.recovered_task_ids.
+#[tokio::test]
+async fn test_recovery_preserves_inflight_task_ids_from_journal() {
+    let env = create_test_env().await;
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    let flow = Arc::new(create_test_flow());
+    let flow_id = blob_store.store_flow(flow.clone()).await.unwrap();
+
+    let root_run_id = uuid::Uuid::now_v7();
+
+    // Write journal events: RootRunCreated, StepsNeeded, TasksStarted with task_id
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RootRunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({"x": 1}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+        )
+        .await
+        .unwrap();
+
+    let original_task_id = "original-task-id-12345".to_string();
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: root_run_id,
+                    tasks: vec![TaskAttempt::new(0, 0, 1, original_task_id.clone())],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // NO TaskCompleted — task was in-flight when crash occurred
+
+    // Replay the journal
+    let root_flow = blob_store
+        .get_flow(&flow_id)
+        .await
+        .unwrap()
+        .expect("flow should exist");
+    let metadata_store = env.metadata_store();
+    let root_info = stepflow_state::RunRecoveryInfo {
+        root_run_id,
+        flow_id: flow_id.clone(),
+        start_sequence: SequenceNumber::new(0),
+    };
+    let recovery = super::restore::Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &root_flow,
+        blob_store.as_ref(),
+        metadata_store.as_ref(),
+    );
+    let recovered = recovery.restore_from_journal(&root_info).await.unwrap();
+
+    // The in-flight task_id should be recovered
+    assert_eq!(
+        recovered.recovered_task_ids.len(),
+        1,
+        "Should have 1 in-flight task_id"
+    );
+    assert_eq!(
+        recovered
+            .recovered_task_ids
+            .get(&(root_run_id, 0, 0))
+            .unwrap(),
+        &original_task_id,
+        "Should recover the original task_id"
+    );
+}
+
+/// Test that completed tasks are NOT in recovered_task_ids.
+///
+/// When TasksStarted is followed by TaskCompleted for the same task,
+/// the task_id should be removed from recovered_task_ids.
+#[tokio::test]
+async fn test_recovery_removes_completed_task_ids() {
+    let env = create_test_env().await;
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    let flow = Arc::new(create_test_flow());
+    let flow_id = blob_store.store_flow(flow.clone()).await.unwrap();
+
+    let root_run_id = uuid::Uuid::now_v7();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RootRunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({"x": 1}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+        )
+        .await
+        .unwrap();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: root_run_id,
+                    tasks: vec![TaskAttempt::new(0, 0, 1, "completed-task-id".to_string())],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Task completed successfully
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"done": true}))),
+            },
+        )
+        .await
+        .unwrap();
+
+    let root_flow = blob_store
+        .get_flow(&flow_id)
+        .await
+        .unwrap()
+        .expect("flow should exist");
+    let metadata_store = env.metadata_store();
+    let root_info = stepflow_state::RunRecoveryInfo {
+        root_run_id,
+        flow_id: flow_id.clone(),
+        start_sequence: SequenceNumber::new(0),
+    };
+    let recovery = super::restore::Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &root_flow,
+        blob_store.as_ref(),
+        metadata_store.as_ref(),
+    );
+    let recovered = recovery.restore_from_journal(&root_info).await.unwrap();
+
+    // No in-flight tasks — the task completed
+    assert!(
+        recovered.recovered_task_ids.is_empty(),
+        "Completed tasks should not appear in recovered_task_ids"
+    );
+}
+
+/// Test that checkpoint-accelerated recovery preserves in-flight task_ids.
+///
+/// When a checkpoint contains in_flight_task_ids, those should be restored
+/// into recovered_task_ids even if no tail journal events exist.
+#[tokio::test]
+async fn test_checkpoint_recovery_preserves_inflight_task_ids() {
+    use crate::checkpoint::CheckpointData;
+
+    let env = create_test_env().await;
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    let flow = Arc::new(create_test_flow());
+    let flow_id = blob_store.store_flow(flow.clone()).await.unwrap();
+
+    let root_run_id = uuid::Uuid::now_v7();
+
+    // Write minimal journal for run creation
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RootRunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({"x": 1}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+        )
+        .await
+        .unwrap();
+
+    let cp_seq = journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: root_run_id,
+                    tasks: vec![TaskAttempt::new(0, 0, 1, "checkpoint-task-id".to_string())],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Create a checkpoint that includes the in-flight task_id
+    let mut runs = HashMap::new();
+    let run_state = crate::run_state::RunState::new(
+        root_run_id,
+        flow_id.clone(),
+        flow.clone(),
+        vec![ValueRef::new(json!({"x": 1}))],
+        HashMap::new(),
+    );
+    runs.insert(root_run_id, run_state);
+
+    let mut in_flight = HashMap::new();
+    in_flight.insert(
+        (root_run_id, 0u32, 0usize),
+        "checkpoint-task-id".to_string(),
+    );
+
+    let checkpoint = CheckpointData::capture(&runs, &HashMap::new(), &in_flight, cp_seq);
+    let data = checkpoint.serialize().unwrap();
+
+    // Recover using checkpoint (no tail events after checkpoint)
+    let root_flow = blob_store
+        .get_flow(&flow_id)
+        .await
+        .unwrap()
+        .expect("flow should exist");
+    let metadata_store = env.metadata_store();
+    let stored_cp = stepflow_state::StoredCheckpoint {
+        sequence: cp_seq,
+        data,
+    };
+    let recovery = super::restore::Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &root_flow,
+        blob_store.as_ref(),
+        metadata_store.as_ref(),
+    );
+    let recovered = recovery.restore_from_checkpoint(&stored_cp).await.unwrap();
+
+    // The checkpoint's in-flight task_id should be recovered
+    assert_eq!(
+        recovered.recovered_task_ids.len(),
+        1,
+        "Should have 1 in-flight task_id from checkpoint"
+    );
+    assert_eq!(
+        recovered
+            .recovered_task_ids
+            .get(&(root_run_id, 0, 0))
+            .unwrap(),
+        "checkpoint-task-id",
+        "Should recover the task_id from the checkpoint"
+    );
+}
+
+/// Test that tail events after a checkpoint update the recovered task_ids.
+///
+/// A task that was in-flight at checkpoint time but completed in the tail
+/// journal should NOT appear in recovered_task_ids.
+#[tokio::test]
+async fn test_checkpoint_recovery_tail_events_update_task_ids() {
+    use crate::checkpoint::CheckpointData;
+
+    let env = create_test_env().await;
+    let blob_store = env.blob_store();
+    let journal = env.execution_journal();
+
+    let flow = Arc::new(create_test_flow());
+    let flow_id = blob_store.store_flow(flow.clone()).await.unwrap();
+
+    let root_run_id = uuid::Uuid::now_v7();
+
+    // Journal: RootRunCreated, StepsNeeded, TasksStarted
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::RootRunCreated {
+                run_id: root_run_id,
+                flow_id: flow_id.clone(),
+                inputs: vec![ValueRef::new(json!({"x": 1}))],
+                variables: HashMap::new(),
+            },
+        )
+        .await
+        .unwrap();
+
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::StepsNeeded {
+                run_id: root_run_id,
+                item_index: 0,
+                step_indices: vec![0],
+            },
+        )
+        .await
+        .unwrap();
+
+    let cp_seq = journal
+        .write(
+            root_run_id,
+            JournalEvent::TasksStarted {
+                runs: vec![RunTaskAttempts {
+                    run_id: root_run_id,
+                    tasks: vec![TaskAttempt::new(0, 0, 1, "old-task-id".to_string())],
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+    // Create checkpoint with in-flight task
+    let mut runs = HashMap::new();
+    let run_state = crate::run_state::RunState::new(
+        root_run_id,
+        flow_id.clone(),
+        flow.clone(),
+        vec![ValueRef::new(json!({"x": 1}))],
+        HashMap::new(),
+    );
+    runs.insert(root_run_id, run_state);
+
+    let mut in_flight = HashMap::new();
+    in_flight.insert((root_run_id, 0u32, 0usize), "old-task-id".to_string());
+
+    let checkpoint = CheckpointData::capture(&runs, &HashMap::new(), &in_flight, cp_seq);
+    let data = checkpoint.serialize().unwrap();
+
+    // Tail event: TaskCompleted after checkpoint — task finished before crash
+    journal
+        .write(
+            root_run_id,
+            JournalEvent::TaskCompleted {
+                run_id: root_run_id,
+                item_index: 0,
+                step_index: 0,
+                result: stepflow_core::FlowResult::Success(ValueRef::new(json!({"done": true}))),
+            },
+        )
+        .await
+        .unwrap();
+
+    // Recover using checkpoint + tail
+    let root_flow = blob_store
+        .get_flow(&flow_id)
+        .await
+        .unwrap()
+        .expect("flow should exist");
+    let metadata_store = env.metadata_store();
+    let stored_cp = stepflow_state::StoredCheckpoint {
+        sequence: cp_seq,
+        data,
+    };
+    let recovery = super::restore::Recovery::new(
+        root_run_id,
+        journal.as_ref(),
+        &root_flow,
+        blob_store.as_ref(),
+        metadata_store.as_ref(),
+    );
+    let recovered = recovery.restore_from_checkpoint(&stored_cp).await.unwrap();
+
+    // Task completed in the tail — should NOT be in recovered_task_ids
+    assert!(
+        recovered.recovered_task_ids.is_empty(),
+        "Task completed in tail should be removed from recovered_task_ids"
+    );
+}
