@@ -118,11 +118,8 @@ pub enum HeartbeatResult {
     InProgress,
     /// Task is already being executed by a different worker.
     AlreadyClaimed,
-    /// Task already has a result (completed or failed).
-    Completed,
-    /// Task timed out in the queue before any worker claimed it.
-    TimedOut,
-    /// Task ID not recognized — never existed or already cleaned up.
+    /// Task ID not recognized — never existed, already completed and
+    /// cleaned up, or timed out.
     NotFound,
 }
 

@@ -167,17 +167,10 @@ enum TaskStatus {
   // The calling worker should abort and not call CompleteTask.
   TASK_STATUS_ALREADY_CLAIMED = 2;
 
-  // Task already has a result (completed or failed).
-  // The calling worker should abort.
-  TASK_STATUS_COMPLETED = 3;
-
-  // Task timed out in the queue before any worker claimed it.
-  // The calling worker should abort.
-  TASK_STATUS_TIMED_OUT = 4;
-
-  // Task ID not recognized — never existed or already cleaned up.
-  // The calling worker should abort.
-  TASK_STATUS_NOT_FOUND = 5;
+  // Task ID not recognized. The task may have never existed, already
+  // completed and been cleaned up, or timed out. The calling worker
+  // should abort.
+  TASK_STATUS_NOT_FOUND = 3;
 }
 
 message TaskHeartbeatRequest {

@@ -252,8 +252,6 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let (should_abort, status) = match result {
             HeartbeatResult::InProgress => (false, TaskStatus::InProgress),
             HeartbeatResult::AlreadyClaimed => (true, TaskStatus::AlreadyClaimed),
-            HeartbeatResult::Completed => (true, TaskStatus::Completed),
-            HeartbeatResult::TimedOut => (true, TaskStatus::TimedOut),
             HeartbeatResult::NotFound => (true, TaskStatus::NotFound),
         };
         Ok(Response::new(TaskHeartbeatResponse {

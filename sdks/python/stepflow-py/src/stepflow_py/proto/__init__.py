@@ -20,12 +20,13 @@ from .tasks_pb2 import (
 )
 from .orchestrator_pb2 import (
     TaskError,
-    TaskStatus,
     CompleteTaskRequest,
     CompleteTaskResponse,
     OrchestratorGetRunRequest,
     OrchestratorRunStatus,
     OrchestratorSubmitRunRequest,
+    StartTaskRequest,
+    StartTaskResponse,
     TaskHeartbeatRequest,
     TaskHeartbeatResponse,
 )
@@ -91,7 +92,8 @@ __all__ = [
     "OrchestratorGetRunRequest",
     "OrchestratorRunStatus",
     "OrchestratorSubmitRunRequest",
-    "TaskStatus",
+    "StartTaskRequest",
+    "StartTaskResponse",
     "TaskHeartbeatRequest",
     "TaskHeartbeatResponse",
     "GetBlobRequest",

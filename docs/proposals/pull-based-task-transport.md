@@ -190,9 +190,7 @@ enum TaskStatus {
   TASK_STATUS_UNSPECIFIED = 0;
   TASK_STATUS_IN_PROGRESS = 1;      // Task is yours, continue
   TASK_STATUS_ALREADY_CLAIMED = 2;  // Different worker owns this task
-  TASK_STATUS_COMPLETED = 3;        // Task already has a result
-  TASK_STATUS_TIMED_OUT = 4;        // Task expired in queue
-  TASK_STATUS_NOT_FOUND = 5;        // Task ID not recognized
+  TASK_STATUS_NOT_FOUND = 3;        // Never existed, completed, or timed out
 }
 ```
 

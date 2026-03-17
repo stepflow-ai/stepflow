@@ -51,17 +51,10 @@ class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._Enu
     """Task is already being executed by a different worker.
     The calling worker should abort and not call CompleteTask.
     """
-    TASK_STATUS_COMPLETED: _TaskStatus.ValueType  # 3
-    """Task already has a result (completed or failed).
-    The calling worker should abort.
-    """
-    TASK_STATUS_TIMED_OUT: _TaskStatus.ValueType  # 4
-    """Task timed out in the queue before any worker claimed it.
-    The calling worker should abort.
-    """
-    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 5
-    """Task ID not recognized — never existed or already cleaned up.
-    The calling worker should abort.
+    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 3
+    """Task ID not recognized. The task may have never existed, already
+    completed and been cleaned up, or timed out. The calling worker
+    should abort.
     """
 
 class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
@@ -78,17 +71,10 @@ TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 2
 """Task is already being executed by a different worker.
 The calling worker should abort and not call CompleteTask.
 """
-TASK_STATUS_COMPLETED: TaskStatus.ValueType  # 3
-"""Task already has a result (completed or failed).
-The calling worker should abort.
-"""
-TASK_STATUS_TIMED_OUT: TaskStatus.ValueType  # 4
-"""Task timed out in the queue before any worker claimed it.
-The calling worker should abort.
-"""
-TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 5
-"""Task ID not recognized — never existed or already cleaned up.
-The calling worker should abort.
+TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 3
+"""Task ID not recognized. The task may have never existed, already
+completed and been cleaned up, or timed out. The calling worker
+should abort.
 """
 Global___TaskStatus: typing_extensions.TypeAlias = TaskStatus
 
