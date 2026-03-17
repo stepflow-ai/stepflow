@@ -423,7 +423,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_task_queue_depth)",
+              "expr": "sum(stepflow_queue_depth)",
               "legendFormat": "queue depth",
               "refId": "A"
             }
@@ -460,7 +460,7 @@ data:
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(stepflow_task_connected_workers)",
+              "expr": "sum(stepflow_queue_connected_workers)",
               "legendFormat": "connected workers",
               "refId": "A"
             }

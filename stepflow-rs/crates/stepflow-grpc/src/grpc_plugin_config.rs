@@ -120,7 +120,7 @@ impl PluginConfig for PullPluginConfig {
         let execution_timeout = self
             .execution_timeout_secs
             .map(std::time::Duration::from_secs);
-        let resolved_queue_name = self.queue_name.as_deref().unwrap_or("python");
+        let resolved_queue_name = self.queue_name.as_deref().unwrap_or("default");
         let queue = Arc::new(PullTaskQueue::new(resolved_queue_name));
         let transport = Box::new(InMemoryTaskTransport::new(queue.clone()));
 
@@ -221,7 +221,7 @@ impl PullPlugin {
                 .attach_printable("Cannot spawn worker: not initialized (no server address)")
         })?;
 
-        let queue_name = self.queue_name.as_deref().unwrap_or("python");
+        let queue_name = self.queue_name.as_deref().unwrap_or("default");
 
         // Drop old worker first (kills process group via SIGTERM)
         {
@@ -335,7 +335,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
         *self.server_address.lock().await = Some(server_address.clone());
 
         // Register this plugin's queue with the shared server
-        let queue_name = self.queue_name.as_deref().unwrap_or("python");
+        let queue_name = self.queue_name.as_deref().unwrap_or("default");
         shared_server.register_queue(queue_name.to_string(), self.queue.clone());
 
         // Build the inner StepflowQueuePlugin with the shared PendingTasks

@@ -307,25 +307,11 @@ pub fn record_task_failure(component: &str) {
 // Pull Task Queue Operational Metrics
 // =========================================================================
 
-/// Current depth of the task queue (tasks waiting to be picked up).
-static TASK_QUEUE_DEPTH: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
-    let meter = global::meter("stepflow");
-    meter
-        .i64_up_down_counter("task.queue_depth")
-        .with_description("Current number of tasks waiting in the pull queue")
-        .build()
-});
-
-/// Number of workers currently connected to the pull queue.
-static TASK_CONNECTED_WORKERS: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
-    let meter = global::meter("stepflow");
-    meter
-        .i64_up_down_counter("task.connected_workers")
-        .with_description("Number of workers currently connected to the pull queue")
-        .build()
-});
-
 /// Total tasks dispatched into the pull queue.
+///
+/// This is a task/execution concern — the orchestrator records each dispatch
+/// regardless of queue implementation. Survives a transport migration (e.g.,
+/// to NATS) because the orchestrator always knows when it dispatches.
 static TASK_DISPATCHED_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
     let meter = global::meter("stepflow");
     meter
@@ -334,24 +320,55 @@ static TASK_DISPATCHED_TOTAL: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
-/// Record a task pushed into the queue (increments depth and dispatched total).
-pub fn record_task_queue_push(queue_name: &str) {
-    let attrs = [KeyValue::new("queue_name", queue_name.to_string())];
-    TASK_QUEUE_DEPTH.add(1, &attrs);
-    TASK_DISPATCHED_TOTAL.add(1, &attrs);
+/// Record a task dispatch (increments dispatched total).
+pub fn record_task_dispatched(queue_name: &str) {
+    TASK_DISPATCHED_TOTAL.add(1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+}
+
+// =========================================================================
+// Queue Operational Metrics
+// =========================================================================
+
+/// Current depth of the task queue (tasks waiting to be picked up).
+///
+/// Queue-implementation metric — in a NATS migration these would come from
+/// NATS JetStream, not the orchestrator.
+static QUEUE_DEPTH: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .i64_up_down_counter("queue.depth")
+        .with_description("Current number of tasks waiting in the pull queue")
+        .build()
+});
+
+/// Number of workers currently connected to the pull queue.
+///
+/// Queue-implementation metric — in a NATS migration these would come from
+/// NATS consumer tracking, not the orchestrator.
+static QUEUE_CONNECTED_WORKERS: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .i64_up_down_counter("queue.connected_workers")
+        .with_description("Number of workers currently connected to the pull queue")
+        .build()
+});
+
+/// Record a task pushed into the queue (increments depth).
+pub fn record_queue_push(queue_name: &str) {
+    QUEUE_DEPTH.add(1, &[KeyValue::new("queue_name", queue_name.to_string())]);
 }
 
 /// Record a task popped from the queue (decrements depth).
-pub fn record_task_queue_pop(queue_name: &str) {
-    TASK_QUEUE_DEPTH.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+pub fn record_queue_pop(queue_name: &str) {
+    QUEUE_DEPTH.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
 }
 
 /// Record a worker connecting to the queue.
 pub fn record_worker_connected(queue_name: &str) {
-    TASK_CONNECTED_WORKERS.add(1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+    QUEUE_CONNECTED_WORKERS.add(1, &[KeyValue::new("queue_name", queue_name.to_string())]);
 }
 
 /// Record a worker disconnecting from the queue.
 pub fn record_worker_disconnected(queue_name: &str) {
-    TASK_CONNECTED_WORKERS.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
+    QUEUE_CONNECTED_WORKERS.add(-1, &[KeyValue::new("queue_name", queue_name.to_string())]);
 }

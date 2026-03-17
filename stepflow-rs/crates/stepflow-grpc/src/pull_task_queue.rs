@@ -76,7 +76,8 @@ impl PullTaskQueue {
             let mut queue = self.tasks.lock().expect("lock poisoned");
             queue.push_back(task);
         }
-        stepflow_observability::metrics::record_task_queue_push(&self.name);
+        stepflow_observability::metrics::record_task_dispatched(&self.name);
+        stepflow_observability::metrics::record_queue_push(&self.name);
         self.notify.notify_waiters();
     }
 
@@ -85,7 +86,7 @@ impl PullTaskQueue {
         let mut queue = self.tasks.lock().expect("lock poisoned");
         let task = queue.pop_front();
         if task.is_some() {
-            stepflow_observability::metrics::record_task_queue_pop(&self.name);
+            stepflow_observability::metrics::record_queue_pop(&self.name);
         }
         task
     }

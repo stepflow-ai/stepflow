@@ -178,9 +178,9 @@ Dashboards are provisioned via ConfigMaps mounted into the Grafana pod:
 **Orchestrator-side (Rust, `stepflow_` prefix):**
 | Metric | Type | Description |
 |--------|------|-------------|
-| `stepflow_task_queue_depth` | UpDownCounter | Tasks waiting in queue |
-| `stepflow_task_connected_workers` | UpDownCounter | Workers connected to queue |
-| `stepflow_task_dispatched_total` | Counter | Total tasks pushed to queue |
+| `stepflow_task_dispatched_total` | Counter | Total tasks dispatched to queue |
+| `stepflow_queue_depth` | UpDownCounter | Tasks waiting in queue |
+| `stepflow_queue_connected_workers` | UpDownCounter | Workers connected to queue |
 | `stepflow_task_queue_duration_seconds` | Histogram | Time from dispatch to StartTask |
 | `stepflow_task_execution_duration_seconds` | Histogram | Time from StartTask to CompleteTask |
 | `stepflow_task_success_total` | Counter | Tasks completed successfully |
@@ -308,7 +308,7 @@ App → OTel Collector → Prometheus exporter → Prometheus scrape → Grafana
 ```
 
 1. **Check scrape targets**: `curl http://localhost:9090/api/v1/targets` — all should be `UP`
-2. **Check metric exists**: `curl --data-urlencode 'query=stepflow_task_connected_workers' http://localhost:9090/api/v1/query`
+2. **Check metric exists**: `curl --data-urlencode 'query=stepflow_queue_connected_workers' http://localhost:9090/api/v1/query`
 3. **Check labels**: Inspect a metric's labels to find the correct filter values
 4. **Check OTel Collector**: `curl --data-urlencode 'query=increase(stepflow_otelcol_exporter_sent_metric_points_total{exporter="prometheus"}[5m])' http://localhost:9090/api/v1/query`
 

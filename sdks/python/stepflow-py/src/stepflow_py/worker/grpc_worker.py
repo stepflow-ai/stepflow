@@ -369,6 +369,60 @@ async def _handle_task(
 
         span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
+        # Open a shared channel to the run-owning orchestrator for
+        # StartTask, heartbeats, and CompleteTask
+        if orchestrator_url:
+            orch_channel = grpc.aio.insecure_channel(orchestrator_url)
+            stub = OrchestratorServiceStub(orch_channel)
+
+            # Call StartTask — if timed_out, skip execution
+            try:
+                response = await stub.StartTask(StartTaskRequest(task_id=task.task_id))
+                if response.timed_out:
+                    logger.warning(
+                        "Task %s timed out in queue, skipping execution",
+                        task.task_id,
+                    )
+                    return
+            except grpc.aio.AioRpcError as e:
+                logger.error(
+                    "StartTask failed for task %s: %s (code=%s)",
+                    task.task_id,
+                    e.details(),
+                    e.code(),
+                )
+                # If StartTask fails (e.g., task already timed out and
+                # removed), skip execution
+                return
+
+            # Start background heartbeat loop
+            interval = task.heartbeat_interval_secs or 1
+            heartbeat_task = asyncio.create_task(
+                _heartbeat_loop(stub, task.task_id, interval)
+            )
+
+        # Convert proto Value to Python dict
+        input_data = _proto_value_to_python(req.input)
+
+        # Look up the component — strip leading slash since the orchestrator
+        # sends the resolved path (e.g., "/echo") but components register
+        # by name (e.g., "echo").
+        component_name = req.component.lstrip("/")
+        lookup = server.get_component(component_name)
+        if lookup is None:
+            # Try with the original path in case of pattern-based registration
+            lookup = server.get_component(req.component)
+        if lookup is None:
+            await _complete_task_error(
+                task,
+                f"Component '{req.component}' not found",
+                channel=orch_channel,
+            )
+            return
+
+        component, path_params = lookup
+
+        # Span wraps only component execution, not StartTask/heartbeat setup
         with span_ctx:
             # Set diagnostic context inside span so trace/span IDs are captured
             if _OTEL_TRACE_AVAILABLE:
@@ -380,61 +434,6 @@ async def _handle_task(
                     )
                 except Exception:
                     pass
-
-            # Open a shared channel to the run-owning orchestrator for
-            # StartTask, heartbeats, and CompleteTask
-            if orchestrator_url:
-                orch_channel = grpc.aio.insecure_channel(orchestrator_url)
-                stub = OrchestratorServiceStub(orch_channel)
-
-                # Call StartTask — if timed_out, skip execution
-                try:
-                    response = await stub.StartTask(
-                        StartTaskRequest(task_id=task.task_id)
-                    )
-                    if response.timed_out:
-                        logger.warning(
-                            "Task %s timed out in queue, skipping execution",
-                            task.task_id,
-                        )
-                        return
-                except grpc.aio.AioRpcError as e:
-                    logger.error(
-                        "StartTask failed for task %s: %s (code=%s)",
-                        task.task_id,
-                        e.details(),
-                        e.code(),
-                    )
-                    # If StartTask fails (e.g., task already timed out and
-                    # removed), skip execution
-                    return
-
-                # Start background heartbeat loop
-                interval = task.heartbeat_interval_secs or 1
-                heartbeat_task = asyncio.create_task(
-                    _heartbeat_loop(stub, task.task_id, interval)
-                )
-
-            # Convert proto Value to Python dict
-            input_data = _proto_value_to_python(req.input)
-
-            # Look up the component — strip leading slash since the orchestrator
-            # sends the resolved path (e.g., "/echo") but components register
-            # by name (e.g., "echo").
-            component_name = req.component.lstrip("/")
-            lookup = server.get_component(component_name)
-            if lookup is None:
-                # Try with the original path in case of pattern-based registration
-                lookup = server.get_component(req.component)
-            if lookup is None:
-                await _complete_task_error(
-                    task,
-                    f"Component '{req.component}' not found",
-                    channel=orch_channel,
-                )
-                return
-
-            component, path_params = lookup
 
             # Execute the component
             try:
