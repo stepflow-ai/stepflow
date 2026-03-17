@@ -557,7 +557,7 @@ async fn test_recovery_preserves_attempt_counts() {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1, String::new())],
                 }],
             },
         )
@@ -694,8 +694,8 @@ async fn test_recovery_batches_parallel_tasks() {
                 runs: vec![RunTaskAttempts {
                     run_id,
                     tasks: vec![
-                        stepflow_state::TaskAttempt::new(0, 0, 1),
-                        stepflow_state::TaskAttempt::new(0, 1, 1),
+                        stepflow_state::TaskAttempt::new(0, 0, 1, String::new()),
+                        stepflow_state::TaskAttempt::new(0, 1, 1, String::new()),
                     ],
                 }],
             },
@@ -1730,6 +1730,7 @@ async fn test_recovery_resumes_inflight_subflow() {
                         item_index: 0,
                         step_index: 0,
                         attempt: 1,
+                        task_id: String::new(),
                     }],
                 }],
             },
@@ -1776,6 +1777,7 @@ async fn test_recovery_resumes_inflight_subflow() {
                         item_index: 0,
                         step_index: 0,
                         attempt: 1,
+                        task_id: String::new(),
                     }],
                 }],
             },
@@ -2381,6 +2383,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
                         item_index: 0,
                         step_index: 0,
                         attempt: 1,
+                        task_id: String::new(),
                     }],
                 }],
             },
@@ -2658,6 +2661,7 @@ async fn test_crash_after_one_completed_step_no_new_steps_needed() {
                         item_index: 0,
                         step_index: 0,
                         attempt: 1,
+                        task_id: String::new(),
                     }],
                 }],
             },
@@ -2778,6 +2782,7 @@ async fn test_completed_subflow_not_in_needing_updates() {
                         item_index: 0,
                         step_index: 0,
                         attempt: 1,
+                        task_id: String::new(),
                     }],
                 }],
             },

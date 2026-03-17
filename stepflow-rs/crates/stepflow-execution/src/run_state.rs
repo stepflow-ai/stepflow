@@ -1078,7 +1078,7 @@ mod tests {
         state.apply_event(&JournalEvent::TasksStarted {
             runs: vec![RunTaskAttempts {
                 run_id,
-                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1, String::new())],
             }],
         });
         assert_eq!(state.items_state().item(0).attempt_count(0), 1);
@@ -1087,7 +1087,7 @@ mod tests {
         state.apply_event(&JournalEvent::TasksStarted {
             runs: vec![RunTaskAttempts {
                 run_id,
-                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 2)],
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 2, String::new())],
             }],
         });
         assert_eq!(state.items_state().item(0).attempt_count(0), 2);
@@ -1137,8 +1137,8 @@ mod tests {
             runs: vec![RunTaskAttempts {
                 run_id,
                 tasks: vec![
-                    stepflow_state::TaskAttempt::new(0, 0, 1),
-                    stepflow_state::TaskAttempt::new(0, 1, 1),
+                    stepflow_state::TaskAttempt::new(0, 0, 1, String::new()),
+                    stepflow_state::TaskAttempt::new(0, 1, 1, String::new()),
                 ],
             }],
         });
@@ -1171,7 +1171,7 @@ mod tests {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1, String::new())],
                 }],
             },
             JournalEvent::TaskCompleted {
@@ -1183,7 +1183,7 @@ mod tests {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1, String::new())],
                 }],
             },
             // Crash here - step1 was in-flight, never completed
@@ -1237,7 +1237,7 @@ mod tests {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 3)],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 3, String::new())],
                 }],
             },
             // step0 completed on attempt 3
@@ -1251,7 +1251,7 @@ mod tests {
             JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
                     run_id,
-                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1)],
+                    tasks: vec![stepflow_state::TaskAttempt::new(0, 1, 1, String::new())],
                 }],
             },
         ];
@@ -1320,7 +1320,7 @@ mod tests {
         state.apply_event(&JournalEvent::TasksStarted {
             runs: vec![RunTaskAttempts {
                 run_id: other_run_id,
-                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1)],
+                tasks: vec![stepflow_state::TaskAttempt::new(0, 0, 1, String::new())],
             }],
         });
 

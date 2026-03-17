@@ -103,6 +103,12 @@ pub struct FlowExecutor {
     /// (which may already have `StepsNeeded` journaled) from new runs (which
     /// always need it written).
     recovered_run_ids: HashSet<Uuid>,
+    /// Recovered task IDs from journal replay.
+    /// Maps (run_id, item_index, step_index) → task_id for tasks that were
+    /// in-flight when the orchestrator crashed. When the executor re-dispatches
+    /// these tasks, it reuses the journalled task_id so a worker retrying
+    /// CompleteTask can deliver its result.
+    recovered_task_ids: HashMap<(Uuid, u32, usize), String>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
 }
@@ -123,6 +129,7 @@ impl FlowExecutor {
         submit_receiver: SubflowReceiver,
         recovered_subflows: HashMap<(Uuid, u32, usize, Uuid), Uuid>,
         runs_needing_step_updates: HashSet<Uuid>,
+        recovered_task_ids: HashMap<(Uuid, u32, usize), String>,
         checkpointer: Checkpointer,
     ) -> Self {
         let journal = env.execution_journal().clone();
@@ -141,6 +148,7 @@ impl FlowExecutor {
             recovered_subflows,
             runs_needing_step_updates,
             recovered_run_ids,
+            recovered_task_ids,
             checkpointer,
         }
     }
@@ -375,7 +383,12 @@ impl FlowExecutor {
                 // spawning. Tasks may belong to different runs (parent and subflows),
                 // so we group attempts by run_id into a single TasksStarted event
                 // with RunTaskAttempts entries per run.
+                //
+                // Task IDs are generated here (before journalling) so they are
+                // persisted in the journal. On recovery, the same task_id is
+                // re-used so a worker retrying CompleteTask can deliver its result.
                 let mut attempts_by_run: HashMap<uuid::Uuid, Vec<TaskAttempt>> = HashMap::new();
+                let mut task_ids: Vec<String> = Vec::with_capacity(tasks.len());
 
                 for task in tasks.iter() {
                     let run_state = self
@@ -384,10 +397,23 @@ impl FlowExecutor {
                     let item = run_state.items_state_mut().item_mut(task.item_index);
                     let attempt = item.record_attempt(task.step_index);
 
+                    // Check for a recovered task_id from journal replay.
+                    // If found, reuse it so the worker's CompleteTask retry lands.
+                    let task_id = self
+                        .recovered_task_ids
+                        .remove(&(task.run_id, task.item_index, task.step_index))
+                        .unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
+
                     attempts_by_run
                         .entry(task.run_id)
                         .or_default()
-                        .push(TaskAttempt::new(task.item_index, task.step_index, attempt));
+                        .push(TaskAttempt::new(
+                            task.item_index,
+                            task.step_index,
+                            attempt,
+                            task_id.clone(),
+                        ));
+                    task_ids.push(task_id);
                 }
 
                 // Write a single TasksStarted event — this must be durable before we spawn
@@ -413,8 +439,8 @@ impl FlowExecutor {
                     .await?;
                 }
 
-                for task in tasks.into_iter() {
-                    let future = self.prepare_task_future(task)?;
+                for (task, task_id) in tasks.into_iter().zip(task_ids) {
+                    let future = self.prepare_task_future(task, task_id)?;
                     in_flight.push(future);
                 }
             }
@@ -797,6 +823,7 @@ impl FlowExecutor {
     fn prepare_task_future(
         &self,
         task: Task,
+        task_id: String,
     ) -> Result<futures::future::BoxFuture<'static, TaskResult>> {
         use futures::future::FutureExt as _;
         use stepflow_plugin::RunContext;
@@ -830,9 +857,6 @@ impl FlowExecutor {
         let run_context = Arc::new(
             RunContext::new(task.run_id, flow, flow_id, self.env.clone()).with_submitter(submitter),
         );
-
-        // Generate a unique task ID for TaskRegistry tracking
-        let task_id = uuid::Uuid::now_v7().to_string();
 
         // Create step runner with all execution context
         let runner = StepRunner::new(task.step_index, task_id, step_input, run_context, attempt);
@@ -1176,7 +1200,8 @@ impl FlowExecutor {
             item.record_attempt(task.step_index)
         };
 
-        // 4. Journal the new attempt
+        // 4. Generate task_id and journal the new attempt
+        let task_id = uuid::Uuid::now_v7().to_string();
         let seqno = self
             .write_journal(JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {
@@ -1185,6 +1210,7 @@ impl FlowExecutor {
                         task.item_index,
                         task.step_index,
                         new_attempt,
+                        task_id.clone(),
                     )],
                 }],
             })
@@ -1213,7 +1239,7 @@ impl FlowExecutor {
         );
 
         // 6. Build retry future: sleep then re-execute
-        let task_future = self.prepare_task_future(task)?;
+        let task_future = self.prepare_task_future(task, task_id)?;
         let component_for_metric = component_path.to_string();
         let retry_future = async move {
             stepflow_observability::metrics::record_pending_execution_start(&component_for_metric);

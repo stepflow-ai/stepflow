@@ -145,7 +145,13 @@ impl JournalEntry {
 
 /// Information about a task being started.
 ///
-/// Records the item, step, and execution-level attempt number (1-based).
+/// Records the item, step, execution-level attempt number (1-based), and
+/// the task_id used for result delivery via the `TaskRegistry`.
+///
+/// The task_id is journalled so that on recovery, the same ID can be
+/// re-registered in the `TaskRegistry`. This allows a worker that completed
+/// the task before the crash to deliver its result via CompleteTask retry.
+///
 /// This is the attempt count across orchestrator crashes/recoveries, distinct
 /// from the transport-level retry counter in the plugin layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,15 +162,22 @@ pub struct TaskAttempt {
     pub step_index: usize,
     /// The execution attempt number (1-based).
     pub attempt: u32,
+    /// Unique task ID for TaskRegistry result delivery.
+    ///
+    /// Defaults to empty string for backward compatibility with journals
+    /// written before task_id journalling was introduced.
+    #[serde(default)]
+    pub task_id: String,
 }
 
 impl TaskAttempt {
     /// Create a new task attempt record.
-    pub fn new(item_index: u32, step_index: usize, attempt: u32) -> Self {
+    pub fn new(item_index: u32, step_index: usize, attempt: u32, task_id: String) -> Self {
         Self {
             item_index,
             step_index,
             attempt,
+            task_id,
         }
     }
 }

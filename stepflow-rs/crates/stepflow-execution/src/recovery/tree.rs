@@ -160,6 +160,14 @@ pub(super) async fn recover_execution_tree(
         );
     }
 
+    if !recovered.recovered_task_ids.is_empty() {
+        log::info!(
+            "Recovery found {} in-flight task(s) with journalled task_ids",
+            recovered.recovered_task_ids.len()
+        );
+        builder = builder.with_recovered_task_ids(recovered.recovered_task_ids);
+    }
+
     let flow_executor = builder
         .build()
         .await
