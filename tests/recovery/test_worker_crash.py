@@ -123,7 +123,7 @@ async def test_worker_crash_exhausts_retries(compose_env):
     """Scenario E: Worker stays down, orchestrator exhausts retries.
 
     Kill the worker and leave it dead. With pull transport, each retry
-    puts the task in the queue where it times out (queueTimeoutSecs=10).
+    puts the task in the queue where it times out (queueTimeoutSecs=3).
     After transportMaxRetries=3 retries, the run fails.
     """
     # 1. Submit a sequential run

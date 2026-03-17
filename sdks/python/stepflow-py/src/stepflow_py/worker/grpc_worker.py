@@ -427,7 +427,6 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 f"Component '{req.component}' not found",
-                channel=orch_channel,
             )
             return
 
@@ -456,7 +455,6 @@ async def _handle_task(
                 await _complete_task_success(
                     task,
                     proto_output,
-                    channel=orch_channel,
                 )
             except Exception as e:
                 logger.error("Component %s failed: %s", req.component, e, exc_info=True)
@@ -466,7 +464,6 @@ async def _handle_task(
                     str(e),
                     code=error_code,
                     data=error_data,
-                    channel=orch_channel,
                 )
 
     except Exception:
@@ -476,7 +473,6 @@ async def _handle_task(
                 task,
                 traceback.format_exc(),
                 code=TASK_ERROR_CODE_WORKER_ERROR,
-                channel=orch_channel,
             )
         except Exception:
             logger.exception("Failed to report error for task %s", task.task_id)
@@ -666,12 +662,18 @@ async def _complete_task_with_retry(
 
     Retries on:
     - UNAVAILABLE: orchestrator is down (restarting). Reconnects channel.
-    - NOT_FOUND: orchestrator is up but hasn't re-registered this task_id
-      yet (recovery in progress). Retries until the task is re-registered.
+      Always retried.
+    - NOT_FOUND after UNAVAILABLE: orchestrator is up but hasn't
+      re-registered this task_id yet (recovery in progress). Retries
+      until the task is re-registered.
+    - NOT_FOUND without prior UNAVAILABLE: task was already completed or
+      cleaned up. Treated as terminal (not an error), returns True.
 
-    Returns True if the result was delivered, False if all retries failed.
+    Returns True if the result was delivered (or is no longer needed),
+    False if all retries failed.
     """
     channel = grpc.aio.insecure_channel(orchestrator_url)
+    seen_unavailable = False
     try:
         stub = OrchestratorServiceStub(channel)
         for attempt in range(max_retries + 1):
@@ -679,26 +681,53 @@ async def _complete_task_with_retry(
                 await stub.CompleteTask(request)
                 return True
             except grpc.aio.AioRpcError as e:
-                retriable = e.code() in (
-                    grpc.StatusCode.UNAVAILABLE,
-                    grpc.StatusCode.NOT_FOUND,
-                )
-                if retriable and attempt < max_retries:
-                    delay = min(base_delay * (2**attempt), 30.0)
-                    logger.warning(
-                        "CompleteTask %s for %s, retry in %.1fs (%d/%d)",
-                        e.code(),
-                        task_id,
-                        delay,
-                        attempt + 1,
-                        max_retries,
-                    )
-                    await asyncio.sleep(delay)
-                    # Reconnect on UNAVAILABLE (server may have restarted)
-                    if e.code() == grpc.StatusCode.UNAVAILABLE:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    seen_unavailable = True
+                    if attempt < max_retries:
+                        delay = min(base_delay * (2**attempt), 30.0)
+                        logger.warning(
+                            "CompleteTask %s for %s, retry in %.1fs (%d/%d)",
+                            e.code(),
+                            task_id,
+                            delay,
+                            attempt + 1,
+                            max_retries,
+                        )
+                        await asyncio.sleep(delay)
                         await channel.close()
                         channel = grpc.aio.insecure_channel(orchestrator_url)
                         stub = OrchestratorServiceStub(channel)
+                    else:
+                        logger.error(
+                            "CompleteTask failed for %s: %s (code=%s)",
+                            task_id,
+                            e.details(),
+                            e.code(),
+                        )
+                        return False
+                elif e.code() == grpc.StatusCode.NOT_FOUND:
+                    if seen_unavailable and attempt < max_retries:
+                        # Recovery in progress — task not re-registered yet
+                        delay = min(base_delay * (2**attempt), 30.0)
+                        logger.warning(
+                            "CompleteTask %s for %s (recovery in progress), "
+                            "retry in %.1fs (%d/%d)",
+                            e.code(),
+                            task_id,
+                            delay,
+                            attempt + 1,
+                            max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        # No prior UNAVAILABLE — task already completed or
+                        # cleaned up. Not an error, just a duplicate.
+                        logger.info(
+                            "CompleteTask NOT_FOUND for %s — task already "
+                            "completed or not found, skipping",
+                            task_id,
+                        )
+                        return True
                 else:
                     logger.error(
                         "CompleteTask failed for %s: %s (code=%s)",
@@ -715,8 +744,6 @@ async def _complete_task_with_retry(
 async def _complete_task_success(
     task: TaskAssignment,
     output: struct_pb2.Value,
-    *,
-    channel: grpc.aio.Channel | None = None,
 ) -> None:
     """Report successful task completion to the run-owning orchestrator."""
     orchestrator_url = (
@@ -740,10 +767,6 @@ async def _complete_task_success(
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "success"})
 
-    # Close the shared channel if one was passed in (caller manages lifecycle)
-    if channel is not None:
-        await channel.close()
-
 
 async def _complete_task_error(
     task: TaskAssignment,
@@ -751,7 +774,6 @@ async def _complete_task_error(
     *,
     code: int = TASK_ERROR_CODE_COMPONENT_FAILED,
     data: dict | None = None,
-    channel: grpc.aio.Channel | None = None,
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
     orchestrator_url = (
@@ -784,10 +806,6 @@ async def _complete_task_error(
         logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "error"})
-
-    # Close the shared channel if one was passed in (caller manages lifecycle)
-    if channel is not None:
-        await channel.close()
 
 
 def _build_component_info_list(

@@ -31,7 +31,7 @@ use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::Orchestrato
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
-    PutBlobRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
+    PutBlobRequest, TaskAssignment, TaskError, TaskHeartbeatRequest, TaskStatus,
 };
 use stepflow_plugin::TaskRegistry;
 
@@ -527,7 +527,7 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(!resp.should_abort);
-    assert_eq!(resp.status, 1); // TASK_STATUS_IN_PROGRESS
+    assert_eq!(resp.status, TaskStatus::InProgress as i32);
 
     // Subsequent heartbeat — same worker
     let resp = orch_client
@@ -554,7 +554,7 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(resp.should_abort);
-    assert_eq!(resp.status, 2); // TASK_STATUS_ALREADY_CLAIMED
+    assert_eq!(resp.status, TaskStatus::AlreadyClaimed as i32);
 
     // Heartbeat for unknown task — should get NotFound status
     let resp = orch_client
@@ -568,5 +568,5 @@ async fn test_task_heartbeat_lifecycle() {
         .unwrap()
         .into_inner();
     assert!(resp.should_abort);
-    assert_eq!(resp.status, 5); // TASK_STATUS_NOT_FOUND
+    assert_eq!(resp.status, TaskStatus::NotFound as i32);
 }

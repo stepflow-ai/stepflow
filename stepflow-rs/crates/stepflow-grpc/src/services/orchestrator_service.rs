@@ -242,6 +242,12 @@ impl OrchestratorService for OrchestratorServiceImpl {
         request: Request<TaskHeartbeatRequest>,
     ) -> Result<Response<TaskHeartbeatResponse>, Status> {
         let req = request.into_inner();
+        if req.worker_id.is_empty() {
+            return Err(grpc_err::invalid_field(
+                "worker_id",
+                "worker_id is required",
+            ));
+        }
         let result = self.task_registry.heartbeat(&req.task_id, &req.worker_id);
         let (should_abort, status) = match result {
             HeartbeatResult::InProgress => (false, TaskStatus::InProgress),
