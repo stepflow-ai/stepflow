@@ -36,6 +36,8 @@ use crate::proto::stepflow::v1::TaskAssignment;
 /// can aggregate across all connected workers.
 #[derive(Debug)]
 pub struct PullTaskQueue {
+    /// Human-readable name for this queue (used in metric labels).
+    name: String,
     /// Pending tasks waiting to be assigned to a worker.
     tasks: Mutex<VecDeque<TaskAssignment>>,
     /// Notifies waiting workers when a new task arrives.
@@ -57,8 +59,9 @@ struct WorkerRegistration {
 }
 
 impl PullTaskQueue {
-    pub fn new() -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
+            name: name.into(),
             tasks: Mutex::new(VecDeque::new()),
             notify: Notify::new(),
             worker_notify: Notify::new(),
@@ -73,13 +76,19 @@ impl PullTaskQueue {
             let mut queue = self.tasks.lock().expect("lock poisoned");
             queue.push_back(task);
         }
+        stepflow_observability::metrics::record_task_dispatched(&self.name);
+        stepflow_observability::metrics::record_queue_push(&self.name);
         self.notify.notify_waiters();
     }
 
     /// Try to pop the next task from the queue.
     pub fn pop_task(&self) -> Option<TaskAssignment> {
         let mut queue = self.tasks.lock().expect("lock poisoned");
-        queue.pop_front()
+        let task = queue.pop_front();
+        if task.is_some() {
+            stepflow_observability::metrics::record_queue_pop(&self.name);
+        }
+        task
     }
 
     /// Wait until notified that a new task may be available.
@@ -96,6 +105,7 @@ impl PullTaskQueue {
         let id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
         workers.push(WorkerRegistration { id, components });
         drop(workers);
+        stepflow_observability::metrics::record_worker_connected(&self.name);
         self.worker_notify.notify_waiters();
         id
     }
@@ -141,7 +151,11 @@ impl PullTaskQueue {
     /// Unregister a worker when its connection closes.
     pub fn unregister_worker(&self, worker_id: u64) {
         let mut workers = self.workers.lock().expect("lock poisoned");
+        let before = workers.len();
         workers.retain(|w| w.id != worker_id);
+        if workers.len() < before {
+            stepflow_observability::metrics::record_worker_disconnected(&self.name);
+        }
     }
 
     /// Aggregate components from all connected workers.
@@ -168,7 +182,7 @@ impl PullTaskQueue {
 
 impl Default for PullTaskQueue {
     fn default() -> Self {
-        Self::new()
+        Self::new("default")
     }
 }
 
@@ -187,7 +201,7 @@ mod tests {
 
     #[test]
     fn test_push_pop() {
-        let queue = PullTaskQueue::new();
+        let queue = PullTaskQueue::new("test");
         assert_eq!(queue.pending_count(), 0);
 
         let task = TaskAssignment {
@@ -208,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_fifo_order() {
-        let queue = PullTaskQueue::new();
+        let queue = PullTaskQueue::new("test");
         queue.push_task(TaskAssignment {
             task_id: "t1".to_string(),
             request: None,
@@ -230,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_worker_registration() {
-        let queue = PullTaskQueue::new();
+        let queue = PullTaskQueue::new("test");
         assert_eq!(queue.worker_count(), 0);
 
         let comps = vec![make_component_info("transform")];
@@ -248,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_multiple_workers_aggregate_components() {
-        let queue = PullTaskQueue::new();
+        let queue = PullTaskQueue::new("test");
         let _id1 = queue.register_worker(vec![make_component_info("a")]);
         let _id2 = queue.register_worker(vec![make_component_info("b"), make_component_info("c")]);
 
@@ -261,8 +275,8 @@ mod tests {
     /// architecture where each `type: pull` plugin gets its own queue.
     #[test]
     fn test_separate_queues_are_isolated() {
-        let queue_a = PullTaskQueue::new();
-        let queue_b = PullTaskQueue::new();
+        let queue_a = PullTaskQueue::new("test");
+        let queue_b = PullTaskQueue::new("test");
 
         // Register different workers on each queue
         queue_a.register_worker(vec![make_component_info("python/transform")]);
@@ -322,7 +336,7 @@ mod tests {
     /// Multiple workers on the same queue compete for tasks (work-stealing).
     #[tokio::test]
     async fn test_multiple_workers_compete_for_tasks() {
-        let queue = std::sync::Arc::new(PullTaskQueue::new());
+        let queue = std::sync::Arc::new(PullTaskQueue::new("test"));
 
         // Register two workers on the same queue
         queue.register_worker(vec![make_component_info("transform")]);
@@ -371,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_notify_wakes_waiter() {
-        let queue = std::sync::Arc::new(PullTaskQueue::new());
+        let queue = std::sync::Arc::new(PullTaskQueue::new("test"));
         let queue2 = queue.clone();
 
         let handle = tokio::spawn(async move {

@@ -82,6 +82,70 @@ logger = logging.getLogger(__name__)
 _BLOB_URL: str = os.environ.get("STEPFLOW_BLOB_URL", "")
 _BLOB_THRESHOLD_BYTES: int = int(os.environ.get("STEPFLOW_BLOB_THRESHOLD_BYTES", "0"))
 
+# Queue name set at runtime by run_grpc_worker(); used as metric attribute.
+_QUEUE_NAME: str = ""
+
+# --- OpenTelemetry tracing imports (optional dependency) ---
+try:
+    from opentelemetry import trace as otel_trace
+
+    from stepflow_py.worker.observability import (
+        extract_trace_context,
+        set_diagnostic_context,
+    )
+
+    _OTEL_TRACE_AVAILABLE = True
+except ImportError:
+    _OTEL_TRACE_AVAILABLE = False
+
+# --- OpenTelemetry metrics instruments (optional dependency) ---
+# Instruments are lazily created on first use because grpc_worker.py is
+# imported before setup_observability() installs a real MeterProvider.
+# Creating instruments from the proxy meter before the provider is set
+# yields permanently no-op counters in the Python OTel SDK.
+_OTEL_METRICS_AVAILABLE = False
+_tasks_pulled: Any = None
+_tasks_completed: Any = None
+_heartbeats_sent: Any = None
+_connection_status: Any = None
+_metrics_initialized = False
+
+try:
+    from opentelemetry import metrics as otel_metrics
+
+    _OTEL_METRICS_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def _ensure_metrics() -> None:
+    """Lazily create OTel metric instruments after MeterProvider is set."""
+    global _tasks_pulled, _tasks_completed, _heartbeats_sent  # noqa: PLW0603
+    global _connection_status, _metrics_initialized  # noqa: PLW0603
+    if _metrics_initialized or not _OTEL_METRICS_AVAILABLE:
+        return
+    _metrics_initialized = True
+    try:
+        meter = otel_metrics.get_meter("stepflow-grpc-worker")
+        _tasks_pulled = meter.create_counter(
+            "worker.tasks_pulled_total",
+            description="Total tasks pulled from the queue",
+        )
+        _tasks_completed = meter.create_counter(
+            "worker.tasks_completed_total",
+            description="Total tasks completed (success or error)",
+        )
+        _heartbeats_sent = meter.create_counter(
+            "worker.heartbeats_sent_total",
+            description="Total heartbeats sent to the orchestrator",
+        )
+        _connection_status = meter.create_up_down_counter(
+            "worker.connection_status",
+            description="Number of active pull connections (0 or 1)",
+        )
+    except Exception:
+        pass
+
 
 async def run_grpc_worker(
     server: StepflowServer,
@@ -106,6 +170,10 @@ async def run_grpc_worker(
         max_concurrent: Maximum concurrent task executions.
         max_retries: Maximum consecutive connection failures before giving up.
     """
+    global _QUEUE_NAME  # noqa: PLW0603
+    _QUEUE_NAME = queue_name
+    _ensure_metrics()
+
     logger.info(
         "Starting gRPC worker: tasks_url=%s, queue=%s, max_concurrent=%d, "
         "blob_url=%s, blob_threshold=%d",
@@ -204,6 +272,8 @@ async def _pull_loop(
 ) -> None:
     """Single pull session — connects, pulls tasks, processes them."""
     channel = grpc.aio.insecure_channel(tasks_url)
+    if _connection_status is not None:
+        _connection_status.add(1, {"queue_name": _QUEUE_NAME})
     try:
         tasks_stub = TasksServiceStub(channel)
 
@@ -217,11 +287,15 @@ async def _pull_loop(
         stream = tasks_stub.PullTasks(request)
 
         async for task in stream:
+            if _tasks_pulled is not None:
+                _tasks_pulled.add(1, {"queue_name": _QUEUE_NAME})
             await semaphore.acquire()
             asyncio.create_task(
                 _handle_task(server, task, semaphore),
             )
     finally:
+        if _connection_status is not None:
+            _connection_status.add(-1, {"queue_name": _QUEUE_NAME})
         await channel.close()
 
 
@@ -257,6 +331,43 @@ async def _handle_task(
             flow_id=obs.flow_id if obs.HasField("flow_id") else None,
             attempt=req.attempt,
         )
+
+        # Extract parent trace context from orchestrator for distributed tracing
+        parent_ctx = None
+        if _OTEL_TRACE_AVAILABLE:
+            try:
+                trace_id = obs.trace_id if obs.HasField("trace_id") else None
+                span_id = obs.span_id if obs.HasField("span_id") else None
+                span_context = extract_trace_context(trace_id, span_id)
+                if span_context is not None:
+                    parent_ctx = otel_trace.set_span_in_context(
+                        otel_trace.NonRecordingSpan(span_context)
+                    )
+            except Exception:
+                logger.debug("Failed to extract trace context", exc_info=True)
+
+        # Build span wrapper for distributed tracing
+        _span_cm = None
+        if _OTEL_TRACE_AVAILABLE and parent_ctx is not None:
+            try:
+                tracer = otel_trace.get_tracer("stepflow-grpc-worker")
+                _span_cm = tracer.start_as_current_span(
+                    f"execute {req.component}",
+                    context=parent_ctx,
+                    attributes={
+                        "stepflow.task_id": task.task_id,
+                        "stepflow.component": req.component,
+                        "stepflow.attempt": req.attempt,
+                        "stepflow.queue_name": _QUEUE_NAME,
+                    },
+                )
+            except Exception:
+                logger.debug("Failed to create trace span", exc_info=True)
+
+        # Use the span context manager if available, otherwise a no-op
+        from contextlib import nullcontext
+
+        span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
         # Open a shared channel to the run-owning orchestrator for
         # StartTask, heartbeats, and CompleteTask
@@ -311,28 +422,41 @@ async def _handle_task(
 
         component, path_params = lookup
 
-        # Execute the component
-        try:
-            output = await _execute_component(
-                server, component, input_data, req, path_params
-            )
-            # Convert output to proto Value
-            proto_output = _python_to_proto_value(output)
-            await _complete_task_success(
-                task,
-                proto_output,
-                channel=orch_channel,
-            )
-        except Exception as e:
-            logger.error("Component %s failed: %s", req.component, e, exc_info=True)
-            error_code, error_data = _classify_exception(e)
-            await _complete_task_error(
-                task,
-                str(e),
-                code=error_code,
-                data=error_data,
-                channel=orch_channel,
-            )
+        # Span wraps only component execution, not StartTask/heartbeat setup
+        with span_ctx:
+            # Set diagnostic context inside span so trace/span IDs are captured
+            if _OTEL_TRACE_AVAILABLE:
+                try:
+                    set_diagnostic_context(
+                        flow_id=obs.flow_id if obs.HasField("flow_id") else None,
+                        run_id=obs.run_id if obs.HasField("run_id") else None,
+                        step_id=obs.step_id if obs.HasField("step_id") else None,
+                    )
+                except Exception:
+                    pass
+
+            # Execute the component
+            try:
+                output = await _execute_component(
+                    server, component, input_data, req, path_params
+                )
+                # Convert output to proto Value
+                proto_output = _python_to_proto_value(output)
+                await _complete_task_success(
+                    task,
+                    proto_output,
+                    channel=orch_channel,
+                )
+            except Exception as e:
+                logger.error("Component %s failed: %s", req.component, e, exc_info=True)
+                error_code, error_data = _classify_exception(e)
+                await _complete_task_error(
+                    task,
+                    str(e),
+                    code=error_code,
+                    data=error_data,
+                    channel=orch_channel,
+                )
 
     except Exception:
         logger.exception("Failed to handle task %s", task.task_id)
@@ -370,6 +494,8 @@ async def _heartbeat_loop(
                 response = await stub.TaskHeartbeat(
                     TaskHeartbeatRequest(task_id=task_id)
                 )
+                if _heartbeats_sent is not None:
+                    _heartbeats_sent.add(1, {"queue_name": _QUEUE_NAME})
                 if response.should_cancel:
                     logger.info("Task %s cancellation requested", task_id)
                     break
@@ -541,6 +667,8 @@ async def _complete_task_success(
             response=ComponentExecuteResponse(output=output),
         )
         await stub.CompleteTask(request)
+        if _tasks_completed is not None:
+            _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "success"})
         logger.debug("Completed task %s (success)", task.task_id)
     except grpc.aio.AioRpcError as e:
         logger.error(
@@ -598,6 +726,8 @@ async def _complete_task_error(
             error=task_error,
         )
         await stub.CompleteTask(request)
+        if _tasks_completed is not None:
+            _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "error"})
         logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
     except grpc.aio.AioRpcError as e:
         logger.error(

@@ -465,11 +465,12 @@
           }
         },
         "queueName": {
-          "description": "Queue name the worker uses to receive tasks (matches plugin key in orchestrator config).\nDefaults to the plugin's key name in the config.",
+          "description": "Queue name the worker uses to receive tasks. Required — must match\n`STEPFLOW_QUEUE_NAME` in the worker's environment.",
           "type": [
             "string",
             "null"
-          ]
+          ],
+          "default": null
         },
         "queueTimeoutSecs": {
           "description": "Maximum time (in seconds) a task can wait in the queue for a\nworker to call `StartTask`. If no worker picks up the task within\nthis window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.",
