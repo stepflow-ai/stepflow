@@ -1,12 +1,11 @@
-# Proposal: Protocol Buffers + gRPC Migration
+# Proposal: Pull-Based Task Transport with Protocol Buffers + gRPC
 
-**Status:** In Progress (Phase 3 complete, Phase 5a–5b complete)
-**Branch:** `protobuf-exploration`
+**Status:** In Progress (Phase 3 complete, Phases 5a–5c complete, Phase 6 in progress)
 **Created:** March 2026
 
 ## Summary
 
-Migrate Stepflow's orchestrator-worker protocol from JSON-RPC over HTTP to Protocol Buffers + gRPC. This replaces ad-hoc JSON-RPC with a well-typed, code-generated protocol and introduces a pull-based task dispatch model that eliminates the initialization handshake and enables backpressure.
+Migrate Stepflow's orchestrator-worker protocol from JSON-RPC over HTTP to Protocol Buffers + gRPC. This replaces ad-hoc JSON-RPC with a well-typed, code-generated protocol and introduces a pull-based task dispatch model that eliminates the initialization handshake, enables backpressure, and supports crash recovery with at-least-once semantics.
 
 ## Motivation
 
@@ -35,7 +34,7 @@ All service definitions live in `proto/stepflow/v1/*.proto`:
 | `blobs.proto` | `BlobService` | REST + gRPC | Content-addressed blob storage |
 | `components.proto` | `ComponentsService` | REST + gRPC | Component listing |
 | `tasks.proto` | `TasksService` | gRPC only | Pull-based task dispatch |
-| `orchestrator.proto` | `OrchestratorService` | gRPC only | Worker callbacks (sub-runs, completion) |
+| `orchestrator.proto` | `OrchestratorService` | gRPC only | Worker callbacks (heartbeat, completion, sub-runs) |
 
 REST routes are auto-generated from `google.api.http` annotations using `tonic-rest-build`.
 
@@ -56,7 +55,7 @@ InMemoryTaskTransport --> PullTaskQueue
                     Python worker (grpc_worker.py)
                               |
                               v
-                    OrchestratorService.CompleteTask
+                    OrchestratorService.TaskHeartbeat + CompleteTask
 ```
 
 Each `TaskAssignment` carries a `TaskContext` with `orchestrator_service_url`, eliminating the initialization handshake entirely. Static configuration (blob URL, thresholds) is provided via environment variables at deployment time.
@@ -74,6 +73,143 @@ message TaskContext {
 Static worker configuration is set via environment variables:
 - `STEPFLOW_BLOB_URL`: Blob service address
 - `STEPFLOW_BLOB_THRESHOLD_BYTES`: Auto-blobification threshold
+
+### Task lifecycle
+
+Tasks move through a well-defined lifecycle:
+
+```
+Dispatched ──TaskHeartbeat──> Executing ──CompleteTask──> Completed
+    |            (first)           |           |
+    |                              |           v
+    v                              v        (result delivered
+ Queue timeout              Heartbeat       via TaskRegistry)
+ (no heartbeat              timeout
+  received)                 (worker crash)
+    |                              |
+    v                              v
+ Failed                        Failed
+ (TRANSPORT_ERROR)            (TRANSPORT_ERROR)
+    |                              |
+    v                              v
+ Retry with same task_id     Retry with same task_id
+```
+
+**Key invariants:**
+- **Task IDs are stable across retries.** When a task fails (timeout, crash, or transport error), the retry uses the same `task_id`. This allows late results from the original execution to still land via `CompleteTask`.
+- **First result wins.** If both a worker retry and a re-dispatched execution complete the same `task_id`, the first `CompleteTask` call wins. The second gets `NOT_FOUND`.
+- **Worker deduplication.** Each worker identifies itself with a `worker_id`. If two workers claim the same task, the first one wins — the second gets `ALREADY_CLAIMED` on its heartbeat.
+
+### Task ID journalling and crash recovery
+
+Task IDs are journalled in `TasksStarted` events so they survive orchestrator crashes:
+
+1. **Before dispatch:** The executor generates a `task_id`, journals it in `TasksStarted`, then dispatches to the plugin.
+2. **On crash recovery:** Journal replay identifies in-flight tasks (those with `TasksStarted` but no `TaskCompleted`). The recovered task_ids are reused when re-dispatching.
+3. **Checkpoint support:** In-flight task_ids are included in execution checkpoints, so checkpoint-accelerated recovery also preserves them.
+4. **Worker retry:** After an orchestrator crash, the worker retries `CompleteTask` with the original task_id. When the orchestrator recovers and re-registers the same task_id, the retry delivers the result — avoiding unnecessary re-execution.
+5. **At-least-once semantics:** In the worst case (worker also crashed, or retry exhausted), the task is re-dispatched with the same task_id and re-executed. Components should be idempotent.
+
+**Recovery flow:**
+```
+                    Orchestrator crashes
+                           |
+Worker has in-flight task  |  Orchestrator restarts
+  - Completes execution   |  - Replays journal
+  - CompleteTask fails     |  - Finds in-flight task_ids
+  - Retries with backoff   |  - Re-dispatches with same task_id
+                           |
+                    ┌──────┴──────┐
+                    v             v
+              Worker retry    Re-dispatched task
+              lands first     picked up by worker
+                    |             |
+                    v             v
+              First CompleteTask wins
+              Second gets NOT_FOUND (harmless)
+```
+
+### Unified heartbeat protocol
+
+The `TaskHeartbeat` RPC combines the initial task claim with ongoing liveness reporting. Workers call it immediately before starting execution (replacing the former `StartTask` RPC) and periodically during execution.
+
+```protobuf
+message TaskHeartbeatRequest {
+  string task_id = 1;
+  string worker_id = 2;      // Stable per-worker, used for deduplication
+  optional float progress = 3;
+  optional string status_message = 4;
+}
+
+message TaskHeartbeatResponse {
+  bool should_abort = 1;      // Worker should stop execution
+  TaskStatus status = 2;      // Reason for abort (or IN_PROGRESS)
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_IN_PROGRESS = 1;      // Task is yours, continue
+  TASK_STATUS_ALREADY_CLAIMED = 2;  // Different worker owns this task
+  TASK_STATUS_COMPLETED = 3;        // Task already has a result
+  TASK_STATUS_TIMED_OUT = 4;        // Task expired in queue
+  TASK_STATUS_NOT_FOUND = 5;        // Task ID not recognized
+}
+```
+
+**Behavior on first call (task in Queued phase):**
+- Transitions task to Executing, records `worker_id`
+- Returns `IN_PROGRESS` — worker should proceed with execution
+
+**Behavior on subsequent calls:**
+- Same `worker_id`: records heartbeat, returns `IN_PROGRESS`
+- Different `worker_id`: returns `ALREADY_CLAIMED` — worker should abort
+- Task already completed: returns `NOT_FOUND` — worker should abort
+
+### Result delivery architecture
+
+Result delivery is decoupled from task dispatch via the shared `TaskRegistry`:
+
+```
+TaskRegistry (stepflow-plugin)
+  - In-memory DashMap<task_id, oneshot::Sender>
+  - register(task_id) -> Receiver
+  - complete(task_id, result) -> bool
+  - Executor registers, awaits receiver
+  - Plugins/workers call complete()
+
+PendingTasks (stepflow-grpc)
+  - Augments TaskRegistry with gRPC-specific lifecycle
+  - Phase tracking (Queued -> Executing)
+  - Worker_id tracking for deduplication
+  - Heartbeat timeout detection (5s)
+  - Queue timeout detection (configurable)
+  - Delegates result delivery to TaskRegistry
+```
+
+**Plugin trait:**
+```rust
+trait Plugin {
+    async fn start_task(
+        &self,
+        task_id: &str,        // Pre-generated by executor
+        component: &Component,
+        run_context: &Arc<RunContext>,
+        step: Option<&StepId>,
+        input: ValueRef,
+        attempt: u32,
+    ) -> Result<()>;          // Result delivered via TaskRegistry
+}
+```
+
+Synchronous plugins (builtins, protocol, MCP) call `TaskRegistry.complete()` inline. Queue-based plugins dispatch to the queue and return — the worker delivers via `CompleteTask` RPC.
+
+### CompleteTask retry
+
+The Python gRPC worker retries `CompleteTask` with exponential backoff on transient failures:
+
+- **UNAVAILABLE:** Orchestrator is down (restarting). Reconnects gRPC channel.
+- **NOT_FOUND:** Orchestrator is up but hasn't re-registered this `task_id` yet (recovery in progress).
+- 5 retries with exponential backoff (2s, 4s, 8s, 16s, 30s cap).
 
 ## What's implemented
 
@@ -96,11 +232,11 @@ Static worker configuration is set via environment variables:
 
 - `TaskTransport` trait with `InMemoryTaskTransport` implementation
 - `StepflowQueuePlugin` implementing the `Plugin` trait
-- `TaskCompletionRegistry` for correlating async results
+- `TaskRegistry` for correlating async results (decoupled from dispatch)
 - `TasksService.PullTasks` streaming endpoint
 - `OrchestratorService.CompleteTask` for result reporting
 - Python gRPC worker (`grpc_worker.py`) with `grpc.aio`
-- `GrpcContext` for worker callbacks (blobs via HTTP, sub-runs via gRPC)
+- `GrpcContext` for worker callbacks (blobs via gRPC, sub-runs via gRPC)
 - Config: `type: pull` plugin with subprocess management
 
 ### Phase 5a: Richer error model (complete)
@@ -114,29 +250,20 @@ Static worker configuration is set via environment variables:
   - `from_execution_error()` for mapping domain errors
 - All service implementations use structured errors
 
-### Phase 5b: Task lifecycle hardening (complete)
+### Phase 5b: Unified heartbeat + worker deduplication (complete)
 
-Two-phase timeout and heartbeat system covering three failure modes:
+Unified `TaskHeartbeat` RPC combining task claiming and liveness reporting:
 
-**Failure modes:**
-1. **Queuing failure** — task dispatched but no worker picks it up. Guarded by configurable queue timeout (default 30s).
-2. **Worker crash** — worker called `StartTask` but hard-crashed. Detected by heartbeat timeout (5s without a heartbeat).
-3. **Worker exception** — component raised an error caught by the worker. Reported via `CompleteTask` with error string.
+**Heartbeat-based lifecycle:**
+- Workers call `TaskHeartbeat` before execution (claims the task) and periodically during execution (reports liveness)
+- Each call includes a `worker_id` for deduplication
+- Response includes `TaskStatus` enum and `should_abort` flag
+- If two workers receive the same task, first heartbeat wins — second gets `ALREADY_CLAIMED`
 
-**Two-phase state machine** (`TaskCompletionRegistry`):
-- **Queued phase** — from `register()` to `start_task()`. A spawned watcher task enforces the queue timeout. If `StartTask` arrives after timeout, responds with `timed_out = true`.
-- **Executing phase** — from `start_task()` to `complete()`. A heartbeat watcher loop checks freshness every second. If no heartbeat arrives within 5s, the task is failed. An optional execution timeout (configurable, default None) bounds total execution time.
-
-**Proto additions:**
-- `StartTaskResponse.timed_out` (bool) — signals the worker to skip execution
-- `TaskAssignment.heartbeat_interval_secs` — suggested heartbeat cadence (currently 1s)
-- `TaskAssignment.execution_timeout_secs` — optional execution time cap
-
-**Python worker changes:**
-- Calls `StartTask` before execution; skips if `timed_out`
-- Sends heartbeats from a background `asyncio.Task` every `heartbeat_interval_secs`
-- Reuses a shared gRPC channel per task for `StartTask`, heartbeats, and `CompleteTask`
-- Handles `should_cancel` from heartbeat responses
+**Two-phase timeout system:**
+- **Queue timeout** — configurable per-plugin (default 30s). Task fails if no heartbeat arrives within this window.
+- **Heartbeat timeout** — fixed 5s. Executing tasks that stop heartbeating are presumed crashed.
+- **Execution timeout** — optional cap on total execution time from first heartbeat to completion.
 
 **Configuration:**
 ```yaml
@@ -145,19 +272,35 @@ plugins:
     type: pull
     command: uv
     args: [...]
-    queueTimeoutSecs: 30       # Max time in queue (default 30, null = no timeout)
+    queueTimeoutSecs: 30       # Max time without heartbeat (default 30)
     executionTimeoutSecs: null  # Max execution time (default null = no limit)
 ```
 
-**Metrics** (6 new metrics with `task.` prefix):
-- `task.queue_duration_seconds` — histogram of time from dispatch to `StartTask`
-- `task.execution_duration_seconds` — histogram of time from `StartTask` to `CompleteTask`
+**Metrics** (6 metrics with `task.` prefix):
+- `task.queue_duration_seconds` — histogram of time from dispatch to first heartbeat
+- `task.execution_duration_seconds` — histogram of time from first heartbeat to `CompleteTask`
 - `task.queue_timeout_total` — counter of tasks that timed out in queue
 - `task.execution_timeout_total` — counter of tasks that timed out during execution
 - `task.success_total` — counter of successfully completed tasks
 - `task.failure_total` — counter of failed tasks (errors + timeouts)
 
-**Testing:** 21 tests including deterministic timeout tests using `tokio::time::pause()`.
+### Phase 5c: Task ID journalling + crash recovery (complete)
+
+**Task ID stability:**
+- Task IDs generated before journalling `TasksStarted` events
+- Same task_id reused on all retries (transport errors, recovery)
+- In-flight task_ids persisted in execution checkpoints
+- Journal replay and checkpoint recovery both restore in-flight task_ids
+
+**Recovery integration tests** (`tests/recovery/`):
+- All 12 recovery tests migrated to gRPC pull transport
+- Worker uses dual gRPC pull loops (one per orchestrator) with persistent reconnection
+- `test_orchestrator_crash_worker_delivers_result`: verifies worker CompleteTask retry delivers result after orchestrator recovery without re-execution
+- Tests account for at-least-once semantics (some steps may complete via worker retry)
+
+**Python worker CompleteTask retry:**
+- Retries on `UNAVAILABLE` (orchestrator down) and `NOT_FOUND` (recovery in progress)
+- Exponential backoff: 2s, 4s, 8s, 16s, 30s cap, 5 retries max
 
 ## Remaining work
 
@@ -169,20 +312,19 @@ The tonic-rest REST routes currently serve at `/proto/api/v1` alongside the exis
 - **Options:** (a) Inline `RunSummary` fields into `CreateRunResponse` proto, (b) update CLI to handle nested shape, or (c) add serde flatten support to prost types.
 - **Integration tests:** 27+ tests in `stepflow-server/tests/integration_tests.rs` hit `/api/v1` paths and expect aide response shapes.
 
-### Queue-based transports (Phase 5c)
+### Cross-orchestrator result routing (#777)
+
+When a run migrates to a different orchestrator (lease expiry), the worker's `CompleteTask` retry hits the wrong orchestrator. Proposed:
+- `GetOrchestratorForRun(run_id)` RPC on `TasksService` using the lease manager
+- Worker calls this on first `CompleteTask` failure to find the current owner
+
+### Queue-based transports
 
 The current `InMemoryTaskTransport` works for single-orchestrator deployments. For production:
 
 - **SQLite transport:** Write tasks to shared SQLite, `TasksService` polls for pending tasks
 - **NATS/Kafka transport:** Publish `TaskAssignment` to message broker topics
 - **Autoscaling metrics:** Expose queue depth per plugin as Prometheus metrics
-- **Retry coordination:** Orchestrator-side retry with `RetryInfo` from worker errors
-
-### Python SDK improvements
-
-- Package `grpcio-tools` generated stubs properly
-- Add `--grpc` CLI flag to `stepflow_py` main entry point
-- Support concurrent task execution with `asyncio.Semaphore`
 
 ### Deprecate JSON-RPC transport
 
@@ -194,17 +336,42 @@ After pull-based transport is validated in production:
 
 ## Testing
 
-Integration tests in `tests/grpc/` validate the full pull-based transport:
+### Unit tests
+
+- `stepflow-plugin`: `TaskRegistry` register/complete/remove, duplicate detection
+- `stepflow-grpc`: `PendingTasks` timeout tests (queue, heartbeat, execution), worker deduplication (`AlreadyClaimed`)
+- `stepflow-execution`: Recovery tests for task_id preservation (journal replay + checkpoint-accelerated)
+
+### Integration tests
+
+Tests in `tests/grpc/` validate the full pull-based transport:
 
 | Test | What it validates |
 |---|---|
 | `echo_test.yaml` | Basic gRPC pull transport round-trip |
 | `error_handling_test.yaml` | Python exceptions surfaced as `FlowError` via gRPC |
 | `multi_step_test.yaml` | Chained pipeline across same gRPC worker |
-| `blob_roundtrip_test.yaml` | `put_blob`/`get_blob` via HTTP callbacks during task execution |
+| `blob_roundtrip_test.yaml` | `put_blob`/`get_blob` via gRPC callbacks during task execution |
 | `sub_run_test.yaml` | `submit_run` via `OrchestratorService` gRPC callback |
 
 Run with: `../scripts/test-integration.sh tests/grpc/`
+
+### Recovery integration tests
+
+Tests in `tests/recovery/` validate crash recovery with gRPC pull transport:
+
+| Test | What it validates |
+|---|---|
+| `test_restart_recovery_sequential` | Orchestrator restart (same ID), sequential workflow |
+| `test_restart_recovery_parallel` | Orchestrator restart, parallel workflow with at-least-once semantics |
+| `test_failover_recovery_*` | Orchestrator failover (permanent kill, second orchestrator claims) |
+| `test_subflow_*` | Subflow recovery (resumed in-place, not restarted) |
+| `test_worker_crash_single_retry` | Worker crash, orchestrator retries via heartbeat timeout |
+| `test_worker_crash_exhausts_retries` | Worker stays down, retries exhaust |
+| `test_worker_and_orchestrator_crash` | Both crash and restart, full recovery |
+| `test_orchestrator_crash_worker_delivers_result` | Worker delivers result via CompleteTask retry after orchestrator recovery |
+
+Run with: `./scripts/check-recovery.sh`
 
 ## Configuration
 
@@ -213,8 +380,8 @@ plugins:
   python_grpc:
     type: pull
     command: uv
-    args: ["--project", "../sdks/python", "run", "python", "-m", "stepflow_py.worker.grpc_worker"]
-    queueTimeoutSecs: 30       # Max time in queue before failing (default 30)
+    args: ["--project", "../sdks/python", "run", "stepflow_worker"]
+    queueTimeoutSecs: 30       # Max time without heartbeat (default 30)
     executionTimeoutSecs: null  # Max execution time (default null = no limit)
 
 routes:
