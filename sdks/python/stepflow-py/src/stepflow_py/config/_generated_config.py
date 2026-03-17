@@ -148,7 +148,7 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
         Annotated[
             str | None,
             Meta(
-                description="Queue name the worker uses to receive tasks (matches plugin key in orchestrator config).\nDefaults to the plugin's key name in the config."
+                description="Queue name the worker uses to receive tasks. Required — must match\n`STEPFLOW_QUEUE_NAME` in the worker's environment."
             ),
         ]
         | UnsetType
