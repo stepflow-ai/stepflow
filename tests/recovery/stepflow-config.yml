@@ -2,8 +2,9 @@ plugins:
   builtin:
     type: builtin
   test-worker:
-    type: stepflow
-    url: "http://worker:8080"
+    type: pull
+    queueName: test-worker
+    queueTimeoutSecs: 10
 
 routes:
   "/test/{*component}":

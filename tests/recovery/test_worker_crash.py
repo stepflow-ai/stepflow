@@ -57,8 +57,10 @@ async def test_worker_crash_single_retry(compose_env):
 
     crash_worker() sends SIGUSR1 to the worker's PID 1, causing os._exit(1).
     Docker's ``restart: unless-stopped`` policy auto-restarts the container.
-    The orchestrator's fibonacci backoff keeps retrying until the worker is
-    back, then the step succeeds.
+
+    With gRPC pull transport, the orchestrator detects the crash via heartbeat
+    timeout (~5s), then retries. The restarted worker reconnects via gRPC and
+    picks up the retried task.
     """
     # 1. Submit a sequential run (step1=5s, step2=5s, step3=5s)
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
@@ -78,11 +80,12 @@ async def test_worker_crash_single_retry(compose_env):
     # 5. Wait for the auto-restarted worker to become healthy.
     wait_for_worker_health(timeout=30)
 
-    # 6. Orchestrator retries step2 (fibonacci backoff). Release it and step3.
-    poll_for_delay("step2", run_id=run_id, timeout=30)
+    # 6. Orchestrator retries step2. With pull transport, detection takes ~5s
+    #    (heartbeat timeout) + fibonacci backoff + worker reconnect time.
+    poll_for_delay("step2", run_id=run_id, timeout=45)
     release_delay("step2", run_id=run_id)
 
-    poll_for_delay("step3", run_id=run_id, timeout=30)
+    poll_for_delay("step3", run_id=run_id, timeout=45)
     release_delay("step3", run_id=run_id)
 
     # 7. Wait for run to complete
@@ -119,8 +122,9 @@ async def test_worker_crash_single_retry(compose_env):
 async def test_worker_crash_exhausts_retries(compose_env):
     """Scenario E: Worker stays down, orchestrator exhausts retries.
 
-    Kill the worker and leave it dead. All retry attempts get connection
-    errors. The run should end in failed state.
+    Kill the worker and leave it dead. With pull transport, each retry
+    puts the task in the queue where it times out (queueTimeoutSecs=10).
+    After transportMaxRetries=3 retries, the run fails.
     """
     # 1. Submit a sequential run
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
@@ -136,8 +140,9 @@ async def test_worker_crash_exhausts_retries(compose_env):
     #    in ~5s.
     docker_kill("worker")
 
-    # 4. The run should have failed (all retries exhausted)
-    result = await wait_for_run(ORCH1_URL, run_id, timeout=30)
+    # 4. The run should have failed (all retries exhausted).
+    #    With pull transport: heartbeat timeout (5s) + 3 retries * queue timeout (10s) ≈ 35s
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
     assert result["status"] == "failed", f"Expected failed, got {result['status']}"
 
     # 5. Restart worker for cleanup (next test starts fresh via compose_down,
@@ -176,11 +181,12 @@ async def test_worker_and_orchestrator_crash(compose_env):
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 7. Recovery re-dispatches step2. Release it and step3.
-    poll_for_delay("step2", run_id=run_id, timeout=30)
+    # 7. Recovery re-dispatches step2. With pull transport, the worker needs
+    #    time to reconnect to the restarted orchestrator via gRPC.
+    poll_for_delay("step2", run_id=run_id, timeout=45)
     release_delay("step2", run_id=run_id)
 
-    poll_for_delay("step3", run_id=run_id, timeout=30)
+    poll_for_delay("step3", run_id=run_id, timeout=45)
     release_delay("step3", run_id=run_id)
 
     # 8. Wait for the run to complete

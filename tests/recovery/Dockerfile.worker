@@ -16,7 +16,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install stepflow Python SDK with HTTP transport
+# Install stepflow Python SDK with HTTP (for delay-control API) and gRPC (base package)
 COPY sdks/python/stepflow-py /build/stepflow-py
 RUN pip install --no-cache-dir "/build/stepflow-py[http]"
 

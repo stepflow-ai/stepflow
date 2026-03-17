@@ -34,8 +34,6 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
-      worker:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7841/api/v1/health"]
       interval: 3s
@@ -63,8 +61,6 @@ services:
     depends_on:
       etcd:
         condition: service_healthy
-      worker:
-        condition: service_healthy
       # Start after orchestrator-1 is healthy so SQLite migrations complete
       # before the second orchestrator tries to access the shared database.
       orchestrator-1:
@@ -87,6 +83,11 @@ services:
       - shared-tracker:/tracker
     environment:
       TRACKER_FILE: /tracker/executions.jsonl
+    depends_on:
+      orchestrator-1:
+        condition: service_healthy
+      orchestrator-2:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 3s
