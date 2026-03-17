@@ -32,7 +32,7 @@ is read from environment variables at startup:
 
 Task lifecycle:
 1. Receive TaskAssignment from PullTasks stream
-2. Call StartTask — if timed_out=true, skip execution
+2. Call TaskHeartbeat (initial) — claims the task; if should_abort, skip execution
 3. Start background heartbeat loop (every heartbeat_interval_secs)
 4. Execute component
 5. Call CompleteTask with result or error
@@ -47,6 +47,7 @@ import logging
 import math
 import os
 import traceback
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import grpc
@@ -58,7 +59,6 @@ from stepflow_py.proto import (
     ComponentExecuteResponse,
     ComponentInfo,
     PullTasksRequest,
-    StartTaskRequest,
     TaskAssignment,
     TaskError,
     TaskHeartbeatRequest,
@@ -174,9 +174,11 @@ async def run_grpc_worker(
     _QUEUE_NAME = queue_name
     _ensure_metrics()
 
+    worker_id = str(uuid.uuid4())
     logger.info(
-        "Starting gRPC worker: tasks_url=%s, queue=%s, max_concurrent=%d, "
+        "Starting gRPC worker: worker_id=%s, tasks_url=%s, queue=%s, max_concurrent=%d, "
         "blob_url=%s, blob_threshold=%d",
+        worker_id,
         tasks_url,
         queue_name,
         max_concurrent,
@@ -210,6 +212,7 @@ async def run_grpc_worker(
                 components=components,
                 semaphore=semaphore,
                 max_concurrent=max_concurrent,
+                worker_id=worker_id,
             )
             # Successful pull session — reset failure counter
             consecutive_failures = 0
@@ -269,6 +272,7 @@ async def _pull_loop(
     components: list[ComponentInfo],
     semaphore: asyncio.Semaphore,
     max_concurrent: int,
+    worker_id: str,
 ) -> None:
     """Single pull session — connects, pulls tasks, processes them."""
     channel = grpc.aio.insecure_channel(tasks_url)
@@ -291,7 +295,7 @@ async def _pull_loop(
                 _tasks_pulled.add(1, {"queue_name": _QUEUE_NAME})
             await semaphore.acquire()
             asyncio.create_task(
-                _handle_task(server, task, semaphore),
+                _handle_task(server, task, semaphore, worker_id),
             )
     finally:
         if _connection_status is not None:
@@ -303,8 +307,9 @@ async def _handle_task(
     server: StepflowServer,
     task: TaskAssignment,
     semaphore: asyncio.Semaphore,
+    worker_id: str,
 ) -> None:
-    """Handle a single task: StartTask, heartbeat, execute, CompleteTask."""
+    """Handle a single task: heartbeat (claim), heartbeat loop, execute, CompleteTask."""
     orchestrator_url = (
         task.request.context.orchestrator_service_url
         if task.request.HasField("context")
@@ -370,35 +375,41 @@ async def _handle_task(
         span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
         # Open a shared channel to the run-owning orchestrator for
-        # StartTask, heartbeats, and CompleteTask
+        # heartbeats and CompleteTask
         if orchestrator_url:
             orch_channel = grpc.aio.insecure_channel(orchestrator_url)
             stub = OrchestratorServiceStub(orch_channel)
 
-            # Call StartTask — if timed_out, skip execution
+            # Send initial heartbeat to claim the task
             try:
-                response = await stub.StartTask(StartTaskRequest(task_id=task.task_id))
-                if response.timed_out:
+                response = await stub.TaskHeartbeat(
+                    TaskHeartbeatRequest(
+                        task_id=task.task_id,
+                        worker_id=worker_id,
+                    )
+                )
+                if response.should_abort:
                     logger.warning(
-                        "Task %s timed out in queue, skipping execution",
+                        "Task %s cannot be claimed (status=%s), skipping execution",
                         task.task_id,
+                        response.status,
                     )
                     return
             except grpc.aio.AioRpcError as e:
                 logger.error(
-                    "StartTask failed for task %s: %s (code=%s)",
+                    "Initial heartbeat failed for task %s: %s (code=%s)",
                     task.task_id,
                     e.details(),
                     e.code(),
                 )
-                # If StartTask fails (e.g., task already timed out and
-                # removed), skip execution
+                # If initial heartbeat fails (e.g., task already timed out
+                # and removed), skip execution
                 return
 
             # Start background heartbeat loop
             interval = task.heartbeat_interval_secs or 1
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(stub, task.task_id, interval)
+                _heartbeat_loop(stub, task.task_id, worker_id, interval)
             )
 
         # Convert proto Value to Python dict
@@ -484,6 +495,7 @@ async def _handle_task(
 async def _heartbeat_loop(
     stub: Any,  # OrchestratorServiceStub (async variant)
     task_id: str,
+    worker_id: str,
     interval_secs: int,
 ) -> None:
     """Send periodic heartbeats until cancelled."""
@@ -492,12 +504,19 @@ async def _heartbeat_loop(
             await asyncio.sleep(interval_secs)
             try:
                 response = await stub.TaskHeartbeat(
-                    TaskHeartbeatRequest(task_id=task_id)
+                    TaskHeartbeatRequest(
+                        task_id=task_id,
+                        worker_id=worker_id,
+                    )
                 )
                 if _heartbeats_sent is not None:
                     _heartbeats_sent.add(1, {"queue_name": _QUEUE_NAME})
-                if response.should_cancel:
-                    logger.info("Task %s cancellation requested", task_id)
+                if response.should_abort:
+                    logger.info(
+                        "Task %s abort requested (status=%s)",
+                        task_id,
+                        response.status,
+                    )
                     break
             except grpc.aio.AioRpcError as e:
                 logger.warning(

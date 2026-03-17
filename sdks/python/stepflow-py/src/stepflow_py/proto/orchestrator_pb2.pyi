@@ -20,6 +20,7 @@ import builtins
 import collections.abc
 import google.protobuf.descriptor
 import google.protobuf.internal.containers
+import google.protobuf.internal.enum_type_wrapper
 import google.protobuf.message
 import google.protobuf.struct_pb2
 import google.protobuf.timestamp_pb2
@@ -35,6 +36,57 @@ else:
     import typing_extensions
 
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
+
+class _TaskStatus:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_TaskStatus.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    TASK_STATUS_IN_PROGRESS: _TaskStatus.ValueType  # 0
+    """Task is in progress — the calling worker owns it."""
+    TASK_STATUS_ALREADY_CLAIMED: _TaskStatus.ValueType  # 1
+    """Task is already being executed by a different worker.
+    The calling worker should abort and not call CompleteTask.
+    """
+    TASK_STATUS_COMPLETED: _TaskStatus.ValueType  # 2
+    """Task already has a result (completed or failed).
+    The calling worker should abort.
+    """
+    TASK_STATUS_TIMED_OUT: _TaskStatus.ValueType  # 3
+    """Task timed out in the queue before any worker claimed it.
+    The calling worker should abort.
+    """
+    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 4
+    """Task ID not recognized — never existed or already cleaned up.
+    The calling worker should abort.
+    """
+
+class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
+    """--- TaskHeartbeat ---
+
+    Status of a task from the orchestrator's perspective.
+    """
+
+TASK_STATUS_IN_PROGRESS: TaskStatus.ValueType  # 0
+"""Task is in progress — the calling worker owns it."""
+TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 1
+"""Task is already being executed by a different worker.
+The calling worker should abort and not call CompleteTask.
+"""
+TASK_STATUS_COMPLETED: TaskStatus.ValueType  # 2
+"""Task already has a result (completed or failed).
+The calling worker should abort.
+"""
+TASK_STATUS_TIMED_OUT: TaskStatus.ValueType  # 3
+"""Task timed out in the queue before any worker claimed it.
+The calling worker should abort.
+"""
+TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 4
+"""Task ID not recognized — never existed or already cleaned up.
+The calling worker should abort.
+"""
+Global___TaskStatus: typing_extensions.TypeAlias = TaskStatus
 
 @typing.final
 class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
@@ -244,53 +296,22 @@ class CompleteTaskResponse(google.protobuf.message.Message):
 Global___CompleteTaskResponse: typing_extensions.TypeAlias = CompleteTaskResponse
 
 @typing.final
-class StartTaskRequest(google.protobuf.message.Message):
-    """--- StartTask ---"""
-
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    TASK_ID_FIELD_NUMBER: builtins.int
-    task_id: builtins.str
-    """The task ID from the TaskAssignment."""
-    def __init__(
-        self,
-        *,
-        task_id: builtins.str = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["task_id", b"task_id"]) -> None: ...
-
-Global___StartTaskRequest: typing_extensions.TypeAlias = StartTaskRequest
-
-@typing.final
-class StartTaskResponse(google.protobuf.message.Message):
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    TIMED_OUT_FIELD_NUMBER: builtins.int
-    timed_out: builtins.bool
-    """If true, the task already timed out in the queue before the worker
-    called StartTask. The worker should skip execution — no CompleteTask
-    call is needed.
-    """
-    def __init__(
-        self,
-        *,
-        timed_out: builtins.bool = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["timed_out", b"timed_out"]) -> None: ...
-
-Global___StartTaskResponse: typing_extensions.TypeAlias = StartTaskResponse
-
-@typing.final
 class TaskHeartbeatRequest(google.protobuf.message.Message):
-    """--- TaskHeartbeat ---"""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     TASK_ID_FIELD_NUMBER: builtins.int
+    WORKER_ID_FIELD_NUMBER: builtins.int
     PROGRESS_FIELD_NUMBER: builtins.int
     STATUS_MESSAGE_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
+    worker_id: builtins.str
+    """Unique identifier for this worker instance. Must be stable for the
+    duration of a task execution (same ID for start and all heartbeats).
+    Used to detect duplicate task assignments — if a different worker_id
+    sends a heartbeat for the same task, the response indicates
+    ALREADY_CLAIMED.
+    """
     progress: builtins.float
     """Optional progress indicator (0.0 to 1.0)."""
     status_message: builtins.str
@@ -299,11 +320,12 @@ class TaskHeartbeatRequest(google.protobuf.message.Message):
         self,
         *,
         task_id: builtins.str = ...,
+        worker_id: builtins.str = ...,
         progress: builtins.float | None = ...,
         status_message: builtins.str | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message", "task_id", b"task_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message", "task_id", b"task_id", "worker_id", b"worker_id"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_progress", b"_progress"]) -> typing.Literal["progress"] | None: ...
     @typing.overload
@@ -315,14 +337,20 @@ Global___TaskHeartbeatRequest: typing_extensions.TypeAlias = TaskHeartbeatReques
 class TaskHeartbeatResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    SHOULD_CANCEL_FIELD_NUMBER: builtins.int
-    should_cancel: builtins.bool
-    """If true, the worker should cancel the task (e.g., run was cancelled)."""
+    SHOULD_ABORT_FIELD_NUMBER: builtins.int
+    STATUS_FIELD_NUMBER: builtins.int
+    should_abort: builtins.bool
+    """If true, the worker should abort execution of this task.
+    Check `status` for the reason.
+    """
+    status: Global___TaskStatus.ValueType
+    """Current task status from the orchestrator's perspective."""
     def __init__(
         self,
         *,
-        should_cancel: builtins.bool = ...,
+        should_abort: builtins.bool = ...,
+        status: Global___TaskStatus.ValueType = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["should_cancel", b"should_cancel"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["should_abort", b"should_abort", "status", b"status"]) -> None: ...
 
 Global___TaskHeartbeatResponse: typing_extensions.TypeAlias = TaskHeartbeatResponse

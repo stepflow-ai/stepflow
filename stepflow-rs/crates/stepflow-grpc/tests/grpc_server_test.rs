@@ -31,7 +31,7 @@ use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::Orchestrato
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
-    PutBlobRequest, StartTaskRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
+    PutBlobRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
 };
 use stepflow_plugin::TaskRegistry;
 
@@ -220,21 +220,27 @@ async fn test_complete_task_success_round_trip() {
 
     let channel = endpoint(&address).connect().await.unwrap();
 
-    // Worker starts the task
+    // Worker sends initial heartbeat (claims the task)
     let mut orch_client = OrchestratorServiceClient::new(channel.clone());
-    orch_client
-        .start_task(StartTaskRequest {
-            task_id: "task-1".to_string(),
-        })
-        .await
-        .unwrap();
-
-    // Worker sends heartbeat
-    orch_client
+    let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-1".to_string(),
+            worker_id: "test-worker-1".to_string(),
             progress: None,
             status_message: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(!resp.should_abort);
+
+    // Worker sends subsequent heartbeat
+    orch_client
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "task-1".to_string(),
+            worker_id: "test-worker-1".to_string(),
+            progress: None,
+            status_message: None,
         })
         .await
         .unwrap();
@@ -493,7 +499,7 @@ async fn test_blob_not_found() {
 }
 
 #[tokio::test]
-async fn test_start_task_and_heartbeat() {
+async fn test_task_heartbeat_lifecycle() {
     let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
 
     // Register a task in TaskRegistry for result delivery
@@ -509,36 +515,58 @@ async fn test_start_task_and_heartbeat() {
     let channel = endpoint(&address).connect().await.unwrap();
     let mut orch_client = OrchestratorServiceClient::new(channel);
 
-    // StartTask
+    // First heartbeat — claims the task (transitions Queued → Executing)
     let resp = orch_client
-        .start_task(StartTaskRequest {
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "task-hb".to_string(),
+            worker_id: "worker-1".to_string(),
+            progress: None,
+            status_message: None,
         })
         .await
         .unwrap()
         .into_inner();
-    assert!(!resp.timed_out);
+    assert!(!resp.should_abort);
+    assert_eq!(resp.status, 0); // TASK_STATUS_IN_PROGRESS
 
-    // Heartbeat
+    // Subsequent heartbeat — same worker
     let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-hb".to_string(),
+            worker_id: "worker-1".to_string(),
             progress: None,
             status_message: None,
-            task_id: "task-hb".to_string(),
         })
         .await
         .unwrap()
         .into_inner();
-    assert!(!resp.should_cancel);
+    assert!(!resp.should_abort);
 
-    // Heartbeat for unknown task
-    let result = orch_client
+    // Different worker tries to heartbeat — should get AlreadyClaimed
+    let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-hb".to_string(),
+            worker_id: "worker-2".to_string(),
             progress: None,
             status_message: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(resp.should_abort);
+    assert_eq!(resp.status, 1); // TASK_STATUS_ALREADY_CLAIMED
+
+    // Heartbeat for unknown task — should get NotFound status
+    let resp = orch_client
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "nonexistent".to_string(),
+            worker_id: "worker-1".to_string(),
+            progress: None,
+            status_message: None,
         })
-        .await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(resp.should_abort);
+    assert_eq!(resp.status, 4); // TASK_STATUS_NOT_FOUND
 }

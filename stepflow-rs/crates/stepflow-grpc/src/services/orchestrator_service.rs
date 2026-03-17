@@ -27,12 +27,12 @@ use crate::conversions::{
 };
 use crate::error as grpc_err;
 
+use crate::pending_tasks::HeartbeatResult;
 use crate::pending_tasks::PendingTasks;
 use crate::proto::stepflow::v1::orchestrator_service_server::OrchestratorService;
 use crate::proto::stepflow::v1::{
     CompleteTaskRequest, CompleteTaskResponse, OrchestratorGetRunRequest, OrchestratorRunStatus,
-    OrchestratorSubmitRunRequest, StartTaskRequest, StartTaskResponse, TaskHeartbeatRequest,
-    TaskHeartbeatResponse,
+    OrchestratorSubmitRunRequest, TaskHeartbeatRequest, TaskHeartbeatResponse, TaskStatus,
 };
 
 /// gRPC implementation of `OrchestratorService`.
@@ -237,26 +237,23 @@ impl OrchestratorService for OrchestratorServiceImpl {
         }
     }
 
-    async fn start_task(
-        &self,
-        request: Request<StartTaskRequest>,
-    ) -> Result<Response<StartTaskResponse>, Status> {
-        let req = request.into_inner();
-        match self.task_registry.start_task(&req.task_id) {
-            Some(timed_out) => Ok(Response::new(StartTaskResponse { timed_out })),
-            None => Err(grpc_err::not_found("task", &req.task_id)),
-        }
-    }
-
     async fn task_heartbeat(
         &self,
         request: Request<TaskHeartbeatRequest>,
     ) -> Result<Response<TaskHeartbeatResponse>, Status> {
         let req = request.into_inner();
-        match self.task_registry.heartbeat(&req.task_id) {
-            Some(should_cancel) => Ok(Response::new(TaskHeartbeatResponse { should_cancel })),
-            None => Err(grpc_err::not_found("task", &req.task_id)),
-        }
+        let result = self.task_registry.heartbeat(&req.task_id, &req.worker_id);
+        let (should_abort, status) = match result {
+            HeartbeatResult::InProgress => (false, TaskStatus::InProgress),
+            HeartbeatResult::AlreadyClaimed => (true, TaskStatus::AlreadyClaimed),
+            HeartbeatResult::Completed => (true, TaskStatus::Completed),
+            HeartbeatResult::TimedOut => (true, TaskStatus::TimedOut),
+            HeartbeatResult::NotFound => (true, TaskStatus::NotFound),
+        };
+        Ok(Response::new(TaskHeartbeatResponse {
+            should_abort,
+            status: status as i32,
+        }))
     }
 }
 

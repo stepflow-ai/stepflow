@@ -47,21 +47,22 @@ service OrchestratorService {
   // the orchestrator that owns the run.
   rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse);
 
-  // Notify the orchestrator that the worker has started executing a task.
+  // Report that a worker is executing a task (start + heartbeat combined).
   //
-  // Called by the worker immediately before beginning component execution.
-  // This transitions the task from "queued" to "executing" on the
-  // orchestrator side, starting the heartbeat timeout. If the response
-  // has `timed_out = true`, the task already expired in the queue and the
-  // worker should skip execution.
-  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
-
-  // Send a heartbeat for an in-progress task.
+  // Called by the worker immediately before beginning component execution
+  // and periodically during execution (typically every 1s). Each call
+  // resets the crash-detection timer on the orchestrator.
   //
-  // Called periodically by the worker during component execution (typically
-  // every 1s). Each heartbeat resets the crash-detection timer on the
-  // orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-  // presumes the worker crashed and fails the task.
+  // On first call (task in Queued phase), transitions the task to
+  // Executing and records the worker_id. On subsequent calls, verifies
+  // the worker_id matches and resets the heartbeat timer.
+  //
+  // The response status tells the worker whether to proceed:
+  // - IN_PROGRESS: task is yours, continue executing
+  // - ALREADY_CLAIMED: a different worker is executing this task, abort
+  // - COMPLETED: task already has a result, abort
+  // - TIMED_OUT: task expired before any worker claimed it, abort
+  // - NOT_FOUND: task_id not recognized (already completed and cleaned up)
   rpc TaskHeartbeat(TaskHeartbeatRequest) returns (TaskHeartbeatResponse);
 }
 
@@ -152,34 +153,53 @@ message CompleteTaskRequest {
 
 message CompleteTaskResponse {}
 
-// --- StartTask ---
-
-message StartTaskRequest {
-  // The task ID from the TaskAssignment.
-  string task_id = 1;
-}
-
-message StartTaskResponse {
-  // If true, the task already timed out in the queue before the worker
-  // called StartTask. The worker should skip execution — no CompleteTask
-  // call is needed.
-  bool timed_out = 1;
-}
-
 // --- TaskHeartbeat ---
+
+// Status of a task from the orchestrator's perspective.
+enum TaskStatus {
+  // Task is in progress — the calling worker owns it.
+  TASK_STATUS_IN_PROGRESS = 0;
+
+  // Task is already being executed by a different worker.
+  // The calling worker should abort and not call CompleteTask.
+  TASK_STATUS_ALREADY_CLAIMED = 1;
+
+  // Task already has a result (completed or failed).
+  // The calling worker should abort.
+  TASK_STATUS_COMPLETED = 2;
+
+  // Task timed out in the queue before any worker claimed it.
+  // The calling worker should abort.
+  TASK_STATUS_TIMED_OUT = 3;
+
+  // Task ID not recognized — never existed or already cleaned up.
+  // The calling worker should abort.
+  TASK_STATUS_NOT_FOUND = 4;
+}
 
 message TaskHeartbeatRequest {
   // The task ID from the TaskAssignment.
   string task_id = 1;
 
+  // Unique identifier for this worker instance. Must be stable for the
+  // duration of a task execution (same ID for start and all heartbeats).
+  // Used to detect duplicate task assignments — if a different worker_id
+  // sends a heartbeat for the same task, the response indicates
+  // ALREADY_CLAIMED.
+  string worker_id = 2;
+
   // Optional progress indicator (0.0 to 1.0).
-  optional float progress = 2;
+  optional float progress = 3;
 
   // Optional human-readable status message.
-  optional string status_message = 3;
+  optional string status_message = 4;
 }
 
 message TaskHeartbeatResponse {
-  // If true, the worker should cancel the task (e.g., run was cancelled).
-  bool should_cancel = 1;
+  // If true, the worker should abort execution of this task.
+  // Check `status` for the reason.
+  bool should_abort = 1;
+
+  // Current task status from the orchestrator's perspective.
+  TaskStatus status = 2;
 }

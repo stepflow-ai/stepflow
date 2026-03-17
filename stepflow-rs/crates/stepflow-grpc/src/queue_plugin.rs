@@ -51,10 +51,10 @@ pub struct StepflowQueuePlugin {
     /// This is needed when the gRPC server is started dynamically (e.g., by
     /// PullPlugin) and the environment was built before the port was known.
     orchestrator_url_override: std::sync::RwLock<Option<String>>,
-    /// Maximum time a task can sit in the queue before a worker calls
-    /// StartTask. Must be greater than zero (validated at config load time).
+    /// Maximum time a task can sit in the queue before a worker sends its
+    /// first heartbeat. Must be greater than zero (validated at config load time).
     queue_timeout: Duration,
-    /// Maximum time from StartTask to CompleteTask. `None` means no
+    /// Maximum time from first heartbeat to CompleteTask. `None` means no
     /// execution timeout (heartbeat-only crash detection).
     execution_timeout: Option<Duration>,
 }
