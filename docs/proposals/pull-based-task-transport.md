@@ -5,42 +5,82 @@
 
 ## Summary
 
-Migrate Stepflow's orchestrator-worker protocol from JSON-RPC over HTTP to Protocol Buffers + gRPC. This replaces ad-hoc JSON-RPC with a well-typed, code-generated protocol and introduces a pull-based task dispatch model that eliminates the initialization handshake, enables backpressure, and supports crash recovery with at-least-once semantics.
+Change Stepflow's orchestrator-worker communication model from *orchestrator pushes tasks to workers* to *workers pull tasks from the orchestrator*. This reversal fundamentally changes the RPC direction: instead of the orchestrator calling into workers (requiring initialization, load balancing, and bidirectional SSE for callbacks), workers initiate all connections — pulling tasks via a gRPC stream and calling back to the orchestrator for heartbeats, completion, sub-run submission, and blob operations.
+
+As part of this transition, we adopt Protocol Buffers + gRPC as the wire protocol. gRPC provides the streaming primitives needed for pull-based dispatch (server-streaming `PullTasks`), supports Python 3.10+ (unlike some HTTP/2 libraries), and generates typed client/server code for all SDK languages.
 
 ## Motivation
 
-The current architecture has four pain points:
+### Why pull-based?
 
-1. **Stateful initialization (#716):** Workers must be initialized by the orchestrator with blob API URLs and thresholds before serving requests. Behind a load balancer, this creates race conditions where different orchestrator instances may hit uninitialized workers.
+The push-based architecture (orchestrator → worker RPCs) has fundamental limitations:
 
-2. **No backpressure:** The orchestrator POSTs directly to workers with no queueing, potentially overloading busy workers.
+1. **Stateful initialization (#716):** The orchestrator must initialize each worker with configuration (blob API URLs, thresholds) before sending tasks. Behind a load balancer, this creates race conditions — different orchestrator instances may hit uninitialized workers, or a worker restart loses its initialization state.
 
-3. **Code generation pain:** JSON Schema to Python types via `datamodel-code-generator` produces fragile, inconsistent output. This will worsen with additional SDK languages.
+2. **No backpressure:** The orchestrator POSTs tasks directly to workers. A busy worker has no way to signal "I'm full" — it must accept and queue internally, or reject and hope the orchestrator retries.
 
-4. **SSE complexity:** The bidirectional SSE mechanism (worker sends requests as SSE events, orchestrator responds via POST with `instance_id` header) is complex and fragile.
+3. **Bidirectional complexity:** Workers need to call back to the orchestrator during execution (for sub-run submission, blob operations). The push model requires a reverse channel — implemented via Server-Sent Events (SSE) where the worker opens an SSE connection and the orchestrator correlates responses by `instance_id`. This is complex and fragile.
+
+4. **Recovery difficulty:** When an orchestrator crashes and restarts, it has no way to reconnect to workers that were executing tasks. The push model assumes the orchestrator controls the connection lifecycle.
+
+**Pull-based solves all four:**
+- Workers self-configure from environment variables — no initialization handshake
+- Workers control concurrency via `max_concurrent` in `PullTasks` — natural backpressure
+- Workers call the orchestrator directly for callbacks — no SSE reverse channel needed
+- Workers reconnect automatically after orchestrator restart — the orchestrator just re-registers task_ids and workers' retries land
+
+### Why gRPC?
+
+The pull-based model reverses the RPC direction, requiring workers to stream tasks from the orchestrator and make callbacks. gRPC is a natural fit:
+
+1. **Server-streaming for task dispatch:** `PullTasks` returns a stream of `TaskAssignment` messages — the orchestrator pushes tasks to connected workers as they become available.
+2. **Typed callbacks:** Worker→orchestrator RPCs (`TaskHeartbeat`, `CompleteTask`, `SubmitRun`) are defined in proto and code-generated for all SDKs.
+3. **Python 3.10 support:** `grpcio` supports Python 3.10+ with async (`grpc.aio`), enabling the worker to handle multiple concurrent tasks.
+4. **Multi-language code generation:** Proto files generate typed stubs for Python, Go, TypeScript, etc. — replacing the fragile JSON Schema → `datamodel-code-generator` pipeline.
 
 ## Architecture
+
+### RPC direction change
+
+**Before (push-based):**
+```
+Orchestrator ──HTTP POST──> Worker (component execution)
+Worker ──SSE stream──> Orchestrator (sub-run submission, blob ops)
+```
+The orchestrator initiates connections to workers. Workers need a reverse channel (SSE) for callbacks.
+
+**After (pull-based):**
+```
+Worker ──gRPC PullTasks stream──> Orchestrator (receives tasks)
+Worker ──gRPC TaskHeartbeat──> Orchestrator (claims task, reports liveness)
+Worker ──gRPC CompleteTask──> Orchestrator (delivers result)
+Worker ──gRPC SubmitRun/GetRun──> Orchestrator (sub-run callbacks)
+Worker ──gRPC PutBlob/GetBlob──> Orchestrator (blob operations)
+```
+All connections are initiated by the worker. The orchestrator is a server that workers connect to. No reverse channel needed.
 
 ### Proto files as the source of truth
 
 All service definitions live in `proto/stepflow/v1/*.proto`:
 
-| Proto file | Service | Transport | Purpose |
+| Proto file | Service | Direction | Purpose |
 |---|---|---|---|
 | `common.proto` | — | — | Shared types: enums, error types, item results |
-| `health.proto` | `HealthService` | REST + gRPC | Service health check |
-| `flows.proto` | `FlowsService` | REST + gRPC | Flow CRUD |
-| `runs.proto` | `RunsService` | REST + gRPC | Run lifecycle, SSE events |
-| `blobs.proto` | `BlobService` | REST + gRPC | Content-addressed blob storage |
-| `components.proto` | `ComponentsService` | REST + gRPC | Component listing |
-| `tasks.proto` | `TasksService` | gRPC only | Pull-based task dispatch |
-| `orchestrator.proto` | `OrchestratorService` | gRPC only | Worker callbacks (heartbeat, completion, sub-runs) |
+| `health.proto` | `HealthService` | Client → Orchestrator | Service health check |
+| `flows.proto` | `FlowsService` | Client → Orchestrator | Flow CRUD |
+| `runs.proto` | `RunsService` | Client → Orchestrator | Run lifecycle, SSE events |
+| `blobs.proto` | `BlobService` | Worker → Orchestrator | Content-addressed blob storage |
+| `components.proto` | `ComponentsService` | Client → Orchestrator | Component listing |
+| `tasks.proto` | `TasksService` | Worker → Orchestrator | Pull-based task dispatch |
+| `orchestrator.proto` | `OrchestratorService` | Worker → Orchestrator | Heartbeat, completion, sub-runs |
+
+Client-facing services (flows, runs, health, components) are exposed as both REST and gRPC. Worker-facing services (tasks, orchestrator, blobs) are gRPC only.
 
 REST routes are auto-generated from `google.api.http` annotations using `tonic-rest-build`.
 
 ### Pull-based task dispatch
 
-Instead of the orchestrator pushing tasks to workers, workers pull tasks from the orchestrator:
+Workers pull tasks from the orchestrator via a gRPC server-streaming RPC:
 
 ```
 StepflowQueuePlugin (implements Plugin trait)
