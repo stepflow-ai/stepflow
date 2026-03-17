@@ -1,6 +1,6 @@
 # Proposal: Pull-Based Task Transport with Protocol Buffers + gRPC
 
-**Status:** In Progress (Phase 3 complete, Phases 5a–5c complete, Phase 6 in progress)
+**Status:** Complete
 **Created:** March 2026
 
 ## Summary
@@ -251,128 +251,50 @@ The Python gRPC worker retries `CompleteTask` with exponential backoff on transi
 - **NOT_FOUND:** Orchestrator is up but hasn't re-registered this `task_id` yet (recovery in progress).
 - 5 retries with exponential backoff (2s, 4s, 8s, 16s, 30s cap).
 
-## What's implemented
+## Implementation summary
 
-### Phase 1: Proto files + Rust crate (complete)
+### Proto files + gRPC server
 
-- 6 proto files with `google.api.http` annotations
+- 8 proto files with `google.api.http` annotations in `proto/stepflow/v1/`
 - `stepflow-grpc` crate with `tonic-prost-build` + `tonic-rest-build`
+- All gRPC service implementations on the orchestrator (multiplexed on same port as HTTP)
 - REST route codegen from proto annotations
-- `prost-wkt-types` for serde-enabled WKTs (Value, Struct, etc.)
+- Structured gRPC errors via `tonic-types` (`INVALID_ARGUMENT`, `NOT_FOUND`, etc.)
 
-### Phase 2: gRPC + REST server (complete)
-
-- All 6 gRPC service implementations on the orchestrator
-- REST routes mounted at `/proto/api/v1` alongside existing aide routes
-- Binary-aware blob routes with content negotiation
-- Proto-generated OpenAPI spec (`schemas/openapi-proto.json`)
-- Journal-based SSE streaming for `GetRunEvents`
-
-### Phase 3: Pull-based task transport (complete)
+### Pull-based task transport
 
 - `TaskTransport` trait with `InMemoryTaskTransport` implementation
-- `StepflowQueuePlugin` implementing the `Plugin` trait
-- `TaskRegistry` for correlating async results (decoupled from dispatch)
-- `TasksService.PullTasks` streaming endpoint
+- `StepflowQueuePlugin` implementing the `Plugin` trait via `TaskRegistry`
+- `TasksService.PullTasks` streaming endpoint for task dispatch
+- `OrchestratorService.TaskHeartbeat` for unified task claiming + liveness
 - `OrchestratorService.CompleteTask` for result reporting
-- Python gRPC worker (`grpc_worker.py`) with `grpc.aio`
-- `GrpcContext` for worker callbacks (blobs via gRPC, sub-runs via gRPC)
-- Config: `type: pull` plugin with subprocess management
+- Python gRPC worker (`grpc_worker.py`) with `grpc.aio`, concurrent task execution
+- `GrpcContext` for worker callbacks (blobs, sub-runs — all via gRPC)
+- Config: `type: pull` plugin with subprocess management and queue timeout
 
-### Phase 5a: Richer error model (complete)
+### Heartbeat + worker deduplication
 
-- `tonic-types` for structured gRPC error details
-- `stepflow-grpc/src/error.rs` module with:
-  - `invalid_field()` -> `INVALID_ARGUMENT` + `BadRequest` field violations
-  - `not_found()` -> `NOT_FOUND` + `ErrorInfo` with resource type/ID
-  - `failed_precondition()` -> `FAILED_PRECONDITION` + `ErrorInfo` with reason
-  - `internal()` -> `INTERNAL` + `DebugInfo` with error chain
-  - `from_execution_error()` for mapping domain errors
-- All service implementations use structured errors
+- Unified `TaskHeartbeat` RPC: first call claims task, subsequent calls report liveness
+- `worker_id` tracking: if two workers receive the same task, first heartbeat wins (second gets `ALREADY_CLAIMED`)
+- Two-phase timeout: queue timeout (configurable) + heartbeat crash detection (5s) + optional execution cap
+- 6 task metrics (`task.queue_duration_seconds`, `task.success_total`, etc.)
 
-### Phase 5b: Unified heartbeat + worker deduplication (complete)
+### Crash recovery (#746)
 
-Unified `TaskHeartbeat` RPC combining task claiming and liveness reporting:
+- Task IDs journalled in `TasksStarted` events, persisted in checkpoints
+- Same task_id reused on all retries (transport errors, orchestrator recovery)
+- `TaskRegistry` decouples dispatch from result delivery — first `CompleteTask` wins
+- Python worker retries `CompleteTask` with exponential backoff on `UNAVAILABLE`/`NOT_FOUND`
+- Recovery integration tests migrated to gRPC pull transport (12 tests)
 
-**Heartbeat-based lifecycle:**
-- Workers call `TaskHeartbeat` before execution (claims the task) and periodically during execution (reports liveness)
-- Each call includes a `worker_id` for deduplication
-- Response includes `TaskStatus` enum and `should_abort` flag
-- If two workers receive the same task, first heartbeat wins — second gets `ALREADY_CLAIMED`
+## Follow-up work
 
-**Two-phase timeout system:**
-- **Queue timeout** — configurable per-plugin (default 30s). Task fails if no heartbeat arrives within this window.
-- **Heartbeat timeout** — fixed 5s. Executing tasks that stop heartbeating are presumed crashed.
-- **Execution timeout** — optional cap on total execution time from first heartbeat to completion.
+These are tracked as separate issues and are not part of the core pull-based transport proposal:
 
-**Configuration:**
-```yaml
-plugins:
-  python_grpc:
-    type: pull
-    command: uv
-    args: [...]
-    queueTimeoutSecs: 30       # Max time without heartbeat (default 30)
-    executionTimeoutSecs: null  # Max execution time (default null = no limit)
-```
-
-**Metrics** (6 metrics with `task.` prefix):
-- `task.queue_duration_seconds` — histogram of time from dispatch to first heartbeat
-- `task.execution_duration_seconds` — histogram of time from first heartbeat to `CompleteTask`
-- `task.queue_timeout_total` — counter of tasks that timed out in queue
-- `task.execution_timeout_total` — counter of tasks that timed out during execution
-- `task.success_total` — counter of successfully completed tasks
-- `task.failure_total` — counter of failed tasks (errors + timeouts)
-
-### Phase 5c: Task ID journalling + crash recovery (complete)
-
-**Task ID stability:**
-- Task IDs generated before journalling `TasksStarted` events
-- Same task_id reused on all retries (transport errors, recovery)
-- In-flight task_ids persisted in execution checkpoints
-- Journal replay and checkpoint recovery both restore in-flight task_ids
-
-**Recovery integration tests** (`tests/recovery/`):
-- All 12 recovery tests migrated to gRPC pull transport
-- Worker uses dual gRPC pull loops (one per orchestrator) with persistent reconnection
-- `test_orchestrator_crash_worker_delivers_result`: verifies worker CompleteTask retry delivers result after orchestrator recovery without re-execution
-- Tests account for at-least-once semantics (some steps may complete via worker retry)
-
-**Python worker CompleteTask retry:**
-- Retries on `UNAVAILABLE` (orchestrator down) and `NOT_FOUND` (recovery in progress)
-- Exponential backoff: 2s, 4s, 8s, 16s, 30s cap, 5 retries max
-
-## Remaining work
-
-### Route swap (aide -> tonic-rest)
-
-The tonic-rest REST routes currently serve at `/proto/api/v1` alongside the existing aide routes at `/api/v1`. Swapping requires:
-
-- **JSON shape alignment:** Proto `CreateRunResponse` wraps `RunSummary` in a nested `summary` field, while aide uses `#[serde(flatten)]` for a flat JSON shape. The CLI (`submit.rs`) depends on the flat shape.
-- **Options:** (a) Inline `RunSummary` fields into `CreateRunResponse` proto, (b) update CLI to handle nested shape, or (c) add serde flatten support to prost types.
-- **Integration tests:** 27+ tests in `stepflow-server/tests/integration_tests.rs` hit `/api/v1` paths and expect aide response shapes.
-
-### Cross-orchestrator result routing (#777)
-
-When a run migrates to a different orchestrator (lease expiry), the worker's `CompleteTask` retry hits the wrong orchestrator. Proposed:
-- `GetOrchestratorForRun(run_id)` RPC on `TasksService` using the lease manager
-- Worker calls this on first `CompleteTask` failure to find the current owner
-
-### Queue-based transports
-
-The current `InMemoryTaskTransport` works for single-orchestrator deployments. For production:
-
-- **SQLite transport:** Write tasks to shared SQLite, `TasksService` polls for pending tasks
-- **NATS/Kafka transport:** Publish `TaskAssignment` to message broker topics
-- **Autoscaling metrics:** Expose queue depth per plugin as Prometheus metrics
-
-### Deprecate JSON-RPC transport
-
-After pull-based transport is validated in production:
-
-- Mark JSON-RPC as deprecated in config docs
-- Remove: `http/client.rs`, `http/bidirectional_driver.rs`, `http_server.py`, `message_decoder.py`
-- Remove Pingora load balancer crate (no longer needed for worker dispatch)
+- **Cross-orchestrator result routing (#777):** `GetOrchestratorForRun` RPC for workers to find the current run owner when a run migrates to a different orchestrator
+- **Route swap (aide → tonic-rest):** Replace aide-generated REST routes with proto-generated routes at `/api/v1`
+- **Queue-based transports:** SQLite, NATS, or Kafka transport implementations for multi-orchestrator deployments
+- **JSON-RPC deprecation:** Remove push-based HTTP transport after pull-based is validated in production
 
 ## Testing
 
