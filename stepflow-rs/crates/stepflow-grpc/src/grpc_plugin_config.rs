@@ -77,9 +77,9 @@ pub struct PullPluginConfig {
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub env: std::collections::HashMap<String, String>,
 
-    /// Queue name the worker uses to receive tasks (matches plugin key in orchestrator config).
-    /// Defaults to the plugin's key name in the config.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Queue name the worker uses to receive tasks. Required — must match
+    /// `STEPFLOW_QUEUE_NAME` in the worker's environment.
+    #[serde(default)]
     pub queue_name: Option<String>,
 
     /// Maximum time (in seconds) a task can wait in the queue for a
@@ -116,12 +116,17 @@ impl PluginConfig for PullPluginConfig {
             return Err(error_stack::report!(PluginError::Initializing)
                 .attach_printable("queue_timeout_secs must be greater than 0"));
         }
+        let queue_name = self.queue_name.ok_or_else(|| {
+            error_stack::report!(PluginError::Initializing).attach_printable(
+                "queueName is required for pull plugins — it identifies this queue \
+                 to workers and must match STEPFLOW_QUEUE_NAME in the worker config",
+            )
+        })?;
         let queue_timeout = std::time::Duration::from_secs(self.queue_timeout_secs);
         let execution_timeout = self
             .execution_timeout_secs
             .map(std::time::Duration::from_secs);
-        let resolved_queue_name = self.queue_name.as_deref().unwrap_or("default");
-        let queue = Arc::new(PullTaskQueue::new(resolved_queue_name));
+        let queue = Arc::new(PullTaskQueue::new(&queue_name));
         let transport = Box::new(InMemoryTaskTransport::new(queue.clone()));
 
         let plugin = PullPlugin {
@@ -131,7 +136,7 @@ impl PluginConfig for PullPluginConfig {
             command: self.command,
             args: self.args,
             env: self.env,
-            queue_name: self.queue_name,
+            queue_name,
             working_directory: working_directory.to_path_buf(),
             worker: Mutex::new(None),
             server_address: Mutex::new(None),
@@ -197,7 +202,7 @@ pub struct PullPlugin {
     command: Option<String>,
     args: Vec<String>,
     env: std::collections::HashMap<String, String>,
-    queue_name: Option<String>,
+    queue_name: String,
     working_directory: PathBuf,
     worker: Mutex<Option<WorkerState>>,
     /// Server address stored during initialization, used for subprocess restarts.
@@ -221,7 +226,7 @@ impl PullPlugin {
                 .attach_printable("Cannot spawn worker: not initialized (no server address)")
         })?;
 
-        let queue_name = self.queue_name.as_deref().unwrap_or("default");
+        let queue_name = &self.queue_name;
 
         // Drop old worker first (kills process group via SIGTERM)
         {
@@ -335,8 +340,7 @@ impl stepflow_plugin::Plugin for PullPlugin {
         *self.server_address.lock().await = Some(server_address.clone());
 
         // Register this plugin's queue with the shared server
-        let queue_name = self.queue_name.as_deref().unwrap_or("default");
-        shared_server.register_queue(queue_name.to_string(), self.queue.clone());
+        shared_server.register_queue(self.queue_name.clone(), self.queue.clone());
 
         // Build the inner StepflowQueuePlugin with the shared PendingTasks
         let (transport, queue_timeout, execution_timeout) = self
