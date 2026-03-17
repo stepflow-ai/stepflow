@@ -260,6 +260,12 @@ impl StepRunner {
             .with_property(|| ("component", resolved_component.to_string()));
 
         let result = async move {
+            // Register task in the shared TaskRegistry and get result receiver.
+            // This must happen before start_task to avoid a race where the result
+            // arrives before we're listening (e.g., for synchronous plugins).
+            let registry = run_context.env().task_registry();
+            let rx = registry.register(task_id.to_string());
+
             log::debug!(
                 "Executing step: component={}, step_id={}, task_id={}",
                 resolved_component,
@@ -269,12 +275,6 @@ impl StepRunner {
 
             // Create a component from the resolved component name
             let component = stepflow_core::workflow::Component::from_string(resolved_component);
-
-            // Register task in the shared TaskRegistry and get result receiver.
-            // This must happen before start_task to avoid a race where the result
-            // arrives before we're listening (e.g., for synchronous plugins).
-            let registry = run_context.env().task_registry();
-            let rx = registry.register(task_id.to_string());
 
             // Dispatch the task to the plugin
             if let Err(error) = plugin
@@ -319,11 +319,10 @@ impl StepRunner {
                 Err(_) => {
                     // Sender was dropped without sending — task was cleaned up
                     // (e.g., by a timeout handler or cancellation).
-                    let flow_error = stepflow_core::FlowError::new(
+                    FlowResult::Failed(stepflow_core::FlowError::new(
                         stepflow_core::TaskErrorCode::Unreachable,
                         format!("task '{}' was cancelled or timed out", task_id),
-                    );
-                    FlowResult::Failed(flow_error)
+                    ))
                 }
             };
 
