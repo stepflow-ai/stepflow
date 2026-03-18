@@ -24,15 +24,11 @@ This demonstrates:
 4. Handling both sync and async components
 """
 
-import asyncio
-import sys
-
-from stepflow_worker import StepflowServer, StepflowContext
 import msgspec
 from typing import List, Optional
 
-# Create the server
-server = StepflowServer()
+from stepflow_py.worker.main import main, server
+from stepflow_py.worker.context import StepflowContext
 
 
 # Business domain types
@@ -162,4 +158,4 @@ def _generate_recommendations(analysis: CustomerAnalysisOutput) -> List[str]:
 
 
 if __name__ == "__main__":
-    asyncio.run(server.run())
+    main()

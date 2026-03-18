@@ -29,7 +29,8 @@ try:
     import msgspec
     from langchain_core.runnables import RunnableLambda
 
-    from stepflow_worker import StepflowServer, except ImportError as e:
+    from stepflow_py.worker.main import main, server  # noqa: F401
+except ImportError as e:
     print(f"Error: Missing required dependencies: {e}", file=sys.stderr)
     print("Please install with:", file=sys.stderr)
     print("  cd ../../sdks/python", file=sys.stderr)
@@ -96,10 +97,6 @@ class ReportGeneratorOutput(msgspec.Struct):
     report: dict[str, Any]
     report_json: str
     summary: str
-
-
-# Initialize the Stepflow server
-server = StepflowServer()
 
 
 @server.langchain_component(name="question_generator")
@@ -438,7 +435,5 @@ The report provides a complete framework for conducting systematic research on t
 
 # Main entry point
 if __name__ == "__main__":
-    import asyncio
-    # Create and run the HTTP server
-    asyncio.run(server.run())
+    main()
 

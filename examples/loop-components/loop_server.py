@@ -24,15 +24,11 @@ This demonstrates:
 4. Working with complex flow control structures
 """
 
-import asyncio
-import sys
-
-from stepflow_worker import StepflowServer, StepflowContext
 import msgspec
 from typing import List, Any, Dict
 
-# Create the server
-server = StepflowServer()
+from stepflow_py.worker.main import main, server
+from stepflow_py.worker.context import StepflowContext
 
 
 # Input/Output types for iterate component
@@ -161,12 +157,4 @@ def double_value(input: DoubleInput) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    print(f"Registered components: {list(server.get_components().keys())}")
-
-    # Check if the component is actually registered
-    components = server.get_components()
-    print(f"'iterate' in components: {'iterate' in components}")
-    print(f"Component details: {components.get('iterate', 'NOT FOUND')}")
-    print(f"Server initialized: {server.is_initialized()}")
-
-    asyncio.run(server.run())
+    main()

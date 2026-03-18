@@ -24,11 +24,10 @@ This demonstrates three practical approaches to using LangChain with Stepflow:
 Run with: python examples/langchain/langchain_server.py
 """
 
-import asyncio
-
 import msgspec
 
-from stepflow_worker import StepflowContext, StepflowServer
+from stepflow_py.worker.main import main, server
+from stepflow_py.worker.context import StepflowContext
 
 # Only run examples if LangChain is available
 try:
@@ -39,9 +38,6 @@ except ImportError:
     print("LangChain not available. Install with: pip install langchain-core")
     LANGCHAIN_AVAILABLE = False
     exit(1)
-
-# Create the server
-server = StepflowServer()
 
 if LANGCHAIN_AVAILABLE:
     # ============================================================================
@@ -140,7 +136,7 @@ if LANGCHAIN_AVAILABLE:
         """Directly invoke a runnable from Python import path with caching."""
 
         # Use the SDK function for the core functionality
-        from stepflow_worker.langchain_integration import invoke_named_runnable
+        from stepflow_py.worker.langchain_integration import invoke_named_runnable
 
         result = await invoke_named_runnable(
             import_path=input.import_path,
@@ -154,22 +150,4 @@ if LANGCHAIN_AVAILABLE:
 
 
 if __name__ == "__main__":
-    import sys
-
-    print("LangChain Stepflow Integration Examples")
-    print("======================================")
-    print()
-    print("This server demonstrates three practical approaches to LangChain integration:")
-    print("1. Decorated runnable: @server.langchain_component decorator")
-    print("2. Named runnable: Direct invocation with import paths via /invoke_named")
-    print("3. UDF: /udf with user-provided Python code (via blob_id, self-contained)")
-    print()
-    print("Available components:")
-
-    components = server.get_components()
-    for name, component in components.items():
-        print(f"  - {name}: {component.description or 'No description'}")
-
-    print()
-    print("Starting Stepflow HTTP server...")
-    asyncio.run(server.run())
+    main()

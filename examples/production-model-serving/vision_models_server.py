@@ -30,7 +30,8 @@ import sys
 import os
 
 try:
-    from stepflow_worker import StepflowServer, StepflowContext
+    from stepflow_py.worker.main import main, server
+    from stepflow_py.worker.context import StepflowContext
     import msgspec
 
     SDK_AVAILABLE = True
@@ -74,8 +75,6 @@ except ImportError:
         "Computer vision libraries not available, using mock implementations"
     )
 
-# Create the server
-server = StepflowServer()
 
 # Vision model registry
 VISION_MODEL_REGISTRY = {
@@ -432,10 +431,4 @@ async def vision_health_check(input: VisionHealthInput) -> VisionHealthOutput:
 
 
 if __name__ == "__main__":
-    logger.info("Starting Vision Models Server")
-    logger.info(f"Available models: {list(VISION_MODEL_REGISTRY.keys())}")
-    logger.info(
-        f"GPU available: {CV_AVAILABLE and torch.cuda.is_available() if CV_AVAILABLE else False}"
-    )
-
-    asyncio.run(server.run())
+    main()
