@@ -228,6 +228,7 @@ async fn test_complete_task_success_round_trip() {
             worker_id: "test-worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()
@@ -241,6 +242,7 @@ async fn test_complete_task_success_round_trip() {
             worker_id: "test-worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap();
@@ -253,6 +255,7 @@ async fn test_complete_task_success_round_trip() {
     };
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-1".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -306,6 +309,7 @@ async fn test_complete_task_error_code_mapping() {
     // Complete with COMPONENT_FAILED (proto enum value 4) → should map to COMPONENT_EXECUTION_FAILED
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-err-component".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
@@ -323,6 +327,7 @@ async fn test_complete_task_error_code_mapping() {
     // Complete with INVALID_INPUT → should map to InvalidInput
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-err-input".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
@@ -374,6 +379,7 @@ async fn test_complete_unknown_task_returns_not_found() {
 
     let result = orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "nonexistent".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -392,8 +398,9 @@ async fn test_complete_unknown_task_returns_not_found() {
     let output = prost_wkt_types::Value {
         kind: Some(prost_wkt_types::value::Kind::StringValue("ok".to_string())),
     };
-    let result = orch_client
+    let resp = orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "nonexistent".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -403,10 +410,12 @@ async fn test_complete_unknown_task_returns_not_found() {
                 ),
             ),
         })
-        .await;
+        .await
+        .unwrap()
+        .into_inner();
 
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    // CompleteTask for unknown task returns NOT_FOUND in the response status
+    assert_eq!(resp.status, TaskStatus::NotFound as i32);
 }
 
 #[tokio::test]
@@ -522,6 +531,7 @@ async fn test_task_heartbeat_lifecycle() {
             worker_id: "worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()
@@ -536,6 +546,7 @@ async fn test_task_heartbeat_lifecycle() {
             worker_id: "worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()
@@ -549,6 +560,7 @@ async fn test_task_heartbeat_lifecycle() {
             worker_id: "worker-2".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()
@@ -563,6 +575,7 @@ async fn test_task_heartbeat_lifecycle() {
             worker_id: "worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()

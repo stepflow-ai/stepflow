@@ -156,7 +156,14 @@ message CompleteTaskRequest {
   optional string run_id = 4;
 }
 
-message CompleteTaskResponse {}
+message CompleteTaskResponse {
+  // Status of the task after completion.
+  //
+  // Normally UNSPECIFIED (success). When NOT_READY, the run is being
+  // recovered and the task_id is not yet registered — the worker should
+  // retry. When NOT_FOUND, the task was already completed or cleaned up.
+  TaskStatus status = 1;
+}
 
 // --- TaskHeartbeat ---
 
@@ -176,6 +183,11 @@ enum TaskStatus {
   // completed and been cleaned up, or timed out. The calling worker
   // should abort.
   TASK_STATUS_NOT_FOUND = 3;
+
+  // The run associated with this task is currently being recovered.
+  // The task_id may be re-registered shortly. The worker should retry
+  // after a brief delay.
+  TASK_STATUS_NOT_READY = 4;
 }
 
 message TaskHeartbeatRequest {

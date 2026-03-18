@@ -63,6 +63,10 @@ from stepflow_py.proto import (
     TaskError,
     TaskHeartbeatRequest,
 )
+from stepflow_py.proto.orchestrator_pb2 import (
+    TASK_STATUS_NOT_FOUND,
+    TASK_STATUS_NOT_READY,
+)
 from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_COMPONENT_FAILED,
     TASK_ERROR_CODE_INVALID_INPUT,
@@ -381,31 +385,47 @@ async def _handle_task(
             orch_channel = grpc.aio.insecure_channel(orchestrator_url)
             stub = OrchestratorServiceStub(orch_channel)
 
-            # Send initial heartbeat to claim the task
-            try:
-                response = await stub.TaskHeartbeat(
-                    TaskHeartbeatRequest(
-                        task_id=task.task_id,
-                        worker_id=worker_id,
-                        run_id=run_id,
+            # Send initial heartbeat to claim the task. Retries on NOT_READY
+            # (run is being recovered — task_id may be re-registered shortly).
+            claimed = False
+            for claim_attempt in range(5):
+                try:
+                    response = await stub.TaskHeartbeat(
+                        TaskHeartbeatRequest(
+                            task_id=task.task_id,
+                            worker_id=worker_id,
+                            run_id=run_id,
+                        )
                     )
-                )
-                if response.should_abort:
-                    logger.warning(
-                        "Task %s cannot be claimed (status=%s), skipping execution",
+                    if response.status == TASK_STATUS_NOT_READY:
+                        logger.info(
+                            "Task %s not ready (run recovering), retrying in 1s (%d/5)",
+                            task.task_id,
+                            claim_attempt + 1,
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                    if response.should_abort:
+                        logger.warning(
+                            "Task %s cannot be claimed (status=%s), skipping execution",
+                            task.task_id,
+                            response.status,
+                        )
+                        return
+                    claimed = True
+                    break
+                except grpc.aio.AioRpcError as e:
+                    logger.error(
+                        "Initial heartbeat failed for task %s: %s (code=%s)",
                         task.task_id,
-                        response.status,
+                        e.details(),
+                        e.code(),
                     )
                     return
-            except grpc.aio.AioRpcError as e:
-                logger.error(
-                    "Initial heartbeat failed for task %s: %s (code=%s)",
-                    task.task_id,
-                    e.details(),
-                    e.code(),
+            if not claimed:
+                logger.warning(
+                    "Task %s not ready after 5 attempts, skipping", task.task_id
                 )
-                # If initial heartbeat fails (e.g., task already timed out
-                # and removed), skip execution
                 return
 
             # Start background heartbeat loop
@@ -511,6 +531,13 @@ async def _heartbeat_loop(
                 )
                 if _heartbeats_sent is not None:
                     _heartbeats_sent.add(1, {"queue_name": _QUEUE_NAME})
+                if response.status == TASK_STATUS_NOT_READY:
+                    # Run is being recovered — keep heartbeating, don't abort
+                    logger.info(
+                        "Task %s heartbeat: run recovering (NOT_READY), continuing",
+                        task_id,
+                    )
+                    continue
                 if response.should_abort:
                     logger.info(
                         "Task %s abort requested (status=%s)",
@@ -673,19 +700,14 @@ async def _complete_task_with_retry(
 ) -> bool:
     """Send CompleteTask with retry on transient failures.
 
-    Retries only on UNAVAILABLE (orchestrator is down / restarting).
-    Reconnects the gRPC channel on each retry.
+    The response status determines behavior:
+    - UNSPECIFIED (0): success, result delivered
+    - NOT_READY: run is being recovered, task_id not yet registered.
+      Retries indefinitely with backoff until the run is recovered.
+    - NOT_FOUND: task already completed, timed out, or never existed.
+      Terminal — not an error (first-result-wins semantics).
 
-    NOT_FOUND is treated as terminal — the task was already completed
-    by another execution, timed out, or never existed. This is not an
-    error from the worker's perspective (first-result-wins semantics).
-
-    Note: the orchestrator completes startup recovery before accepting
-    RPCs, so by the time a CompleteTask reaches the server, all
-    recovered task_ids are already registered. There is no window where
-    NOT_FOUND means "recovery in progress." If a future change allows
-    the server to accept RPCs during recovery, a NOT_READY status
-    could be added to signal the worker to retry.
+    gRPC UNAVAILABLE (server down) is also retried with a retry limit.
 
     Returns True if the result was delivered (or is no longer needed),
     False if all retries failed.
@@ -693,19 +715,45 @@ async def _complete_task_with_retry(
     channel = grpc.aio.insecure_channel(orchestrator_url)
     try:
         stub = OrchestratorServiceStub(channel)
-        for attempt in range(max_retries + 1):
+        attempt = 0
+        while True:
             try:
-                await stub.CompleteTask(request)
+                response = await stub.CompleteTask(request)
+
+                if response.status == TASK_STATUS_NOT_READY:
+                    # Run is being recovered — retry without limit
+                    delay = min(base_delay, 5.0)
+                    logger.info(
+                        "CompleteTask NOT_READY for %s (run recovering), "
+                        "retry in %.1fs",
+                        task_id,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                if response.status == TASK_STATUS_NOT_FOUND:
+                    # Task already completed or cleaned up — not an error
+                    logger.info(
+                        "CompleteTask NOT_FOUND for %s — task already "
+                        "completed or cleaned up, skipping",
+                        task_id,
+                    )
+                    return True
+
+                # Success (UNSPECIFIED or IN_PROGRESS)
                 return True
+
             except grpc.aio.AioRpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    if attempt < max_retries:
+                    attempt += 1
+                    if attempt <= max_retries:
                         delay = min(base_delay * (2**attempt), 30.0)
                         logger.warning(
                             "CompleteTask UNAVAILABLE for %s, retry in %.1fs (%d/%d)",
                             task_id,
                             delay,
-                            attempt + 1,
+                            attempt,
                             max_retries,
                         )
                         await asyncio.sleep(delay)
@@ -720,15 +768,6 @@ async def _complete_task_with_retry(
                             e.code(),
                         )
                         return False
-                elif e.code() == grpc.StatusCode.NOT_FOUND:
-                    # Task already completed, timed out, or never existed.
-                    # Not an error — first-result-wins semantics.
-                    logger.info(
-                        "CompleteTask NOT_FOUND for %s — task already "
-                        "completed or cleaned up, skipping",
-                        task_id,
-                    )
-                    return True
                 else:
                     logger.error(
                         "CompleteTask failed for %s: %s (code=%s)",

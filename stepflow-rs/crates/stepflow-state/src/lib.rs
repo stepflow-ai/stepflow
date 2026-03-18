@@ -11,6 +11,7 @@
 // the License.
 
 mod active_executions;
+mod active_recoveries;
 pub mod blob_compliance;
 pub mod blob_ref_ops;
 mod blob_store;
@@ -34,6 +35,7 @@ mod noop_lease_manager;
 mod state_store;
 
 pub use active_executions::ActiveExecutions;
+pub use active_recoveries::{ActiveRecoveries, ActiveRecoveriesExt};
 pub use blob_store::{BlobStore, RawBlob};
 pub use checkpoint_store::{CheckpointStore, NoOpCheckpointStore, StoredCheckpoint};
 pub use completion_notifier::RunCompletionNotifier;

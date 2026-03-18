@@ -19,8 +19,8 @@ use std::time::Duration;
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutions, CheckpointStore, ExecutionJournal, InMemoryStateStore, LeaseManager,
-    NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
+    ActiveExecutions, ActiveRecoveries, CheckpointStore, ExecutionJournal, InMemoryStateStore,
+    LeaseManager, NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
 };
 
 use crate::routing::PluginRouter;
@@ -173,6 +173,11 @@ pub async fn initialize_environment(env: &Arc<StepflowEnvironment>) -> Result<()
     // Create ActiveExecutions for tracking running executions if not already set
     if !env.contains::<ActiveExecutions>() {
         env.insert(ActiveExecutions::new());
+    }
+
+    // Create ActiveRecoveries for tracking runs being recovered if not already set
+    if !env.contains::<ActiveRecoveries>() {
+        env.insert(ActiveRecoveries::new());
     }
 
     // Initialize all plugins

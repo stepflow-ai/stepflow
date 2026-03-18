@@ -18,7 +18,7 @@ use stepflow_core::{
     BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowError, FlowResult, GetRunParams, SubmitRunParams,
 };
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::BlobStoreExt as _;
+use stepflow_state::{ActiveRecoveriesExt as _, BlobStoreExt as _};
 use tonic::{Request, Response, Status};
 
 use crate::conversions::{
@@ -231,9 +231,18 @@ impl OrchestratorService for OrchestratorServiceImpl {
         };
 
         if self.task_registry.complete(&req.task_id, result) {
-            Ok(Response::new(CompleteTaskResponse {}))
+            Ok(Response::new(CompleteTaskResponse {
+                status: TaskStatus::Unspecified as i32,
+            }))
+        } else if self.is_run_recovering(&req.run_id) {
+            // Run is being recovered — task_id may be re-registered shortly.
+            Ok(Response::new(CompleteTaskResponse {
+                status: TaskStatus::NotReady as i32,
+            }))
         } else {
-            Err(grpc_err::not_found("task", &req.task_id))
+            Ok(Response::new(CompleteTaskResponse {
+                status: TaskStatus::NotFound as i32,
+            }))
         }
     }
 
@@ -252,12 +261,36 @@ impl OrchestratorService for OrchestratorServiceImpl {
         let (should_abort, status) = match result {
             HeartbeatResult::InProgress => (false, TaskStatus::InProgress),
             HeartbeatResult::AlreadyClaimed => (true, TaskStatus::AlreadyClaimed),
-            HeartbeatResult::NotFound => (true, TaskStatus::NotFound),
+            HeartbeatResult::NotFound => {
+                if self.is_run_recovering(&req.run_id) {
+                    // Run is being recovered — task_id may be re-registered
+                    // shortly. Tell the worker to retry.
+                    (true, TaskStatus::NotReady)
+                } else {
+                    (true, TaskStatus::NotFound)
+                }
+            }
         };
         Ok(Response::new(TaskHeartbeatResponse {
             should_abort,
             status: status as i32,
         }))
+    }
+}
+
+impl OrchestratorServiceImpl {
+    /// Check if the given run_id is currently being recovered.
+    ///
+    /// Uses the optional `run_id` from the request. If not provided,
+    /// returns false (can't determine recovery state without it).
+    fn is_run_recovering(&self, run_id: &Option<String>) -> bool {
+        let Some(run_id_str) = run_id.as_deref() else {
+            return false;
+        };
+        let Ok(run_id) = uuid::Uuid::parse_str(run_id_str) else {
+            return false;
+        };
+        self.env.active_recoveries().contains(&run_id)
     }
 }
 

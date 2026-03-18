@@ -56,6 +56,11 @@ class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._Enu
     completed and been cleaned up, or timed out. The calling worker
     should abort.
     """
+    TASK_STATUS_NOT_READY: _TaskStatus.ValueType  # 4
+    """The run associated with this task is currently being recovered.
+    The task_id may be re-registered shortly. The worker should retry
+    after a brief delay.
+    """
 
 class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
     """--- TaskHeartbeat ---
@@ -75,6 +80,11 @@ TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 3
 """Task ID not recognized. The task may have never existed, already
 completed and been cleaned up, or timed out. The calling worker
 should abort.
+"""
+TASK_STATUS_NOT_READY: TaskStatus.ValueType  # 4
+"""The run associated with this task is currently being recovered.
+The task_id may be re-registered shortly. The worker should retry
+after a brief delay.
 """
 Global___TaskStatus: typing_extensions.TypeAlias = TaskStatus
 
@@ -289,9 +299,20 @@ Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
 class CompleteTaskResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
+    STATUS_FIELD_NUMBER: builtins.int
+    status: Global___TaskStatus.ValueType
+    """Status of the task after completion.
+
+    Normally UNSPECIFIED (success). When NOT_READY, the run is being
+    recovered and the task_id is not yet registered — the worker should
+    retry. When NOT_FOUND, the task was already completed or cleaned up.
+    """
     def __init__(
         self,
+        *,
+        status: Global___TaskStatus.ValueType = ...,
     ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["status", b"status"]) -> None: ...
 
 Global___CompleteTaskResponse: typing_extensions.TypeAlias = CompleteTaskResponse
 
