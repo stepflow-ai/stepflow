@@ -79,12 +79,9 @@ from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_TIMEOUT,
     TASK_ERROR_CODE_WORKER_ERROR,
 )
-from stepflow_py.proto.orchestrator_pb2 import (
-    TASK_STATUS_NOT_FOUND,
-    TASK_STATUS_NOT_READY,
-)
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
+from stepflow_py.worker.orchestrator_tracker import OrchestratorTracker
 
 if TYPE_CHECKING:
     from stepflow_py.worker.server import ComponentEntry, StepflowServer
@@ -98,6 +95,10 @@ _BLOB_THRESHOLD_BYTES: int = int(os.environ.get("STEPFLOW_BLOB_THRESHOLD_BYTES",
 
 # Queue name set at runtime by run_grpc_worker(); used as metric attribute.
 _QUEUE_NAME: str = ""
+
+# Tasks service URL set at runtime by run_grpc_worker(); used by
+# OrchestratorTracker for GetOrchestratorForRun discovery.
+_TASKS_URL: str = ""
 
 # --- OpenTelemetry tracing imports (optional dependency) ---
 try:
@@ -223,8 +224,9 @@ async def run_grpc_worker(
         max_concurrent: Maximum concurrent task executions.
         max_retries: Maximum consecutive connection failures before giving up.
     """
-    global _QUEUE_NAME  # noqa: PLW0603
+    global _QUEUE_NAME, _TASKS_URL  # noqa: PLW0603
     _QUEUE_NAME = queue_name
+    _TASKS_URL = tasks_url
     _ensure_metrics()
 
     worker_id = str(uuid.uuid4())
@@ -396,7 +398,20 @@ async def _handle_task(
         if task.request.HasField("context")
         else ""
     )
+    root_run_id = (
+        task.request.context.root_run_id
+        if task.request.HasField("context") and task.request.context.root_run_id
+        else None
+    )
 
+    # Initialize tracker early so the outer except block can reference it
+    # even if an exception occurs before the full tracker is created.
+    tracker = OrchestratorTracker(
+        url=orchestrator_url,
+        run_id=None,
+        root_run_id=root_run_id,
+        tasks_url=_TASKS_URL,
+    )
     heartbeat_task: asyncio.Task[None] | None = None
     orch_channel: grpc.aio.Channel | None = None
 
@@ -456,13 +471,15 @@ async def _handle_task(
 
         span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
-        # Open a shared channel to the run-owning orchestrator for
-        # heartbeats and CompleteTask
+        # Update tracker with run_id now that observability context is parsed
+        tracker._run_id = run_id  # noqa: SLF001
+
+        # Open a channel to the run-owning orchestrator to claim the task
         if orchestrator_url:
-            orch_channel = grpc.aio.insecure_channel(orchestrator_url)
+            orch_channel = grpc.aio.insecure_channel(tracker.url)
             stub = OrchestratorServiceStub(orch_channel)
 
-            # Send initial heartbeat to claim the task. Retries on NOT_READY
+            # Send initial heartbeat to claim the task. Retries on UNAVAILABLE
             # (run is being recovered — task_id may be re-registered shortly).
             claimed = False
             for claim_attempt in range(5):
@@ -474,14 +491,6 @@ async def _handle_task(
                             run_id=run_id,
                         )
                     )
-                    if response.status == TASK_STATUS_NOT_READY:
-                        logger.info(
-                            "Task %s not ready (run recovering), retrying in 1s (%d/5)",
-                            task.task_id,
-                            claim_attempt + 1,
-                        )
-                        await asyncio.sleep(1)
-                        continue
                     if response.should_abort:
                         logger.warning(
                             "Task %s cannot be claimed (status=%s), skipping execution",
@@ -492,6 +501,16 @@ async def _handle_task(
                     claimed = True
                     break
                 except grpc.aio.AioRpcError as e:
+                    if e.code() == grpc.StatusCode.UNAVAILABLE:
+                        # Run is recovering — retry
+                        logger.info(
+                            "Task %s claim: UNAVAILABLE (recovering?), "
+                            "retrying in 1s (%d/5)",
+                            task.task_id,
+                            claim_attempt + 1,
+                        )
+                        await asyncio.sleep(1)
+                        continue
                     logger.error(
                         "Initial heartbeat failed for task %s: %s (code=%s)",
                         task.task_id,
@@ -505,10 +524,14 @@ async def _handle_task(
                 )
                 return
 
+            # Close claim channel; heartbeat loop manages its own
+            await orch_channel.close()
+            orch_channel = None
+
             # Start background heartbeat loop
             interval = task.heartbeat_interval_secs or 1
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(stub, task.task_id, worker_id, interval, run_id)
+                _heartbeat_loop(tracker, task.task_id, worker_id, interval, run_id)
             )
 
         # Convert proto Value to Python dict
@@ -526,6 +549,7 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 f"Component '{req.component}' not found",
+                tracker,
             )
             return
 
@@ -547,13 +571,14 @@ async def _handle_task(
             # Execute the component
             try:
                 output = await _execute_component(
-                    server, component, input_data, req, path_params
+                    server, component, input_data, req, path_params, tracker
                 )
                 # Convert output to proto Value
                 proto_output = _python_to_proto_value(output)
                 await _complete_task_success(
                     task,
                     proto_output,
+                    tracker,
                 )
             except Exception as e:
                 logger.error("Component %s failed: %s", req.component, e, exc_info=True)
@@ -561,6 +586,7 @@ async def _handle_task(
                 await _complete_task_error(
                     task,
                     str(e),
+                    tracker,
                     code=error_code,
                     data=error_data,
                 )
@@ -571,6 +597,7 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 traceback.format_exc(),
+                tracker,
                 code=TASK_ERROR_CODE_WORKER_ERROR,
             )
         except Exception:
@@ -636,9 +663,21 @@ async def _graceful_shutdown(
 
         # Report failure to orchestrator so it can retry on another worker
         try:
+            orch_url = (
+                assignment.request.context.orchestrator_service_url
+                if assignment.request.HasField("context")
+                else ""
+            )
+            shutdown_tracker = OrchestratorTracker(
+                url=orch_url,
+                run_id=None,
+                root_run_id=None,
+                tasks_url=_TASKS_URL,
+            )
             await _complete_task_error(
                 assignment,
                 f"task '{task_id}' failed: worker '{worker_id}' shutting down",
+                shutdown_tracker,
                 code=TASK_ERROR_CODE_TIMEOUT,
             )
             logger.info("Reported shutdown failure for task %s", task_id)
@@ -649,7 +688,7 @@ async def _graceful_shutdown(
 
 
 async def _heartbeat_loop(
-    stub: Any,  # OrchestratorServiceStub (async variant)
+    tracker: OrchestratorTracker,
     task_id: str,
     worker_id: str,
     interval_secs: int,
@@ -657,14 +696,30 @@ async def _heartbeat_loop(
 ) -> None:
     """Send periodic heartbeats until cancelled.
 
+    Manages its own gRPC channel and recreates it when the tracker's URL
+    changes (e.g., another operation discovered a new orchestrator).
+    On gRPC UNAVAILABLE or NOT_FOUND, attempts discovery via the tracker.
+
     Each sleep is jittered by ±20% to avoid thundering-herd effects when
     many workers heartbeat against the same orchestrator.
     """
     jitter_min = interval_secs * 0.8
     jitter_max = interval_secs * 1.2
+    current_url = tracker.url
+    channel = grpc.aio.insecure_channel(current_url)
+    stub = OrchestratorServiceStub(channel)
     try:
         while True:
             await asyncio.sleep(random.uniform(jitter_min, jitter_max))
+
+            # If tracker URL changed (e.g., by CompleteTask discovery),
+            # reconnect proactively
+            if tracker.url != current_url:
+                await channel.close()
+                current_url = tracker.url
+                channel = grpc.aio.insecure_channel(current_url)
+                stub = OrchestratorServiceStub(channel)
+
             try:
                 response = await stub.TaskHeartbeat(
                     TaskHeartbeatRequest(
@@ -675,13 +730,6 @@ async def _heartbeat_loop(
                 )
                 if _heartbeats_sent is not None:
                     _heartbeats_sent.add(1, {"queue_name": _QUEUE_NAME})
-                if response.status == TASK_STATUS_NOT_READY:
-                    # Run is being recovered — keep heartbeating, don't abort
-                    logger.info(
-                        "Task %s heartbeat: run recovering (NOT_READY), continuing",
-                        task_id,
-                    )
-                    continue
                 if response.should_abort:
                     logger.info(
                         "Task %s abort requested (status=%s)",
@@ -690,6 +738,18 @@ async def _heartbeat_loop(
                     )
                     break
             except grpc.aio.AioRpcError as e:
+                if e.code() in (
+                    grpc.StatusCode.UNAVAILABLE,
+                    grpc.StatusCode.NOT_FOUND,
+                ):
+                    # Try to discover new orchestrator
+                    if await tracker.discover():
+                        await channel.close()
+                        current_url = tracker.url
+                        channel = grpc.aio.insecure_channel(current_url)
+                        stub = OrchestratorServiceStub(channel)
+                        continue
+                # Discovery failed or non-recoverable error — stop
                 logger.warning(
                     "Heartbeat failed for task %s: %s (code=%s)",
                     task_id,
@@ -699,6 +759,8 @@ async def _heartbeat_loop(
                 break
     except asyncio.CancelledError:
         pass
+    finally:
+        await channel.close()
 
 
 async def _execute_component(
@@ -707,6 +769,7 @@ async def _execute_component(
     input_data: Any,
     req: Any,
     path_params: dict[str, str],
+    tracker: OrchestratorTracker | None = None,
 ) -> Any:
     """Execute a component function and return its output."""
     import msgspec
@@ -741,9 +804,7 @@ async def _execute_component(
         from stepflow_py.worker.grpc_context import GrpcContext
 
         context = GrpcContext(
-            orchestrator_url=req.context.orchestrator_service_url
-            if req.HasField("context")
-            else "",
+            orchestrator_tracker=tracker,
             blob_url=_BLOB_URL,
             blob_threshold=_BLOB_THRESHOLD_BYTES,
             run_id=req.observability.run_id
@@ -835,7 +896,7 @@ def _extract_run_id(task: TaskAssignment) -> str | None:
 
 
 async def _complete_task_with_retry(
-    orchestrator_url: str,
+    tracker: OrchestratorTracker,
     request: CompleteTaskRequest,
     task_id: str,
     *,
@@ -844,53 +905,37 @@ async def _complete_task_with_retry(
 ) -> bool:
     """Send CompleteTask with retry on transient failures.
 
-    The response status determines behavior:
-    - UNSPECIFIED (0): success, result delivered
-    - NOT_READY: run is being recovered, task_id not yet registered.
-      Retries indefinitely with backoff until the run is recovered.
-    - NOT_FOUND: task already completed, timed out, or never existed.
-      Terminal — not an error (first-result-wins semantics).
-
-    gRPC UNAVAILABLE (server down) is also retried with a retry limit.
+    Uses gRPC error codes for all failure signaling:
+    - Success: non-error response (result delivered)
+    - gRPC UNAVAILABLE: orchestrator down or recovering, retry with backoff
+    - gRPC NOT_FOUND: task not on this orchestrator, discover + retry
 
     Returns True if the result was delivered (or is no longer needed),
     False if all retries failed.
     """
-    channel = grpc.aio.insecure_channel(orchestrator_url)
+    channel = grpc.aio.insecure_channel(tracker.url)
     try:
         stub = OrchestratorServiceStub(channel)
         attempt = 0
+        discovered_for_not_found = False
         while True:
             try:
-                response = await stub.CompleteTask(request)
-
-                if response.status == TASK_STATUS_NOT_READY:
-                    # Run is being recovered — retry without limit
-                    delay = min(base_delay, 5.0)
-                    logger.info(
-                        "CompleteTask NOT_READY for %s (run recovering), "
-                        "retry in %.1fs",
-                        task_id,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-
-                if response.status == TASK_STATUS_NOT_FOUND:
-                    # Task already completed or cleaned up — not an error
-                    logger.info(
-                        "CompleteTask NOT_FOUND for %s — task already "
-                        "completed or cleaned up, skipping",
-                        task_id,
-                    )
-                    return True
-
-                # Success (UNSPECIFIED or IN_PROGRESS)
-                return True
+                await stub.CompleteTask(request)
+                return True  # success
 
             except grpc.aio.AioRpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     attempt += 1
+
+                    # On first UNAVAILABLE, try to discover the new
+                    # orchestrator (failover or recovering).
+                    if attempt == 1 and await tracker.discover():
+                        attempt = 0  # reset for new URL
+                        await channel.close()
+                        channel = grpc.aio.insecure_channel(tracker.url)
+                        stub = OrchestratorServiceStub(channel)
+                        continue
+
                     if attempt <= max_retries:
                         delay = min(base_delay * (2**attempt), 30.0)
                         logger.warning(
@@ -902,7 +947,7 @@ async def _complete_task_with_retry(
                         )
                         await asyncio.sleep(delay)
                         await channel.close()
-                        channel = grpc.aio.insecure_channel(orchestrator_url)
+                        channel = grpc.aio.insecure_channel(tracker.url)
                         stub = OrchestratorServiceStub(channel)
                     else:
                         logger.error(
@@ -912,6 +957,23 @@ async def _complete_task_with_retry(
                             e.code(),
                         )
                         return False
+
+                elif e.code() == grpc.StatusCode.NOT_FOUND:
+                    # Task not on this orchestrator — discover once
+                    if not discovered_for_not_found and await tracker.discover():
+                        discovered_for_not_found = True
+                        await channel.close()
+                        channel = grpc.aio.insecure_channel(tracker.url)
+                        stub = OrchestratorServiceStub(channel)
+                        continue
+                    # Same URL or already tried — terminal
+                    logger.info(
+                        "CompleteTask NOT_FOUND for %s — task not on "
+                        "orchestrator, skipping",
+                        task_id,
+                    )
+                    return True
+
                 else:
                     logger.error(
                         "CompleteTask failed for %s: %s (code=%s)",
@@ -927,16 +989,12 @@ async def _complete_task_with_retry(
 async def _complete_task_success(
     task: TaskAssignment,
     output: struct_pb2.Value,
+    tracker: OrchestratorTracker,
 ) -> None:
     """Report successful task completion to the run-owning orchestrator."""
-    orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
-        else ""
-    )
-    if not orchestrator_url:
+    if not tracker.url:
         logger.error(
-            "No orchestrator_service_url for task %s — cannot report completion",
+            "No orchestrator URL for task %s — cannot report completion",
             task.task_id,
         )
         return
@@ -947,7 +1005,7 @@ async def _complete_task_success(
         response=ComponentExecuteResponse(output=output),
         run_id=run_id,
     )
-    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+    if await _complete_task_with_retry(tracker, request, task.task_id):
         logger.debug("Completed task %s (success)", task.task_id)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "success"})
@@ -956,19 +1014,15 @@ async def _complete_task_success(
 async def _complete_task_error(
     task: TaskAssignment,
     error_msg: str,
+    tracker: OrchestratorTracker,
     *,
     code: int = TASK_ERROR_CODE_COMPONENT_FAILED,
     data: dict | None = None,
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
-    orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
-        else ""
-    )
-    if not orchestrator_url:
+    if not tracker.url:
         logger.error(
-            "No orchestrator_service_url for task %s — cannot report error",
+            "No orchestrator URL for task %s — cannot report error",
             task.task_id,
         )
         return
@@ -989,7 +1043,7 @@ async def _complete_task_error(
         error=task_error,
         run_id=run_id,
     )
-    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+    if await _complete_task_with_retry(tracker, request, task.task_id):
         logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "error"})

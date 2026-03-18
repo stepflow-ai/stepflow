@@ -108,7 +108,19 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
     from TaskContext.
 
     This must reach the orchestrator that owns the specific run — it is NOT
-    interchangeable with other orchestrators (unlike WorkerService).
+    interchangeable with other orchestrators (unlike TasksService).
+
+    All RPCs use a consistent error signaling pattern:
+
+      gRPC NOT_FOUND     — the run/task is not on this orchestrator.
+                           The worker should call TasksService.GetOrchestratorForRun
+                           to discover the correct orchestrator and retry.
+
+      gRPC UNAVAILABLE   — the run is being recovered on this orchestrator.
+                           The worker should retry with backoff.
+
+    These gRPC-level errors are distinct from task-level status values
+    (IN_PROGRESS, ALREADY_CLAIMED) which remain in response bodies.
 
     gRPC only — not exposed as REST.
     """
@@ -154,18 +166,40 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
     ], channel: grpc.aio.Channel) -> None: ...
 
     SubmitRun: _OrchestratorServiceSubmitRunType
-    """Submit a sub-flow run from within a component execution."""
+    """Submit a sub-flow run from within a component execution.
+
+    Must reach the orchestrator owning the root run so the sub-flow
+    executor runs in the same process. If `root_run_id` is provided,
+    the orchestrator validates ownership before proceeding.
+
+    Errors:
+      NOT_FOUND    — root run not on this orchestrator
+      UNAVAILABLE  — root run is being recovered
+    """
 
     GetRun: _OrchestratorServiceGetRunType
-    """Get the status of a run (optionally waiting for completion)."""
+    """Get the status of a run (optionally waiting for completion).
+
+    Must reach the orchestrator owning the root run for `wait=true`
+    (completion notifications are local to the owning orchestrator).
+    If `root_run_id` is provided, the orchestrator validates ownership.
+
+    Errors:
+      NOT_FOUND    — root run not on this orchestrator
+      UNAVAILABLE  — root run is being recovered
+    """
 
     CompleteTask: _OrchestratorServiceCompleteTaskType
     """Report task completion (success or failure).
 
-    Called by workers after executing a component, regardless of how the
-    task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+    Called by workers after executing a component. The worker uses the
     `orchestrator_service_url` from the task's TaskContext to reach
     the orchestrator that owns the run.
+
+    Errors:
+      NOT_FOUND    — task not on this orchestrator (already completed,
+                     timed out, or run moved to another orchestrator)
+      UNAVAILABLE  — run is being recovered, task_id not yet registered
     """
 
     TaskHeartbeat: _OrchestratorServiceTaskHeartbeatType
@@ -182,9 +216,10 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
     The response status tells the worker whether to proceed:
     - IN_PROGRESS: task is yours, continue executing
     - ALREADY_CLAIMED: a different worker is executing this task, abort
-    - COMPLETED: task already has a result, abort
-    - TIMED_OUT: task expired before any worker claimed it, abort
-    - NOT_FOUND: task_id not recognized (already completed and cleaned up)
+
+    Errors:
+      NOT_FOUND    — task not on this orchestrator
+      UNAVAILABLE  — run is being recovered, task_id not yet registered
     """
 
 OrchestratorServiceAsyncStub: typing_extensions.TypeAlias = OrchestratorServiceStub[
@@ -212,7 +247,19 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
     from TaskContext.
 
     This must reach the orchestrator that owns the specific run — it is NOT
-    interchangeable with other orchestrators (unlike WorkerService).
+    interchangeable with other orchestrators (unlike TasksService).
+
+    All RPCs use a consistent error signaling pattern:
+
+      gRPC NOT_FOUND     — the run/task is not on this orchestrator.
+                           The worker should call TasksService.GetOrchestratorForRun
+                           to discover the correct orchestrator and retry.
+
+      gRPC UNAVAILABLE   — the run is being recovered on this orchestrator.
+                           The worker should retry with backoff.
+
+    These gRPC-level errors are distinct from task-level status values
+    (IN_PROGRESS, ALREADY_CLAIMED) which remain in response bodies.
 
     gRPC only — not exposed as REST.
     """
@@ -223,7 +270,16 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         request: orchestrator_pb2.OrchestratorSubmitRunRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.OrchestratorRunStatus, collections.abc.Awaitable[orchestrator_pb2.OrchestratorRunStatus]]:
-        """Submit a sub-flow run from within a component execution."""
+        """Submit a sub-flow run from within a component execution.
+
+        Must reach the orchestrator owning the root run so the sub-flow
+        executor runs in the same process. If `root_run_id` is provided,
+        the orchestrator validates ownership before proceeding.
+
+        Errors:
+          NOT_FOUND    — root run not on this orchestrator
+          UNAVAILABLE  — root run is being recovered
+        """
 
     @abc.abstractmethod
     def GetRun(
@@ -231,7 +287,16 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         request: orchestrator_pb2.OrchestratorGetRunRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.OrchestratorRunStatus, collections.abc.Awaitable[orchestrator_pb2.OrchestratorRunStatus]]:
-        """Get the status of a run (optionally waiting for completion)."""
+        """Get the status of a run (optionally waiting for completion).
+
+        Must reach the orchestrator owning the root run for `wait=true`
+        (completion notifications are local to the owning orchestrator).
+        If `root_run_id` is provided, the orchestrator validates ownership.
+
+        Errors:
+          NOT_FOUND    — root run not on this orchestrator
+          UNAVAILABLE  — root run is being recovered
+        """
 
     @abc.abstractmethod
     def CompleteTask(
@@ -241,10 +306,14 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
     ) -> typing.Union[orchestrator_pb2.CompleteTaskResponse, collections.abc.Awaitable[orchestrator_pb2.CompleteTaskResponse]]:
         """Report task completion (success or failure).
 
-        Called by workers after executing a component, regardless of how the
-        task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+        Called by workers after executing a component. The worker uses the
         `orchestrator_service_url` from the task's TaskContext to reach
         the orchestrator that owns the run.
+
+        Errors:
+          NOT_FOUND    — task not on this orchestrator (already completed,
+                         timed out, or run moved to another orchestrator)
+          UNAVAILABLE  — run is being recovered, task_id not yet registered
         """
 
     @abc.abstractmethod
@@ -266,9 +335,10 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         The response status tells the worker whether to proceed:
         - IN_PROGRESS: task is yours, continue executing
         - ALREADY_CLAIMED: a different worker is executing this task, abort
-        - COMPLETED: task already has a result, abort
-        - TIMED_OUT: task expired before any worker claimed it, abort
-        - NOT_FOUND: task_id not recognized (already completed and cleaned up)
+
+        Errors:
+          NOT_FOUND    — task not on this orchestrator
+          UNAVAILABLE  — run is being recovered, task_id not yet registered
         """
 
 def add_OrchestratorServiceServicer_to_server(servicer: OrchestratorServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

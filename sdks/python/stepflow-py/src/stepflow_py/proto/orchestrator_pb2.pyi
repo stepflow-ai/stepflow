@@ -51,21 +51,15 @@ class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._Enu
     """Task is already being executed by a different worker.
     The calling worker should abort and not call CompleteTask.
     """
-    TASK_STATUS_NOT_FOUND: _TaskStatus.ValueType  # 3
-    """Task ID not recognized. The task may have never existed, already
-    completed and been cleaned up, or timed out. The calling worker
-    should abort.
-    """
-    TASK_STATUS_NOT_READY: _TaskStatus.ValueType  # 4
-    """The run associated with this task is currently being recovered.
-    The task_id may be re-registered shortly. The worker should retry
-    after a brief delay.
-    """
 
 class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
     """--- TaskHeartbeat ---
 
     Status of a task from the orchestrator's perspective.
+
+    Only used in TaskHeartbeatResponse for task-level state. Orchestrator-level
+    conditions (run not found, run recovering) are signaled as gRPC errors
+    (NOT_FOUND, UNAVAILABLE) rather than enum values.
     """
 
 TASK_STATUS_UNSPECIFIED: TaskStatus.ValueType  # 0
@@ -75,16 +69,6 @@ TASK_STATUS_IN_PROGRESS: TaskStatus.ValueType  # 1
 TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 2
 """Task is already being executed by a different worker.
 The calling worker should abort and not call CompleteTask.
-"""
-TASK_STATUS_NOT_FOUND: TaskStatus.ValueType  # 3
-"""Task ID not recognized. The task may have never existed, already
-completed and been cleaned up, or timed out. The calling worker
-should abort.
-"""
-TASK_STATUS_NOT_READY: TaskStatus.ValueType  # 4
-"""The run associated with this task is currently being recovered.
-The task_id may be re-registered shortly. The worker should retry
-after a brief delay.
 """
 Global___TaskStatus: typing_extensions.TypeAlias = TaskStatus
 
@@ -100,10 +84,17 @@ class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
 
     RUN_REQUEST_FIELD_NUMBER: builtins.int
     SUBFLOW_KEY_FIELD_NUMBER: builtins.int
+    ROOT_RUN_ID_FIELD_NUMBER: builtins.int
     subflow_key: builtins.str
     """Deterministic key for subflow deduplication during recovery.
     When present, the orchestrator will return an existing run with the
     same key instead of creating a duplicate.
+    """
+    root_run_id: builtins.str
+    """Root run ID (UUID) for ownership validation.
+    When present, the orchestrator verifies it owns this root run
+    before creating the sub-flow. Returns NOT_FOUND or UNAVAILABLE
+    if the run is not active or is being recovered.
     """
     @property
     def run_request(self) -> runs_pb2.CreateRunRequest:
@@ -114,9 +105,13 @@ class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
         *,
         run_request: runs_pb2.CreateRunRequest | None = ...,
         subflow_key: builtins.str | None = ...,
+        root_run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_subflow_key", b"_subflow_key", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_subflow_key", b"_subflow_key", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_subflow_key", b"_subflow_key", "root_run_id", b"root_run_id", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_subflow_key", b"_subflow_key", "root_run_id", b"root_run_id", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_root_run_id", b"_root_run_id"]) -> typing.Literal["root_run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_subflow_key", b"_subflow_key"]) -> typing.Literal["subflow_key"] | None: ...
 
 Global___OrchestratorSubmitRunRequest: typing_extensions.TypeAlias = OrchestratorSubmitRunRequest
@@ -132,6 +127,7 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
     INCLUDE_RESULTS_FIELD_NUMBER: builtins.int
     RESULT_ORDER_FIELD_NUMBER: builtins.int
     TIMEOUT_SECS_FIELD_NUMBER: builtins.int
+    ROOT_RUN_ID_FIELD_NUMBER: builtins.int
     run_id: builtins.str
     """Run ID (UUID) to query."""
     wait: builtins.bool
@@ -142,6 +138,12 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
     """Result ordering."""
     timeout_secs: builtins.int
     """Maximum seconds to wait when wait=true (default 300)."""
+    root_run_id: builtins.str
+    """Root run ID (UUID) for ownership validation.
+    When present, the orchestrator verifies it owns this root run
+    before processing the request. Returns NOT_FOUND or UNAVAILABLE
+    if the run is not active or is being recovered.
+    """
     def __init__(
         self,
         *,
@@ -150,9 +152,13 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
         include_results: builtins.bool = ...,
         result_order: common_pb2.ResultOrder.ValueType = ...,
         timeout_secs: builtins.int | None = ...,
+        root_run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_timeout_secs", b"_timeout_secs", "timeout_secs", b"timeout_secs"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_timeout_secs", b"_timeout_secs", "include_results", b"include_results", "result_order", b"result_order", "run_id", b"run_id", "timeout_secs", b"timeout_secs", "wait", b"wait"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_timeout_secs", b"_timeout_secs", "root_run_id", b"root_run_id", "timeout_secs", b"timeout_secs"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_timeout_secs", b"_timeout_secs", "include_results", b"include_results", "result_order", b"result_order", "root_run_id", b"root_run_id", "run_id", b"run_id", "timeout_secs", b"timeout_secs", "wait", b"wait"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_root_run_id", b"_root_run_id"]) -> typing.Literal["root_run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_timeout_secs", b"_timeout_secs"]) -> typing.Literal["timeout_secs"] | None: ...
 
 Global___OrchestratorGetRunRequest: typing_extensions.TypeAlias = OrchestratorGetRunRequest
@@ -297,22 +303,16 @@ Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
 
 @typing.final
 class CompleteTaskResponse(google.protobuf.message.Message):
+    """Empty response — success is indicated by a non-error gRPC status.
+    Task-not-found and run-recovering conditions are returned as gRPC
+    NOT_FOUND and UNAVAILABLE errors respectively.
+    """
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    STATUS_FIELD_NUMBER: builtins.int
-    status: Global___TaskStatus.ValueType
-    """Status of the task after completion.
-
-    Normally UNSPECIFIED (success). When NOT_READY, the run is being
-    recovered and the task_id is not yet registered — the worker should
-    retry. When NOT_FOUND, the task was already completed or cleaned up.
-    """
     def __init__(
         self,
-        *,
-        status: Global___TaskStatus.ValueType = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["status", b"status"]) -> None: ...
 
 Global___CompleteTaskResponse: typing_extensions.TypeAlias = CompleteTaskResponse
 

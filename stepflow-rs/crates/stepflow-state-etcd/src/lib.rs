@@ -67,6 +67,8 @@ struct LeaseValue {
 #[derive(Debug, Serialize, Deserialize)]
 struct HeartbeatValue {
     last_heartbeat: DateTime<Utc>,
+    /// The gRPC service URL for this orchestrator's `OrchestratorService`.
+    orchestrator_url: String,
 }
 
 /// etcd-backed lease manager for distributed Stepflow orchestration.
@@ -381,7 +383,11 @@ impl LeaseManager for EtcdLeaseManager {
         .boxed()
     }
 
-    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>> {
+    fn heartbeat(
+        &self,
+        orchestrator_id: OrchestratorId,
+        orchestrator_url: String,
+    ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move {
             // Ensure the lease exists (idempotent after first call)
             let _lease_id = self.ensure_lease(&orchestrator_id).await?;
@@ -407,6 +413,7 @@ impl LeaseManager for EtcdLeaseManager {
             let key = self.heartbeat_key(&orchestrator_id);
             let value = HeartbeatValue {
                 last_heartbeat: Utc::now(),
+                orchestrator_url,
             };
             let value_bytes = serde_json::to_vec(&value).change_context(LeaseError::Internal)?;
 
@@ -490,6 +497,7 @@ impl LeaseManager for EtcdLeaseManager {
                             id: OrchestratorId::new(orch_id),
                             last_heartbeat: value.last_heartbeat,
                             active_runs: 0,
+                            orchestrator_url: value.orchestrator_url,
                         },
                     );
                 }
@@ -516,6 +524,7 @@ impl LeaseManager for EtcdLeaseManager {
                         id: OrchestratorId::new(&value.owner),
                         last_heartbeat: Utc::now(),
                         active_runs: 1,
+                        orchestrator_url: String::new(),
                     });
             }
 
@@ -584,6 +593,7 @@ mod tests {
         let now = Utc::now();
         let value = HeartbeatValue {
             last_heartbeat: now,
+            orchestrator_url: "http://orch-1:7837".to_string(),
         };
         let bytes = serde_json::to_vec(&value).unwrap();
         let decoded: HeartbeatValue = serde_json::from_slice(&bytes).unwrap();
