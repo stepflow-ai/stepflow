@@ -27,27 +27,35 @@
 use std::sync::Arc;
 
 use stepflow_core::component::ComponentInfo;
+use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::LeaseManagerExt as _;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::error as grpc_err;
 use crate::grpc_server::QueueRegistry;
 use crate::proto::stepflow::v1::tasks_service_server::TasksService;
-use crate::proto::stepflow::v1::{PullTasksRequest, TaskAssignment};
+use crate::proto::stepflow::v1::{
+    GetOrchestratorForRunRequest, GetOrchestratorForRunResponse, PullTasksRequest, TaskAssignment,
+};
 
 /// gRPC implementation of `TasksService`.
 ///
 /// Routes `PullTasks` requests to the correct [`PullTaskQueue`](crate::pull_task_queue::PullTaskQueue) based on
 /// the worker's `queue_name`. Each pull plugin registers its queue under
 /// a unique name in the shared [`QueueRegistry`].
+///
+/// Also provides `GetOrchestratorForRun` for workers to discover the current
+/// orchestrator for a run after a failover or restart.
 #[derive(Debug)]
 pub struct TasksServiceImpl {
     registry: Arc<QueueRegistry>,
+    env: Arc<StepflowEnvironment>,
 }
 
 impl TasksServiceImpl {
-    pub fn new(registry: Arc<QueueRegistry>) -> Self {
-        Self { registry }
+    pub fn new(registry: Arc<QueueRegistry>, env: Arc<StepflowEnvironment>) -> Self {
+        Self { registry, env }
     }
 }
 
@@ -149,6 +157,53 @@ impl TasksService for TasksServiceImpl {
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
+    async fn get_orchestrator_for_run(
+        &self,
+        request: Request<GetOrchestratorForRunRequest>,
+    ) -> Result<Response<GetOrchestratorForRunResponse>, Status> {
+        let req = request.into_inner();
+
+        let run_id: uuid::Uuid = req
+            .run_id
+            .parse()
+            .map_err(|_| grpc_err::invalid_field("run_id", "invalid UUID format"))?;
+
+        let lease_manager = self.env.lease_manager();
+
+        // Look up who owns this run
+        let lease_info = lease_manager
+            .get_lease(run_id)
+            .await
+            .map_err(|e| grpc_err::internal(format!("lease lookup failed: {e}")))?;
+
+        let Some(lease) = lease_info else {
+            return Err(grpc_err::not_found("run lease", &req.run_id));
+        };
+
+        // Find the owning orchestrator's service URL
+        let orchestrators = lease_manager
+            .list_orchestrators()
+            .await
+            .map_err(|e| grpc_err::internal(format!("orchestrator lookup failed: {e}")))?;
+
+        let orchestrator_url = orchestrators
+            .into_iter()
+            .find(|o| o.id == lease.owner)
+            .map(|o| o.orchestrator_url)
+            .unwrap_or_default();
+
+        if orchestrator_url.is_empty() {
+            return Err(grpc_err::not_found(
+                "orchestrator URL for owner",
+                lease.owner.as_str(),
+            ));
+        }
+
+        Ok(Response::new(GetOrchestratorForRunResponse {
+            orchestrator_service_url: orchestrator_url,
+        }))
     }
 }
 

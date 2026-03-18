@@ -49,6 +49,16 @@ service TasksService {
   // The stream stays open for the worker's lifetime — tasks are sent as
   // they become available.
   rpc PullTasks(PullTasksRequest) returns (stream TaskAssignment);
+
+  // Look up the current orchestrator for a run.
+  //
+  // Workers call this when they cannot reach the orchestrator URL from
+  // their TaskContext (e.g., after an orchestrator restart or run migration).
+  // Any orchestrator can answer this — it performs a stateless lease lookup.
+  //
+  // Returns the gRPC service URL of the orchestrator that currently owns
+  // the run, or NOT_FOUND if no active lease exists.
+  rpc GetOrchestratorForRun(GetOrchestratorForRunRequest) returns (GetOrchestratorForRunResponse);
 }
 
 // =============================================================================
@@ -68,6 +78,13 @@ message TaskContext {
   // gRPC endpoint for OrchestratorService (submit_run, get_run, complete_task).
   // Must reach the orchestrator that owns the current run.
   string orchestrator_service_url = 1;
+
+  // Root run ID (UUID) for this execution tree.
+  // For top-level runs, equals the task's run_id.
+  // For sub-flows, this is the original run that started the tree.
+  // Workers include this in OrchestratorService requests so the
+  // orchestrator can validate it owns the root execution.
+  string root_run_id = 2;
 }
 
 // =============================================================================
@@ -193,3 +210,19 @@ message TaskAssignment {
 // CompleteTaskRequest and CompleteTaskResponse live in orchestrator.proto
 // because task completion must reach the orchestrator that owns the run,
 // not necessarily the orchestrator that dispatched the task.
+
+// =============================================================================
+// GetOrchestratorForRun (orchestrator discovery)
+// =============================================================================
+
+message GetOrchestratorForRunRequest {
+  // Run ID (UUID) to look up the owning orchestrator for.
+  string run_id = 1;
+}
+
+message GetOrchestratorForRunResponse {
+  // The gRPC service URL for the orchestrator currently owning this run.
+  // Workers should use this URL for OrchestratorService calls (CompleteTask,
+  // SubmitRun, GetRun, TaskHeartbeat).
+  string orchestrator_service_url = 1;
+}

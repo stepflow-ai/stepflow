@@ -179,6 +179,7 @@ message TaskHeartbeatRequest {
   string worker_id = 2;      // Stable per-worker, used for deduplication
   optional float progress = 3;
   optional string status_message = 4;
+  optional string run_id = 5;
 }
 
 message TaskHeartbeatResponse {
@@ -190,7 +191,6 @@ enum TaskStatus {
   TASK_STATUS_UNSPECIFIED = 0;
   TASK_STATUS_IN_PROGRESS = 1;      // Task is yours, continue
   TASK_STATUS_ALREADY_CLAIMED = 2;  // Different worker owns this task
-  TASK_STATUS_NOT_FOUND = 3;        // Never existed, completed, or timed out
 }
 ```
 
@@ -201,7 +201,12 @@ enum TaskStatus {
 **Behavior on subsequent calls:**
 - Same `worker_id`: records heartbeat, returns `IN_PROGRESS`
 - Different `worker_id`: returns `ALREADY_CLAIMED` — worker should abort
-- Task already completed: returns `NOT_FOUND` — worker should abort
+
+**Error conditions (gRPC error codes):**
+- Task not found (completed, timed out, or run moved): gRPC `NOT_FOUND`
+- Run being recovered: gRPC `UNAVAILABLE`
+
+On `NOT_FOUND` or `UNAVAILABLE`, the worker calls `TasksService.GetOrchestratorForRun` to discover the current orchestrator and redirects all RPCs for this task.
 
 ### Result delivery architecture
 
@@ -241,13 +246,15 @@ trait Plugin {
 
 Synchronous plugins (builtins, protocol, MCP) call `TaskRegistry.complete()` inline. Queue-based plugins dispatch to the queue and return — the worker delivers via `CompleteTask` RPC.
 
-### CompleteTask retry
+### CompleteTask retry and orchestrator discovery
 
 The Python gRPC worker retries `CompleteTask` with exponential backoff on transient failures:
 
-- **UNAVAILABLE:** Orchestrator is down (restarting). Reconnects gRPC channel.
-- **NOT_FOUND:** Orchestrator is up but hasn't re-registered this `task_id` yet (recovery in progress).
+- **gRPC `UNAVAILABLE`:** Orchestrator is down or recovering. On first failure, the worker calls `GetOrchestratorForRun` to discover the current orchestrator. If the URL changed, retries reset for the new URL.
+- **gRPC `NOT_FOUND`:** Task not on this orchestrator (run moved). The worker discovers the new orchestrator and retries once on the new URL.
 - 5 retries with exponential backoff (2s, 4s, 8s, 16s, 30s cap).
+
+All `OrchestratorService` RPCs (`CompleteTask`, `TaskHeartbeat`, `SubmitRun`, `GetRun`) share a per-task `OrchestratorTracker` that caches the current orchestrator URL. Discovery in any one RPC updates the tracker for all others.
 
 ## Implementation summary
 
@@ -282,7 +289,7 @@ The Python gRPC worker retries `CompleteTask` with exponential backoff on transi
 - Task IDs journalled in `TasksStarted` events, persisted in checkpoints
 - Same task_id reused on all retries (transport errors, orchestrator recovery)
 - `TaskRegistry` decouples dispatch from result delivery — first `CompleteTask` wins
-- Python worker retries `CompleteTask` with exponential backoff on `UNAVAILABLE`/`NOT_FOUND`
+- Python worker retries `CompleteTask` with orchestrator discovery on `UNAVAILABLE`/`NOT_FOUND`
 - Recovery integration tests migrated to gRPC pull transport (12 tests)
 
 ## Follow-up work

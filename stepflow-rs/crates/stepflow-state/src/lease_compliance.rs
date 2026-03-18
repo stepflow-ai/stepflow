@@ -226,7 +226,7 @@ impl LeaseComplianceTests {
 
         // Heartbeat should succeed
         manager
-            .heartbeat(orch_id)
+            .heartbeat(orch_id, "http://test:7837".into())
             .await
             .expect("heartbeat should succeed");
     }
@@ -392,7 +392,7 @@ impl LeaseComplianceTests {
 
         // orch-a: heartbeat + 3 runs
         manager
-            .heartbeat(orch_a.clone())
+            .heartbeat(orch_a.clone(), "http://orch-a:7837".into())
             .await
             .expect("heartbeat should succeed");
         for _ in 0..3 {
@@ -404,7 +404,7 @@ impl LeaseComplianceTests {
 
         // orch-b: heartbeat + 1 run
         manager
-            .heartbeat(orch_b.clone())
+            .heartbeat(orch_b.clone(), "http://orch-b:7837".into())
             .await
             .expect("heartbeat should succeed");
         manager

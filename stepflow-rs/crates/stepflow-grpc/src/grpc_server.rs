@@ -166,7 +166,7 @@ impl StepflowGrpcServer {
         // Worker-facing services
         let orchestrator_service =
             OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
-        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone());
+        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone(), env.clone());
 
         // Client-facing services
         let blob_service = BlobServiceImpl::new(env.clone());
@@ -230,7 +230,7 @@ impl StepflowGrpcServer {
         // Worker-facing services
         let orchestrator_service =
             OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
-        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone());
+        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone(), env.clone());
 
         // Client-facing services
         let blob_service = BlobServiceImpl::new(env.clone());

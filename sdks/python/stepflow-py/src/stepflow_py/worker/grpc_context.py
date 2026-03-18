@@ -17,8 +17,11 @@
 Uses gRPC clients for OrchestratorService (submit_run, get_run) and
 BlobService (put_blob, get_blob).
 
-The orchestrator_service_url comes from TaskContext in each
-TaskAssignment (varies per task in multi-orchestrator deployments).
+The orchestrator URL comes from an ``OrchestratorTracker`` which is
+shared per-task. If the orchestrator moves, the tracker discovers the
+new URL and all operations (heartbeat, completion, context RPCs) see
+the updated URL.
+
 The blob URL and threshold come from environment variables set at
 deployment time (STEPFLOW_BLOB_URL, STEPFLOW_BLOB_THRESHOLD_BYTES).
 """
@@ -26,8 +29,9 @@ deployment time (STEPFLOW_BLOB_URL, STEPFLOW_BLOB_THRESHOLD_BYTES).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import grpc
 import grpc.aio
 from google.protobuf import struct_pb2
 from google.protobuf.json_format import MessageToDict
@@ -43,6 +47,9 @@ from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.worker.context import StepflowContext
 
+if TYPE_CHECKING:
+    from stepflow_py.worker.orchestrator_tracker import OrchestratorTracker
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,13 +57,14 @@ class GrpcContext(StepflowContext):
     """StepflowContext implementation for gRPC pull-based workers.
 
     Uses gRPC for OrchestratorService (submit_run, get_run) and
-    BlobService (put_blob, get_blob). All URLs come from
-    the TaskContext in the TaskAssignment or environment variables.
+    BlobService (put_blob, get_blob). The orchestrator URL is managed
+    by an ``OrchestratorTracker`` shared with the heartbeat loop and
+    task completion, enabling automatic orchestrator discovery.
     """
 
     def __init__(
         self,
-        orchestrator_url: str,
+        orchestrator_tracker: OrchestratorTracker | None,
         blob_url: str,
         blob_threshold: int = 0,
         run_id: str | None = None,
@@ -77,9 +85,35 @@ class GrpcContext(StepflowContext):
             attempt=attempt,
             blob_api_url=blob_url if blob_url else None,
         )
-        self._orchestrator_url = orchestrator_url
+        self._tracker = orchestrator_tracker
         self._blob_url = blob_url
         self._blob_threshold = blob_threshold
+
+    async def _call_orchestrator(self, method_name: str, request: Any) -> Any:
+        """Call an OrchestratorService method with UNAVAILABLE/NOT_FOUND retry.
+
+        On gRPC UNAVAILABLE or NOT_FOUND, attempts orchestrator discovery
+        via the tracker. If the URL changes, retries once on the new URL.
+        """
+        if self._tracker is None or not self._tracker.url:
+            raise RuntimeError("No orchestrator_service_url configured")
+
+        for attempt in range(2):  # try, discover, retry
+            channel = grpc.aio.insecure_channel(self._tracker.url)
+            try:
+                stub = OrchestratorServiceStub(channel)
+                method = getattr(stub, method_name)
+                return await method(request)
+            except grpc.aio.AioRpcError as e:
+                if (
+                    e.code() in (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.NOT_FOUND)
+                    and attempt == 0
+                ):
+                    if await self._tracker.discover():
+                        continue
+                raise
+            finally:
+                await channel.close()
 
     async def put_blob(self, data: Any, blob_type: str = "data") -> str:
         """Store data as a blob via the BlobService gRPC API."""
@@ -138,10 +172,12 @@ class GrpcContext(StepflowContext):
         max_concurrency: int | None = None,
         overrides: dict[str, Any] | None = None,
     ) -> Any:
-        """Submit a run via OrchestratorService.SubmitRun."""
-        if not self._orchestrator_url:
-            raise RuntimeError("No orchestrator_service_url configured")
+        """Submit a run via OrchestratorService.SubmitRun.
 
+        Includes ``root_run_id`` for ownership validation — the
+        orchestrator verifies it owns the root run before creating
+        the sub-flow.
+        """
         # If a flow object is provided, store it as a blob first
         if flow is not None and flow_id is None:
             flow_id = await self.put_blob(flow, blob_type="flow")
@@ -175,18 +211,16 @@ class GrpcContext(StepflowContext):
         if proto_overrides is not None:
             run_request.overrides.CopyFrom(proto_overrides)
 
-        # Wrap in OrchestratorSubmitRunRequest
+        # Wrap in OrchestratorSubmitRunRequest with root_run_id
+        root_run_id = self._tracker.root_run_id if self._tracker else None
         request = OrchestratorSubmitRunRequest(
             run_request=run_request,
         )
+        if root_run_id:
+            request.root_run_id = root_run_id
 
-        channel = grpc.aio.insecure_channel(self._orchestrator_url)
-        try:
-            stub = OrchestratorServiceStub(channel)
-            response = await stub.SubmitRun(request)
-            return MessageToDict(response, preserving_proto_field_name=True)
-        finally:
-            await channel.close()
+        response = await self._call_orchestrator("SubmitRun", request)
+        return MessageToDict(response, preserving_proto_field_name=True)
 
     async def get_run(  # type: ignore[override]
         self,
@@ -196,10 +230,12 @@ class GrpcContext(StepflowContext):
         include_results: bool = True,
         timeout_secs: int | None = None,
     ) -> Any:
-        """Get run status via OrchestratorService.GetRun."""
-        if not self._orchestrator_url:
-            raise RuntimeError("No orchestrator_service_url configured")
+        """Get run status via OrchestratorService.GetRun.
 
+        Includes ``root_run_id`` for ownership validation — the
+        orchestrator verifies it owns the root run before processing.
+        """
+        root_run_id = self._tracker.root_run_id if self._tracker else None
         request = OrchestratorGetRunRequest(
             run_id=run_id,
             wait=wait,
@@ -207,14 +243,11 @@ class GrpcContext(StepflowContext):
         )
         if timeout_secs is not None:
             request.timeout_secs = timeout_secs
+        if root_run_id:
+            request.root_run_id = root_run_id
 
-        channel = grpc.aio.insecure_channel(self._orchestrator_url)
-        try:
-            stub = OrchestratorServiceStub(channel)
-            response = await stub.GetRun(request)
-            return MessageToDict(response, preserving_proto_field_name=True)
-        finally:
-            await channel.close()
+        response = await self._call_orchestrator("GetRun", request)
+        return MessageToDict(response, preserving_proto_field_name=True)
 
     @property
     def attempt(self) -> int:

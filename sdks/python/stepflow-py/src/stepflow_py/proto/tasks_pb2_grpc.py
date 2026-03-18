@@ -55,6 +55,11 @@ class TasksServiceStub(object):
                 request_serializer=stepflow_dot_v1_dot_tasks__pb2.PullTasksRequest.SerializeToString,
                 response_deserializer=stepflow_dot_v1_dot_tasks__pb2.TaskAssignment.FromString,
                 _registered_method=True)
+        self.GetOrchestratorForRun = channel.unary_unary(
+                '/stepflow.v1.TasksService/GetOrchestratorForRun',
+                request_serializer=stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunRequest.SerializeToString,
+                response_deserializer=stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunResponse.FromString,
+                _registered_method=True)
 
 
 class TasksServiceServicer(object):
@@ -92,6 +97,20 @@ class TasksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetOrchestratorForRun(self, request, context):
+        """Look up the current orchestrator for a run.
+
+        Workers call this when they cannot reach the orchestrator URL from
+        their TaskContext (e.g., after an orchestrator restart or run migration).
+        Any orchestrator can answer this — it performs a stateless lease lookup.
+
+        Returns the gRPC service URL of the orchestrator that currently owns
+        the run, or NOT_FOUND if no active lease exists.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TasksServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -99,6 +118,11 @@ def add_TasksServiceServicer_to_server(servicer, server):
                     servicer.PullTasks,
                     request_deserializer=stepflow_dot_v1_dot_tasks__pb2.PullTasksRequest.FromString,
                     response_serializer=stepflow_dot_v1_dot_tasks__pb2.TaskAssignment.SerializeToString,
+            ),
+            'GetOrchestratorForRun': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetOrchestratorForRun,
+                    request_deserializer=stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunRequest.FromString,
+                    response_serializer=stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -144,6 +168,33 @@ class TasksService(object):
             '/stepflow.v1.TasksService/PullTasks',
             stepflow_dot_v1_dot_tasks__pb2.PullTasksRequest.SerializeToString,
             stepflow_dot_v1_dot_tasks__pb2.TaskAssignment.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetOrchestratorForRun(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/stepflow.v1.TasksService/GetOrchestratorForRun',
+            stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunRequest.SerializeToString,
+            stepflow_dot_v1_dot_tasks__pb2.GetOrchestratorForRunResponse.FromString,
             options,
             channel_credentials,
             insecure,

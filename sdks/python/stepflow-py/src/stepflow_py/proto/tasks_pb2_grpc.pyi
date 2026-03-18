@@ -54,7 +54,23 @@ _TasksServicePullTasksType = typing_extensions.TypeVar(
     ],
 )
 
-class TasksServiceStub(typing.Generic[_TasksServicePullTasksType]):
+_TasksServiceGetOrchestratorForRunType = typing_extensions.TypeVar(
+    '_TasksServiceGetOrchestratorForRunType',
+    grpc.UnaryUnaryMultiCallable[
+        tasks_pb2.GetOrchestratorForRunRequest,
+        tasks_pb2.GetOrchestratorForRunResponse,
+    ],
+    grpc.aio.UnaryUnaryMultiCallable[
+        tasks_pb2.GetOrchestratorForRunRequest,
+        tasks_pb2.GetOrchestratorForRunResponse,
+    ],
+    default=grpc.UnaryUnaryMultiCallable[
+        tasks_pb2.GetOrchestratorForRunRequest,
+        tasks_pb2.GetOrchestratorForRunResponse,
+    ],
+)
+
+class TasksServiceStub(typing.Generic[_TasksServicePullTasksType, _TasksServiceGetOrchestratorForRunType]):
     """Orchestrator-hosted service that workers connect to for receiving tasks.
 
     This service runs on the orchestrator (or any stateless dispatcher with
@@ -79,6 +95,10 @@ class TasksServiceStub(typing.Generic[_TasksServicePullTasksType]):
             tasks_pb2.PullTasksRequest,
             tasks_pb2.TaskAssignment,
         ],
+        grpc.UnaryUnaryMultiCallable[
+            tasks_pb2.GetOrchestratorForRunRequest,
+            tasks_pb2.GetOrchestratorForRunResponse,
+        ],
     ], channel: grpc.Channel) -> None: ...
 
     @typing.overload
@@ -86,6 +106,10 @@ class TasksServiceStub(typing.Generic[_TasksServicePullTasksType]):
         grpc.aio.UnaryStreamMultiCallable[
             tasks_pb2.PullTasksRequest,
             tasks_pb2.TaskAssignment,
+        ],
+        grpc.aio.UnaryUnaryMultiCallable[
+            tasks_pb2.GetOrchestratorForRunRequest,
+            tasks_pb2.GetOrchestratorForRunResponse,
         ],
     ], channel: grpc.aio.Channel) -> None: ...
 
@@ -102,10 +126,25 @@ class TasksServiceStub(typing.Generic[_TasksServicePullTasksType]):
     they become available.
     """
 
+    GetOrchestratorForRun: _TasksServiceGetOrchestratorForRunType
+    """Look up the current orchestrator for a run.
+
+    Workers call this when they cannot reach the orchestrator URL from
+    their TaskContext (e.g., after an orchestrator restart or run migration).
+    Any orchestrator can answer this — it performs a stateless lease lookup.
+
+    Returns the gRPC service URL of the orchestrator that currently owns
+    the run, or NOT_FOUND if no active lease exists.
+    """
+
 TasksServiceAsyncStub: typing_extensions.TypeAlias = TasksServiceStub[
     grpc.aio.UnaryStreamMultiCallable[
         tasks_pb2.PullTasksRequest,
         tasks_pb2.TaskAssignment,
+    ],
+    grpc.aio.UnaryUnaryMultiCallable[
+        tasks_pb2.GetOrchestratorForRunRequest,
+        tasks_pb2.GetOrchestratorForRunResponse,
     ],
 ]
 
@@ -144,6 +183,22 @@ class TasksServiceServicer(metaclass=abc.ABCMeta):
         The worker also declares its capabilities (concurrency, components).
         The stream stays open for the worker's lifetime — tasks are sent as
         they become available.
+        """
+
+    @abc.abstractmethod
+    def GetOrchestratorForRun(
+        self,
+        request: tasks_pb2.GetOrchestratorForRunRequest,
+        context: _ServicerContext,
+    ) -> typing.Union[tasks_pb2.GetOrchestratorForRunResponse, collections.abc.Awaitable[tasks_pb2.GetOrchestratorForRunResponse]]:
+        """Look up the current orchestrator for a run.
+
+        Workers call this when they cannot reach the orchestrator URL from
+        their TaskContext (e.g., after an orchestrator restart or run migration).
+        Any orchestrator can answer this — it performs a stateless lease lookup.
+
+        Returns the gRPC service URL of the orchestrator that currently owns
+        the run, or NOT_FOUND if no active lease exists.
         """
 
 def add_TasksServiceServicer_to_server(servicer: TasksServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

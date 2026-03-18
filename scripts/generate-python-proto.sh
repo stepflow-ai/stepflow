@@ -164,12 +164,15 @@ from .tasks_pb2 import (
     ComponentInfo,
     ComponentInfoRequest,
     ComponentInfoResponse,
+    GetOrchestratorForRunRequest,
+    GetOrchestratorForRunResponse,
     ListComponentsRequest,
     ListComponentsResponse,
     PullTasksRequest,
     TaskAssignment,
     TaskContext,
 )
+from .tasks_pb2_grpc import TasksServiceStub
 from .orchestrator_pb2 import (
     TaskError,
     TaskStatus,
@@ -238,6 +241,9 @@ __all__ = [
     "ListComponentsResponse",
     "PullTasksRequest",
     "TaskAssignment",
+    "GetOrchestratorForRunRequest",
+    "GetOrchestratorForRunResponse",
+    "TasksServiceStub",
     "CompleteTaskRequest",
     "CompleteTaskResponse",
     "OrchestratorGetRunRequest",

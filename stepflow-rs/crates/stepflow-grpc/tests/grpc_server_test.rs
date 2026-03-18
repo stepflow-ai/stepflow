@@ -401,7 +401,7 @@ async fn test_complete_unknown_task_returns_not_found() {
     let output = prost_wkt_types::Value {
         kind: Some(prost_wkt_types::value::Kind::StringValue("ok".to_string())),
     };
-    let resp = orch_client
+    let err = orch_client
         .complete_task(CompleteTaskRequest {
             run_id: None,
             task_id: "nonexistent".to_string(),
@@ -414,11 +414,10 @@ async fn test_complete_unknown_task_returns_not_found() {
             ),
         })
         .await
-        .unwrap()
-        .into_inner();
+        .unwrap_err();
 
-    // CompleteTask for unknown task returns NOT_FOUND in the response status
-    assert_eq!(resp.status, TaskStatus::NotFound as i32);
+    // CompleteTask for unknown task returns gRPC NOT_FOUND error
+    assert_eq!(err.code(), tonic::Code::NotFound);
 }
 
 #[tokio::test]
@@ -571,8 +570,8 @@ async fn test_task_heartbeat_lifecycle() {
     assert!(resp.should_abort);
     assert_eq!(resp.status, TaskStatus::AlreadyClaimed as i32);
 
-    // Heartbeat for unknown task — should get NotFound status
-    let resp = orch_client
+    // Heartbeat for unknown task — should get gRPC NOT_FOUND error
+    let err = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
             task_id: "nonexistent".to_string(),
             worker_id: "worker-1".to_string(),
@@ -581,10 +580,8 @@ async fn test_task_heartbeat_lifecycle() {
             run_id: None,
         })
         .await
-        .unwrap()
-        .into_inner();
-    assert!(resp.should_abort);
-    assert_eq!(resp.status, TaskStatus::NotFound as i32);
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::NotFound);
 }
 
 #[tokio::test]
