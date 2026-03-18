@@ -145,7 +145,9 @@ storageConfig:
 
 ### Runtime Environment Variables
 
-Environment variables are read **once during startup** in `startup.rs` and stored in `StepflowEnvironment` as typed values. Code outside of startup should read configuration from the environment's typed accessors (e.g., `env.get::<OrchestratorServiceUrl>()`), **not** by re-reading `std::env::var`. This ensures defaults are applied in one place and configuration is consistent.
+Environment variables are read **once during startup** in `startup.rs` and stored in `StepflowEnvironment` as typed values. Code outside of startup should generally read configuration from the environment's typed accessors (e.g., `env.get::<OrchestratorServiceUrl>()`), **not** by re-reading `std::env::var`. This ensures defaults are applied in one place and configuration is consistent.
+
+**Exception**: `grpc_plugin_config.rs` reads `STEPFLOW_ORCHESTRATOR_URL` directly because in `run`/`test` mode the PullPlugin's gRPC server runs on a different dynamic port than the HTTP server. The environment's `OrchestratorServiceUrl` points to the HTTP port, but the gRPC plugin needs its own server address as the default.
 
 | Env Var | Environment Type | Default | Purpose |
 |---------|-----------------|---------|---------|
