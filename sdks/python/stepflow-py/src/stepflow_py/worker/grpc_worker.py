@@ -660,20 +660,24 @@ async def _complete_task_with_retry(
 ) -> bool:
     """Send CompleteTask with retry on transient failures.
 
-    Retries on:
-    - UNAVAILABLE: orchestrator is down (restarting). Reconnects channel.
-      Always retried.
-    - NOT_FOUND after UNAVAILABLE: orchestrator is up but hasn't
-      re-registered this task_id yet (recovery in progress). Retries
-      until the task is re-registered.
-    - NOT_FOUND without prior UNAVAILABLE: task was already completed or
-      cleaned up. Treated as terminal (not an error), returns True.
+    Retries only on UNAVAILABLE (orchestrator is down / restarting).
+    Reconnects the gRPC channel on each retry.
+
+    NOT_FOUND is treated as terminal — the task was already completed
+    by another execution, timed out, or never existed. This is not an
+    error from the worker's perspective (first-result-wins semantics).
+
+    Note: the orchestrator completes startup recovery before accepting
+    RPCs, so by the time a CompleteTask reaches the server, all
+    recovered task_ids are already registered. There is no window where
+    NOT_FOUND means "recovery in progress." If a future change allows
+    the server to accept RPCs during recovery, a NOT_READY status
+    could be added to signal the worker to retry.
 
     Returns True if the result was delivered (or is no longer needed),
     False if all retries failed.
     """
     channel = grpc.aio.insecure_channel(orchestrator_url)
-    seen_unavailable = False
     try:
         stub = OrchestratorServiceStub(channel)
         for attempt in range(max_retries + 1):
@@ -682,12 +686,10 @@ async def _complete_task_with_retry(
                 return True
             except grpc.aio.AioRpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    seen_unavailable = True
                     if attempt < max_retries:
                         delay = min(base_delay * (2**attempt), 30.0)
                         logger.warning(
-                            "CompleteTask %s for %s, retry in %.1fs (%d/%d)",
-                            e.code(),
+                            "CompleteTask UNAVAILABLE for %s, retry in %.1fs (%d/%d)",
                             task_id,
                             delay,
                             attempt + 1,
@@ -699,35 +701,21 @@ async def _complete_task_with_retry(
                         stub = OrchestratorServiceStub(channel)
                     else:
                         logger.error(
-                            "CompleteTask failed for %s: %s (code=%s)",
+                            "CompleteTask failed for %s after %d retries: %s",
                             task_id,
-                            e.details(),
+                            max_retries,
                             e.code(),
                         )
                         return False
                 elif e.code() == grpc.StatusCode.NOT_FOUND:
-                    if seen_unavailable and attempt < max_retries:
-                        # Recovery in progress — task not re-registered yet
-                        delay = min(base_delay * (2**attempt), 30.0)
-                        logger.warning(
-                            "CompleteTask %s for %s (recovery in progress), "
-                            "retry in %.1fs (%d/%d)",
-                            e.code(),
-                            task_id,
-                            delay,
-                            attempt + 1,
-                            max_retries,
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        # No prior UNAVAILABLE — task already completed or
-                        # cleaned up. Not an error, just a duplicate.
-                        logger.info(
-                            "CompleteTask NOT_FOUND for %s — task already "
-                            "completed or not found, skipping",
-                            task_id,
-                        )
-                        return True
+                    # Task already completed, timed out, or never existed.
+                    # Not an error — first-result-wins semantics.
+                    logger.info(
+                        "CompleteTask NOT_FOUND for %s — task already "
+                        "completed or cleaned up, skipping",
+                        task_id,
+                    )
+                    return True
                 else:
                     logger.error(
                         "CompleteTask failed for %s: %s (code=%s)",
