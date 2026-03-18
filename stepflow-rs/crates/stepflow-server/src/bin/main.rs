@@ -12,16 +12,14 @@
 
 use std::io::Read as _;
 use std::path::PathBuf;
-use std::sync::Arc as StdArc;
 
 use clap::Parser;
 use error_stack::{Report, ResultExt as _};
 use log::{info, warn};
 use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
-use stepflow_grpc::StepflowGrpcServer;
 use stepflow_observability::{ObservabilityConfig, init_observability};
-use stepflow_server::{heartbeat_loop, orphan_claiming_loop, shutdown_signal};
+use stepflow_server::{ServiceOptions, StepflowService, heartbeat_loop, orphan_claiming_loop, shutdown_signal};
 use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
@@ -128,26 +126,25 @@ async fn main() {
                 .unwrap_or_else(|_| format!("stepflow-server-{}", uuid::Uuid::now_v7()))
         }));
 
-        // Bind the server port early so blob API URL can be auto-configured
-        // before plugins are initialized (which sends the URL to component workers)
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", args.port))
-            .await
-            .change_context(ServerError::ServerError)
-            .attach_printable("Failed to bind HTTP server port")?;
+        // Build the unified service
+        info!("Creating Stepflow service from configuration");
+        let service = StepflowService::new(
+            config,
+            ServiceOptions {
+                port: Some(args.port),
+                bind_address: "0.0.0.0".into(),
+                orchestrator_id: Some(orchestrator_id.clone()),
+                include_grpc: true,
+                include_swagger: true,
+                include_cors: true,
+                announce_port: true,
+            },
+        )
+        .await
+        .change_context(ServerError::ExecutorError)
+        .attach_printable("Failed to create service from configuration")?;
 
-        // Create executor/environment (auto-configures blob API URL from bound port)
-        info!("Creating Stepflow executor from configuration");
-        let executor =
-            stepflow_server::create_environment(config, &listener, Some(orchestrator_id.clone()))
-                .await
-                .change_context(ServerError::ExecutorError)
-                .attach_printable("Failed to create executor from configuration")?;
-
-        // Build gRPC routes for multiplexing on the same port as HTTP.
-        let grpc_server = executor
-            .get::<StdArc<StepflowGrpcServer>>()
-            .expect("StepflowGrpcServer must be in the environment");
-        let grpc_router = grpc_server.build_grpc_router(&executor);
+        let env = service.environment().clone();
 
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
@@ -160,7 +157,7 @@ async fn main() {
             );
 
             let recovery_result = recover_orphaned_runs(
-                &executor,
+                &env,
                 orchestrator_id.clone(),
                 recovery_config.max_startup_recovery,
             )
@@ -177,7 +174,7 @@ async fn main() {
 
         // Start background heartbeat + stale orchestrator detection loop
         let heartbeat_task = tokio::spawn(heartbeat_loop(
-            executor.clone(),
+            env.clone(),
             orchestrator_id.clone(),
             recovery_config.clone(),
             cancel_token.clone(),
@@ -185,23 +182,18 @@ async fn main() {
 
         // Start background orphan claiming loop (handles missing lease manager internally)
         let orphan_task = tokio::spawn(orphan_claiming_loop(
-            executor.clone(),
+            env.clone(),
             orchestrator_id.clone(),
             recovery_config,
             cancel_token.clone(),
         ));
 
-        // Run server until shutdown signal
-        tokio::select! {
-            result = stepflow_server::start_server(listener, executor.clone(), Some(grpc_router)) => {
-                result
-                    .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
-                    .change_context(ServerError::ServerError)?;
-            }
-            _ = shutdown_signal() => {
-                info!("Shutdown signal received, stopping server");
-            }
-        }
+        // Run server until shutdown signal (axum drains connections gracefully)
+        service
+            .serve(shutdown_signal())
+            .await
+            .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
+            .change_context(ServerError::ServerError)?;
 
         // Graceful shutdown: cancel background tasks and wait for them
         cancel_token.cancel();
@@ -217,7 +209,7 @@ async fn main() {
 
         // Release all leases held by this orchestrator so other orchestrators
         // can immediately reclaim the runs
-        if let Err(e) = executor.lease_manager().release_all(orchestrator_id).await {
+        if let Err(e) = env.lease_manager().release_all(orchestrator_id).await {
             warn!("Failed to release leases during shutdown: {:?}", e);
         }
 

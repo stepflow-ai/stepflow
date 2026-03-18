@@ -15,7 +15,7 @@ use std::{path::Path, sync::Arc};
 use stepflow_config::StepflowConfig;
 use stepflow_core::workflow::Flow;
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_server::AppConfig;
+use stepflow_server::{ServiceOptions, StepflowService};
 
 use crate::{
     MainError, Result,
@@ -30,35 +30,14 @@ use crate::{
 async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnvironment>> {
     let needs_server = config.blob_api.enabled && config.blob_api.url.is_none();
 
-    // Bind to port 0 to get an available port for the background server
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .change_context(MainError::Configuration)
-        .attach_printable("Failed to bind HTTP server for blob API")?;
-
-    let port = listener
-        .local_addr()
-        .change_context(MainError::Configuration)?
-        .port();
-
-    // Create the environment (auto-configures blob API URL from listener port)
-    let env = stepflow_server::create_environment(config, &listener, None)
+    let service = StepflowService::new(config, ServiceOptions::default())
         .await
         .change_context(MainError::Configuration)?;
 
-    if needs_server {
-        // Spawn a background HTTP server to serve blob API endpoints
-        let app = AppConfig {
-            include_swagger: false,
-            include_cors: false,
-        }
-        .create_app_router(env.clone(), port);
+    let env = service.environment().clone();
 
-        tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
-                log::error!("Background HTTP server error: {e}");
-            }
-        });
+    if needs_server {
+        service.spawn_background();
     }
 
     Ok(env)

@@ -10,35 +10,172 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::future::Future;
+use std::sync::Arc;
+
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use error_stack::ResultExt as _;
-use std::sync::Arc;
 use stepflow_config::{ConfigError, StepflowConfig};
-use stepflow_grpc::{ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl};
+use stepflow_grpc::{
+    ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl,
+    StepflowGrpcServer,
+};
 use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::OrchestratorId;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::api::{create_api_router, finalize_openapi};
 
-pub struct AppConfig {
+/// Options for building a [`StepflowService`].
+pub struct ServiceOptions {
+    /// Port to bind. `None` uses port 0 (OS-assigned dynamic port).
+    pub port: Option<u16>,
+    /// Bind address. Defaults to `"127.0.0.1"`.
+    pub bind_address: String,
+    /// Orchestrator ID for distributed lease management.
+    pub orchestrator_id: Option<OrchestratorId>,
+    /// Multiplex gRPC services on the same port as HTTP.
+    pub include_grpc: bool,
+    /// Include Swagger UI endpoint.
     pub include_swagger: bool,
+    /// Include CORS headers.
     pub include_cors: bool,
+    /// Print JSON port announcement (`{"port":N}`) to stdout.
+    pub announce_port: bool,
 }
 
-impl Default for AppConfig {
+impl Default for ServiceOptions {
     fn default() -> Self {
         Self {
-            include_swagger: true,
-            include_cors: true,
+            port: None,
+            bind_address: "127.0.0.1".into(),
+            orchestrator_id: None,
+            include_grpc: false,
+            include_swagger: false,
+            include_cors: false,
+            announce_port: false,
         }
     }
 }
 
-impl AppConfig {
-    /// Create the application router with the current configuration
+/// A ready-to-run Stepflow HTTP (+ optional gRPC) service.
+///
+/// Created via [`StepflowService::new`], which binds the port, creates the
+/// environment, and assembles the router. Use [`serve`](Self::serve) to run
+/// with a caller-provided shutdown future, or [`spawn_background`](Self::spawn_background)
+/// to run as a background task.
+pub struct StepflowService {
+    port: u16,
+    env: Arc<StepflowEnvironment>,
+    listener: tokio::net::TcpListener,
+    app: Router,
+    announce_port: bool,
+}
+
+impl StepflowService {
+    /// Build the service: bind port, create environment, assemble router.
+    pub async fn new(
+        config: StepflowConfig,
+        options: ServiceOptions,
+    ) -> error_stack::Result<Self, ConfigError> {
+        // Bind listener
+        let bind_addr = format!(
+            "{}:{}",
+            options.bind_address,
+            options.port.unwrap_or(0)
+        );
+        let listener = tokio::net::TcpListener::bind(&bind_addr)
+            .await
+            .change_context(ConfigError::Configuration)
+            .attach_printable_lazy(|| format!("Failed to bind {bind_addr}"))?;
+
+        let port = listener
+            .local_addr()
+            .change_context(ConfigError::Configuration)?
+            .port();
+
+        // Create environment (auto-configures blob API URL from bound port)
+        let env =
+            create_environment(config, &listener, options.orchestrator_id.clone()).await?;
+
+        // Build HTTP router
+        let mut app = options.create_app_router(env.clone(), port);
+
+        // Merge gRPC routes when requested. StepflowGrpcServer is always
+        // present in the environment after create_environment.
+        if options.include_grpc {
+            let grpc_server = env
+                .get::<Arc<StepflowGrpcServer>>()
+                .expect("StepflowGrpcServer must be in the environment");
+            let grpc_router = grpc_server.build_grpc_router(&env);
+            app = app.merge(grpc_router);
+        }
+
+        Ok(Self {
+            port,
+            env,
+            listener,
+            app,
+            announce_port: options.announce_port,
+        })
+    }
+
+    /// The actual bound port (resolved from OS if port 0 was used).
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// The environment with all plugins initialized.
+    pub fn environment(&self) -> &Arc<StepflowEnvironment> {
+        &self.env
+    }
+
+    /// Serve until the provided shutdown future completes.
+    pub async fn serve(
+        self,
+        shutdown: impl Future<Output = ()> + Send + 'static,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if self.announce_port {
+            #[allow(clippy::print_stdout)]
+            {
+                println!("{{\"port\":{}}}", self.port);
+            }
+        }
+
+        log::info!(
+            "Stepflow server starting on http://localhost:{}",
+            self.port
+        );
+
+        axum::serve(self.listener, self.app)
+            .with_graceful_shutdown(shutdown)
+            .await?;
+
+        log::info!("Server shutdown complete");
+        Ok(())
+    }
+
+    /// Spawn the server as a background task.
+    ///
+    /// Useful for CLI commands that need a local HTTP server for blob API
+    /// but don't need foreground serving or shutdown handling.
+    pub fn spawn_background(self) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(self.listener, self.app).await {
+                log::error!("Background HTTP server error: {e}");
+            }
+        })
+    }
+}
+
+impl ServiceOptions {
+    /// Create the HTTP application router from these options.
+    ///
+    /// This is used internally by [`StepflowService::new`], but is also
+    /// available for tests that build an environment manually.
     pub fn create_app_router(&self, executor: Arc<StepflowEnvironment>, port: u16) -> Router {
         // Create the main API router with state using aide for OpenAPI generation
         let (api_router, mut api) = create_api_router();
@@ -112,12 +249,11 @@ impl AppConfig {
 /// from the listener's bound port if needed.
 ///
 /// This ensures component workers receive the blob API URL during plugin
-/// initialization. Both the CLI and HTTP server use this to avoid duplicating
-/// the blob URL setup logic.
-pub async fn create_environment(
+/// initialization.
+pub(crate) async fn create_environment(
     mut config: StepflowConfig,
     listener: &tokio::net::TcpListener,
-    orchestrator_id: Option<stepflow_state::OrchestratorId>,
+    orchestrator_id: Option<OrchestratorId>,
 ) -> error_stack::Result<Arc<StepflowEnvironment>, ConfigError> {
     let port = listener
         .local_addr()
@@ -155,69 +291,12 @@ pub async fn create_environment(
         .await
 }
 
-/// Start the multiplexed HTTP + gRPC server.
-///
-/// Both REST/HTTP and gRPC services are served on a single port.
-/// gRPC requests (routed by tonic's path-based routing) coexist with
-/// the HTTP/REST API on the same listener.
-pub async fn start_server(
-    listener: tokio::net::TcpListener,
-    env: Arc<StepflowEnvironment>,
-    grpc_router: Option<Router>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let actual_port = listener.local_addr()?.port();
-
-    // Create the HTTP app with the actual port
-    let mut app = AppConfig::default().create_app_router(env, actual_port);
-
-    // Merge gRPC routes into the same router when provided.
-    // Tonic services register under /{package}.{ServiceName}/{Method},
-    // which don't collide with the /api/v1/... HTTP routes.
-    if let Some(grpc) = grpc_router {
-        app = app.merge(grpc);
-    }
-
-    // Emit JSON port announcement to stdout for orchestrator/subprocess management
-    // This MUST be the first line of stdout output
-    #[allow(clippy::print_stdout)]
-    {
-        println!("{{\"port\":{actual_port}}}");
-    }
-
-    log::info!(
-        "🚀 Stepflow server starting on http://localhost:{}",
-        actual_port
-    );
-    log::info!(
-        "📖 Swagger UI available at http://localhost:{}/swagger-ui",
-        actual_port
-    );
-    log::info!(
-        "📄 OpenAPI spec available at http://localhost:{}/api/v1/openapi.json",
-        actual_port
-    );
-
-    // Use graceful shutdown to allow proper cleanup when SIGTERM/SIGINT is received
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-
-    log::info!("Server shutdown complete");
-
-    Ok(())
-}
-
 /// Create an Axum router with proto-generated REST routes backed by gRPC
 /// service implementations.
 ///
 /// These routes are auto-generated from `google.api.http` annotations in the
 /// proto files and share the same business logic as the gRPC services.
-///
-/// The returned router has routes at `/api/v1/...` — the same paths as the
-/// existing aide-based API. To use it, either:
-/// - Replace the aide router with this one
-/// - Mount it at a different prefix (e.g., nest under `/proto`)
-pub fn create_grpc_rest_router(env: Arc<StepflowEnvironment>) -> Router {
+fn create_grpc_rest_router(env: Arc<StepflowEnvironment>) -> Router {
     let health_service = Arc::new(HealthServiceImpl::new());
     let components_service = Arc::new(ComponentsServiceImpl::new(env.clone()));
     let flows_service = Arc::new(FlowsServiceImpl::new(env.clone()));
@@ -240,33 +319,4 @@ pub fn create_grpc_rest_router(env: Arc<StepflowEnvironment>) -> Router {
     let blob_routes = stepflow_grpc::blob_binary_routes::blob_binary_routes(env);
 
     proto_routes.merge(blob_routes)
-}
-
-/// Wait for a shutdown signal (SIGTERM or SIGINT).
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to install CTRL+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("Failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {
-            log::info!("Received CTRL+C, initiating graceful shutdown");
-        }
-        _ = terminate => {
-            log::info!("Received SIGTERM, initiating graceful shutdown");
-        }
-    }
 }

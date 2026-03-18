@@ -163,13 +163,13 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     let executor = env;
 
     // Use the real startup logic but without swagger UI for tests
-    use stepflow_server::AppConfig;
-    let config = AppConfig {
-        include_swagger: false, // Skip swagger for tests to keep them fast
-        include_cors: true,     // Keep CORS for test compatibility
+    use stepflow_server::ServiceOptions;
+    let options = ServiceOptions {
+        include_cors: true,
+        ..Default::default()
     };
 
-    let app = config.create_app_router(executor.clone(), 7837);
+    let app = options.create_app_router(executor.clone(), 7837);
 
     (app, executor)
 }
