@@ -39,7 +39,7 @@ test:
       test_http:
         type: stepflow
         command: uv
-        args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
+        args: ["run", "--project", "../../sdks/python/stepflow-py", "--extra", "http", "python", "test_python_server.py"]
         healthCheck:
           path: /health
           timeoutMs: 10000
@@ -60,6 +60,7 @@ test:
         outcome: failed
         error:
           code: COMPONENT_FAILED
+          message: "Component execution failed: Intentional error: test error message"
 
     - name: "RuntimeError is wrapped and surfaced"
       input:
@@ -69,6 +70,7 @@ test:
         outcome: failed
         error:
           code: COMPONENT_FAILED
+          message: "Component execution failed: Unexpected runtime error: unexpected failure"
 
     - name: "Success case works normally"
       input:

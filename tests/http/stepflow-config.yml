@@ -11,7 +11,7 @@ plugins:
   test_subprocess:
     type: stepflow
     command: uv
-    args: ["run", "--project", "../../sdks/python", "--extra", "http", "python", "test_python_server.py"]
+    args: ["run", "--project", "../../sdks/python/stepflow-py", "--extra", "http", "python", "test_python_server.py"]
 
 routes:
   "/test/{component}":

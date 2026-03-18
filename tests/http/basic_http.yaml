@@ -79,7 +79,7 @@ test:
         args:
         - run
         - --project
-        - ../../sdks/python
+        - ../../sdks/python/stepflow-py
         - --extra
         - http
         - python

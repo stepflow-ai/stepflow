@@ -724,7 +724,7 @@ fn print_summary(results: &[WorkflowTestResult]) -> Result<usize> {
         println!("Execution errors: {cases_error}");
     }
 
-    Ok(cases_fail + cases_error)
+    Ok(cases_fail + cases_error + files_error)
 }
 
 #[cfg(test)]
