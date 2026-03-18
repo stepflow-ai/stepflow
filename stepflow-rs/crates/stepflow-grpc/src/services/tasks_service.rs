@@ -94,15 +94,24 @@ impl TasksService for TasksServiceImpl {
             1
         };
 
+        let num_components = components.len();
+
+        // Use the worker's self-assigned UUID if provided, otherwise fall
+        // back to the internal connection counter for logging.
+        let internal_id = queue.register_worker(components);
+        let worker_label = if req.worker_id.is_empty() {
+            format!("{internal_id}")
+        } else {
+            req.worker_id
+        };
+
         log::info!(
-            "Worker connected for queue '{}' with {} components, max_concurrent={}",
+            "Worker {} connected for queue '{}' with {} components, max_concurrent={}",
+            worker_label,
             req.queue_name,
-            components.len(),
+            num_components,
             max_concurrent,
         );
-
-        // Register this worker's components
-        let worker_id = queue.register_worker(components);
 
         // Create a channel for the response stream.
         // Buffer size matches max_concurrent so the worker can receive
@@ -135,8 +144,8 @@ impl TasksService for TasksServiceImpl {
                 }
             }
 
-            log::info!("Worker {} disconnected", worker_id);
-            queue.unregister_worker(worker_id);
+            log::info!("Worker {} disconnected", worker_label);
+            queue.unregister_worker(internal_id);
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))

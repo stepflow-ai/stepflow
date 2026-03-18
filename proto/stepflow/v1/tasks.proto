@@ -153,6 +153,14 @@ message PullTasksRequest {
   // Sent once at connection time so the orchestrator knows what this worker
   // can handle. The orchestrator uses this for component routing.
   repeated ComponentInfo components = 3;
+
+  // Worker-assigned unique identifier (UUID).
+  // Used for logging and diagnostics on the orchestrator side. This is the
+  // same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
+  // correlation between PullTasks connections and heartbeat/completion RPCs.
+  // Optional for backwards compatibility — if empty, the orchestrator
+  // assigns an opaque internal ID for logging.
+  string worker_id = 4;
 }
 
 message TaskAssignment {

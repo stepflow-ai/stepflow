@@ -243,6 +243,7 @@ class PullTasksRequest(google.protobuf.message.Message):
     QUEUE_NAME_FIELD_NUMBER: builtins.int
     MAX_CONCURRENT_FIELD_NUMBER: builtins.int
     COMPONENTS_FIELD_NUMBER: builtins.int
+    WORKER_ID_FIELD_NUMBER: builtins.int
     queue_name: builtins.str
     """Queue name matching the plugin's key in the orchestrator config (e.g., "python").
     The orchestrator uses this to route tasks to the correct worker pool.
@@ -251,6 +252,14 @@ class PullTasksRequest(google.protobuf.message.Message):
     max_concurrent: builtins.int
     """Maximum concurrent tasks this worker can accept.
     The orchestrator will not exceed this limit for this worker.
+    """
+    worker_id: builtins.str
+    """Worker-assigned unique identifier (UUID).
+    Used for logging and diagnostics on the orchestrator side. This is the
+    same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
+    correlation between PullTasks connections and heartbeat/completion RPCs.
+    Optional for backwards compatibility — if empty, the orchestrator
+    assigns an opaque internal ID for logging.
     """
     @property
     def components(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___ComponentInfo]:
@@ -265,8 +274,9 @@ class PullTasksRequest(google.protobuf.message.Message):
         queue_name: builtins.str = ...,
         max_concurrent: builtins.int = ...,
         components: collections.abc.Iterable[Global___ComponentInfo] | None = ...,
+        worker_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["components", b"components", "max_concurrent", b"max_concurrent", "queue_name", b"queue_name"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["components", b"components", "max_concurrent", b"max_concurrent", "queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
 
 Global___PullTasksRequest: typing_extensions.TypeAlias = PullTasksRequest
 

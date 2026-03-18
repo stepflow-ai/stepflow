@@ -30,6 +30,13 @@ is read from environment variables at startup:
   - STEPFLOW_BLOB_THRESHOLD_BYTES: Byte threshold for auto-blobification
     (default: 0 = disabled)
 
+Graceful shutdown:
+  On SIGTERM/SIGINT, the worker stops accepting new tasks, waits for
+  in-flight tasks to complete (with a configurable grace period), then
+  reports any remaining in-flight tasks as failed via CompleteTask.
+  The orchestrator's retry system will re-dispatch these tasks to another
+  worker.
+
 Task lifecycle:
 1. Receive TaskAssignment from PullTasks stream
 2. Call TaskHeartbeat (initial) — claims the task; if should_abort, skip execution
@@ -47,6 +54,7 @@ import logging
 import math
 import os
 import random
+import signal
 import traceback
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -68,6 +76,7 @@ from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_COMPONENT_FAILED,
     TASK_ERROR_CODE_INVALID_INPUT,
     TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
+    TASK_ERROR_CODE_TIMEOUT,
     TASK_ERROR_CODE_WORKER_ERROR,
 )
 from stepflow_py.proto.orchestrator_pb2 import (
@@ -121,6 +130,45 @@ try:
     _OTEL_METRICS_AVAILABLE = True
 except ImportError:
     pass
+
+
+# Grace period (seconds) to wait for in-flight tasks to finish after
+# receiving a shutdown signal. Tasks still running after this period
+# are reported as failed via CompleteTask.
+_SHUTDOWN_GRACE_PERIOD: float = float(
+    os.environ.get("STEPFLOW_SHUTDOWN_GRACE_SECS", "10")
+)
+
+
+class _InFlightTasks:
+    """Thread-safe registry of in-flight tasks for graceful shutdown.
+
+    Tracks task_id → (TaskAssignment, asyncio.Task) so the shutdown
+    handler can enumerate in-flight work, wait for completion, and
+    report failures for tasks that don't finish in time.
+    """
+
+    def __init__(self) -> None:
+        self._tasks: dict[str, tuple[TaskAssignment, asyncio.Task[None]]] = {}
+        self._lock = asyncio.Lock()
+
+    async def register(
+        self, task_id: str, assignment: TaskAssignment, task: asyncio.Task[None]
+    ) -> None:
+        async with self._lock:
+            self._tasks[task_id] = (assignment, task)
+
+    async def unregister(self, task_id: str) -> None:
+        async with self._lock:
+            self._tasks.pop(task_id, None)
+
+    async def snapshot(self) -> list[tuple[str, TaskAssignment, asyncio.Task[None]]]:
+        """Return a snapshot of all in-flight tasks."""
+        async with self._lock:
+            return [
+                (tid, assignment, atask)
+                for tid, (assignment, atask) in self._tasks.items()
+            ]
 
 
 def _ensure_metrics() -> None:
@@ -207,9 +255,20 @@ async def run_grpc_worker(
     # Semaphore for concurrency control
     semaphore = asyncio.Semaphore(max_concurrent)
 
+    # In-flight task registry for graceful shutdown
+    in_flight = _InFlightTasks()
+
+    # Shutdown event — set by signal handlers to trigger graceful shutdown
+    shutdown_event = asyncio.Event()
+
+    # Install signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, shutdown_event.set)
+
     consecutive_failures = 0
     had_successful_connection = False
-    while True:
+    while not shutdown_event.is_set():
         try:
             await _pull_loop(
                 server=server,
@@ -219,11 +278,15 @@ async def run_grpc_worker(
                 semaphore=semaphore,
                 max_concurrent=max_concurrent,
                 worker_id=worker_id,
+                in_flight=in_flight,
+                shutdown_event=shutdown_event,
             )
             # Successful pull session — reset failure counter
             consecutive_failures = 0
             had_successful_connection = True
         except grpc.aio.AioRpcError as e:
+            if shutdown_event.is_set():
+                break
             consecutive_failures += 1
 
             # If we previously had a successful connection and the server
@@ -235,7 +298,7 @@ async def run_grpc_worker(
                     "(code=%s). Shutting down.",
                     e.code(),
                 )
-                return
+                break
 
             if consecutive_failures >= max_retries:
                 logger.error(
@@ -245,7 +308,7 @@ async def run_grpc_worker(
                     e.code(),
                     e.details(),
                 )
-                return
+                break
             logger.warning(
                 "gRPC connection lost (code=%s): %s. Reconnecting in 2s... "
                 "(attempt %d/%d)",
@@ -256,19 +319,24 @@ async def run_grpc_worker(
             )
             await asyncio.sleep(2)
         except Exception:
+            if shutdown_event.is_set():
+                break
             consecutive_failures += 1
             if consecutive_failures >= max_retries:
                 logger.error(
                     "gRPC worker giving up after %d consecutive failures",
                     consecutive_failures,
                 )
-                return
+                break
             logger.exception(
                 "Unexpected error in pull loop. Reconnecting in 5s... (attempt %d/%d)",
                 consecutive_failures,
                 max_retries,
             )
             await asyncio.sleep(5)
+
+    # --- Graceful shutdown ---
+    await _graceful_shutdown(in_flight, worker_id)
 
 
 async def _pull_loop(
@@ -279,6 +347,8 @@ async def _pull_loop(
     semaphore: asyncio.Semaphore,
     max_concurrent: int,
     worker_id: str,
+    in_flight: _InFlightTasks,
+    shutdown_event: asyncio.Event,
 ) -> None:
     """Single pull session — connects, pulls tasks, processes them."""
     channel = grpc.aio.insecure_channel(tasks_url)
@@ -291,18 +361,22 @@ async def _pull_loop(
             queue_name=queue_name,
             max_concurrent=max_concurrent,
             components=components,
+            worker_id=worker_id,
         )
 
         logger.info("Connecting to TasksService at %s...", tasks_url)
         stream = tasks_stub.PullTasks(request)
 
         async for task in stream:
+            if shutdown_event.is_set():
+                break
             if _tasks_pulled is not None:
                 _tasks_pulled.add(1, {"queue_name": _QUEUE_NAME})
             await semaphore.acquire()
-            asyncio.create_task(
-                _handle_task(server, task, semaphore, worker_id),
+            handle = asyncio.create_task(
+                _handle_task(server, task, semaphore, worker_id, in_flight),
             )
+            await in_flight.register(task.task_id, task, handle)
     finally:
         if _connection_status is not None:
             _connection_status.add(-1, {"queue_name": _QUEUE_NAME})
@@ -314,6 +388,7 @@ async def _handle_task(
     task: TaskAssignment,
     semaphore: asyncio.Semaphore,
     worker_id: str,
+    in_flight: _InFlightTasks,
 ) -> None:
     """Handle a single task: claim, execute, complete."""
     orchestrator_url = (
@@ -501,6 +576,7 @@ async def _handle_task(
         except Exception:
             logger.exception("Failed to report error for task %s", task.task_id)
     finally:
+        await in_flight.unregister(task.task_id)
         if heartbeat_task:
             heartbeat_task.cancel()
             try:
@@ -510,6 +586,66 @@ async def _handle_task(
         if orch_channel:
             await orch_channel.close()
         semaphore.release()
+
+
+async def _graceful_shutdown(
+    in_flight: _InFlightTasks,
+    worker_id: str,
+) -> None:
+    """Wait for in-flight tasks to complete, then report failures for stragglers.
+
+    Called after the pull loop exits due to a shutdown signal. Waits up
+    to ``_SHUTDOWN_GRACE_PERIOD`` seconds for in-flight tasks to finish
+    naturally, then cancels and reports any remaining tasks as failed via
+    CompleteTask so the orchestrator can retry them on another worker.
+    """
+    tasks = await in_flight.snapshot()
+    if not tasks:
+        logger.info("Graceful shutdown: no in-flight tasks")
+        return
+
+    logger.info(
+        "Graceful shutdown: waiting up to %.0fs for %d in-flight task(s)",
+        _SHUTDOWN_GRACE_PERIOD,
+        len(tasks),
+    )
+
+    # Wait for in-flight tasks to complete within the grace period
+    asyncio_tasks = [atask for _, _, atask in tasks]
+    _done, pending = await asyncio.wait(asyncio_tasks, timeout=_SHUTDOWN_GRACE_PERIOD)
+
+    if not pending:
+        logger.info("Graceful shutdown: all tasks completed within grace period")
+        return
+
+    # Cancel remaining tasks and report them as failed
+    logger.warning(
+        "Graceful shutdown: %d task(s) still running after grace period, "
+        "reporting as failed",
+        len(pending),
+    )
+
+    remaining = await in_flight.snapshot()
+    for task_id, assignment, atask in remaining:
+        if not atask.done():
+            atask.cancel()
+            try:
+                await atask
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        # Report failure to orchestrator so it can retry on another worker
+        try:
+            await _complete_task_error(
+                assignment,
+                f"task '{task_id}' failed: worker '{worker_id}' shutting down",
+                code=TASK_ERROR_CODE_TIMEOUT,
+            )
+            logger.info("Reported shutdown failure for task %s", task_id)
+        except Exception:
+            logger.exception("Failed to report shutdown failure for task %s", task_id)
+
+    logger.info("Graceful shutdown complete")
 
 
 async def _heartbeat_loop(
