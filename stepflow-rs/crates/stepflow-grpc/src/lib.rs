@@ -36,6 +36,7 @@ mod built_info {
 }
 
 pub mod blob_binary_routes;
+pub mod component_health;
 pub mod conversions;
 pub mod error;
 pub mod grpc_plugin_config;
@@ -59,6 +60,7 @@ pub mod rest {
 }
 
 // Re-export commonly used types at the crate root.
+pub use component_health::ComponentHealthTracker;
 pub use grpc_plugin_config::PullPluginConfig;
 pub use grpc_server::StepflowGrpcServer;
 pub use in_memory_transport::InMemoryTaskTransport;
