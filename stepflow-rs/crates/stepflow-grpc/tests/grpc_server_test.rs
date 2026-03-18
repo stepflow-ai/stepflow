@@ -115,6 +115,7 @@ async fn test_queue_isolation() {
             queue_name: "python".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/python/transform")],
+            worker_id: String::new(),
         })
         .await
         .unwrap();
@@ -127,6 +128,7 @@ async fn test_queue_isolation() {
             queue_name: "node".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/node/summarize")],
+            worker_id: String::new(),
         })
         .await
         .unwrap();
@@ -186,6 +188,7 @@ async fn test_unknown_queue_returns_not_found() {
             queue_name: "unknown".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/unknown/comp")],
+            worker_id: String::new(),
         })
         .await;
 
