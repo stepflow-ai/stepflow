@@ -63,15 +63,15 @@ from stepflow_py.proto import (
     TaskError,
     TaskHeartbeatRequest,
 )
-from stepflow_py.proto.orchestrator_pb2 import (
-    TASK_STATUS_NOT_FOUND,
-    TASK_STATUS_NOT_READY,
-)
 from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_COMPONENT_FAILED,
     TASK_ERROR_CODE_INVALID_INPUT,
     TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
     TASK_ERROR_CODE_WORKER_ERROR,
+)
+from stepflow_py.proto.orchestrator_pb2 import (
+    TASK_STATUS_NOT_FOUND,
+    TASK_STATUS_NOT_READY,
 )
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
@@ -180,7 +180,8 @@ async def run_grpc_worker(
 
     worker_id = str(uuid.uuid4())
     logger.info(
-        "Starting gRPC worker: worker_id=%s, tasks_url=%s, queue=%s, max_concurrent=%d, "
+        "Starting gRPC worker: worker_id=%s, tasks_url=%s, "
+        "queue=%s, max_concurrent=%d, "
         "blob_url=%s, blob_threshold=%d",
         worker_id,
         tasks_url,
@@ -313,7 +314,7 @@ async def _handle_task(
     semaphore: asyncio.Semaphore,
     worker_id: str,
 ) -> None:
-    """Handle a single task: heartbeat (claim), heartbeat loop, execute, CompleteTask."""
+    """Handle a single task: claim, execute, complete."""
     orchestrator_url = (
         task.request.context.orchestrator_service_url
         if task.request.HasField("context")
@@ -778,7 +779,6 @@ async def _complete_task_with_retry(
                     return False
     finally:
         await channel.close()
-    return False
 
 
 async def _complete_task_success(
