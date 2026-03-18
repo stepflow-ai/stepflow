@@ -8,16 +8,17 @@ plugins:
 
   # Research components via LangChain
   research:
-    type: stepflow
+    type: pull
     command: uv
     args:
       - "--project"
-      - "../../sdks/python"
+      - "../../sdks/python/stepflow-py"
       - "run"
       - "--extra"
       - "langchain"
       - "python"
       - "research_server.py"
+    queueName: research
 
   # MCP Filesystem server for file operations
   # Note: On macOS, /tmp is a symlink to /private/tmp, so we use the resolved path  

@@ -27,9 +27,10 @@ plugins:
     type: builtin
 
   python:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_worker"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
+    queueName: python
     # Environment variables for Python component server tracing
     # The Python SDK reads these variables to configure OpenTelemetry
     env:

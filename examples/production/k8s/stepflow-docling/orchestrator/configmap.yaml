@@ -30,8 +30,8 @@ data:
         type: builtin
 
       docling:
-        type: stepflow
-        url: "http://docling-lb.stepflow-docling.svc.cluster.local:8080"
+        type: pull
+        queueName: docling
 
     routes:
       "/docling/{*component}":

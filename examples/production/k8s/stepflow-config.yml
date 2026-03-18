@@ -50,20 +50,17 @@ plugins:
   builtin:
     type: builtin
 
-  # Langflow components via Kubernetes load balancer
-  # The load balancer distributes requests across Langflow worker pods
-  # using instance-aware routing for stateful operations
+  # Langflow components via pull-based gRPC transport
+  # Langflow workers connect to the orchestrator and pull tasks from this queue
   langflow_k8s:
-    type: stepflow
-    transport: http
-    url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
+    type: pull
+    queueName: langflow
 
-  # Docling components via dedicated load balancer
-  # Distributes requests across docling-worker pods using least-connections
+  # Docling components via pull-based gRPC transport
+  # Docling workers connect to the orchestrator and pull tasks from this queue
   docling_k8s:
-    type: stepflow
-    transport: http
-    url: "http://stepflow-load-balancer-docling.stepflow.svc.cluster.local:8080"
+    type: pull
+    queueName: docling
 
 # Routing rules
 # Routes are evaluated in order; first match wins

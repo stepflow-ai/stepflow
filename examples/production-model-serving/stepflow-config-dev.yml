@@ -20,18 +20,20 @@ plugins:
   # Python SDK Server - provides UDF functionality
   # This gives us access to the Python UDF component for embedded Python code
   python_sdk:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_worker"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
+    queueName: python_sdk
     env:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
 
   # Text Models Server - runs via subprocess with full Python environment
   # In development, this spawns a local Python process running the text models server
   text_models:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "python", "text_models_server.py"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "text_models_server.py"]
+    queueName: text_models
     env:
       # Development environment variables for debugging and local testing
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
@@ -44,9 +46,10 @@ plugins:
   # Vision Models Server - runs via subprocess with full Python environment
   # Separate process for vision models allows independent scaling and resource allocation
   vision_models:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "python", "vision_models_server.py"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "vision_models_server.py"]
+    queueName: vision_models
     env:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       # Keep GPU available for vision models if present
