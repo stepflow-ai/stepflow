@@ -195,10 +195,13 @@ impl TasksService for TasksServiceImpl {
             .unwrap_or_default();
 
         if orchestrator_url.is_empty() {
-            return Err(grpc_err::not_found(
-                "orchestrator URL for owner",
-                lease.owner.as_str(),
-            ));
+            // Owner exists but hasn't heartbeated with a URL yet (e.g.,
+            // orchestrator is still starting up). Return UNAVAILABLE so
+            // the worker retries rather than giving up.
+            return Err(Status::unavailable(format!(
+                "orchestrator '{}' owns run but has no advertised URL",
+                lease.owner
+            )));
         }
 
         Ok(Response::new(GetOrchestratorForRunResponse {

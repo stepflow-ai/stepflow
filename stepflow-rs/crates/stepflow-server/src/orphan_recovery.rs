@@ -210,6 +210,14 @@ pub async fn heartbeat_loop(
         .and_then(|u| u.url().map(|s| s.to_string()))
         .unwrap_or_default();
 
+    if orchestrator_url.is_empty() {
+        warn!(
+            "No orchestrator URL configured (STEPFLOW_ORCHESTRATOR_URL). \
+             Heartbeats will not advertise a service URL, which prevents \
+             workers from discovering this orchestrator via GetOrchestratorForRun."
+        );
+    }
+
     let mut timer = tokio::time::interval(interval);
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 

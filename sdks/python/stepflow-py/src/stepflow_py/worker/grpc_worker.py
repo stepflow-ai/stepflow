@@ -404,6 +404,14 @@ async def _handle_task(
         else None
     )
 
+    # Initialize tracker early so the outer except block can reference it
+    # even if an exception occurs before the full tracker is created.
+    tracker = OrchestratorTracker(
+        url=orchestrator_url,
+        run_id=None,
+        root_run_id=root_run_id,
+        tasks_url=_TASKS_URL,
+    )
     heartbeat_task: asyncio.Task[None] | None = None
     orch_channel: grpc.aio.Channel | None = None
 
@@ -463,13 +471,8 @@ async def _handle_task(
 
         span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
-        # Create per-task orchestrator tracker for URL discovery
-        tracker = OrchestratorTracker(
-            url=orchestrator_url,
-            run_id=run_id,
-            root_run_id=root_run_id,
-            tasks_url=_TASKS_URL,
-        )
+        # Update tracker with run_id now that observability context is parsed
+        tracker._run_id = run_id  # noqa: SLF001
 
         # Open a channel to the run-owning orchestrator to claim the task
         if orchestrator_url:
