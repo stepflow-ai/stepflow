@@ -46,6 +46,7 @@ import inspect
 import logging
 import math
 import os
+import random
 import traceback
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -518,10 +519,16 @@ async def _heartbeat_loop(
     interval_secs: int,
     run_id: str | None = None,
 ) -> None:
-    """Send periodic heartbeats until cancelled."""
+    """Send periodic heartbeats until cancelled.
+
+    Each sleep is jittered by ±20% to avoid thundering-herd effects when
+    many workers heartbeat against the same orchestrator.
+    """
+    jitter_min = interval_secs * 0.8
+    jitter_max = interval_secs * 1.2
     try:
         while True:
-            await asyncio.sleep(interval_secs)
+            await asyncio.sleep(random.uniform(jitter_min, jitter_max))
             try:
                 response = await stub.TaskHeartbeat(
                     TaskHeartbeatRequest(
