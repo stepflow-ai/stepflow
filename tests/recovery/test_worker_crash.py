@@ -57,8 +57,10 @@ async def test_worker_crash_single_retry(compose_env):
 
     crash_worker() sends SIGUSR1 to the worker's PID 1, causing os._exit(1).
     Docker's ``restart: unless-stopped`` policy auto-restarts the container.
-    The orchestrator's fibonacci backoff keeps retrying until the worker is
-    back, then the step succeeds.
+
+    With gRPC pull transport, the orchestrator detects the crash via heartbeat
+    timeout (~5s), then retries. The restarted worker reconnects via gRPC and
+    picks up the retried task.
     """
     # 1. Submit a sequential run (step1=5s, step2=5s, step3=5s)
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
@@ -78,11 +80,12 @@ async def test_worker_crash_single_retry(compose_env):
     # 5. Wait for the auto-restarted worker to become healthy.
     wait_for_worker_health(timeout=30)
 
-    # 6. Orchestrator retries step2 (fibonacci backoff). Release it and step3.
-    poll_for_delay("step2", run_id=run_id, timeout=30)
+    # 6. Orchestrator retries step2. With pull transport, detection takes ~5s
+    #    (heartbeat timeout) + fibonacci backoff + worker reconnect time.
+    poll_for_delay("step2", run_id=run_id, timeout=45)
     release_delay("step2", run_id=run_id)
 
-    poll_for_delay("step3", run_id=run_id, timeout=30)
+    poll_for_delay("step3", run_id=run_id, timeout=45)
     release_delay("step3", run_id=run_id)
 
     # 7. Wait for run to complete
@@ -119,8 +122,9 @@ async def test_worker_crash_single_retry(compose_env):
 async def test_worker_crash_exhausts_retries(compose_env):
     """Scenario E: Worker stays down, orchestrator exhausts retries.
 
-    Kill the worker and leave it dead. All retry attempts get connection
-    errors. The run should end in failed state.
+    Kill the worker and leave it dead. With pull transport, each retry
+    puts the task in the queue where it times out (queueTimeoutSecs=3).
+    After transportMaxRetries=3 retries, the run fails.
     """
     # 1. Submit a sequential run
     flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
@@ -136,8 +140,10 @@ async def test_worker_crash_exhausts_retries(compose_env):
     #    in ~5s.
     docker_kill("worker")
 
-    # 4. The run should have failed (all retries exhausted)
-    result = await wait_for_run(ORCH1_URL, run_id, timeout=30)
+    # 4. The run should have failed (all retries exhausted).
+    #    With pull transport: heartbeat timeout (5s) + 3 retries *
+    #    (queue timeout 3s + fibonacci backoff 2-10s) ≈ 20-35s
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
     assert result["status"] == "failed", f"Expected failed, got {result['status']}"
 
     # 5. Restart worker for cleanup (next test starts fresh via compose_down,
@@ -176,11 +182,12 @@ async def test_worker_and_orchestrator_crash(compose_env):
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # 7. Recovery re-dispatches step2. Release it and step3.
-    poll_for_delay("step2", run_id=run_id, timeout=30)
+    # 7. Recovery re-dispatches step2. With pull transport, the worker needs
+    #    time to reconnect to the restarted orchestrator via gRPC.
+    poll_for_delay("step2", run_id=run_id, timeout=45)
     release_delay("step2", run_id=run_id)
 
-    poll_for_delay("step3", run_id=run_id, timeout=30)
+    poll_for_delay("step3", run_id=run_id, timeout=45)
     release_delay("step3", run_id=run_id)
 
     # 8. Wait for the run to complete
@@ -205,3 +212,68 @@ async def test_worker_and_orchestrator_crash(compose_env):
     assert step3_records[-1]["attempt"] == 1, (
         "step3 should be attempt 1 (fresh dispatch after recovery)"
     )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_crash_worker_delivers_result(compose_env):
+    """Scenario G: Orchestrator crashes while worker has in-flight task.
+
+    The worker completes the task, but CompleteTask fails because the
+    orchestrator is down. The worker retries CompleteTask with exponential
+    backoff. When the orchestrator recovers, it re-registers the same
+    task_id (from the journal), and the worker's retry delivers the result
+    without re-executing the step.
+
+    This tests the full task_id journalling + CompleteTask retry path:
+    1. Task_id is journalled in TasksStarted before dispatch
+    2. On recovery, the same task_id is re-registered in TaskRegistry
+    3. Worker's CompleteTask retry with the original task_id lands
+    4. Step is NOT re-executed
+    """
+    # 1. Submit a sequential run and wait for step1 to be held, then release
+    flow_id = await store_flow(ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml"))
+    run_id = await submit_run(ORCH1_URL, flow_id, {"data": {"value": "orch_crash_result"}})
+
+    poll_for_delay("step1", run_id=run_id, timeout=15)
+    release_delay("step1", run_id=run_id)
+
+    # 2. Wait for step2 to be held — step1 is now durably complete
+    poll_for_delay("step2", run_id=run_id, timeout=15)
+
+    # 3. Kill orchestrator while step2 is in-flight on the worker
+    docker_kill("orchestrator-1")
+
+    # 4. Release step2 — the worker completes execution but CompleteTask
+    #    fails (orchestrator down). The worker starts retrying.
+    release_delay("step2", run_id=run_id)
+
+    # 5. Give the worker a moment to attempt CompleteTask and start retrying
+    await asyncio.sleep(3)
+
+    # 6. Restart orchestrator — it recovers from journal and re-registers
+    #    the same task_id for step2 in the TaskRegistry.
+    docker_start("orchestrator-1")
+    wait_for_health(ORCH1_URL, timeout=30)
+
+    # 7. The worker's CompleteTask retry should land, delivering step2's
+    #    result without re-execution. Then step3 gets dispatched.
+    poll_for_delay("step3", run_id=run_id, timeout=60)
+    release_delay("step3", run_id=run_id)
+
+    # 8. Wait for the run to complete
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
+    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+
+    # 9. Key assertion: step2 should have exactly 1 tracker record.
+    #    If the worker's CompleteTask retry landed successfully, the
+    #    orchestrator accepted the result and did NOT re-dispatch step2.
+    records = read_tracker_records()
+    step2_count = count_step_executions(records, "step2", run_id)
+    assert step2_count == 1, (
+        f"step2 should have been executed exactly once (worker delivered result "
+        f"via CompleteTask retry), but was executed {step2_count} times"
+    )
+
+    # step1 completed before crash, step3 dispatched after recovery
+    assert count_step_executions(records, "step1", run_id) == 1
+    assert count_step_executions(records, "step3", run_id) >= 1

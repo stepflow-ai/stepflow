@@ -73,8 +73,9 @@ use stepflow_core::status::ExecutionStatus;
 use stepflow_dtos::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutionsExt as _, ExecutionJournalExt as _, LeaseManagerExt as _, LeaseResult,
-    MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo, SequenceNumber,
+    ActiveExecutionsExt as _, ActiveRecoveriesExt as _, ExecutionJournalExt as _,
+    LeaseManagerExt as _, LeaseResult, MetadataStoreExt as _, OrchestratorId, RunRecoveryInfo,
+    SequenceNumber,
 };
 
 use crate::{ExecutionError, Result};
@@ -173,8 +174,14 @@ pub async fn recover_orphaned_runs(
 
     let mut result = RecoveryResult::new();
 
+    let active_recoveries = env.active_recoveries();
+
     for (root_run_id, root_info) in &trees {
         log::info!("Recovering execution tree rooted at {}", root_run_id);
+
+        // Mark as recovering so OrchestratorService returns NOT_READY
+        // instead of NOT_FOUND for tasks belonging to this run.
+        active_recoveries.insert(*root_run_id);
 
         match tree::recover_execution_tree(env, &journal, root_info).await {
             Ok(()) => {
@@ -206,6 +213,10 @@ pub async fn recover_orphaned_runs(
                 }
             }
         }
+
+        // Recovery complete (success or failure) — remove from active set
+        // so subsequent CompleteTask calls get NOT_FOUND instead of NOT_READY.
+        active_recoveries.remove(root_run_id);
     }
 
     log::info!(

@@ -86,22 +86,6 @@ _OrchestratorServiceCompleteTaskType = typing_extensions.TypeVar(
     ],
 )
 
-_OrchestratorServiceStartTaskType = typing_extensions.TypeVar(
-    '_OrchestratorServiceStartTaskType',
-    grpc.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-    grpc.aio.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-    default=grpc.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-)
-
 _OrchestratorServiceTaskHeartbeatType = typing_extensions.TypeVar(
     '_OrchestratorServiceTaskHeartbeatType',
     grpc.UnaryUnaryMultiCallable[
@@ -118,7 +102,7 @@ _OrchestratorServiceTaskHeartbeatType = typing_extensions.TypeVar(
     ],
 )
 
-class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, _OrchestratorServiceGetRunType, _OrchestratorServiceCompleteTaskType, _OrchestratorServiceStartTaskType, _OrchestratorServiceTaskHeartbeatType]):
+class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, _OrchestratorServiceGetRunType, _OrchestratorServiceCompleteTaskType, _OrchestratorServiceTaskHeartbeatType]):
     """Service exposed by the orchestrator for workers to interact with during
     component execution. Workers reach this via `orchestrator_service_url`
     from TaskContext.
@@ -144,10 +128,6 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
             orchestrator_pb2.CompleteTaskResponse,
         ],
         grpc.UnaryUnaryMultiCallable[
-            orchestrator_pb2.StartTaskRequest,
-            orchestrator_pb2.StartTaskResponse,
-        ],
-        grpc.UnaryUnaryMultiCallable[
             orchestrator_pb2.TaskHeartbeatRequest,
             orchestrator_pb2.TaskHeartbeatResponse,
         ],
@@ -166,10 +146,6 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
         grpc.aio.UnaryUnaryMultiCallable[
             orchestrator_pb2.CompleteTaskRequest,
             orchestrator_pb2.CompleteTaskResponse,
-        ],
-        grpc.aio.UnaryUnaryMultiCallable[
-            orchestrator_pb2.StartTaskRequest,
-            orchestrator_pb2.StartTaskResponse,
         ],
         grpc.aio.UnaryUnaryMultiCallable[
             orchestrator_pb2.TaskHeartbeatRequest,
@@ -192,23 +168,23 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
     the orchestrator that owns the run.
     """
 
-    StartTask: _OrchestratorServiceStartTaskType
-    """Notify the orchestrator that the worker has started executing a task.
-
-    Called by the worker immediately before beginning component execution.
-    This transitions the task from "queued" to "executing" on the
-    orchestrator side, starting the heartbeat timeout. If the response
-    has `timed_out = true`, the task already expired in the queue and the
-    worker should skip execution.
-    """
-
     TaskHeartbeat: _OrchestratorServiceTaskHeartbeatType
-    """Send a heartbeat for an in-progress task.
+    """Report that a worker is executing a task (start + heartbeat combined).
 
-    Called periodically by the worker during component execution (typically
-    every 1s). Each heartbeat resets the crash-detection timer on the
-    orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-    presumes the worker crashed and fails the task.
+    Called by the worker immediately before beginning component execution
+    and periodically during execution (typically every 1s). Each call
+    resets the crash-detection timer on the orchestrator.
+
+    On first call (task in Queued phase), transitions the task to
+    Executing and records the worker_id. On subsequent calls, verifies
+    the worker_id matches and resets the heartbeat timer.
+
+    The response status tells the worker whether to proceed:
+    - IN_PROGRESS: task is yours, continue executing
+    - ALREADY_CLAIMED: a different worker is executing this task, abort
+    - COMPLETED: task already has a result, abort
+    - TIMED_OUT: task expired before any worker claimed it, abort
+    - NOT_FOUND: task_id not recognized (already completed and cleaned up)
     """
 
 OrchestratorServiceAsyncStub: typing_extensions.TypeAlias = OrchestratorServiceStub[
@@ -223,10 +199,6 @@ OrchestratorServiceAsyncStub: typing_extensions.TypeAlias = OrchestratorServiceS
     grpc.aio.UnaryUnaryMultiCallable[
         orchestrator_pb2.CompleteTaskRequest,
         orchestrator_pb2.CompleteTaskResponse,
-    ],
-    grpc.aio.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
     ],
     grpc.aio.UnaryUnaryMultiCallable[
         orchestrator_pb2.TaskHeartbeatRequest,
@@ -276,32 +248,27 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def StartTask(
-        self,
-        request: orchestrator_pb2.StartTaskRequest,
-        context: _ServicerContext,
-    ) -> typing.Union[orchestrator_pb2.StartTaskResponse, collections.abc.Awaitable[orchestrator_pb2.StartTaskResponse]]:
-        """Notify the orchestrator that the worker has started executing a task.
-
-        Called by the worker immediately before beginning component execution.
-        This transitions the task from "queued" to "executing" on the
-        orchestrator side, starting the heartbeat timeout. If the response
-        has `timed_out = true`, the task already expired in the queue and the
-        worker should skip execution.
-        """
-
-    @abc.abstractmethod
     def TaskHeartbeat(
         self,
         request: orchestrator_pb2.TaskHeartbeatRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.TaskHeartbeatResponse, collections.abc.Awaitable[orchestrator_pb2.TaskHeartbeatResponse]]:
-        """Send a heartbeat for an in-progress task.
+        """Report that a worker is executing a task (start + heartbeat combined).
 
-        Called periodically by the worker during component execution (typically
-        every 1s). Each heartbeat resets the crash-detection timer on the
-        orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-        presumes the worker crashed and fails the task.
+        Called by the worker immediately before beginning component execution
+        and periodically during execution (typically every 1s). Each call
+        resets the crash-detection timer on the orchestrator.
+
+        On first call (task in Queued phase), transitions the task to
+        Executing and records the worker_id. On subsequent calls, verifies
+        the worker_id matches and resets the heartbeat timer.
+
+        The response status tells the worker whether to proceed:
+        - IN_PROGRESS: task is yours, continue executing
+        - ALREADY_CLAIMED: a different worker is executing this task, abort
+        - COMPLETED: task already has a result, abort
+        - TIMED_OUT: task expired before any worker claimed it, abort
+        - NOT_FOUND: task_id not recognized (already completed and cleaned up)
         """
 
 def add_OrchestratorServiceServicer_to_server(servicer: OrchestratorServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

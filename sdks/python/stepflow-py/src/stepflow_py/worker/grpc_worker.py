@@ -32,7 +32,7 @@ is read from environment variables at startup:
 
 Task lifecycle:
 1. Receive TaskAssignment from PullTasks stream
-2. Call StartTask — if timed_out=true, skip execution
+2. Call TaskHeartbeat (initial) — claims the task; if should_abort, skip execution
 3. Start background heartbeat loop (every heartbeat_interval_secs)
 4. Execute component
 5. Call CompleteTask with result or error
@@ -47,6 +47,7 @@ import logging
 import math
 import os
 import traceback
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import grpc
@@ -58,7 +59,6 @@ from stepflow_py.proto import (
     ComponentExecuteResponse,
     ComponentInfo,
     PullTasksRequest,
-    StartTaskRequest,
     TaskAssignment,
     TaskError,
     TaskHeartbeatRequest,
@@ -68,6 +68,10 @@ from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_INVALID_INPUT,
     TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
     TASK_ERROR_CODE_WORKER_ERROR,
+)
+from stepflow_py.proto.orchestrator_pb2 import (
+    TASK_STATUS_NOT_FOUND,
+    TASK_STATUS_NOT_READY,
 )
 from stepflow_py.proto.orchestrator_pb2_grpc import OrchestratorServiceStub
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
@@ -174,9 +178,12 @@ async def run_grpc_worker(
     _QUEUE_NAME = queue_name
     _ensure_metrics()
 
+    worker_id = str(uuid.uuid4())
     logger.info(
-        "Starting gRPC worker: tasks_url=%s, queue=%s, max_concurrent=%d, "
+        "Starting gRPC worker: worker_id=%s, tasks_url=%s, "
+        "queue=%s, max_concurrent=%d, "
         "blob_url=%s, blob_threshold=%d",
+        worker_id,
         tasks_url,
         queue_name,
         max_concurrent,
@@ -210,6 +217,7 @@ async def run_grpc_worker(
                 components=components,
                 semaphore=semaphore,
                 max_concurrent=max_concurrent,
+                worker_id=worker_id,
             )
             # Successful pull session — reset failure counter
             consecutive_failures = 0
@@ -269,6 +277,7 @@ async def _pull_loop(
     components: list[ComponentInfo],
     semaphore: asyncio.Semaphore,
     max_concurrent: int,
+    worker_id: str,
 ) -> None:
     """Single pull session — connects, pulls tasks, processes them."""
     channel = grpc.aio.insecure_channel(tasks_url)
@@ -291,7 +300,7 @@ async def _pull_loop(
                 _tasks_pulled.add(1, {"queue_name": _QUEUE_NAME})
             await semaphore.acquire()
             asyncio.create_task(
-                _handle_task(server, task, semaphore),
+                _handle_task(server, task, semaphore, worker_id),
             )
     finally:
         if _connection_status is not None:
@@ -303,8 +312,9 @@ async def _handle_task(
     server: StepflowServer,
     task: TaskAssignment,
     semaphore: asyncio.Semaphore,
+    worker_id: str,
 ) -> None:
-    """Handle a single task: StartTask, heartbeat, execute, CompleteTask."""
+    """Handle a single task: claim, execute, complete."""
     orchestrator_url = (
         task.request.context.orchestrator_service_url
         if task.request.HasField("context")
@@ -325,8 +335,9 @@ async def _handle_task(
 
         # Set up observability context
         obs = req.observability
+        run_id = obs.run_id if obs.HasField("run_id") else None
         _set_execution_context(
-            run_id=obs.run_id if obs.HasField("run_id") else None,
+            run_id=run_id,
             step_id=obs.step_id if obs.HasField("step_id") else None,
             flow_id=obs.flow_id if obs.HasField("flow_id") else None,
             attempt=req.attempt,
@@ -370,35 +381,58 @@ async def _handle_task(
         span_ctx = _span_cm if _span_cm is not None else nullcontext()
 
         # Open a shared channel to the run-owning orchestrator for
-        # StartTask, heartbeats, and CompleteTask
+        # heartbeats and CompleteTask
         if orchestrator_url:
             orch_channel = grpc.aio.insecure_channel(orchestrator_url)
             stub = OrchestratorServiceStub(orch_channel)
 
-            # Call StartTask — if timed_out, skip execution
-            try:
-                response = await stub.StartTask(StartTaskRequest(task_id=task.task_id))
-                if response.timed_out:
-                    logger.warning(
-                        "Task %s timed out in queue, skipping execution",
+            # Send initial heartbeat to claim the task. Retries on NOT_READY
+            # (run is being recovered — task_id may be re-registered shortly).
+            claimed = False
+            for claim_attempt in range(5):
+                try:
+                    response = await stub.TaskHeartbeat(
+                        TaskHeartbeatRequest(
+                            task_id=task.task_id,
+                            worker_id=worker_id,
+                            run_id=run_id,
+                        )
+                    )
+                    if response.status == TASK_STATUS_NOT_READY:
+                        logger.info(
+                            "Task %s not ready (run recovering), retrying in 1s (%d/5)",
+                            task.task_id,
+                            claim_attempt + 1,
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                    if response.should_abort:
+                        logger.warning(
+                            "Task %s cannot be claimed (status=%s), skipping execution",
+                            task.task_id,
+                            response.status,
+                        )
+                        return
+                    claimed = True
+                    break
+                except grpc.aio.AioRpcError as e:
+                    logger.error(
+                        "Initial heartbeat failed for task %s: %s (code=%s)",
                         task.task_id,
+                        e.details(),
+                        e.code(),
                     )
                     return
-            except grpc.aio.AioRpcError as e:
-                logger.error(
-                    "StartTask failed for task %s: %s (code=%s)",
-                    task.task_id,
-                    e.details(),
-                    e.code(),
+            if not claimed:
+                logger.warning(
+                    "Task %s not ready after 5 attempts, skipping", task.task_id
                 )
-                # If StartTask fails (e.g., task already timed out and
-                # removed), skip execution
                 return
 
             # Start background heartbeat loop
             interval = task.heartbeat_interval_secs or 1
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(stub, task.task_id, interval)
+                _heartbeat_loop(stub, task.task_id, worker_id, interval, run_id)
             )
 
         # Convert proto Value to Python dict
@@ -416,7 +450,6 @@ async def _handle_task(
             await _complete_task_error(
                 task,
                 f"Component '{req.component}' not found",
-                channel=orch_channel,
             )
             return
 
@@ -445,7 +478,6 @@ async def _handle_task(
                 await _complete_task_success(
                     task,
                     proto_output,
-                    channel=orch_channel,
                 )
             except Exception as e:
                 logger.error("Component %s failed: %s", req.component, e, exc_info=True)
@@ -455,7 +487,6 @@ async def _handle_task(
                     str(e),
                     code=error_code,
                     data=error_data,
-                    channel=orch_channel,
                 )
 
     except Exception:
@@ -465,7 +496,6 @@ async def _handle_task(
                 task,
                 traceback.format_exc(),
                 code=TASK_ERROR_CODE_WORKER_ERROR,
-                channel=orch_channel,
             )
         except Exception:
             logger.exception("Failed to report error for task %s", task.task_id)
@@ -484,7 +514,9 @@ async def _handle_task(
 async def _heartbeat_loop(
     stub: Any,  # OrchestratorServiceStub (async variant)
     task_id: str,
+    worker_id: str,
     interval_secs: int,
+    run_id: str | None = None,
 ) -> None:
     """Send periodic heartbeats until cancelled."""
     try:
@@ -492,12 +524,27 @@ async def _heartbeat_loop(
             await asyncio.sleep(interval_secs)
             try:
                 response = await stub.TaskHeartbeat(
-                    TaskHeartbeatRequest(task_id=task_id)
+                    TaskHeartbeatRequest(
+                        task_id=task_id,
+                        worker_id=worker_id,
+                        run_id=run_id,
+                    )
                 )
                 if _heartbeats_sent is not None:
                     _heartbeats_sent.add(1, {"queue_name": _QUEUE_NAME})
-                if response.should_cancel:
-                    logger.info("Task %s cancellation requested", task_id)
+                if response.status == TASK_STATUS_NOT_READY:
+                    # Run is being recovered — keep heartbeating, don't abort
+                    logger.info(
+                        "Task %s heartbeat: run recovering (NOT_READY), continuing",
+                        task_id,
+                    )
+                    continue
+                if response.should_abort:
+                    logger.info(
+                        "Task %s abort requested (status=%s)",
+                        task_id,
+                        response.status,
+                    )
                     break
             except grpc.aio.AioRpcError as e:
                 logger.warning(
@@ -635,11 +682,108 @@ def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
     return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
 
 
+def _extract_run_id(task: TaskAssignment) -> str | None:
+    """Extract run_id from a task's observability context."""
+    if task.request.HasField("observability"):
+        obs = task.request.observability
+        if obs.HasField("run_id"):
+            return obs.run_id
+    return None
+
+
+async def _complete_task_with_retry(
+    orchestrator_url: str,
+    request: CompleteTaskRequest,
+    task_id: str,
+    *,
+    max_retries: int = 5,
+    base_delay: float = 2.0,
+) -> bool:
+    """Send CompleteTask with retry on transient failures.
+
+    The response status determines behavior:
+    - UNSPECIFIED (0): success, result delivered
+    - NOT_READY: run is being recovered, task_id not yet registered.
+      Retries indefinitely with backoff until the run is recovered.
+    - NOT_FOUND: task already completed, timed out, or never existed.
+      Terminal — not an error (first-result-wins semantics).
+
+    gRPC UNAVAILABLE (server down) is also retried with a retry limit.
+
+    Returns True if the result was delivered (or is no longer needed),
+    False if all retries failed.
+    """
+    channel = grpc.aio.insecure_channel(orchestrator_url)
+    try:
+        stub = OrchestratorServiceStub(channel)
+        attempt = 0
+        while True:
+            try:
+                response = await stub.CompleteTask(request)
+
+                if response.status == TASK_STATUS_NOT_READY:
+                    # Run is being recovered — retry without limit
+                    delay = min(base_delay, 5.0)
+                    logger.info(
+                        "CompleteTask NOT_READY for %s (run recovering), "
+                        "retry in %.1fs",
+                        task_id,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                if response.status == TASK_STATUS_NOT_FOUND:
+                    # Task already completed or cleaned up — not an error
+                    logger.info(
+                        "CompleteTask NOT_FOUND for %s — task already "
+                        "completed or cleaned up, skipping",
+                        task_id,
+                    )
+                    return True
+
+                # Success (UNSPECIFIED or IN_PROGRESS)
+                return True
+
+            except grpc.aio.AioRpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    attempt += 1
+                    if attempt <= max_retries:
+                        delay = min(base_delay * (2**attempt), 30.0)
+                        logger.warning(
+                            "CompleteTask UNAVAILABLE for %s, retry in %.1fs (%d/%d)",
+                            task_id,
+                            delay,
+                            attempt,
+                            max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                        await channel.close()
+                        channel = grpc.aio.insecure_channel(orchestrator_url)
+                        stub = OrchestratorServiceStub(channel)
+                    else:
+                        logger.error(
+                            "CompleteTask failed for %s after %d retries: %s",
+                            task_id,
+                            max_retries,
+                            e.code(),
+                        )
+                        return False
+                else:
+                    logger.error(
+                        "CompleteTask failed for %s: %s (code=%s)",
+                        task_id,
+                        e.details(),
+                        e.code(),
+                    )
+                    return False
+    finally:
+        await channel.close()
+
+
 async def _complete_task_success(
     task: TaskAssignment,
     output: struct_pb2.Value,
-    *,
-    channel: grpc.aio.Channel | None = None,
 ) -> None:
     """Report successful task completion to the run-owning orchestrator."""
     orchestrator_url = (
@@ -654,32 +798,16 @@ async def _complete_task_success(
         )
         return
 
-    # Reuse shared channel if available, otherwise create a new one
-    own_channel = False
-    if channel is None:
-        channel = grpc.aio.insecure_channel(orchestrator_url)
-        own_channel = True
-
-    try:
-        stub = OrchestratorServiceStub(channel)
-        request = CompleteTaskRequest(
-            task_id=task.task_id,
-            response=ComponentExecuteResponse(output=output),
-        )
-        await stub.CompleteTask(request)
+    run_id = _extract_run_id(task)
+    request = CompleteTaskRequest(
+        task_id=task.task_id,
+        response=ComponentExecuteResponse(output=output),
+        run_id=run_id,
+    )
+    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+        logger.debug("Completed task %s (success)", task.task_id)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "success"})
-        logger.debug("Completed task %s (success)", task.task_id)
-    except grpc.aio.AioRpcError as e:
-        logger.error(
-            "Failed to report completion for task %s: %s (code=%s)",
-            task.task_id,
-            e.details(),
-            e.code(),
-        )
-    finally:
-        if own_channel:
-            await channel.close()
 
 
 async def _complete_task_error(
@@ -688,7 +816,6 @@ async def _complete_task_error(
     *,
     code: int = TASK_ERROR_CODE_COMPONENT_FAILED,
     data: dict | None = None,
-    channel: grpc.aio.Channel | None = None,
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
     orchestrator_url = (
@@ -703,42 +830,26 @@ async def _complete_task_error(
         )
         return
 
-    # Reuse shared channel if available, otherwise create a new one
-    own_channel = False
-    if channel is None:
-        channel = grpc.aio.insecure_channel(orchestrator_url)
-        own_channel = True
-
-    try:
-        stub = OrchestratorServiceStub(channel)
-        task_error = TaskError(
-            code=code,  # type: ignore[arg-type]
-            message=error_msg,
-        )
-        # Attach structured error data if provided
-        if data:
-            proto_data = struct_pb2.Struct()
-            for k, v in data.items():
-                proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
-            task_error.data.CopyFrom(proto_data)
-        request = CompleteTaskRequest(
-            task_id=task.task_id,
-            error=task_error,
-        )
-        await stub.CompleteTask(request)
+    task_error = TaskError(
+        code=code,  # type: ignore[arg-type]
+        message=error_msg,
+    )
+    # Attach structured error data if provided
+    if data:
+        proto_data = struct_pb2.Struct()
+        for k, v in data.items():
+            proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
+        task_error.data.CopyFrom(proto_data)
+    run_id = _extract_run_id(task)
+    request = CompleteTaskRequest(
+        task_id=task.task_id,
+        error=task_error,
+        run_id=run_id,
+    )
+    if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
+        logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
         if _tasks_completed is not None:
             _tasks_completed.add(1, {"queue_name": _QUEUE_NAME, "outcome": "error"})
-        logger.debug("Completed task %s (error, code=%s)", task.task_id, code)
-    except grpc.aio.AioRpcError as e:
-        logger.error(
-            "Failed to report error for task %s: %s (code=%s)",
-            task.task_id,
-            e.details(),
-            e.code(),
-        )
-    finally:
-        if own_channel:
-            await channel.close()
 
 
 def _build_component_info_list(

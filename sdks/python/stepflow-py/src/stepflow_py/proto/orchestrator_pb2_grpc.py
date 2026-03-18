@@ -57,11 +57,6 @@ class OrchestratorServiceStub(object):
                 request_serializer=stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskRequest.SerializeToString,
                 response_deserializer=stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskResponse.FromString,
                 _registered_method=True)
-        self.StartTask = channel.unary_unary(
-                '/stepflow.v1.OrchestratorService/StartTask',
-                request_serializer=stepflow_dot_v1_dot_orchestrator__pb2.StartTaskRequest.SerializeToString,
-                response_deserializer=stepflow_dot_v1_dot_orchestrator__pb2.StartTaskResponse.FromString,
-                _registered_method=True)
         self.TaskHeartbeat = channel.unary_unary(
                 '/stepflow.v1.OrchestratorService/TaskHeartbeat',
                 request_serializer=stepflow_dot_v1_dot_orchestrator__pb2.TaskHeartbeatRequest.SerializeToString,
@@ -106,26 +101,23 @@ class OrchestratorServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def StartTask(self, request, context):
-        """Notify the orchestrator that the worker has started executing a task.
-
-        Called by the worker immediately before beginning component execution.
-        This transitions the task from "queued" to "executing" on the
-        orchestrator side, starting the heartbeat timeout. If the response
-        has `timed_out = true`, the task already expired in the queue and the
-        worker should skip execution.
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def TaskHeartbeat(self, request, context):
-        """Send a heartbeat for an in-progress task.
+        """Report that a worker is executing a task (start + heartbeat combined).
 
-        Called periodically by the worker during component execution (typically
-        every 1s). Each heartbeat resets the crash-detection timer on the
-        orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-        presumes the worker crashed and fails the task.
+        Called by the worker immediately before beginning component execution
+        and periodically during execution (typically every 1s). Each call
+        resets the crash-detection timer on the orchestrator.
+
+        On first call (task in Queued phase), transitions the task to
+        Executing and records the worker_id. On subsequent calls, verifies
+        the worker_id matches and resets the heartbeat timer.
+
+        The response status tells the worker whether to proceed:
+        - IN_PROGRESS: task is yours, continue executing
+        - ALREADY_CLAIMED: a different worker is executing this task, abort
+        - COMPLETED: task already has a result, abort
+        - TIMED_OUT: task expired before any worker claimed it, abort
+        - NOT_FOUND: task_id not recognized (already completed and cleaned up)
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -148,11 +140,6 @@ def add_OrchestratorServiceServicer_to_server(servicer, server):
                     servicer.CompleteTask,
                     request_deserializer=stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskRequest.FromString,
                     response_serializer=stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskResponse.SerializeToString,
-            ),
-            'StartTask': grpc.unary_unary_rpc_method_handler(
-                    servicer.StartTask,
-                    request_deserializer=stepflow_dot_v1_dot_orchestrator__pb2.StartTaskRequest.FromString,
-                    response_serializer=stepflow_dot_v1_dot_orchestrator__pb2.StartTaskResponse.SerializeToString,
             ),
             'TaskHeartbeat': grpc.unary_unary_rpc_method_handler(
                     servicer.TaskHeartbeat,
@@ -249,33 +236,6 @@ class OrchestratorService(object):
             '/stepflow.v1.OrchestratorService/CompleteTask',
             stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskRequest.SerializeToString,
             stepflow_dot_v1_dot_orchestrator__pb2.CompleteTaskResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def StartTask(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/stepflow.v1.OrchestratorService/StartTask',
-            stepflow_dot_v1_dot_orchestrator__pb2.StartTaskRequest.SerializeToString,
-            stepflow_dot_v1_dot_orchestrator__pb2.StartTaskResponse.FromString,
             options,
             channel_credentials,
             insecure,

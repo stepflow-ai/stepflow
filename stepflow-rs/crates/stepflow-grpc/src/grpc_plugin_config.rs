@@ -82,14 +82,14 @@ pub struct PullPluginConfig {
     pub queue_name: Option<String>,
 
     /// Maximum time (in seconds) a task can wait in the queue for a
-    /// worker to call `StartTask`. If no worker picks up the task within
-    /// this window, it is treated as failed. Must be greater than 0.
+    /// worker to send its first heartbeat. If no worker picks up the task
+    /// within this window, it is treated as failed. Must be greater than 0.
     ///
     /// Defaults to 30 seconds.
     #[serde(default = "default_queue_timeout_secs")]
     pub queue_timeout_secs: u64,
 
-    /// Maximum time (in seconds) from `StartTask` to `CompleteTask`.
+    /// Maximum time (in seconds) from first heartbeat to `CompleteTask`.
     /// If the worker does not complete within this window, the task is
     /// treated as failed. Heartbeat-based crash detection (5s timeout)
     /// provides faster detection of hard worker crashes.
