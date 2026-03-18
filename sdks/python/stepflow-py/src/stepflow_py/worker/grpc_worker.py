@@ -330,8 +330,9 @@ async def _handle_task(
 
         # Set up observability context
         obs = req.observability
+        run_id = obs.run_id if obs.HasField("run_id") else None
         _set_execution_context(
-            run_id=obs.run_id if obs.HasField("run_id") else None,
+            run_id=run_id,
             step_id=obs.step_id if obs.HasField("step_id") else None,
             flow_id=obs.flow_id if obs.HasField("flow_id") else None,
             attempt=req.attempt,
@@ -386,6 +387,7 @@ async def _handle_task(
                     TaskHeartbeatRequest(
                         task_id=task.task_id,
                         worker_id=worker_id,
+                        run_id=run_id,
                     )
                 )
                 if response.should_abort:
@@ -409,7 +411,7 @@ async def _handle_task(
             # Start background heartbeat loop
             interval = task.heartbeat_interval_secs or 1
             heartbeat_task = asyncio.create_task(
-                _heartbeat_loop(stub, task.task_id, worker_id, interval)
+                _heartbeat_loop(stub, task.task_id, worker_id, interval, run_id)
             )
 
         # Convert proto Value to Python dict
@@ -493,6 +495,7 @@ async def _heartbeat_loop(
     task_id: str,
     worker_id: str,
     interval_secs: int,
+    run_id: str | None = None,
 ) -> None:
     """Send periodic heartbeats until cancelled."""
     try:
@@ -503,6 +506,7 @@ async def _heartbeat_loop(
                     TaskHeartbeatRequest(
                         task_id=task_id,
                         worker_id=worker_id,
+                        run_id=run_id,
                     )
                 )
                 if _heartbeats_sent is not None:
@@ -650,6 +654,15 @@ def _classify_exception(exc: Exception) -> tuple[int, dict | None]:
     return TASK_ERROR_CODE_COMPONENT_FAILED, std_error_data
 
 
+def _extract_run_id(task: TaskAssignment) -> str | None:
+    """Extract run_id from a task's observability context."""
+    if task.request.HasField("observability"):
+        obs = task.request.observability
+        if obs.HasField("run_id"):
+            return obs.run_id
+    return None
+
+
 async def _complete_task_with_retry(
     orchestrator_url: str,
     request: CompleteTaskRequest,
@@ -746,9 +759,11 @@ async def _complete_task_success(
         )
         return
 
+    run_id = _extract_run_id(task)
     request = CompleteTaskRequest(
         task_id=task.task_id,
         response=ComponentExecuteResponse(output=output),
+        run_id=run_id,
     )
     if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
         logger.debug("Completed task %s (success)", task.task_id)
@@ -786,9 +801,11 @@ async def _complete_task_error(
         for k, v in data.items():
             proto_data.fields[str(k)].CopyFrom(_python_to_proto_value(v))
         task_error.data.CopyFrom(proto_data)
+    run_id = _extract_run_id(task)
     request = CompleteTaskRequest(
         task_id=task.task_id,
         error=task_error,
+        run_id=run_id,
     )
     if await _complete_task_with_retry(orchestrator_url, request, task.task_id):
         logger.debug("Completed task %s (error, code=%s)", task.task_id, code)

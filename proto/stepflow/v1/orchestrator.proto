@@ -149,6 +149,11 @@ message CompleteTaskRequest {
     // Structured error (on failure).
     TaskError error = 3;
   }
+
+  // The run ID (UUID) this task belongs to. Used for routing and
+  // recovery gating — the orchestrator can check whether the run
+  // is still being recovered before returning NOT_FOUND.
+  optional string run_id = 4;
 }
 
 message CompleteTaskResponse {}
@@ -189,6 +194,10 @@ message TaskHeartbeatRequest {
 
   // Optional human-readable status message.
   optional string status_message = 4;
+
+  // The run ID (UUID) this task belongs to. Used for routing and
+  // recovery gating.
+  optional string run_id = 5;
 }
 
 message TaskHeartbeatResponse {

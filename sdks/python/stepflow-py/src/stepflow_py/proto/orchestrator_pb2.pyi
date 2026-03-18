@@ -252,8 +252,14 @@ class CompleteTaskRequest(google.protobuf.message.Message):
     TASK_ID_FIELD_NUMBER: builtins.int
     RESPONSE_FIELD_NUMBER: builtins.int
     ERROR_FIELD_NUMBER: builtins.int
+    RUN_ID_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
+    run_id: builtins.str
+    """The run ID (UUID) this task belongs to. Used for routing and
+    recovery gating — the orchestrator can check whether the run
+    is still being recovered before returning NOT_FOUND.
+    """
     @property
     def response(self) -> tasks_pb2.ComponentExecuteResponse:
         """The component execution response (on success)."""
@@ -268,9 +274,13 @@ class CompleteTaskRequest(google.protobuf.message.Message):
         task_id: builtins.str = ...,
         response: tasks_pb2.ComponentExecuteResponse | None = ...,
         error: Global___TaskError | None = ...,
+        run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["error", b"error", "response", b"response", "result", b"result"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["error", b"error", "response", b"response", "result", b"result", "task_id", b"task_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id", "task_id", b"task_id"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_run_id", b"_run_id"]) -> typing.Literal["run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["result", b"result"]) -> typing.Literal["response", "error"] | None: ...
 
 Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
@@ -293,6 +303,7 @@ class TaskHeartbeatRequest(google.protobuf.message.Message):
     WORKER_ID_FIELD_NUMBER: builtins.int
     PROGRESS_FIELD_NUMBER: builtins.int
     STATUS_MESSAGE_FIELD_NUMBER: builtins.int
+    RUN_ID_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
     worker_id: builtins.str
@@ -306,6 +317,10 @@ class TaskHeartbeatRequest(google.protobuf.message.Message):
     """Optional progress indicator (0.0 to 1.0)."""
     status_message: builtins.str
     """Optional human-readable status message."""
+    run_id: builtins.str
+    """The run ID (UUID) this task belongs to. Used for routing and
+    recovery gating.
+    """
     def __init__(
         self,
         *,
@@ -313,11 +328,14 @@ class TaskHeartbeatRequest(google.protobuf.message.Message):
         worker_id: builtins.str = ...,
         progress: builtins.float | None = ...,
         status_message: builtins.str | None = ...,
+        run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message", "task_id", b"task_id", "worker_id", b"worker_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_progress", b"_progress", "_run_id", b"_run_id", "_status_message", b"_status_message", "progress", b"progress", "run_id", b"run_id", "status_message", b"status_message"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_run_id", b"_run_id", "_status_message", b"_status_message", "progress", b"progress", "run_id", b"run_id", "status_message", b"status_message", "task_id", b"task_id", "worker_id", b"worker_id"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_progress", b"_progress"]) -> typing.Literal["progress"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_run_id", b"_run_id"]) -> typing.Literal["run_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_status_message", b"_status_message"]) -> typing.Literal["status_message"] | None: ...
 
