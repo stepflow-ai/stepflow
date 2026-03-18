@@ -359,11 +359,14 @@ impl stepflow_plugin::Plugin for PullPlugin {
             execution_timeout,
         );
 
-        // Set the orchestrator URL so task assignments carry the shared server address.
-        // In K8s, workers need the service DNS name rather than the local bind address.
-        // Reuses STEPFLOW_ORCHESTRATOR_URL (same env var as startup.rs) for consistency.
-        let advertised_address =
-            std::env::var("STEPFLOW_ORCHESTRATOR_URL").unwrap_or(server_address.clone());
+        // Set the orchestrator URL so task assignments carry the advertised address.
+        // Prefer the environment's OrchestratorServiceUrl (already resolved by startup.rs
+        // with STEPFLOW_ORCHESTRATOR_URL or 127.0.0.1:<port> default), falling back to
+        // the gRPC server's bind address for standalone plugin servers.
+        let advertised_address = env
+            .get::<stepflow_plugin::OrchestratorServiceUrl>()
+            .and_then(|u| u.url().map(|s| s.to_string()))
+            .unwrap_or(server_address.clone());
         inner_plugin.set_orchestrator_url(advertised_address);
 
         *self.inner.lock().await = Some(inner_plugin);
