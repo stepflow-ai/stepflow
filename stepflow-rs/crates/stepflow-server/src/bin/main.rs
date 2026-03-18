@@ -19,7 +19,9 @@ use log::{info, warn};
 use stepflow_config::StepflowConfig;
 use stepflow_execution::recover_orphaned_runs;
 use stepflow_observability::{ObservabilityConfig, init_observability};
-use stepflow_server::{ServiceOptions, StepflowService, heartbeat_loop, orphan_claiming_loop, shutdown_signal};
+use stepflow_server::{
+    ServiceOptions, StepflowService, heartbeat_loop, orphan_claiming_loop, shutdown_signal,
+};
 use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;

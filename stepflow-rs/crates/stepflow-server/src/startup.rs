@@ -18,8 +18,7 @@ use axum::extract::DefaultBodyLimit;
 use error_stack::ResultExt as _;
 use stepflow_config::{ConfigError, StepflowConfig};
 use stepflow_grpc::{
-    ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl,
-    StepflowGrpcServer,
+    ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl, StepflowGrpcServer,
 };
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::OrchestratorId;
@@ -82,11 +81,7 @@ impl StepflowService {
         options: ServiceOptions,
     ) -> error_stack::Result<Self, ConfigError> {
         // Bind listener
-        let bind_addr = format!(
-            "{}:{}",
-            options.bind_address,
-            options.port.unwrap_or(0)
-        );
+        let bind_addr = format!("{}:{}", options.bind_address, options.port.unwrap_or(0));
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await
             .change_context(ConfigError::Configuration)
@@ -98,8 +93,7 @@ impl StepflowService {
             .port();
 
         // Create environment (auto-configures blob API URL from bound port)
-        let env =
-            create_environment(config, &listener, options.orchestrator_id.clone()).await?;
+        let env = create_environment(config, &listener, options.orchestrator_id.clone()).await?;
 
         // Build HTTP router
         let mut app = options.create_app_router(env.clone(), port);
@@ -145,10 +139,7 @@ impl StepflowService {
             }
         }
 
-        log::info!(
-            "Stepflow server starting on http://localhost:{}",
-            self.port
-        );
+        log::info!("Stepflow server starting on http://localhost:{}", self.port);
 
         axum::serve(self.listener, self.app)
             .with_graceful_shutdown(shutdown)
