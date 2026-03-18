@@ -31,7 +31,7 @@ use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::Orchestrato
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
-    PutBlobRequest, TaskAssignment, TaskError, TaskHeartbeatRequest, TaskStatus,
+    PutBlobRequest, TaskAssignment, TaskError, TaskErrorCode, TaskHeartbeatRequest, TaskStatus,
 };
 use stepflow_plugin::TaskRegistry;
 
@@ -582,4 +582,83 @@ async fn test_task_heartbeat_lifecycle() {
         .into_inner();
     assert!(resp.should_abort);
     assert_eq!(resp.status, TaskStatus::NotFound as i32);
+}
+
+#[tokio::test]
+async fn test_component_health_tracks_consecutive_failures() {
+    let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
+
+    let channel = endpoint(&address).connect().await.unwrap();
+    let mut orch_client = OrchestratorServiceClient::new(channel);
+
+    let component = "/python/flaky";
+    let health = server.pending_tasks().component_health();
+
+    // Component starts healthy
+    assert!(!health.is_unhealthy(component));
+
+    // Send 5 consecutive failures (default threshold)
+    for i in 0..5 {
+        let task_id = format!("health-fail-{i}");
+        let _rx = task_registry.register(task_id.clone());
+        server.pending_tasks().track(
+            task_id.clone(),
+            component.to_string(),
+            Duration::from_secs(30),
+            None,
+        );
+
+        orch_client
+            .complete_task(CompleteTaskRequest {
+                task_id,
+                result: Some(
+                    stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
+                        TaskError {
+                            code: TaskErrorCode::ComponentFailed.into(),
+                            message: format!("failure {i}"),
+                            data: None,
+                        },
+                    ),
+                ),
+                run_id: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    // Component should now be unhealthy
+    assert!(health.is_unhealthy(component));
+    assert_eq!(health.failure_count(component), 5);
+
+    // A success resets it
+    let task_id = "health-success".to_string();
+    let _rx = task_registry.register(task_id.clone());
+    server.pending_tasks().track(
+        task_id.clone(),
+        component.to_string(),
+        Duration::from_secs(30),
+        None,
+    );
+
+    orch_client
+        .complete_task(CompleteTaskRequest {
+            task_id,
+            result: Some(
+                stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
+                    ComponentExecuteResponse {
+                        output: Some(prost_wkt_types::Value {
+                            kind: Some(prost_wkt_types::value::Kind::StringValue(
+                                "recovered".to_string(),
+                            )),
+                        }),
+                    },
+                ),
+            ),
+            run_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!health.is_unhealthy(component));
+    assert_eq!(health.failure_count(component), 0);
 }

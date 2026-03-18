@@ -75,6 +75,8 @@ use stepflow_core::{FlowError, FlowResult};
 use stepflow_plugin::TaskRegistry;
 use tokio::time::MissedTickBehavior;
 
+use crate::component_health::ComponentHealthTracker;
+
 /// Heartbeat crash-detection timeout. Executing tasks that do not send a
 /// heartbeat or CompleteTask within this window are presumed crashed.
 pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -153,6 +155,8 @@ pub struct PendingTasks {
     heartbeat_tracker: HeartbeatTracker,
     /// Shared task registry for result delivery.
     task_registry: Arc<TaskRegistry>,
+    /// Per-component consecutive failure tracking (poison pill detection).
+    component_health: Arc<ComponentHealthTracker>,
     /// Sender for queue-timeout deadlines. Per-task timeouts are pushed at
     /// [`track`] time; the `DelayQueue` in the scanner yields them in
     /// deadline order regardless of push order.
@@ -195,6 +199,7 @@ impl PendingTasks {
             tasks: DashMap::new(),
             heartbeat_tracker: HeartbeatTracker::new(),
             task_registry,
+            component_health: Arc::new(ComponentHealthTracker::new()),
             deadline_tx,
             scanner: Mutex::new(None),
         });
@@ -341,9 +346,20 @@ impl PendingTasks {
             match &result {
                 FlowResult::Success(_) => {
                     stepflow_observability::metrics::record_task_success(&entry.component);
+                    self.component_health.record_success(&entry.component);
                 }
                 FlowResult::Failed(_) => {
                     stepflow_observability::metrics::record_task_failure(&entry.component);
+                    if self.component_health.record_failure(&entry.component) {
+                        log::warn!(
+                            "Component '{}' flagged unhealthy after {} consecutive failures",
+                            entry.component,
+                            self.component_health.failure_count(&entry.component),
+                        );
+                        stepflow_observability::metrics::record_component_unhealthy(
+                            &entry.component,
+                        );
+                    }
                 }
             }
         }
@@ -357,6 +373,11 @@ impl PendingTasks {
     /// Number of tasks currently tracked (any phase).
     pub fn pending_count(&self) -> usize {
         self.tasks.len()
+    }
+
+    /// Per-component health tracker for poison pill detection.
+    pub fn component_health(&self) -> &ComponentHealthTracker {
+        &self.component_health
     }
 
     // --- Internal ---

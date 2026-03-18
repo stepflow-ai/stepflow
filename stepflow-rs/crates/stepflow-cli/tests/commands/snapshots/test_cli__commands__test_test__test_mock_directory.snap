@@ -27,6 +27,9 @@ Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/error_fail.yaml: 2/2 passed
 ----------
 Running 2 test cases in batch mode (max_concurrency=10)
+tests/mock/error_retry.yaml: 2/2 passed
+----------
+Running 2 test cases in batch mode (max_concurrency=10)
 tests/mock/error_use_default.yaml: 2/2 passed
 ----------
 Running 2 test cases in batch mode (max_concurrency=10)
@@ -37,16 +40,17 @@ tests/mock/lazy_evaluation.yaml: 2/2 passed
 tests/mock/stepflow-config.yml: 0/0 passed
 tests/mock/basic.yaml: 3/3 passed
 tests/mock/error_fail.yaml: 2/2 passed
+tests/mock/error_retry.yaml: 2/2 passed
 tests/mock/error_use_default.yaml: 2/2 passed
 tests/mock/error_use_default_value.yaml: 2/2 passed
 tests/mock/lazy_evaluation.yaml: 2/2 passed
 tests/mock/stepflow-config.yml: Skipped (no test cases)
 
 === Test Summary ===
-Files tested: 6
+Files tested: 7
 Files skipped: 1
-Total test cases: 11
-Passed: 11
+Total test cases: 13
+Passed: 13
 Failed: 0
 
 ----- stderr -----
