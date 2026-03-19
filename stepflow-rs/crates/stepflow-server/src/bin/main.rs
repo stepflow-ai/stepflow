@@ -136,10 +136,10 @@ async fn main() {
                 port: Some(args.port),
                 bind_address: "0.0.0.0".into(),
                 orchestrator_id: Some(orchestrator_id.clone()),
-                include_grpc: true,
                 include_swagger: true,
                 include_cors: true,
                 announce_port: true,
+                ..Default::default()
             },
         )
         .await

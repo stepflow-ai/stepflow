@@ -52,7 +52,7 @@ impl Default for ServiceOptions {
             port: None,
             bind_address: "127.0.0.1".into(),
             orchestrator_id: None,
-            include_grpc: false,
+            include_grpc: true,
             include_swagger: false,
             include_cors: false,
             announce_port: false,
@@ -68,6 +68,7 @@ impl Default for ServiceOptions {
 /// to run as a background task.
 pub struct StepflowService {
     port: u16,
+    bind_address: String,
     env: Arc<StepflowEnvironment>,
     listener: tokio::net::TcpListener,
     app: Router,
@@ -92,8 +93,24 @@ impl StepflowService {
             .change_context(ConfigError::Configuration)?
             .port();
 
-        // Create environment (auto-configures blob API URL from bound port)
-        let env = create_environment(config, &listener, options.orchestrator_id.clone()).await?;
+        // Compute the multiplexed gRPC address when gRPC is enabled, so that
+        // pull plugins use this address instead of starting a standalone server.
+        let grpc_address = if options.include_grpc {
+            Some(format!("{}:{}", options.bind_address, port))
+        } else {
+            None
+        };
+
+        // Create environment (auto-configures blob API URL from bound port).
+        // When grpc_address is set, the gRPC server is marked as multiplexed
+        // before plugins are initialized.
+        let env = create_environment(
+            config,
+            &listener,
+            options.orchestrator_id.clone(),
+            grpc_address,
+        )
+        .await?;
 
         // Build HTTP router
         let mut app = options.create_app_router(env.clone(), port);
@@ -110,6 +127,7 @@ impl StepflowService {
 
         Ok(Self {
             port,
+            bind_address: options.bind_address.clone(),
             env,
             listener,
             app,
@@ -139,7 +157,11 @@ impl StepflowService {
             }
         }
 
-        log::info!("Stepflow server starting on http://localhost:{}", self.port);
+        log::info!(
+            "Stepflow server starting on http://{}:{}",
+            self.bind_address,
+            self.port
+        );
 
         axum::serve(self.listener, self.app)
             .with_graceful_shutdown(shutdown)
@@ -151,8 +173,13 @@ impl StepflowService {
 
     /// Spawn the server as a background task.
     ///
-    /// Useful for CLI commands that need a local HTTP server for blob API
-    /// but don't need foreground serving or shutdown handling.
+    /// Useful for CLI commands that need a local server for blob API and
+    /// gRPC services but don't need foreground serving or shutdown handling.
+    /// The task runs until the process exits.
+    ///
+    /// If graceful shutdown of the background server is needed in the future,
+    /// consider adding a variant that accepts a `CancellationToken` or
+    /// shutdown future.
     pub fn spawn_background(self) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             if let Err(e) = axum::serve(self.listener, self.app).await {
@@ -245,6 +272,7 @@ pub(crate) async fn create_environment(
     mut config: StepflowConfig,
     listener: &tokio::net::TcpListener,
     orchestrator_id: Option<OrchestratorId>,
+    grpc_address: Option<String>,
 ) -> error_stack::Result<Arc<StepflowEnvironment>, ConfigError> {
     let port = listener
         .local_addr()
@@ -278,7 +306,7 @@ pub(crate) async fn create_environment(
     });
 
     config
-        .create_environment(orchestrator_id, Some(orchestrator_url))
+        .create_environment(orchestrator_id, Some(orchestrator_url), grpc_address)
         .await
 }
 

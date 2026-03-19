@@ -95,14 +95,19 @@ struct ServerState {
     address: String,
     /// The port that was requested (None = random, Some = fixed).
     requested_port: Option<u16>,
-    /// Server task handle — aborted on drop.
-    server_handle: tokio::task::JoinHandle<()>,
+    /// Server task handle — aborted on drop. `None` when gRPC is multiplexed
+    /// on an existing HTTP server (no standalone task to manage).
+    server_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for StepflowGrpcServer {
     fn drop(&mut self) {
-        if let Some(state) = self.state.get_mut().take() {
-            state.server_handle.abort();
+        if let Some(ServerState {
+            server_handle: Some(handle),
+            ..
+        }) = self.state.get_mut().take()
+        {
+            handle.abort();
         }
     }
 }
@@ -155,6 +160,32 @@ impl StepflowGrpcServer {
     /// Returns `None` if the server has not been started yet.
     pub async fn address(&self) -> Option<String> {
         self.state.lock().await.as_ref().map(|s| s.address.clone())
+    }
+
+    /// Mark this server as multiplexed on an existing HTTP port.
+    ///
+    /// After this call, [`ensure_started`](Self::ensure_started) becomes a
+    /// no-op and returns the provided address instead of starting a separate
+    /// standalone gRPC server. This is the expected path when gRPC is
+    /// multiplexed on the same port as the HTTP server via
+    /// [`StepflowService`].
+    ///
+    /// [`StepflowService`]: stepflow_server::StepflowService
+    pub async fn set_multiplexed_address(&self, address: String) {
+        let mut state = self.state.lock().await;
+        if state.is_some() {
+            log::warn!(
+                "set_multiplexed_address called but gRPC server already running; \
+                 ignoring (standalone server will continue)"
+            );
+            return;
+        }
+        log::info!("gRPC services multiplexed on {address}");
+        *state = Some(ServerState {
+            address,
+            requested_port: None,
+            server_handle: None,
+        });
     }
 
     /// Build gRPC service routes as an [`axum::Router`] for multiplexing
@@ -262,7 +293,7 @@ impl StepflowGrpcServer {
         *state = Some(ServerState {
             address,
             requested_port: port,
-            server_handle,
+            server_handle: Some(server_handle),
         });
 
         Ok(addr)
