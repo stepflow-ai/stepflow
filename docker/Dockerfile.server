@@ -27,6 +27,9 @@ RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/ap
 COPY stepflow-rs/Cargo.toml stepflow-rs/Cargo.lock ./
 COPY stepflow-rs/crates ./crates
 
+# Copy proto definitions (needed by stepflow-proto build.rs)
+COPY proto ../proto
+
 # Build release binary
 RUN cargo build --release --bin stepflow-server
 

@@ -18,7 +18,7 @@ use stepflow_core::{
     BlobId, DEFAULT_WAIT_TIMEOUT_SECS, FlowError, FlowResult, GetRunParams, SubmitRunParams,
 };
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::BlobStoreExt as _;
+use stepflow_state::{ActiveExecutionsExt as _, ActiveRecoveriesExt as _, BlobStoreExt as _};
 use tonic::{Request, Response, Status};
 
 use crate::conversions::{
@@ -27,12 +27,12 @@ use crate::conversions::{
 };
 use crate::error as grpc_err;
 
+use crate::pending_tasks::HeartbeatResult;
 use crate::pending_tasks::PendingTasks;
 use crate::proto::stepflow::v1::orchestrator_service_server::OrchestratorService;
 use crate::proto::stepflow::v1::{
     CompleteTaskRequest, CompleteTaskResponse, OrchestratorGetRunRequest, OrchestratorRunStatus,
-    OrchestratorSubmitRunRequest, StartTaskRequest, StartTaskResponse, TaskHeartbeatRequest,
-    TaskHeartbeatResponse,
+    OrchestratorSubmitRunRequest, TaskHeartbeatRequest, TaskHeartbeatResponse,
 };
 
 /// gRPC implementation of `OrchestratorService`.
@@ -59,6 +59,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
         request: Request<OrchestratorSubmitRunRequest>,
     ) -> Result<Response<OrchestratorRunStatus>, Status> {
         let req = request.into_inner();
+
+        // Validate that this orchestrator owns the root run (if provided).
+        self.check_run_ownership(&req.root_run_id)?;
 
         let run_req = req
             .run_request
@@ -153,6 +156,9 @@ impl OrchestratorService for OrchestratorServiceImpl {
     ) -> Result<Response<OrchestratorRunStatus>, Status> {
         let req = request.into_inner();
 
+        // Validate that this orchestrator owns the root run (if provided).
+        self.check_run_ownership(&req.root_run_id)?;
+
         let run_id: uuid::Uuid = req
             .run_id
             .parse()
@@ -232,19 +238,10 @@ impl OrchestratorService for OrchestratorServiceImpl {
 
         if self.task_registry.complete(&req.task_id, result) {
             Ok(Response::new(CompleteTaskResponse {}))
+        } else if self.is_run_recovering(&req.run_id) {
+            Err(Status::unavailable("run is being recovered"))
         } else {
             Err(grpc_err::not_found("task", &req.task_id))
-        }
-    }
-
-    async fn start_task(
-        &self,
-        request: Request<StartTaskRequest>,
-    ) -> Result<Response<StartTaskResponse>, Status> {
-        let req = request.into_inner();
-        match self.task_registry.start_task(&req.task_id) {
-            Some(timed_out) => Ok(Response::new(StartTaskResponse { timed_out })),
-            None => Err(grpc_err::not_found("task", &req.task_id)),
         }
     }
 
@@ -253,10 +250,68 @@ impl OrchestratorService for OrchestratorServiceImpl {
         request: Request<TaskHeartbeatRequest>,
     ) -> Result<Response<TaskHeartbeatResponse>, Status> {
         let req = request.into_inner();
-        match self.task_registry.heartbeat(&req.task_id) {
-            Some(should_cancel) => Ok(Response::new(TaskHeartbeatResponse { should_cancel })),
-            None => Err(grpc_err::not_found("task", &req.task_id)),
+        if req.worker_id.is_empty() {
+            return Err(grpc_err::invalid_field(
+                "worker_id",
+                "worker_id is required",
+            ));
         }
+        let result = self.task_registry.heartbeat(&req.task_id, &req.worker_id);
+        match result {
+            HeartbeatResult::InProgress => Ok(Response::new(TaskHeartbeatResponse {
+                should_abort: false,
+                status: crate::proto::stepflow::v1::TaskStatus::InProgress as i32,
+            })),
+            HeartbeatResult::AlreadyClaimed => Ok(Response::new(TaskHeartbeatResponse {
+                should_abort: true,
+                status: crate::proto::stepflow::v1::TaskStatus::AlreadyClaimed as i32,
+            })),
+            HeartbeatResult::NotFound => {
+                if self.is_run_recovering(&req.run_id) {
+                    Err(Status::unavailable("run is being recovered"))
+                } else {
+                    Err(grpc_err::not_found("task", &req.task_id))
+                }
+            }
+        }
+    }
+}
+
+impl OrchestratorServiceImpl {
+    /// Validate that this orchestrator owns the given root run.
+    ///
+    /// If `root_run_id` is `None`, the check is skipped (backwards compatibility).
+    /// Returns `Ok(())` if the run is active, or a gRPC error:
+    /// - `UNAVAILABLE` if the run is being recovered
+    /// - `NOT_FOUND` if the run is not on this orchestrator
+    fn check_run_ownership(&self, root_run_id: &Option<String>) -> Result<(), Status> {
+        let Some(id_str) = root_run_id.as_deref() else {
+            return Ok(());
+        };
+        let id = uuid::Uuid::parse_str(id_str)
+            .map_err(|_| grpc_err::invalid_field("root_run_id", "invalid UUID format"))?;
+
+        if self.env.active_executions().contains(&id) {
+            return Ok(());
+        }
+        if self.env.active_recoveries().contains(&id) {
+            return Err(Status::unavailable("run is being recovered"));
+        }
+        Err(grpc_err::not_found("run", id_str))
+    }
+
+    /// Check if the given run_id is currently being recovered.
+    ///
+    /// Uses the optional `run_id` from the request. If not provided,
+    /// returns false (can't determine recovery state without it).
+    fn is_run_recovering(&self, run_id: &Option<String>) -> bool {
+        let Some(run_id_str) = run_id.as_deref() else {
+            return false;
+        };
+        let Ok(run_id) = uuid::Uuid::parse_str(run_id_str) else {
+            return false;
+        };
+        self.env.active_recoveries().contains(&run_id)
     }
 }
 

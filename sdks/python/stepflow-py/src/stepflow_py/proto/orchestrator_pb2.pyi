@@ -20,6 +20,7 @@ import builtins
 import collections.abc
 import google.protobuf.descriptor
 import google.protobuf.internal.containers
+import google.protobuf.internal.enum_type_wrapper
 import google.protobuf.message
 import google.protobuf.struct_pb2
 import google.protobuf.timestamp_pb2
@@ -36,6 +37,41 @@ else:
 
 DESCRIPTOR: google.protobuf.descriptor.FileDescriptor
 
+class _TaskStatus:
+    ValueType = typing.NewType("ValueType", builtins.int)
+    V: typing_extensions.TypeAlias = ValueType
+
+class _TaskStatusEnumTypeWrapper(google.protobuf.internal.enum_type_wrapper._EnumTypeWrapper[_TaskStatus.ValueType], builtins.type):
+    DESCRIPTOR: google.protobuf.descriptor.EnumDescriptor
+    TASK_STATUS_UNSPECIFIED: _TaskStatus.ValueType  # 0
+    """Unspecified / default value."""
+    TASK_STATUS_IN_PROGRESS: _TaskStatus.ValueType  # 1
+    """Task is in progress — the calling worker owns it."""
+    TASK_STATUS_ALREADY_CLAIMED: _TaskStatus.ValueType  # 2
+    """Task is already being executed by a different worker.
+    The calling worker should abort and not call CompleteTask.
+    """
+
+class TaskStatus(_TaskStatus, metaclass=_TaskStatusEnumTypeWrapper):
+    """--- TaskHeartbeat ---
+
+    Status of a task from the orchestrator's perspective.
+
+    Only used in TaskHeartbeatResponse for task-level state. Orchestrator-level
+    conditions (run not found, run recovering) are signaled as gRPC errors
+    (NOT_FOUND, UNAVAILABLE) rather than enum values.
+    """
+
+TASK_STATUS_UNSPECIFIED: TaskStatus.ValueType  # 0
+"""Unspecified / default value."""
+TASK_STATUS_IN_PROGRESS: TaskStatus.ValueType  # 1
+"""Task is in progress — the calling worker owns it."""
+TASK_STATUS_ALREADY_CLAIMED: TaskStatus.ValueType  # 2
+"""Task is already being executed by a different worker.
+The calling worker should abort and not call CompleteTask.
+"""
+Global___TaskStatus: typing_extensions.TypeAlias = TaskStatus
+
 @typing.final
 class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
     """--- SubmitRun ---
@@ -48,10 +84,17 @@ class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
 
     RUN_REQUEST_FIELD_NUMBER: builtins.int
     SUBFLOW_KEY_FIELD_NUMBER: builtins.int
+    ROOT_RUN_ID_FIELD_NUMBER: builtins.int
     subflow_key: builtins.str
     """Deterministic key for subflow deduplication during recovery.
     When present, the orchestrator will return an existing run with the
     same key instead of creating a duplicate.
+    """
+    root_run_id: builtins.str
+    """Root run ID (UUID) for ownership validation.
+    When present, the orchestrator verifies it owns this root run
+    before creating the sub-flow. Returns NOT_FOUND or UNAVAILABLE
+    if the run is not active or is being recovered.
     """
     @property
     def run_request(self) -> runs_pb2.CreateRunRequest:
@@ -62,9 +105,13 @@ class OrchestratorSubmitRunRequest(google.protobuf.message.Message):
         *,
         run_request: runs_pb2.CreateRunRequest | None = ...,
         subflow_key: builtins.str | None = ...,
+        root_run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_subflow_key", b"_subflow_key", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_subflow_key", b"_subflow_key", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_subflow_key", b"_subflow_key", "root_run_id", b"root_run_id", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_subflow_key", b"_subflow_key", "root_run_id", b"root_run_id", "run_request", b"run_request", "subflow_key", b"subflow_key"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_root_run_id", b"_root_run_id"]) -> typing.Literal["root_run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_subflow_key", b"_subflow_key"]) -> typing.Literal["subflow_key"] | None: ...
 
 Global___OrchestratorSubmitRunRequest: typing_extensions.TypeAlias = OrchestratorSubmitRunRequest
@@ -80,6 +127,7 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
     INCLUDE_RESULTS_FIELD_NUMBER: builtins.int
     RESULT_ORDER_FIELD_NUMBER: builtins.int
     TIMEOUT_SECS_FIELD_NUMBER: builtins.int
+    ROOT_RUN_ID_FIELD_NUMBER: builtins.int
     run_id: builtins.str
     """Run ID (UUID) to query."""
     wait: builtins.bool
@@ -90,6 +138,12 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
     """Result ordering."""
     timeout_secs: builtins.int
     """Maximum seconds to wait when wait=true (default 300)."""
+    root_run_id: builtins.str
+    """Root run ID (UUID) for ownership validation.
+    When present, the orchestrator verifies it owns this root run
+    before processing the request. Returns NOT_FOUND or UNAVAILABLE
+    if the run is not active or is being recovered.
+    """
     def __init__(
         self,
         *,
@@ -98,9 +152,13 @@ class OrchestratorGetRunRequest(google.protobuf.message.Message):
         include_results: builtins.bool = ...,
         result_order: common_pb2.ResultOrder.ValueType = ...,
         timeout_secs: builtins.int | None = ...,
+        root_run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_timeout_secs", b"_timeout_secs", "timeout_secs", b"timeout_secs"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_timeout_secs", b"_timeout_secs", "include_results", b"include_results", "result_order", b"result_order", "run_id", b"run_id", "timeout_secs", b"timeout_secs", "wait", b"wait"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_timeout_secs", b"_timeout_secs", "root_run_id", b"root_run_id", "timeout_secs", b"timeout_secs"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_root_run_id", b"_root_run_id", "_timeout_secs", b"_timeout_secs", "include_results", b"include_results", "result_order", b"result_order", "root_run_id", b"root_run_id", "run_id", b"run_id", "timeout_secs", b"timeout_secs", "wait", b"wait"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_root_run_id", b"_root_run_id"]) -> typing.Literal["root_run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_timeout_secs", b"_timeout_secs"]) -> typing.Literal["timeout_secs"] | None: ...
 
 Global___OrchestratorGetRunRequest: typing_extensions.TypeAlias = OrchestratorGetRunRequest
@@ -210,8 +268,14 @@ class CompleteTaskRequest(google.protobuf.message.Message):
     TASK_ID_FIELD_NUMBER: builtins.int
     RESPONSE_FIELD_NUMBER: builtins.int
     ERROR_FIELD_NUMBER: builtins.int
+    RUN_ID_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
+    run_id: builtins.str
+    """The run ID (UUID) this task belongs to. Used for routing and
+    recovery gating — the orchestrator can check whether the run
+    is still being recovered before returning NOT_FOUND.
+    """
     @property
     def response(self) -> tasks_pb2.ComponentExecuteResponse:
         """The component execution response (on success)."""
@@ -226,15 +290,24 @@ class CompleteTaskRequest(google.protobuf.message.Message):
         task_id: builtins.str = ...,
         response: tasks_pb2.ComponentExecuteResponse | None = ...,
         error: Global___TaskError | None = ...,
+        run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["error", b"error", "response", b"response", "result", b"result"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["error", b"error", "response", b"response", "result", b"result", "task_id", b"task_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id", "task_id", b"task_id"]) -> None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_run_id", b"_run_id"]) -> typing.Literal["run_id"] | None: ...
+    @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["result", b"result"]) -> typing.Literal["response", "error"] | None: ...
 
 Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
 
 @typing.final
 class CompleteTaskResponse(google.protobuf.message.Message):
+    """Empty response — success is indicated by a non-error gRPC status.
+    Task-not-found and run-recovering conditions are returned as gRPC
+    NOT_FOUND and UNAVAILABLE errors respectively.
+    """
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     def __init__(
@@ -244,68 +317,46 @@ class CompleteTaskResponse(google.protobuf.message.Message):
 Global___CompleteTaskResponse: typing_extensions.TypeAlias = CompleteTaskResponse
 
 @typing.final
-class StartTaskRequest(google.protobuf.message.Message):
-    """--- StartTask ---"""
-
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    TASK_ID_FIELD_NUMBER: builtins.int
-    task_id: builtins.str
-    """The task ID from the TaskAssignment."""
-    def __init__(
-        self,
-        *,
-        task_id: builtins.str = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["task_id", b"task_id"]) -> None: ...
-
-Global___StartTaskRequest: typing_extensions.TypeAlias = StartTaskRequest
-
-@typing.final
-class StartTaskResponse(google.protobuf.message.Message):
-    DESCRIPTOR: google.protobuf.descriptor.Descriptor
-
-    TIMED_OUT_FIELD_NUMBER: builtins.int
-    timed_out: builtins.bool
-    """If true, the task already timed out in the queue before the worker
-    called StartTask. The worker should skip execution — no CompleteTask
-    call is needed.
-    """
-    def __init__(
-        self,
-        *,
-        timed_out: builtins.bool = ...,
-    ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["timed_out", b"timed_out"]) -> None: ...
-
-Global___StartTaskResponse: typing_extensions.TypeAlias = StartTaskResponse
-
-@typing.final
 class TaskHeartbeatRequest(google.protobuf.message.Message):
-    """--- TaskHeartbeat ---"""
-
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     TASK_ID_FIELD_NUMBER: builtins.int
+    WORKER_ID_FIELD_NUMBER: builtins.int
     PROGRESS_FIELD_NUMBER: builtins.int
     STATUS_MESSAGE_FIELD_NUMBER: builtins.int
+    RUN_ID_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
+    worker_id: builtins.str
+    """Unique identifier for this worker instance. Must be stable for the
+    duration of a task execution (same ID for start and all heartbeats).
+    Used to detect duplicate task assignments — if a different worker_id
+    sends a heartbeat for the same task, the response indicates
+    ALREADY_CLAIMED.
+    """
     progress: builtins.float
     """Optional progress indicator (0.0 to 1.0)."""
     status_message: builtins.str
     """Optional human-readable status message."""
+    run_id: builtins.str
+    """The run ID (UUID) this task belongs to. Used for routing and
+    recovery gating.
+    """
     def __init__(
         self,
         *,
         task_id: builtins.str = ...,
+        worker_id: builtins.str = ...,
         progress: builtins.float | None = ...,
         status_message: builtins.str | None = ...,
+        run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_status_message", b"_status_message", "progress", b"progress", "status_message", b"status_message", "task_id", b"task_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_progress", b"_progress", "_run_id", b"_run_id", "_status_message", b"_status_message", "progress", b"progress", "run_id", b"run_id", "status_message", b"status_message"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_progress", b"_progress", "_run_id", b"_run_id", "_status_message", b"_status_message", "progress", b"progress", "run_id", b"run_id", "status_message", b"status_message", "task_id", b"task_id", "worker_id", b"worker_id"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_progress", b"_progress"]) -> typing.Literal["progress"] | None: ...
+    @typing.overload
+    def WhichOneof(self, oneof_group: typing.Literal["_run_id", b"_run_id"]) -> typing.Literal["run_id"] | None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_status_message", b"_status_message"]) -> typing.Literal["status_message"] | None: ...
 
@@ -315,14 +366,20 @@ Global___TaskHeartbeatRequest: typing_extensions.TypeAlias = TaskHeartbeatReques
 class TaskHeartbeatResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    SHOULD_CANCEL_FIELD_NUMBER: builtins.int
-    should_cancel: builtins.bool
-    """If true, the worker should cancel the task (e.g., run was cancelled)."""
+    SHOULD_ABORT_FIELD_NUMBER: builtins.int
+    STATUS_FIELD_NUMBER: builtins.int
+    should_abort: builtins.bool
+    """If true, the worker should abort execution of this task.
+    Check `status` for the reason.
+    """
+    status: Global___TaskStatus.ValueType
+    """Current task status from the orchestrator's perspective."""
     def __init__(
         self,
         *,
-        should_cancel: builtins.bool = ...,
+        should_abort: builtins.bool = ...,
+        status: Global___TaskStatus.ValueType = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["should_cancel", b"should_cancel"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["should_abort", b"should_abort", "status", b"status"]) -> None: ...
 
 Global___TaskHeartbeatResponse: typing_extensions.TypeAlias = TaskHeartbeatResponse

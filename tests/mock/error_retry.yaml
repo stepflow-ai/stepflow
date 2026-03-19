@@ -1,0 +1,35 @@
+schema: https://stepflow.org/schemas/v1/flow.json
+inputSchema:
+  type: object
+outputSchema:
+  type: object
+steps:
+- id: retry_step
+  component: /mock/error
+  onError:
+    action: retry
+    maxRetries: 2
+  input:
+    mode:
+      $input: mode
+output:
+  result:
+    $step: retry_step
+test:
+  cases:
+  - name: retry exhaustion fails after max retries
+    input:
+      mode: error
+    output:
+      outcome: failed
+      error:
+        code: COMPONENT_FAILED
+        message: error
+  - name: success case does not retry
+    input:
+      mode: succeed
+    output:
+      outcome: success
+      result:
+        result:
+          output: succeeded

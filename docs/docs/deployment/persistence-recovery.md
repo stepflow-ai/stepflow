@@ -309,6 +309,17 @@ For the general case (100 orchestrators, 100 runs each = 10,000 total Running ru
 
 This means recovery scales with the number of runs **per orchestrator**, not the total number of runs in the system.
 
+### Worker-Side Orchestrator Discovery
+
+When an orchestrator restarts or a run migrates, workers may still be executing tasks for that run. Workers detect the move via gRPC error codes from `OrchestratorService`:
+
+- **`NOT_FOUND`**: The run/task is not on this orchestrator — the run has moved
+- **`UNAVAILABLE`**: The orchestrator is down or the run is being recovered
+
+On either error, the worker calls `TasksService.GetOrchestratorForRun` (available on any orchestrator) to discover the current owner. If a new URL is returned, all operations for that task (heartbeat, completion, subflow submission, run queries) are redirected automatically via the shared `OrchestratorTracker`.
+
+This is best-effort: if discovery fails, the worker falls through to its existing retry/timeout behavior. Eventually the orchestrator will re-dispatch the task after heartbeat timeout.
+
 ### Graceful Shutdown
 
 When receiving SIGTERM (e.g., during Kubernetes pod termination), the server:

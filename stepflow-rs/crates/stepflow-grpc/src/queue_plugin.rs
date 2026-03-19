@@ -51,10 +51,10 @@ pub struct StepflowQueuePlugin {
     /// This is needed when the gRPC server is started dynamically (e.g., by
     /// PullPlugin) and the environment was built before the port was known.
     orchestrator_url_override: std::sync::RwLock<Option<String>>,
-    /// Maximum time a task can sit in the queue before a worker calls
-    /// StartTask. Must be greater than zero (validated at config load time).
+    /// Maximum time a task can sit in the queue before a worker sends its
+    /// first heartbeat. Must be greater than zero (validated at config load time).
     queue_timeout: Duration,
-    /// Maximum time from StartTask to CompleteTask. `None` means no
+    /// Maximum time from first heartbeat to CompleteTask. `None` means no
     /// execution timeout (heartbeat-only crash detection).
     execution_timeout: Option<Duration>,
 }
@@ -137,8 +137,15 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         {
             let ctx = context.get_or_insert_with(|| proto::TaskContext {
                 orchestrator_service_url: String::new(),
+                root_run_id: String::new(),
             });
             ctx.orchestrator_service_url = override_url.clone();
+        }
+
+        // Set root_run_id so workers can include it in OrchestratorService
+        // requests for ownership validation.
+        if let Some(ctx) = context.as_mut() {
+            ctx.root_run_id = run_context.root_run_id.to_string();
         }
 
         // Convert input to proto Value
@@ -225,6 +232,7 @@ fn build_execution_context(env: &StepflowEnvironment) -> Option<proto::TaskConte
 
     Some(proto::TaskContext {
         orchestrator_service_url: orchestrator_url,
+        root_run_id: String::new(), // Set by start_task after this call
     })
 }
 

@@ -27,27 +27,35 @@
 use std::sync::Arc;
 
 use stepflow_core::component::ComponentInfo;
+use stepflow_plugin::StepflowEnvironment;
+use stepflow_state::LeaseManagerExt as _;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
 use crate::error as grpc_err;
 use crate::grpc_server::QueueRegistry;
 use crate::proto::stepflow::v1::tasks_service_server::TasksService;
-use crate::proto::stepflow::v1::{PullTasksRequest, TaskAssignment};
+use crate::proto::stepflow::v1::{
+    GetOrchestratorForRunRequest, GetOrchestratorForRunResponse, PullTasksRequest, TaskAssignment,
+};
 
 /// gRPC implementation of `TasksService`.
 ///
 /// Routes `PullTasks` requests to the correct [`PullTaskQueue`](crate::pull_task_queue::PullTaskQueue) based on
 /// the worker's `queue_name`. Each pull plugin registers its queue under
 /// a unique name in the shared [`QueueRegistry`].
+///
+/// Also provides `GetOrchestratorForRun` for workers to discover the current
+/// orchestrator for a run after a failover or restart.
 #[derive(Debug)]
 pub struct TasksServiceImpl {
     registry: Arc<QueueRegistry>,
+    env: Arc<StepflowEnvironment>,
 }
 
 impl TasksServiceImpl {
-    pub fn new(registry: Arc<QueueRegistry>) -> Self {
-        Self { registry }
+    pub fn new(registry: Arc<QueueRegistry>, env: Arc<StepflowEnvironment>) -> Self {
+        Self { registry, env }
     }
 }
 
@@ -94,15 +102,24 @@ impl TasksService for TasksServiceImpl {
             1
         };
 
+        let num_components = components.len();
+
+        // Use the worker's self-assigned UUID if provided, otherwise fall
+        // back to the internal connection counter for logging.
+        let internal_id = queue.register_worker(components);
+        let worker_label = if req.worker_id.is_empty() {
+            format!("{internal_id}")
+        } else {
+            req.worker_id
+        };
+
         log::info!(
-            "Worker connected for queue '{}' with {} components, max_concurrent={}",
+            "Worker {} connected for queue '{}' with {} components, max_concurrent={}",
+            worker_label,
             req.queue_name,
-            components.len(),
+            num_components,
             max_concurrent,
         );
-
-        // Register this worker's components
-        let worker_id = queue.register_worker(components);
 
         // Create a channel for the response stream.
         // Buffer size matches max_concurrent so the worker can receive
@@ -135,11 +152,61 @@ impl TasksService for TasksServiceImpl {
                 }
             }
 
-            log::info!("Worker {} disconnected", worker_id);
-            queue.unregister_worker(worker_id);
+            log::info!("Worker {} disconnected", worker_label);
+            queue.unregister_worker(internal_id);
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))
+    }
+
+    async fn get_orchestrator_for_run(
+        &self,
+        request: Request<GetOrchestratorForRunRequest>,
+    ) -> Result<Response<GetOrchestratorForRunResponse>, Status> {
+        let req = request.into_inner();
+
+        let run_id: uuid::Uuid = req
+            .run_id
+            .parse()
+            .map_err(|_| grpc_err::invalid_field("run_id", "invalid UUID format"))?;
+
+        let lease_manager = self.env.lease_manager();
+
+        // Look up who owns this run
+        let lease_info = lease_manager
+            .get_lease(run_id)
+            .await
+            .map_err(|e| grpc_err::internal(format!("lease lookup failed: {e}")))?;
+
+        let Some(lease) = lease_info else {
+            return Err(grpc_err::not_found("run lease", &req.run_id));
+        };
+
+        // Find the owning orchestrator's service URL
+        let orchestrators = lease_manager
+            .list_orchestrators()
+            .await
+            .map_err(|e| grpc_err::internal(format!("orchestrator lookup failed: {e}")))?;
+
+        let orchestrator_url = orchestrators
+            .into_iter()
+            .find(|o| o.id == lease.owner)
+            .map(|o| o.orchestrator_url)
+            .unwrap_or_default();
+
+        if orchestrator_url.is_empty() {
+            // Owner exists but hasn't heartbeated with a URL yet (e.g.,
+            // orchestrator is still starting up). Return UNAVAILABLE so
+            // the worker retries rather than giving up.
+            return Err(Status::unavailable(format!(
+                "orchestrator '{}' owns run but has no advertised URL",
+                lease.owner
+            )));
+        }
+
+        Ok(Response::new(GetOrchestratorForRunResponse {
+            orchestrator_service_url: orchestrator_url,
+        }))
     }
 }
 

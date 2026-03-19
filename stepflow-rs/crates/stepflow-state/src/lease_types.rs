@@ -108,6 +108,10 @@ pub struct OrchestratorInfo {
 
     /// Number of runs currently owned by this orchestrator.
     pub active_runs: usize,
+
+    /// The gRPC service URL for this orchestrator's `OrchestratorService`.
+    /// Workers use this to send `CompleteTask`, `SubmitRun`, etc.
+    pub orchestrator_url: String,
 }
 
 impl OrchestratorInfo {
@@ -196,6 +200,7 @@ mod tests {
             id: OrchestratorId::new("orch-1"),
             last_heartbeat: Utc::now(),
             active_runs: 5,
+            orchestrator_url: "http://orch-1:7837".to_string(),
         };
 
         assert!(info.is_alive(std::time::Duration::from_secs(30)));
@@ -204,6 +209,7 @@ mod tests {
             id: OrchestratorId::new("orch-2"),
             last_heartbeat: Utc::now() - chrono::Duration::minutes(5),
             active_runs: 3,
+            orchestrator_url: "http://orch-2:7837".to_string(),
         };
 
         assert!(!stale_info.is_alive(std::time::Duration::from_secs(30)));

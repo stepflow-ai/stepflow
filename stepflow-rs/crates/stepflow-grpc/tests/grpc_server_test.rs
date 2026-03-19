@@ -31,7 +31,7 @@ use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::Orchestrato
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
     CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
-    PutBlobRequest, StartTaskRequest, TaskAssignment, TaskError, TaskHeartbeatRequest,
+    PutBlobRequest, TaskAssignment, TaskError, TaskErrorCode, TaskHeartbeatRequest, TaskStatus,
 };
 use stepflow_plugin::TaskRegistry;
 
@@ -115,6 +115,7 @@ async fn test_queue_isolation() {
             queue_name: "python".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/python/transform")],
+            worker_id: String::new(),
         })
         .await
         .unwrap();
@@ -127,6 +128,7 @@ async fn test_queue_isolation() {
             queue_name: "node".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/node/summarize")],
+            worker_id: String::new(),
         })
         .await
         .unwrap();
@@ -186,6 +188,7 @@ async fn test_unknown_queue_returns_not_found() {
             queue_name: "unknown".to_string(),
             max_concurrent: 1,
             components: vec![make_component("/unknown/comp")],
+            worker_id: String::new(),
         })
         .await;
 
@@ -220,21 +223,29 @@ async fn test_complete_task_success_round_trip() {
 
     let channel = endpoint(&address).connect().await.unwrap();
 
-    // Worker starts the task
+    // Worker sends initial heartbeat (claims the task)
     let mut orch_client = OrchestratorServiceClient::new(channel.clone());
-    orch_client
-        .start_task(StartTaskRequest {
-            task_id: "task-1".to_string(),
-        })
-        .await
-        .unwrap();
-
-    // Worker sends heartbeat
-    orch_client
+    let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-1".to_string(),
+            worker_id: "test-worker-1".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(!resp.should_abort);
+
+    // Worker sends subsequent heartbeat
+    orch_client
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "task-1".to_string(),
+            worker_id: "test-worker-1".to_string(),
+            progress: None,
+            status_message: None,
+            run_id: None,
         })
         .await
         .unwrap();
@@ -247,6 +258,7 @@ async fn test_complete_task_success_round_trip() {
     };
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-1".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -300,6 +312,7 @@ async fn test_complete_task_error_code_mapping() {
     // Complete with COMPONENT_FAILED (proto enum value 4) → should map to COMPONENT_EXECUTION_FAILED
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-err-component".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
@@ -317,6 +330,7 @@ async fn test_complete_task_error_code_mapping() {
     // Complete with INVALID_INPUT → should map to InvalidInput
     orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "task-err-input".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
@@ -368,6 +382,7 @@ async fn test_complete_unknown_task_returns_not_found() {
 
     let result = orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "nonexistent".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -386,8 +401,9 @@ async fn test_complete_unknown_task_returns_not_found() {
     let output = prost_wkt_types::Value {
         kind: Some(prost_wkt_types::value::Kind::StringValue("ok".to_string())),
     };
-    let result = orch_client
+    let err = orch_client
         .complete_task(CompleteTaskRequest {
+            run_id: None,
             task_id: "nonexistent".to_string(),
             result: Some(
                 stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
@@ -397,10 +413,11 @@ async fn test_complete_unknown_task_returns_not_found() {
                 ),
             ),
         })
-        .await;
+        .await
+        .unwrap_err();
 
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    // CompleteTask for unknown task returns gRPC NOT_FOUND error
+    assert_eq!(err.code(), tonic::Code::NotFound);
 }
 
 #[tokio::test]
@@ -493,7 +510,7 @@ async fn test_blob_not_found() {
 }
 
 #[tokio::test]
-async fn test_start_task_and_heartbeat() {
+async fn test_task_heartbeat_lifecycle() {
     let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
 
     // Register a task in TaskRegistry for result delivery
@@ -509,36 +526,139 @@ async fn test_start_task_and_heartbeat() {
     let channel = endpoint(&address).connect().await.unwrap();
     let mut orch_client = OrchestratorServiceClient::new(channel);
 
-    // StartTask
+    // First heartbeat — claims the task (transitions Queued → Executing)
     let resp = orch_client
-        .start_task(StartTaskRequest {
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "task-hb".to_string(),
+            worker_id: "worker-1".to_string(),
+            progress: None,
+            status_message: None,
+            run_id: None,
         })
         .await
         .unwrap()
         .into_inner();
-    assert!(!resp.timed_out);
+    assert!(!resp.should_abort);
+    assert_eq!(resp.status, TaskStatus::InProgress as i32);
 
-    // Heartbeat
+    // Subsequent heartbeat — same worker
     let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-hb".to_string(),
+            worker_id: "worker-1".to_string(),
             progress: None,
             status_message: None,
-            task_id: "task-hb".to_string(),
+            run_id: None,
         })
         .await
         .unwrap()
         .into_inner();
-    assert!(!resp.should_cancel);
+    assert!(!resp.should_abort);
 
-    // Heartbeat for unknown task
-    let result = orch_client
+    // Different worker tries to heartbeat — should get AlreadyClaimed
+    let resp = orch_client
         .task_heartbeat(TaskHeartbeatRequest {
+            task_id: "task-hb".to_string(),
+            worker_id: "worker-2".to_string(),
             progress: None,
             status_message: None,
+            run_id: None,
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(resp.should_abort);
+    assert_eq!(resp.status, TaskStatus::AlreadyClaimed as i32);
+
+    // Heartbeat for unknown task — should get gRPC NOT_FOUND error
+    let err = orch_client
+        .task_heartbeat(TaskHeartbeatRequest {
             task_id: "nonexistent".to_string(),
+            worker_id: "worker-1".to_string(),
+            progress: None,
+            status_message: None,
+            run_id: None,
         })
-        .await;
-    assert!(result.is_err());
-    assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::NotFound);
+}
+
+#[tokio::test]
+async fn test_component_health_tracks_consecutive_failures() {
+    let (server, _pq, _nq, address, task_registry) = setup_two_queue_server().await;
+
+    let channel = endpoint(&address).connect().await.unwrap();
+    let mut orch_client = OrchestratorServiceClient::new(channel);
+
+    let component = "/python/flaky";
+    let health = server.pending_tasks().component_health();
+
+    // Component starts healthy
+    assert!(!health.is_unhealthy(component));
+
+    // Send 5 consecutive failures (default threshold)
+    for i in 0..5 {
+        let task_id = format!("health-fail-{i}");
+        let _rx = task_registry.register(task_id.clone());
+        server.pending_tasks().track(
+            task_id.clone(),
+            component.to_string(),
+            Duration::from_secs(30),
+            None,
+        );
+
+        orch_client
+            .complete_task(CompleteTaskRequest {
+                task_id,
+                result: Some(
+                    stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Error(
+                        TaskError {
+                            code: TaskErrorCode::ComponentFailed.into(),
+                            message: format!("failure {i}"),
+                            data: None,
+                        },
+                    ),
+                ),
+                run_id: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    // Component should now be unhealthy
+    assert!(health.is_unhealthy(component));
+    assert_eq!(health.failure_count(component), 5);
+
+    // A success resets it
+    let task_id = "health-success".to_string();
+    let _rx = task_registry.register(task_id.clone());
+    server.pending_tasks().track(
+        task_id.clone(),
+        component.to_string(),
+        Duration::from_secs(30),
+        None,
+    );
+
+    orch_client
+        .complete_task(CompleteTaskRequest {
+            task_id,
+            result: Some(
+                stepflow_grpc::proto::stepflow::v1::complete_task_request::Result::Response(
+                    ComponentExecuteResponse {
+                        output: Some(prost_wkt_types::Value {
+                            kind: Some(prost_wkt_types::value::Kind::StringValue(
+                                "recovered".to_string(),
+                            )),
+                        }),
+                    },
+                ),
+            ),
+            run_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(!health.is_unhealthy(component));
+    assert_eq!(health.failure_count(component), 0);
 }

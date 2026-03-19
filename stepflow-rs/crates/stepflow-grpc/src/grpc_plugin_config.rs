@@ -82,14 +82,14 @@ pub struct PullPluginConfig {
     pub queue_name: Option<String>,
 
     /// Maximum time (in seconds) a task can wait in the queue for a
-    /// worker to call `StartTask`. If no worker picks up the task within
-    /// this window, it is treated as failed. Must be greater than 0.
+    /// worker to send its first heartbeat. If no worker picks up the task
+    /// within this window, it is treated as failed. Must be greater than 0.
     ///
     /// Defaults to 30 seconds.
     #[serde(default = "default_queue_timeout_secs")]
     pub queue_timeout_secs: u64,
 
-    /// Maximum time (in seconds) from `StartTask` to `CompleteTask`.
+    /// Maximum time (in seconds) from first heartbeat to `CompleteTask`.
     /// If the worker does not complete within this window, the task is
     /// treated as failed. Heartbeat-based crash detection (5s timeout)
     /// provides faster detection of hard worker crashes.
@@ -359,9 +359,18 @@ impl stepflow_plugin::Plugin for PullPlugin {
             execution_timeout,
         );
 
-        // Set the orchestrator URL so task assignments carry the shared server address.
-        // In K8s, workers need the service DNS name rather than the local bind address.
-        // Reuses STEPFLOW_ORCHESTRATOR_URL (same env var as startup.rs) for consistency.
+        // Set the orchestrator URL so task assignments carry the gRPC server address.
+        //
+        // In `serve` mode, the gRPC server is multiplexed on the same port as HTTP,
+        // so server_address matches the environment's OrchestratorServiceUrl.
+        //
+        // In `run`/`test` mode, the PullPlugin starts its own gRPC server on a
+        // dynamic port, separate from the HTTP blob API server. The server_address
+        // is the gRPC server's actual bind address — we must use it, not the
+        // environment's OrchestratorServiceUrl (which points to the HTTP port).
+        //
+        // STEPFLOW_ORCHESTRATOR_URL overrides for K8s where workers need the
+        // service DNS name rather than the local bind address.
         let advertised_address =
             std::env::var("STEPFLOW_ORCHESTRATOR_URL").unwrap_or(server_address.clone());
         inner_plugin.set_orchestrator_url(advertised_address);

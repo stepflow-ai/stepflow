@@ -86,22 +86,6 @@ _OrchestratorServiceCompleteTaskType = typing_extensions.TypeVar(
     ],
 )
 
-_OrchestratorServiceStartTaskType = typing_extensions.TypeVar(
-    '_OrchestratorServiceStartTaskType',
-    grpc.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-    grpc.aio.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-    default=grpc.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-)
-
 _OrchestratorServiceTaskHeartbeatType = typing_extensions.TypeVar(
     '_OrchestratorServiceTaskHeartbeatType',
     grpc.UnaryUnaryMultiCallable[
@@ -118,13 +102,25 @@ _OrchestratorServiceTaskHeartbeatType = typing_extensions.TypeVar(
     ],
 )
 
-class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, _OrchestratorServiceGetRunType, _OrchestratorServiceCompleteTaskType, _OrchestratorServiceStartTaskType, _OrchestratorServiceTaskHeartbeatType]):
+class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, _OrchestratorServiceGetRunType, _OrchestratorServiceCompleteTaskType, _OrchestratorServiceTaskHeartbeatType]):
     """Service exposed by the orchestrator for workers to interact with during
     component execution. Workers reach this via `orchestrator_service_url`
     from TaskContext.
 
     This must reach the orchestrator that owns the specific run — it is NOT
-    interchangeable with other orchestrators (unlike WorkerService).
+    interchangeable with other orchestrators (unlike TasksService).
+
+    All RPCs use a consistent error signaling pattern:
+
+      gRPC NOT_FOUND     — the run/task is not on this orchestrator.
+                           The worker should call TasksService.GetOrchestratorForRun
+                           to discover the correct orchestrator and retry.
+
+      gRPC UNAVAILABLE   — the run is being recovered on this orchestrator.
+                           The worker should retry with backoff.
+
+    These gRPC-level errors are distinct from task-level status values
+    (IN_PROGRESS, ALREADY_CLAIMED) which remain in response bodies.
 
     gRPC only — not exposed as REST.
     """
@@ -142,10 +138,6 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
         grpc.UnaryUnaryMultiCallable[
             orchestrator_pb2.CompleteTaskRequest,
             orchestrator_pb2.CompleteTaskResponse,
-        ],
-        grpc.UnaryUnaryMultiCallable[
-            orchestrator_pb2.StartTaskRequest,
-            orchestrator_pb2.StartTaskResponse,
         ],
         grpc.UnaryUnaryMultiCallable[
             orchestrator_pb2.TaskHeartbeatRequest,
@@ -168,47 +160,66 @@ class OrchestratorServiceStub(typing.Generic[_OrchestratorServiceSubmitRunType, 
             orchestrator_pb2.CompleteTaskResponse,
         ],
         grpc.aio.UnaryUnaryMultiCallable[
-            orchestrator_pb2.StartTaskRequest,
-            orchestrator_pb2.StartTaskResponse,
-        ],
-        grpc.aio.UnaryUnaryMultiCallable[
             orchestrator_pb2.TaskHeartbeatRequest,
             orchestrator_pb2.TaskHeartbeatResponse,
         ],
     ], channel: grpc.aio.Channel) -> None: ...
 
     SubmitRun: _OrchestratorServiceSubmitRunType
-    """Submit a sub-flow run from within a component execution."""
+    """Submit a sub-flow run from within a component execution.
+
+    Must reach the orchestrator owning the root run so the sub-flow
+    executor runs in the same process. If `root_run_id` is provided,
+    the orchestrator validates ownership before proceeding.
+
+    Errors:
+      NOT_FOUND    — root run not on this orchestrator
+      UNAVAILABLE  — root run is being recovered
+    """
 
     GetRun: _OrchestratorServiceGetRunType
-    """Get the status of a run (optionally waiting for completion)."""
+    """Get the status of a run (optionally waiting for completion).
+
+    Must reach the orchestrator owning the root run for `wait=true`
+    (completion notifications are local to the owning orchestrator).
+    If `root_run_id` is provided, the orchestrator validates ownership.
+
+    Errors:
+      NOT_FOUND    — root run not on this orchestrator
+      UNAVAILABLE  — root run is being recovered
+    """
 
     CompleteTask: _OrchestratorServiceCompleteTaskType
     """Report task completion (success or failure).
 
-    Called by workers after executing a component, regardless of how the
-    task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+    Called by workers after executing a component. The worker uses the
     `orchestrator_service_url` from the task's TaskContext to reach
     the orchestrator that owns the run.
-    """
 
-    StartTask: _OrchestratorServiceStartTaskType
-    """Notify the orchestrator that the worker has started executing a task.
-
-    Called by the worker immediately before beginning component execution.
-    This transitions the task from "queued" to "executing" on the
-    orchestrator side, starting the heartbeat timeout. If the response
-    has `timed_out = true`, the task already expired in the queue and the
-    worker should skip execution.
+    Errors:
+      NOT_FOUND    — task not on this orchestrator (already completed,
+                     timed out, or run moved to another orchestrator)
+      UNAVAILABLE  — run is being recovered, task_id not yet registered
     """
 
     TaskHeartbeat: _OrchestratorServiceTaskHeartbeatType
-    """Send a heartbeat for an in-progress task.
+    """Report that a worker is executing a task (start + heartbeat combined).
 
-    Called periodically by the worker during component execution (typically
-    every 1s). Each heartbeat resets the crash-detection timer on the
-    orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-    presumes the worker crashed and fails the task.
+    Called by the worker immediately before beginning component execution
+    and periodically during execution (typically every 1s). Each call
+    resets the crash-detection timer on the orchestrator.
+
+    On first call (task in Queued phase), transitions the task to
+    Executing and records the worker_id. On subsequent calls, verifies
+    the worker_id matches and resets the heartbeat timer.
+
+    The response status tells the worker whether to proceed:
+    - IN_PROGRESS: task is yours, continue executing
+    - ALREADY_CLAIMED: a different worker is executing this task, abort
+
+    Errors:
+      NOT_FOUND    — task not on this orchestrator
+      UNAVAILABLE  — run is being recovered, task_id not yet registered
     """
 
 OrchestratorServiceAsyncStub: typing_extensions.TypeAlias = OrchestratorServiceStub[
@@ -225,10 +236,6 @@ OrchestratorServiceAsyncStub: typing_extensions.TypeAlias = OrchestratorServiceS
         orchestrator_pb2.CompleteTaskResponse,
     ],
     grpc.aio.UnaryUnaryMultiCallable[
-        orchestrator_pb2.StartTaskRequest,
-        orchestrator_pb2.StartTaskResponse,
-    ],
-    grpc.aio.UnaryUnaryMultiCallable[
         orchestrator_pb2.TaskHeartbeatRequest,
         orchestrator_pb2.TaskHeartbeatResponse,
     ],
@@ -240,7 +247,19 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
     from TaskContext.
 
     This must reach the orchestrator that owns the specific run — it is NOT
-    interchangeable with other orchestrators (unlike WorkerService).
+    interchangeable with other orchestrators (unlike TasksService).
+
+    All RPCs use a consistent error signaling pattern:
+
+      gRPC NOT_FOUND     — the run/task is not on this orchestrator.
+                           The worker should call TasksService.GetOrchestratorForRun
+                           to discover the correct orchestrator and retry.
+
+      gRPC UNAVAILABLE   — the run is being recovered on this orchestrator.
+                           The worker should retry with backoff.
+
+    These gRPC-level errors are distinct from task-level status values
+    (IN_PROGRESS, ALREADY_CLAIMED) which remain in response bodies.
 
     gRPC only — not exposed as REST.
     """
@@ -251,7 +270,16 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         request: orchestrator_pb2.OrchestratorSubmitRunRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.OrchestratorRunStatus, collections.abc.Awaitable[orchestrator_pb2.OrchestratorRunStatus]]:
-        """Submit a sub-flow run from within a component execution."""
+        """Submit a sub-flow run from within a component execution.
+
+        Must reach the orchestrator owning the root run so the sub-flow
+        executor runs in the same process. If `root_run_id` is provided,
+        the orchestrator validates ownership before proceeding.
+
+        Errors:
+          NOT_FOUND    — root run not on this orchestrator
+          UNAVAILABLE  — root run is being recovered
+        """
 
     @abc.abstractmethod
     def GetRun(
@@ -259,7 +287,16 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         request: orchestrator_pb2.OrchestratorGetRunRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.OrchestratorRunStatus, collections.abc.Awaitable[orchestrator_pb2.OrchestratorRunStatus]]:
-        """Get the status of a run (optionally waiting for completion)."""
+        """Get the status of a run (optionally waiting for completion).
+
+        Must reach the orchestrator owning the root run for `wait=true`
+        (completion notifications are local to the owning orchestrator).
+        If `root_run_id` is provided, the orchestrator validates ownership.
+
+        Errors:
+          NOT_FOUND    — root run not on this orchestrator
+          UNAVAILABLE  — root run is being recovered
+        """
 
     @abc.abstractmethod
     def CompleteTask(
@@ -269,25 +306,14 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
     ) -> typing.Union[orchestrator_pb2.CompleteTaskResponse, collections.abc.Awaitable[orchestrator_pb2.CompleteTaskResponse]]:
         """Report task completion (success or failure).
 
-        Called by workers after executing a component, regardless of how the
-        task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+        Called by workers after executing a component. The worker uses the
         `orchestrator_service_url` from the task's TaskContext to reach
         the orchestrator that owns the run.
-        """
 
-    @abc.abstractmethod
-    def StartTask(
-        self,
-        request: orchestrator_pb2.StartTaskRequest,
-        context: _ServicerContext,
-    ) -> typing.Union[orchestrator_pb2.StartTaskResponse, collections.abc.Awaitable[orchestrator_pb2.StartTaskResponse]]:
-        """Notify the orchestrator that the worker has started executing a task.
-
-        Called by the worker immediately before beginning component execution.
-        This transitions the task from "queued" to "executing" on the
-        orchestrator side, starting the heartbeat timeout. If the response
-        has `timed_out = true`, the task already expired in the queue and the
-        worker should skip execution.
+        Errors:
+          NOT_FOUND    — task not on this orchestrator (already completed,
+                         timed out, or run moved to another orchestrator)
+          UNAVAILABLE  — run is being recovered, task_id not yet registered
         """
 
     @abc.abstractmethod
@@ -296,12 +322,23 @@ class OrchestratorServiceServicer(metaclass=abc.ABCMeta):
         request: orchestrator_pb2.TaskHeartbeatRequest,
         context: _ServicerContext,
     ) -> typing.Union[orchestrator_pb2.TaskHeartbeatResponse, collections.abc.Awaitable[orchestrator_pb2.TaskHeartbeatResponse]]:
-        """Send a heartbeat for an in-progress task.
+        """Report that a worker is executing a task (start + heartbeat combined).
 
-        Called periodically by the worker during component execution (typically
-        every 1s). Each heartbeat resets the crash-detection timer on the
-        orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-        presumes the worker crashed and fails the task.
+        Called by the worker immediately before beginning component execution
+        and periodically during execution (typically every 1s). Each call
+        resets the crash-detection timer on the orchestrator.
+
+        On first call (task in Queued phase), transitions the task to
+        Executing and records the worker_id. On subsequent calls, verifies
+        the worker_id matches and resets the heartbeat timer.
+
+        The response status tells the worker whether to proceed:
+        - IN_PROGRESS: task is yours, continue executing
+        - ALREADY_CLAIMED: a different worker is executing this task, abort
+
+        Errors:
+          NOT_FOUND    — task not on this orchestrator
+          UNAVAILABLE  — run is being recovered, task_id not yet registered
         """
 
 def add_OrchestratorServiceServicer_to_server(servicer: OrchestratorServiceServicer, server: typing.Union[grpc.Server, grpc.aio.Server]) -> None: ...

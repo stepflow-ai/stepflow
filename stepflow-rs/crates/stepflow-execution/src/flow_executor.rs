@@ -408,7 +408,9 @@ impl FlowExecutor {
                     let attempt = item.record_attempt(task.step_index);
 
                     // Check for a recovered task_id from journal replay.
-                    // If found, reuse it so the worker's CompleteTask retry lands.
+                    // If found, reuse it so the worker's CompleteTask retry
+                    // and the re-dispatched task both use the same ID.
+                    // First result to arrive wins (TaskRegistry.complete).
                     let task_id = self
                         .recovered_task_ids
                         .remove(&(task.run_id, task.item_index, task.step_index))
@@ -905,9 +907,11 @@ impl FlowExecutor {
         let run_id = task.run_id;
         let component_path = task_result.step.component().to_string();
 
-        // Remove from in-flight tracking (used by checkpoints)
-        self.in_flight_task_ids
-            .remove(&(task.run_id, task.item_index, task.step_index));
+        // Remove from in-flight tracking (used by checkpoints).
+        // Save the task_id so it can be reused if the task is retried.
+        let previous_task_id =
+            self.in_flight_task_ids
+                .remove(&(task.run_id, task.item_index, task.step_index));
 
         // Record step execution metric
         let outcome = if task_result.is_success() {
@@ -921,7 +925,9 @@ impl FlowExecutor {
         // Retry decision: check if we should retry instead of completing
         // ---------------------------------------------------------------
         if task_result.step.is_failed()
-            && let Some(retry_future) = self.maybe_retry_task(&task_result, &component_path).await?
+            && let Some(retry_future) = self
+                .maybe_retry_task(&task_result, &component_path, previous_task_id)
+                .await?
         {
             return Ok(Some(retry_future));
         }
@@ -1117,6 +1123,7 @@ impl FlowExecutor {
         &mut self,
         task_result: &TaskResult,
         component_path: &str,
+        previous_task_id: Option<String>,
     ) -> Result<Option<futures::future::BoxFuture<'static, TaskResult>>> {
         use futures::future::FutureExt as _;
 
@@ -1216,8 +1223,12 @@ impl FlowExecutor {
             item.record_attempt(task.step_index)
         };
 
-        // 4. Generate task_id and journal the new attempt
-        let task_id = uuid::Uuid::now_v7().to_string();
+        // 4. Reuse the same task_id for the retry. This ensures that if a
+        //    worker completed the task with the old task_id (e.g., CompleteTask
+        //    retry after orchestrator crash), the result still lands. A new
+        //    worker that picks up the re-dispatched task with the same ID will
+        //    also use it for CompleteTask, so there's no ambiguity.
+        let task_id = previous_task_id.unwrap_or_else(|| uuid::Uuid::now_v7().to_string());
         let seqno = self
             .write_journal(JournalEvent::TasksStarted {
                 runs: vec![RunTaskAttempts {

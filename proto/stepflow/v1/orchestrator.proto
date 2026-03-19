@@ -29,39 +29,73 @@ import "stepflow/v1/runs.proto";
 // from TaskContext.
 //
 // This must reach the orchestrator that owns the specific run — it is NOT
-// interchangeable with other orchestrators (unlike WorkerService).
+// interchangeable with other orchestrators (unlike TasksService).
+//
+// All RPCs use a consistent error signaling pattern:
+//
+//   gRPC NOT_FOUND     — the run/task is not on this orchestrator.
+//                        The worker should call TasksService.GetOrchestratorForRun
+//                        to discover the correct orchestrator and retry.
+//
+//   gRPC UNAVAILABLE   — the run is being recovered on this orchestrator.
+//                        The worker should retry with backoff.
+//
+// These gRPC-level errors are distinct from task-level status values
+// (IN_PROGRESS, ALREADY_CLAIMED) which remain in response bodies.
 //
 // gRPC only — not exposed as REST.
 service OrchestratorService {
   // Submit a sub-flow run from within a component execution.
+  //
+  // Must reach the orchestrator owning the root run so the sub-flow
+  // executor runs in the same process. If `root_run_id` is provided,
+  // the orchestrator validates ownership before proceeding.
+  //
+  // Errors:
+  //   NOT_FOUND    — root run not on this orchestrator
+  //   UNAVAILABLE  — root run is being recovered
   rpc SubmitRun(OrchestratorSubmitRunRequest) returns (OrchestratorRunStatus);
 
   // Get the status of a run (optionally waiting for completion).
+  //
+  // Must reach the orchestrator owning the root run for `wait=true`
+  // (completion notifications are local to the owning orchestrator).
+  // If `root_run_id` is provided, the orchestrator validates ownership.
+  //
+  // Errors:
+  //   NOT_FOUND    — root run not on this orchestrator
+  //   UNAVAILABLE  — root run is being recovered
   rpc GetRun(OrchestratorGetRunRequest) returns (OrchestratorRunStatus);
 
   // Report task completion (success or failure).
   //
-  // Called by workers after executing a component, regardless of how the
-  // task was received (PullTasks, NATS, Kafka, etc.). The worker uses the
+  // Called by workers after executing a component. The worker uses the
   // `orchestrator_service_url` from the task's TaskContext to reach
   // the orchestrator that owns the run.
+  //
+  // Errors:
+  //   NOT_FOUND    — task not on this orchestrator (already completed,
+  //                  timed out, or run moved to another orchestrator)
+  //   UNAVAILABLE  — run is being recovered, task_id not yet registered
   rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse);
 
-  // Notify the orchestrator that the worker has started executing a task.
+  // Report that a worker is executing a task (start + heartbeat combined).
   //
-  // Called by the worker immediately before beginning component execution.
-  // This transitions the task from "queued" to "executing" on the
-  // orchestrator side, starting the heartbeat timeout. If the response
-  // has `timed_out = true`, the task already expired in the queue and the
-  // worker should skip execution.
-  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
-
-  // Send a heartbeat for an in-progress task.
+  // Called by the worker immediately before beginning component execution
+  // and periodically during execution (typically every 1s). Each call
+  // resets the crash-detection timer on the orchestrator.
   //
-  // Called periodically by the worker during component execution (typically
-  // every 1s). Each heartbeat resets the crash-detection timer on the
-  // orchestrator. If heartbeats stop arriving for 5s, the orchestrator
-  // presumes the worker crashed and fails the task.
+  // On first call (task in Queued phase), transitions the task to
+  // Executing and records the worker_id. On subsequent calls, verifies
+  // the worker_id matches and resets the heartbeat timer.
+  //
+  // The response status tells the worker whether to proceed:
+  // - IN_PROGRESS: task is yours, continue executing
+  // - ALREADY_CLAIMED: a different worker is executing this task, abort
+  //
+  // Errors:
+  //   NOT_FOUND    — task not on this orchestrator
+  //   UNAVAILABLE  — run is being recovered, task_id not yet registered
   rpc TaskHeartbeat(TaskHeartbeatRequest) returns (TaskHeartbeatResponse);
 }
 
@@ -77,6 +111,12 @@ message OrchestratorSubmitRunRequest {
   // When present, the orchestrator will return an existing run with the
   // same key instead of creating a duplicate.
   optional string subflow_key = 2;
+
+  // Root run ID (UUID) for ownership validation.
+  // When present, the orchestrator verifies it owns this root run
+  // before creating the sub-flow. Returns NOT_FOUND or UNAVAILABLE
+  // if the run is not active or is being recovered.
+  optional string root_run_id = 3;
 }
 
 // --- GetRun ---
@@ -96,6 +136,12 @@ message OrchestratorGetRunRequest {
 
   // Maximum seconds to wait when wait=true (default 300).
   optional uint64 timeout_secs = 5;
+
+  // Root run ID (UUID) for ownership validation.
+  // When present, the orchestrator verifies it owns this root run
+  // before processing the request. Returns NOT_FOUND or UNAVAILABLE
+  // if the run is not active or is being recovered.
+  optional string root_run_id = 6;
 }
 
 // --- Response ---
@@ -148,38 +194,64 @@ message CompleteTaskRequest {
     // Structured error (on failure).
     TaskError error = 3;
   }
+
+  // The run ID (UUID) this task belongs to. Used for routing and
+  // recovery gating — the orchestrator can check whether the run
+  // is still being recovered before returning NOT_FOUND.
+  optional string run_id = 4;
 }
 
+// Empty response — success is indicated by a non-error gRPC status.
+// Task-not-found and run-recovering conditions are returned as gRPC
+// NOT_FOUND and UNAVAILABLE errors respectively.
 message CompleteTaskResponse {}
 
-// --- StartTask ---
-
-message StartTaskRequest {
-  // The task ID from the TaskAssignment.
-  string task_id = 1;
-}
-
-message StartTaskResponse {
-  // If true, the task already timed out in the queue before the worker
-  // called StartTask. The worker should skip execution — no CompleteTask
-  // call is needed.
-  bool timed_out = 1;
-}
-
 // --- TaskHeartbeat ---
+
+// Status of a task from the orchestrator's perspective.
+//
+// Only used in TaskHeartbeatResponse for task-level state. Orchestrator-level
+// conditions (run not found, run recovering) are signaled as gRPC errors
+// (NOT_FOUND, UNAVAILABLE) rather than enum values.
+enum TaskStatus {
+  // Unspecified / default value.
+  TASK_STATUS_UNSPECIFIED = 0;
+
+  // Task is in progress — the calling worker owns it.
+  TASK_STATUS_IN_PROGRESS = 1;
+
+  // Task is already being executed by a different worker.
+  // The calling worker should abort and not call CompleteTask.
+  TASK_STATUS_ALREADY_CLAIMED = 2;
+}
 
 message TaskHeartbeatRequest {
   // The task ID from the TaskAssignment.
   string task_id = 1;
 
+  // Unique identifier for this worker instance. Must be stable for the
+  // duration of a task execution (same ID for start and all heartbeats).
+  // Used to detect duplicate task assignments — if a different worker_id
+  // sends a heartbeat for the same task, the response indicates
+  // ALREADY_CLAIMED.
+  string worker_id = 2;
+
   // Optional progress indicator (0.0 to 1.0).
-  optional float progress = 2;
+  optional float progress = 3;
 
   // Optional human-readable status message.
-  optional string status_message = 3;
+  optional string status_message = 4;
+
+  // The run ID (UUID) this task belongs to. Used for routing and
+  // recovery gating.
+  optional string run_id = 5;
 }
 
 message TaskHeartbeatResponse {
-  // If true, the worker should cancel the task (e.g., run was cancelled).
-  bool should_cancel = 1;
+  // If true, the worker should abort execution of this task.
+  // Check `status` for the reason.
+  bool should_abort = 1;
+
+  // Current task status from the orchestrator's perspective.
+  TaskStatus status = 2;
 }

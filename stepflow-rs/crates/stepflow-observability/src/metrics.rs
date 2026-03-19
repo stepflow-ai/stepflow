@@ -174,6 +174,24 @@ pub fn record_step_retries_exhausted(reason: &str, component: &str) {
 }
 
 // =========================================================================
+// Component Health (Poison Pill Detection)
+// =========================================================================
+
+/// Components that crossed the consecutive failure threshold.
+static COMPONENT_UNHEALTHY: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    let meter = global::meter("stepflow");
+    meter
+        .u64_counter("component.unhealthy_total")
+        .with_description("Components flagged unhealthy (consecutive failure threshold crossed)")
+        .build()
+});
+
+/// Record that a component crossed the unhealthy threshold.
+pub fn record_component_unhealthy(component: &str) {
+    COMPONENT_UNHEALTHY.add(1, &[KeyValue::new("component", component.to_string())]);
+}
+
+// =========================================================================
 // Pending Component Executions (Backpressure)
 // =========================================================================
 

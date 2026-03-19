@@ -149,7 +149,11 @@ impl LeaseManager for NoOpLeaseManager {
         async move { Ok(()) }.boxed()
     }
 
-    fn heartbeat(&self, _orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>> {
+    fn heartbeat(
+        &self,
+        _orchestrator_id: OrchestratorId,
+        _orchestrator_url: String,
+    ) -> BoxFuture<'_, Result<(), LeaseError>> {
         async move { Ok(()) }.boxed()
     }
 
@@ -177,6 +181,7 @@ impl LeaseManager for NoOpLeaseManager {
                 id,
                 last_heartbeat: Utc::now(),
                 active_runs,
+                orchestrator_url: String::new(),
             })
             .collect();
 
@@ -216,7 +221,10 @@ mod tests {
         let orch_id = OrchestratorId::new("test-orch");
 
         // Should not error
-        manager.heartbeat(orch_id).await.unwrap();
+        manager
+            .heartbeat(orch_id, "http://test:7837".into())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

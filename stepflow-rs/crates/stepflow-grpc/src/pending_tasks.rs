@@ -31,10 +31,10 @@
 //!
 //! [`PendingTasks`] tracks task lifecycle through two phases:
 //!
-//! 1. **Queued** — task dispatched, waiting for `StartTask` from a worker.
+//! 1. **Queued** — task dispatched, waiting for first `TaskHeartbeat` from a worker.
 //!    Subject to a per-task queue timeout set at [`track`] time.
 //!
-//! 2. **Executing** — worker called `StartTask`, now running the component.
+//! 2. **Executing** — worker sent first `TaskHeartbeat`, now running the component.
 //!    Subject to a heartbeat timeout (reset by each `TaskHeartbeat`).
 //!    Optionally subject to an execution timeout cap.
 //!
@@ -75,6 +75,8 @@ use stepflow_core::{FlowError, FlowResult};
 use stepflow_plugin::TaskRegistry;
 use tokio::time::MissedTickBehavior;
 
+use crate::component_health::ComponentHealthTracker;
+
 /// Heartbeat crash-detection timeout. Executing tasks that do not send a
 /// heartbeat or CompleteTask within this window are presumed crashed.
 pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -85,12 +87,12 @@ pub const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Task phase in the lifecycle state machine.
 enum TaskPhase {
-    /// Task dispatched, waiting for worker to call StartTask.
+    /// Task dispatched, waiting for worker to send first heartbeat.
     Queued { dispatched_at: tokio::time::Instant },
-    /// Worker called StartTask, executing component.
+    /// Worker sent first heartbeat, executing component.
     Executing {
         started_at: tokio::time::Instant,
-        /// Optional cap on total execution time (measured from StartTask).
+        /// Optional cap on total execution time (measured from first heartbeat).
         execution_timeout: Option<Duration>,
     },
 }
@@ -104,14 +106,29 @@ struct TaskEntry {
     /// Component path for metrics labeling.
     component: String,
     /// Optional cap on total execution time, stored at registration and applied
-    /// when the worker calls StartTask.
+    /// when the worker sends its first heartbeat.
     execution_timeout: Option<Duration>,
+    /// Worker that owns this task (set on first heartbeat).
+    worker_id: Option<String>,
+}
+
+/// Result of a heartbeat call, indicating the task's status from the
+/// orchestrator's perspective.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeartbeatResult {
+    /// Task is in progress — the calling worker owns it.
+    InProgress,
+    /// Task is already being executed by a different worker.
+    AlreadyClaimed,
+    /// Task ID not recognized — never existed, already completed and
+    /// cleaned up, or timed out.
+    NotFound,
 }
 
 /// Reason a task timed out, for metrics.
 #[derive(Debug, Clone, Copy)]
 pub enum TimeoutKind {
-    /// Timed out waiting for StartTask.
+    /// Timed out waiting for first heartbeat.
     Queue,
     /// Timed out waiting for heartbeat (worker presumed crashed).
     Heartbeat,
@@ -126,8 +143,7 @@ pub enum TimeoutKind {
 /// Two-phase task tracking registry.
 ///
 /// Shared between `StepflowQueuePlugin` (registers tasks) and
-/// `OrchestratorServiceImpl` (handles StartTask, TaskHeartbeat,
-/// CompleteTask RPCs).
+/// `OrchestratorServiceImpl` (handles TaskHeartbeat, CompleteTask RPCs).
 ///
 /// Returns `Arc<Self>` from `new` because the background scanner holds a
 /// `Weak` reference and exits when the last `Arc` is dropped (or on explicit
@@ -139,6 +155,8 @@ pub struct PendingTasks {
     heartbeat_tracker: HeartbeatTracker,
     /// Shared task registry for result delivery.
     task_registry: Arc<TaskRegistry>,
+    /// Per-component consecutive failure tracking (poison pill detection).
+    component_health: Arc<ComponentHealthTracker>,
     /// Sender for queue-timeout deadlines. Per-task timeouts are pushed at
     /// [`track`] time; the `DelayQueue` in the scanner yields them in
     /// deadline order regardless of push order.
@@ -181,6 +199,7 @@ impl PendingTasks {
             tasks: DashMap::new(),
             heartbeat_tracker: HeartbeatTracker::new(),
             task_registry,
+            component_health: Arc::new(ComponentHealthTracker::new()),
             deadline_tx,
             scanner: Mutex::new(None),
         });
@@ -211,10 +230,11 @@ impl PendingTasks {
     /// by the executor. This method only sets up gRPC-specific timeout and
     /// heartbeat tracking.
     ///
-    /// - `queue_timeout` — how long the task may wait before a worker calls
-    ///   StartTask.  Must be greater than zero.
-    /// - `execution_timeout` — optional cap on execution time from StartTask
-    ///   to CompleteTask.  `None` means no cap (heartbeat-only crash detection).
+    /// - `queue_timeout` — how long the task may wait before a worker sends
+    ///   its first heartbeat.  Must be greater than zero.
+    /// - `execution_timeout` — optional cap on execution time from first
+    ///   heartbeat to CompleteTask.  `None` means no cap (heartbeat-only
+    ///   crash detection).
     pub fn track(
         &self,
         task_id: String,
@@ -232,6 +252,7 @@ impl PendingTasks {
                 },
                 component,
                 execution_timeout,
+                worker_id: None,
             },
         );
 
@@ -250,18 +271,18 @@ impl PendingTasks {
         self.heartbeat_tracker.remove(task_id);
     }
 
-    /// Transition a task from Queued to Executing (called by StartTask RPC).
+    /// Record a heartbeat from a worker (called by TaskHeartbeat RPC).
     ///
-    /// The execution timeout stored at [`track`] time is applied here.
+    /// This is the unified start + heartbeat method. On first call (task in
+    /// Queued phase), transitions the task to Executing and records the
+    /// `worker_id`. On subsequent calls, verifies the `worker_id` matches
+    /// and resets the heartbeat timer.
     ///
-    /// Returns:
-    /// - `Some(false)` — task transitioned successfully, worker should execute.
-    /// - `Some(true)` — task already started (idempotent).
-    /// - `None` — task_id not found (already timed out or completed).
-    ///
-    /// [`track`]: PendingTasks::track
-    pub fn start_task(&self, task_id: &str) -> Option<bool> {
-        let mut entry = self.tasks.get_mut(task_id)?;
+    /// Returns a [`HeartbeatResult`] indicating what the worker should do.
+    pub fn heartbeat(&self, task_id: &str, worker_id: &str) -> HeartbeatResult {
+        let Some(mut entry) = self.tasks.get_mut(task_id) else {
+            return HeartbeatResult::NotFound;
+        };
 
         match &entry.phase {
             TaskPhase::Queued { dispatched_at } => {
@@ -275,34 +296,21 @@ impl PendingTasks {
                     started_at: tokio::time::Instant::now(),
                     execution_timeout,
                 };
+                entry.worker_id = Some(worker_id.to_string());
                 // The queue deadline entry becomes stale; it will be skipped
                 // lazily by the queue timeout scanner (remove_if in timeout_task).
-                Some(false)
-            }
-            TaskPhase::Executing { .. } => {
-                // Idempotent — already started, not an error.
-                Some(false)
-            }
-        }
-    }
-
-    /// Record a heartbeat from the worker (called by TaskHeartbeat RPC).
-    ///
-    /// Inserts `task_id` into the heartbeat tracker so the next scan knows
-    /// this task is still alive.
-    ///
-    /// Returns:
-    /// - `Some(false)` — heartbeat recorded, `should_cancel = false`.
-    /// - `Some(true)` — heartbeat recorded, `should_cancel = true` (future use).
-    /// - `None` — task_id not found or not in Executing phase.
-    pub fn heartbeat(&self, task_id: &str) -> Option<bool> {
-        let entry = self.tasks.get(task_id)?;
-        match &entry.phase {
-            TaskPhase::Executing { .. } => {
                 self.heartbeat_tracker.record(task_id);
-                Some(false)
+                HeartbeatResult::InProgress
             }
-            _ => None,
+            TaskPhase::Executing { .. } => {
+                // Check worker_id matches
+                if entry.worker_id.as_deref() == Some(worker_id) {
+                    self.heartbeat_tracker.record(task_id);
+                    HeartbeatResult::InProgress
+                } else {
+                    HeartbeatResult::AlreadyClaimed
+                }
+            }
         }
     }
 
@@ -327,7 +335,7 @@ impl PendingTasks {
                     );
                 }
                 TaskPhase::Queued { dispatched_at } => {
-                    // Completed without StartTask (direct CompleteTask).
+                    // Completed without heartbeat (direct CompleteTask).
                     stepflow_observability::metrics::record_task_queue_duration(
                         &entry.component,
                         dispatched_at.elapsed().as_secs_f64(),
@@ -338,9 +346,20 @@ impl PendingTasks {
             match &result {
                 FlowResult::Success(_) => {
                     stepflow_observability::metrics::record_task_success(&entry.component);
+                    self.component_health.record_success(&entry.component);
                 }
                 FlowResult::Failed(_) => {
                     stepflow_observability::metrics::record_task_failure(&entry.component);
+                    if self.component_health.record_failure(&entry.component) {
+                        log::warn!(
+                            "Component '{}' flagged unhealthy after {} consecutive failures",
+                            entry.component,
+                            self.component_health.failure_count(&entry.component),
+                        );
+                        stepflow_observability::metrics::record_component_unhealthy(
+                            &entry.component,
+                        );
+                    }
                 }
             }
         }
@@ -356,20 +375,25 @@ impl PendingTasks {
         self.tasks.len()
     }
 
+    /// Per-component health tracker for poison pill detection.
+    pub fn component_health(&self) -> &ComponentHealthTracker {
+        &self.component_health
+    }
+
     // --- Internal ---
 
     /// Fail a task due to timeout and emit the appropriate metric.
     ///
     /// For `Queue` timeouts, uses `remove_if` to only remove the entry when
-    /// it is still in the Queued phase — preventing a race where StartTask
-    /// arrives just as the deadline fires.
+    /// it is still in the Queued phase — preventing a race where the first
+    /// heartbeat arrives just as the deadline fires.
     ///
     /// For `Heartbeat` / `Execution` timeouts, removes unconditionally
     /// (the scanner only calls this for tasks it observed in Executing phase).
     fn timeout_task(&self, task_id: &str, kind: TimeoutKind) {
         let removed = match kind {
             TimeoutKind::Queue => {
-                // Atomic: only remove if the task is still waiting for StartTask.
+                // Atomic: only remove if the task is still waiting for first heartbeat.
                 self.tasks
                     .remove_if(task_id, |_, e| matches!(e.phase, TaskPhase::Queued { .. }))
             }
@@ -575,8 +599,14 @@ mod tests {
             None,
         );
 
-        assert!(pending.start_task("task-1").is_some());
-        assert!(pending.heartbeat("task-1").is_some());
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         let value = ValueRef::new(serde_json::json!({"done": true}));
         assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
@@ -585,15 +615,42 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_start_task_unknown_returns_none() {
+    async fn test_heartbeat_unknown_returns_not_found() {
         let (pending, _task_registry) = setup();
-        assert!(pending.start_task("nonexistent").is_none());
+        assert_eq!(
+            pending.heartbeat("nonexistent", "worker-1"),
+            HeartbeatResult::NotFound
+        );
     }
 
     #[tokio::test]
-    async fn test_heartbeat_unknown_returns_none() {
-        let (pending, _task_registry) = setup();
-        assert!(pending.heartbeat("nonexistent").is_none());
+    async fn test_heartbeat_already_claimed() {
+        let (pending, task_registry) = setup();
+        let _rx = task_registry.register("task-1".to_string());
+        pending.track(
+            "task-1".to_string(),
+            "test_component".to_string(),
+            QUEUE_TIMEOUT,
+            None,
+        );
+
+        // First worker claims the task
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
+
+        // Different worker tries to heartbeat — should be rejected
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-2"),
+            HeartbeatResult::AlreadyClaimed
+        );
+
+        // Original worker can still heartbeat
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
     }
 
     #[tokio::test]
@@ -621,7 +678,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_start_task_after_queue_timeout_returns_not_found() {
+    async fn test_heartbeat_after_queue_timeout_returns_not_found() {
         tokio::time::pause();
 
         let (pending, task_registry) = setup();
@@ -635,7 +692,10 @@ mod tests {
 
         tokio::time::sleep(Duration::from_millis(60)).await;
 
-        assert!(pending.start_task("task-1").is_none());
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::NotFound
+        );
     }
 
     #[tokio::test]
@@ -650,7 +710,10 @@ mod tests {
             QUEUE_TIMEOUT,
             None,
         );
-        pending.start_task("task-1").unwrap();
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
         tokio::task::yield_now().await;
@@ -675,13 +738,19 @@ mod tests {
             QUEUE_TIMEOUT,
             None,
         );
-        pending.start_task("task-1").unwrap();
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         // Send heartbeats every 2s for 12s — spans multiple 5s scan cycles.
         for _ in 0..6 {
             tokio::time::advance(Duration::from_secs(2)).await;
             tokio::task::yield_now().await;
-            assert!(pending.heartbeat("task-1").is_some());
+            assert_eq!(
+                pending.heartbeat("task-1", "worker-1"),
+                HeartbeatResult::InProgress
+            );
         }
 
         let value = ValueRef::new(serde_json::json!({"ok": true}));
@@ -701,12 +770,15 @@ mod tests {
             QUEUE_TIMEOUT,
             Some(Duration::from_millis(200)),
         );
-        pending.start_task("task-1").unwrap();
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         for _ in 0..10 {
             tokio::time::advance(Duration::from_millis(50)).await;
             tokio::task::yield_now().await;
-            let _ = pending.heartbeat("task-1");
+            let _ = pending.heartbeat("task-1", "worker-1");
         }
 
         tokio::time::advance(HEARTBEAT_TIMEOUT).await;
@@ -747,7 +819,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_start_task_beats_queue_timeout_race() {
+    async fn test_heartbeat_beats_queue_timeout_race() {
         tokio::time::pause();
 
         let (pending, task_registry) = setup();
@@ -759,7 +831,10 @@ mod tests {
             None,
         );
 
-        pending.start_task("task-1").unwrap();
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         tokio::time::sleep(Duration::from_millis(60)).await;
         assert_eq!(pending.pending_count(), 1);
@@ -785,14 +860,20 @@ mod tests {
         tokio::time::advance(HEARTBEAT_TIMEOUT + Duration::from_millis(100)).await;
         tokio::task::yield_now().await;
 
-        pending.start_task("task-1").unwrap();
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
 
         tokio::time::advance(Duration::from_secs(1)).await;
         tokio::task::yield_now().await;
 
         assert_eq!(pending.pending_count(), 1);
 
-        assert!(pending.heartbeat("task-1").is_some());
+        assert_eq!(
+            pending.heartbeat("task-1", "worker-1"),
+            HeartbeatResult::InProgress
+        );
         let value = ValueRef::new(serde_json::json!({"ok": true}));
         assert!(pending.complete("task-1", FlowResult::Success(value.clone())));
         assert_eq!(rx.await.unwrap(), FlowResult::Success(value));

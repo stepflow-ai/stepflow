@@ -109,14 +109,21 @@ pub trait LeaseManager: Send + Sync {
     /// Send a heartbeat to indicate this orchestrator is still alive.
     ///
     /// This keeps the orchestrator's lease alive (e.g., sends etcd keep-alive)
-    /// and updates the heartbeat timestamp. Orchestrators that stop sending
-    /// heartbeats have their leases expire and runs become eligible for recovery.
+    /// and updates the heartbeat timestamp and service URL. Orchestrators that
+    /// stop sending heartbeats have their leases expire and runs become eligible
+    /// for recovery.
     ///
     /// The lease TTL is determined by the implementation (configured at construction).
     ///
     /// # Arguments
     /// * `orchestrator_id` - The orchestrator sending the heartbeat
-    fn heartbeat(&self, orchestrator_id: OrchestratorId) -> BoxFuture<'_, Result<(), LeaseError>>;
+    /// * `orchestrator_url` - The gRPC service URL for this orchestrator's
+    ///   `OrchestratorService`, used by workers for `CompleteTask` etc.
+    fn heartbeat(
+        &self,
+        orchestrator_id: OrchestratorId,
+        orchestrator_url: String,
+    ) -> BoxFuture<'_, Result<(), LeaseError>>;
 
     /// Release all leases held by this orchestrator.
     ///

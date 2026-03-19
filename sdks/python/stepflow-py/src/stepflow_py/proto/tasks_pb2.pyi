@@ -53,16 +53,25 @@ class TaskContext(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     ORCHESTRATOR_SERVICE_URL_FIELD_NUMBER: builtins.int
+    ROOT_RUN_ID_FIELD_NUMBER: builtins.int
     orchestrator_service_url: builtins.str
     """gRPC endpoint for OrchestratorService (submit_run, get_run, complete_task).
     Must reach the orchestrator that owns the current run.
+    """
+    root_run_id: builtins.str
+    """Root run ID (UUID) for this execution tree.
+    For top-level runs, equals the task's run_id.
+    For sub-flows, this is the original run that started the tree.
+    Workers include this in OrchestratorService requests so the
+    orchestrator can validate it owns the root execution.
     """
     def __init__(
         self,
         *,
         orchestrator_service_url: builtins.str = ...,
+        root_run_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["orchestrator_service_url", b"orchestrator_service_url"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["orchestrator_service_url", b"orchestrator_service_url", "root_run_id", b"root_run_id"]) -> None: ...
 
 Global___TaskContext: typing_extensions.TypeAlias = TaskContext
 
@@ -243,6 +252,7 @@ class PullTasksRequest(google.protobuf.message.Message):
     QUEUE_NAME_FIELD_NUMBER: builtins.int
     MAX_CONCURRENT_FIELD_NUMBER: builtins.int
     COMPONENTS_FIELD_NUMBER: builtins.int
+    WORKER_ID_FIELD_NUMBER: builtins.int
     queue_name: builtins.str
     """Queue name matching the plugin's key in the orchestrator config (e.g., "python").
     The orchestrator uses this to route tasks to the correct worker pool.
@@ -251,6 +261,14 @@ class PullTasksRequest(google.protobuf.message.Message):
     max_concurrent: builtins.int
     """Maximum concurrent tasks this worker can accept.
     The orchestrator will not exceed this limit for this worker.
+    """
+    worker_id: builtins.str
+    """Worker-assigned unique identifier (UUID).
+    Used for logging and diagnostics on the orchestrator side. This is the
+    same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
+    correlation between PullTasks connections and heartbeat/completion RPCs.
+    Optional for backwards compatibility — if empty, the orchestrator
+    assigns an opaque internal ID for logging.
     """
     @property
     def components(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___ComponentInfo]:
@@ -265,8 +283,9 @@ class PullTasksRequest(google.protobuf.message.Message):
         queue_name: builtins.str = ...,
         max_concurrent: builtins.int = ...,
         components: collections.abc.Iterable[Global___ComponentInfo] | None = ...,
+        worker_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["components", b"components", "max_concurrent", b"max_concurrent", "queue_name", b"queue_name"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["components", b"components", "max_concurrent", b"max_concurrent", "queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
 
 Global___PullTasksRequest: typing_extensions.TypeAlias = PullTasksRequest
 
@@ -318,3 +337,43 @@ class TaskAssignment(google.protobuf.message.Message):
     def ClearField(self, field_name: typing.Literal["deadline_secs", b"deadline_secs", "execution_timeout_secs", b"execution_timeout_secs", "heartbeat_interval_secs", b"heartbeat_interval_secs", "request", b"request", "task_id", b"task_id"]) -> None: ...
 
 Global___TaskAssignment: typing_extensions.TypeAlias = TaskAssignment
+
+@typing.final
+class GetOrchestratorForRunRequest(google.protobuf.message.Message):
+    """=============================================================================
+    GetOrchestratorForRun (orchestrator discovery)
+    =============================================================================
+    """
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    RUN_ID_FIELD_NUMBER: builtins.int
+    run_id: builtins.str
+    """Run ID (UUID) to look up the owning orchestrator for."""
+    def __init__(
+        self,
+        *,
+        run_id: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["run_id", b"run_id"]) -> None: ...
+
+Global___GetOrchestratorForRunRequest: typing_extensions.TypeAlias = GetOrchestratorForRunRequest
+
+@typing.final
+class GetOrchestratorForRunResponse(google.protobuf.message.Message):
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    ORCHESTRATOR_SERVICE_URL_FIELD_NUMBER: builtins.int
+    orchestrator_service_url: builtins.str
+    """The gRPC service URL for the orchestrator currently owning this run.
+    Workers should use this URL for OrchestratorService calls (CompleteTask,
+    SubmitRun, GetRun, TaskHeartbeat).
+    """
+    def __init__(
+        self,
+        *,
+        orchestrator_service_url: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["orchestrator_service_url", b"orchestrator_service_url"]) -> None: ...
+
+Global___GetOrchestratorForRunResponse: typing_extensions.TypeAlias = GetOrchestratorForRunResponse

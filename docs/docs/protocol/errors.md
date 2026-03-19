@@ -113,6 +113,23 @@ raise StepflowExecutionError("API call failed")
 raise StepflowRuntimeError("Database connection failed")
 ```
 
+## Orchestrator Service Errors
+
+When a worker calls `OrchestratorService` RPCs (`CompleteTask`, `TaskHeartbeat`, `SubmitRun`, `GetRun`), the orchestrator returns gRPC error codes to signal ownership and availability issues:
+
+| gRPC Code | Meaning | Worker Action |
+|-----------|---------|---------------|
+| `NOT_FOUND` | The run/task is not on this orchestrator (run migrated or completed) | Call `GetOrchestratorForRun` to discover the current orchestrator, retry on the new URL |
+| `UNAVAILABLE` | The orchestrator is unreachable or the run is being recovered | Retry with exponential backoff |
+
+These are distinct from `TaskErrorCode` (which categorizes *component execution* failures). Orchestrator service errors indicate infrastructure-level routing problems, not component logic errors.
+
+### Orchestrator Discovery
+
+When a worker receives `NOT_FOUND` or `UNAVAILABLE` from any `OrchestratorService` RPC, it can call `TasksService.GetOrchestratorForRun` on any orchestrator to discover which orchestrator currently owns the run. This enables automatic recovery when orchestrators restart or runs migrate between orchestrators.
+
+The worker's `OrchestratorTracker` handles this automatically for all RPCs — heartbeat, task completion, subflow submission, and run queries all share the same tracker per task and benefit from discovery performed by any one of them.
+
 ## Legacy JSON-RPC Error Codes
 
 :::note

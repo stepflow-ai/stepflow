@@ -40,6 +40,7 @@ from helpers import (
     docker_start,
     get_step_tracker_records,
     poll_for_delay,
+    query_run_status,
     read_tracker_records,
     release_all_delays,
     release_delay,
@@ -144,21 +145,27 @@ async def test_restart_recovery_parallel(compose_env):
     # Kill orchestrator-1 while parallel steps are deterministically held
     docker_kill("orchestrator-1")
 
-    # Clear stale pre-crash delays, then restart
+    # Release all stale pre-crash delays so worker tasks can complete.
+    # With pull transport and same-task-id recovery, some steps may
+    # complete via the worker's CompleteTask retry (first result wins)
+    # while others are re-dispatched by the recovered orchestrator.
     release_all_delays()
+
     docker_start("orchestrator-1")
     wait_for_health(ORCH1_URL, timeout=30)
 
-    # Recovery re-dispatches in-flight parallel steps. Release each one.
-    for label in ["parallel_b", "parallel_c", "parallel_d"]:
-        poll_for_delay(label, timeout=30)
-        release_delay(label)
+    # After recovery, the orchestrator re-dispatches in-flight steps
+    # (with same task_ids). Release any steps that appear in the delay
+    # registry — some may have already completed via worker retry.
+    # Also wait for aggregate which is dispatched after all parallels complete.
+    for _ in range(30):
+        release_all_delays()
+        await asyncio.sleep(1)
+        status = query_run_status(run_id)
+        if status in {"completed", "failed"}:
+            break
 
-    # Release aggregate when dispatched by recovery
-    poll_for_delay("aggregate", timeout=30)
-    release_delay("aggregate")
-
-    result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
+    result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
     assert result["status"] == "completed"
 
     records = read_tracker_records()

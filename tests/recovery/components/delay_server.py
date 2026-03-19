@@ -12,7 +12,7 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Delay component for recovery integration tests.
+"""Delay component for recovery integration tests (gRPC pull transport).
 
 Each invocation blocks until explicitly released via the delay-control HTTP API,
 writes a tracker record to a JSONL file, and returns the input payload along
@@ -22,8 +22,16 @@ Delays never auto-complete — they block indefinitely until released. This make
 tests fully deterministic: every step completes only when the test explicitly
 releases it via the API.
 
-Delay-control API
------------------
+Transport
+---------
+The worker connects to both orchestrators via gRPC pull transport
+(``run_grpc_worker``). Each connection runs in a persistent reconnect loop
+so the worker automatically reconnects when an orchestrator crashes and
+restarts.
+
+Delay-control API (HTTP on port 8080)
+-------------------------------------
+- ``GET  /health`` — health check for Docker
 - ``GET  /delay?run_id=...&step_id=...`` — check whether a delay is pending
 - ``POST /delay?run_id=...&step_id=...`` — release a pending delay
 - ``POST /delay/release-all`` — release all pending delays at once
@@ -34,6 +42,7 @@ matches any run (useful for subflows whose run ID is not known to the test).
 
 import asyncio
 import json
+import logging
 import os
 import signal
 import time
@@ -45,9 +54,12 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
 from stepflow_py.worker import StepflowContext, StepflowServer
-from stepflow_py.worker.http_server import create_test_app
+from stepflow_py.worker.grpc_worker import run_grpc_worker
 
 TRACKER_FILE = os.environ.get("TRACKER_FILE", "/tracker/executions.jsonl")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # SIGUSR1 handler for test-triggered crashes. Calling os._exit() causes the
 # container's PID 1 to exit, which Docker's restart policy will auto-restart.
@@ -200,13 +212,21 @@ async def delay(input: DelayInput, context: StepflowContext) -> DelayOutput:
 
 
 # ---------------------------------------------------------------------------
-# HTTP application — Stepflow protocol routes + delay-control API
+# Delay-control HTTP API (separate from Stepflow protocol)
 # ---------------------------------------------------------------------------
 
 
-def _build_app() -> FastAPI:
-    """Build the FastAPI app with Stepflow routes and delay-control endpoints."""
-    app = create_test_app(server)
+def _build_delay_control_app() -> FastAPI:
+    """Build a plain FastAPI app with health check and delay-control endpoints.
+
+    This does NOT include Stepflow JSON-RPC routes — the worker communicates
+    with orchestrators via gRPC pull transport instead.
+    """
+    app = FastAPI()
+
+    @app.get("/health")
+    async def health():
+        return JSONResponse({"status": "ok"})
 
     @app.get("/delay")
     async def get_delay(
@@ -249,9 +269,29 @@ def _build_app() -> FastAPI:
     return app
 
 
-async def _main():
-    app = _build_app()
-    server.set_initialized(True)
+# ---------------------------------------------------------------------------
+# gRPC pull worker loop with persistent reconnection
+# ---------------------------------------------------------------------------
+
+
+async def _grpc_loop(server: StepflowServer, url: str, queue_name: str):
+    """Run a gRPC pull worker with persistent reconnection.
+
+    When the orchestrator goes away (crash/restart), the worker exits
+    cleanly and this loop restarts it after a short delay.
+    """
+    while True:
+        try:
+            logger.info("Connecting gRPC worker to %s (queue=%s)...", url, queue_name)
+            await run_grpc_worker(server, url, queue_name, max_retries=15)
+        except Exception:
+            logger.exception("gRPC worker error for %s", url)
+        logger.info("gRPC worker for %s exited, reconnecting in 2s...", url)
+        await asyncio.sleep(2)
+
+
+async def _run_http_server(app: FastAPI):
+    """Run the delay-control HTTP server."""
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
@@ -260,6 +300,18 @@ async def _main():
     )
     uv_server = uvicorn.Server(config)
     await uv_server.serve()
+
+
+async def _main():
+    app = _build_delay_control_app()
+
+    # Run the delay-control HTTP server alongside dual gRPC pull workers
+    # (one per orchestrator) for full multi-orchestrator test coverage.
+    await asyncio.gather(
+        _run_http_server(app),
+        _grpc_loop(server, "orchestrator-1:7841", "test-worker"),
+        _grpc_loop(server, "orchestrator-2:7842", "test-worker"),
+    )
 
 
 if __name__ == "__main__":

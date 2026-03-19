@@ -22,6 +22,7 @@ use std::time::Duration;
 use log::{info, warn};
 use stepflow_config::RecoveryConfig;
 use stepflow_execution::recover_orphaned_runs;
+use stepflow_plugin::OrchestratorServiceUrl;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{LeaseManagerExt as _, MetadataStoreExt as _, OrchestratorId};
 use tokio_util::sync::CancellationToken;
@@ -204,6 +205,18 @@ pub async fn heartbeat_loop(
     let interval = Duration::from_secs(config.lease_ttl_secs / 3);
     let lease_manager = env.lease_manager();
     let metadata_store = env.metadata_store().clone();
+    let orchestrator_url = env
+        .get::<OrchestratorServiceUrl>()
+        .and_then(|u| u.url().map(|s| s.to_string()))
+        .unwrap_or_default();
+
+    if orchestrator_url.is_empty() {
+        warn!(
+            "No orchestrator URL configured (STEPFLOW_ORCHESTRATOR_URL). \
+             Heartbeats will not advertise a service URL, which prevents \
+             workers from discovering this orchestrator via GetOrchestratorForRun."
+        );
+    }
 
     let mut timer = tokio::time::interval(interval);
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -223,7 +236,7 @@ pub async fn heartbeat_loop(
             _ = timer.tick() => {
                 // 1. Send heartbeat (keeps etcd lease alive)
                 if let Err(e) = lease_manager
-                    .heartbeat(orchestrator_id.clone())
+                    .heartbeat(orchestrator_id.clone(), orchestrator_url.clone())
                     .await
                 {
                     warn!("Heartbeat failed: {e:?}");
