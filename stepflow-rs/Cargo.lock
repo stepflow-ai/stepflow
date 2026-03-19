@@ -4798,7 +4798,6 @@ dependencies = [
 name = "stepflow-cli"
 version = "0.11.1"
 dependencies = [
- "axum",
  "clap",
  "clap-markdown",
  "error-stack",
@@ -5130,7 +5129,9 @@ dependencies = [
  "stepflow-state",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tokio-util",
+ "tonic",
  "tower",
  "tower-http",
  "uuid",

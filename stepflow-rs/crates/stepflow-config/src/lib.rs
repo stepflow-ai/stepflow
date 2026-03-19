@@ -140,10 +140,16 @@ impl StepflowConfig {
     ///
     /// If `orchestrator_id` is provided, it will be stored in the environment
     /// for distributed lease management (acquire/release during run execution).
+    ///
+    /// If `grpc_address` is provided, gRPC services are assumed to be
+    /// multiplexed on an existing server at that address. Pull plugins will
+    /// use this address instead of starting a standalone gRPC server.
     pub async fn create_environment(
         self,
         orchestrator_id: Option<stepflow_state::OrchestratorId>,
         orchestrator_url: Option<String>,
+        grpc_address: Option<String>,
+        skip_plugin_init: bool,
     ) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
         use stepflow_core::StepflowEnvironment;
         use stepflow_plugin::routing::PluginRouter;
@@ -206,14 +212,21 @@ impl StepflowConfig {
         env.insert(task_registry.clone());
 
         // Insert the gRPC server for pull-based plugins.
-        // The server is started lazily when the first pull plugin initializes.
-        env.insert(Arc::new(stepflow_grpc::StepflowGrpcServer::new(
-            task_registry,
-        )));
+        let grpc_server = Arc::new(stepflow_grpc::StepflowGrpcServer::new(task_registry));
 
-        initialize_environment(&env)
-            .await
-            .change_context(ConfigError::Configuration)?;
+        // If gRPC services are multiplexed on an existing server, set the
+        // address so pull plugins know where workers should connect.
+        if let Some(addr) = grpc_address {
+            grpc_server.set_address(addr).await;
+        }
+
+        env.insert(grpc_server);
+
+        if !skip_plugin_init {
+            initialize_environment(&env)
+                .await
+                .change_context(ConfigError::Configuration)?;
+        }
 
         Ok(env)
     }

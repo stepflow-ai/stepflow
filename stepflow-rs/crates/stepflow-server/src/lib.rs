@@ -25,7 +25,7 @@ mod startup;
 pub use api::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 
 // Startup configuration
-pub use startup::{AppConfig, create_environment, start_server};
+pub use startup::{ServiceOptions, StepflowService};
 
 // Server lifecycle
 pub use orphan_recovery::{heartbeat_loop, orphan_claiming_loop};

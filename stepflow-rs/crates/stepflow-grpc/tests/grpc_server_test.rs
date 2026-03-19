@@ -61,7 +61,20 @@ async fn setup_two_queue_server() -> (
     server.register_queue("python".to_string(), python_queue.clone());
     server.register_queue("node".to_string(), node_queue.clone());
 
-    let address = server.ensure_started(&env, None).await.unwrap();
+    // Start a standalone tonic server for testing
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    server.set_address(address.clone()).await;
+
+    let routes = server.build_grpc_routes(&env);
+    let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+    tokio::spawn(async move {
+        tonic::transport::Server::builder()
+            .add_routes(routes)
+            .serve_with_incoming(incoming)
+            .await
+            .unwrap();
+    });
 
     (server, python_queue, node_queue, address, task_registry)
 }
@@ -85,15 +98,15 @@ fn make_component(name: &str) -> ComponentInfo {
 
 #[tokio::test]
 async fn test_two_plugins_share_same_address() {
-    let env = test_env().await;
     let task_registry = Arc::new(TaskRegistry::new());
     let server = Arc::new(StepflowGrpcServer::new(task_registry));
 
-    // First plugin calls ensure_started
-    let addr1 = server.ensure_started(&env, None).await.unwrap();
+    // Address is set once during startup
+    server.set_address("127.0.0.1:9999".to_string()).await;
 
-    // Second plugin calls ensure_started — should get the same address
-    let addr2 = server.ensure_started(&env, None).await.unwrap();
+    // Both plugins get the same address
+    let addr1 = server.address().await.unwrap();
+    let addr2 = server.address().await.unwrap();
 
     assert_eq!(
         addr1, addr2,
