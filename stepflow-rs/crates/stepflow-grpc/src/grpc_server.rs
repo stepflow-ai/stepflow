@@ -134,9 +134,8 @@ impl StepflowGrpcServer {
 
     /// Set the address where gRPC services are reachable.
     ///
-    /// Called by `StepflowService` during startup after the port is bound
-    /// and gRPC routes are multiplexed on the HTTP server. Pull plugins use
-    /// this address to tell workers where to connect.
+    /// Called by `StepflowService` during startup after the port is bound.
+    /// Pull plugins use this address to tell workers where to connect.
     pub async fn set_address(&self, addr: String) {
         let mut address = self.address.lock().await;
         if address.is_some() {
@@ -154,12 +153,12 @@ impl StepflowGrpcServer {
         self.address.lock().await.clone()
     }
 
-    /// Build gRPC service routes as an [`axum::Router`] for multiplexing
-    /// with the HTTP server on a single port.
+    /// Build gRPC service routes for all Stepflow services.
     ///
-    /// The returned router handles all `application/grpc` requests via
-    /// tonic's path-based routing (`/{service_name}/{method}`).
-    pub fn build_grpc_router(&self, env: &Arc<StepflowEnvironment>) -> axum::Router {
+    /// Returns [`tonic::service::Routes`] which can be served directly via
+    /// `tonic::transport::Server` or converted to an [`axum::Router`] via
+    /// [`into_axum_router`](tonic::service::Routes::into_axum_router).
+    pub fn build_grpc_routes(&self, env: &Arc<StepflowEnvironment>) -> tonic::service::Routes {
         // Worker-facing services
         let orchestrator_service =
             OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
@@ -179,66 +178,5 @@ impl StepflowGrpcServer {
             .add_service(RunsServiceServer::new(runs_service))
             .add_service(HealthServiceServer::new(health_service))
             .add_service(ComponentsServiceServer::new(components_service))
-            .prepare()
-            .into_axum_router()
-    }
-
-    /// Start a standalone gRPC server for testing.
-    ///
-    /// Production code should use `StepflowService` which multiplexes gRPC
-    /// on the HTTP port instead. This method is provided for integration tests
-    /// that need a real gRPC server without the full HTTP stack.
-    pub async fn start_standalone(
-        &self,
-        env: &Arc<StepflowEnvironment>,
-    ) -> stepflow_plugin::Result<String> {
-        use error_stack::ResultExt as _;
-        use stepflow_plugin::PluginError;
-
-        let bind_addr =
-            std::env::var("STEPFLOW_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".to_string());
-
-        let listener = tokio::net::TcpListener::bind(&bind_addr)
-            .await
-            .change_context(PluginError::Initializing)
-            .attach_printable_lazy(|| format!("Failed to bind gRPC server to {bind_addr}"))?;
-        let address = listener
-            .local_addr()
-            .change_context(PluginError::Initializing)?
-            .to_string();
-
-        // Worker-facing services
-        let orchestrator_service =
-            OrchestratorServiceImpl::new(env.clone(), self.pending_tasks.clone());
-        let tasks_service = TasksServiceImpl::new(self.queue_registry.clone(), env.clone());
-
-        // Client-facing services
-        let blob_service = BlobServiceImpl::new(env.clone());
-        let flows_service = FlowsServiceImpl::new(env.clone());
-        let runs_service = RunsServiceImpl::new(env.clone());
-        let health_service = HealthServiceImpl::new();
-        let components_service = ComponentsServiceImpl::new(env.clone());
-
-        tokio::spawn(async move {
-            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-            if let Err(e) = tonic::transport::Server::builder()
-                .add_service(OrchestratorServiceServer::new(orchestrator_service))
-                .add_service(TasksServiceServer::new(tasks_service))
-                .add_service(BlobServiceServer::new(blob_service))
-                .add_service(FlowsServiceServer::new(flows_service))
-                .add_service(RunsServiceServer::new(runs_service))
-                .add_service(HealthServiceServer::new(health_service))
-                .add_service(ComponentsServiceServer::new(components_service))
-                .serve_with_incoming(incoming)
-                .await
-            {
-                log::error!("gRPC server error: {e}");
-            }
-        });
-
-        log::info!("Standalone gRPC server started on {address}");
-        self.set_address(address.clone()).await;
-
-        Ok(address)
     }
 }

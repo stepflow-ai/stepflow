@@ -60,12 +60,16 @@ impl Default for ServiceOptions {
     }
 }
 
-/// A running Stepflow HTTP (+ gRPC) service.
+/// A running Stepflow HTTP + gRPC service.
 ///
 /// Created via [`StepflowService::new`], which binds the port, creates the
 /// environment, starts the server, and initializes plugins. The server is
 /// already accepting connections when `new` returns — this is required so
 /// that pull-based worker subprocesses can connect during plugin initialization.
+///
+/// All services (HTTP REST and gRPC) are multiplexed on a single port using
+/// tonic's transport server with `accept_http1(true)`, which handles both
+/// HTTP/1.1 (REST) and HTTP/2 (gRPC) natively.
 ///
 /// Use [`shutdown`](Self::shutdown) for graceful shutdown, or let the service
 /// run until the process exits.
@@ -73,7 +77,7 @@ pub struct StepflowService {
     port: u16,
     env: Arc<StepflowEnvironment>,
     cancel_token: CancellationToken,
-    server_handle: tokio::task::JoinHandle<Result<(), std::io::Error>>,
+    server_handle: tokio::task::JoinHandle<Result<(), tonic::transport::Error>>,
 }
 
 impl StepflowService {
@@ -102,41 +106,35 @@ impl StepflowService {
             .change_context(ConfigError::Configuration)?
             .port();
 
-        // Create environment without initializing plugins — the gRPC server
-        // must be accepting connections before workers are spawned.
-        let env = create_environment(config, &listener, orchestrator_id).await?;
+        // Create environment without initializing plugins — the server must
+        // be accepting connections before workers are spawned.
+        let grpc_address = if options.include_grpc {
+            Some(format!("{}:{}", options.bind_address, port))
+        } else {
+            None
+        };
+        let env = create_environment(config, &listener, orchestrator_id, grpc_address).await?;
 
-        // Start a standalone gRPC server for worker-facing services (pull
-        // transport, heartbeats, task completion). This is a separate tonic
-        // server that speaks native HTTP/2, which gRPC clients require.
-        // The HTTP server (axum) also merges gRPC routes for client-facing
-        // use (grpcurl, etc.) but workers connect to the standalone address.
-        if options.include_grpc {
+        // Build the combined HTTP + gRPC router served by tonic.
+        // Tonic's transport server handles both HTTP/1.1 (REST) and HTTP/2
+        // (gRPC) on the same port via accept_http1(true).
+        let http_app = options.create_app_router(env.clone(), port);
+
+        let mut grpc_routes = if options.include_grpc {
             let grpc_server = env
                 .get::<Arc<StepflowGrpcServer>>()
                 .expect("StepflowGrpcServer must be in the environment");
-            grpc_server
-                .start_standalone(&env)
-                .await
-                .change_context(ConfigError::Configuration)?;
-        }
+            grpc_server.build_grpc_routes(&env)
+        } else {
+            // Empty routes — still needed as the base for the tonic router
+            tonic::service::Routes::default()
+        };
 
-        // Now initialize plugins — the gRPC server is already accepting
-        // connections, so worker subprocesses can connect immediately.
-        stepflow_plugin::initialize_environment(&env)
-            .await
-            .change_context(ConfigError::Configuration)?;
-
-        // Build and start the HTTP server (also includes gRPC routes for
-        // client-facing use via h2c upgrade, e.g. grpcurl).
-        let mut app = options.create_app_router(env.clone(), port);
-        if options.include_grpc {
-            let grpc_server = env
-                .get::<Arc<StepflowGrpcServer>>()
-                .expect("StepflowGrpcServer must be in the environment");
-            let grpc_router = grpc_server.build_grpc_router(&env);
-            app = app.merge(grpc_router);
-        }
+        // Merge HTTP routes into the tonic routes so everything is served
+        // on a single port. We take the inner router, merge, and put it back
+        // because axum::Router::merge takes ownership.
+        let merged = std::mem::take(grpc_routes.axum_router_mut()).merge(http_app);
+        *grpc_routes.axum_router_mut() = merged;
 
         if options.announce_port {
             #[allow(clippy::print_stdout)]
@@ -151,13 +149,25 @@ impl StepflowService {
             port
         );
 
+        // Start the server — tonic handles both HTTP/1.1 and HTTP/2.
         let cancel_token = CancellationToken::new();
         let shutdown_token = cancel_token.clone();
+        let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
         let server_handle = tokio::spawn(async move {
-            axum::serve(listener, app)
-                .with_graceful_shutdown(async move { shutdown_token.cancelled().await })
+            tonic::transport::Server::builder()
+                .accept_http1(true)
+                .add_routes(grpc_routes)
+                .serve_with_incoming_shutdown(incoming, async move {
+                    shutdown_token.cancelled().await;
+                })
                 .await
         });
+
+        // Now initialize plugins — the server is already accepting
+        // connections, so worker subprocesses can connect immediately.
+        stepflow_plugin::initialize_environment(&env)
+            .await
+            .change_context(ConfigError::Configuration)?;
 
         Ok(Self {
             port,
@@ -187,7 +197,7 @@ impl StepflowService {
     }
 
     /// Wait for the server to finish (after [`shutdown`](Self::shutdown)).
-    pub async fn wait(self) -> Result<(), std::io::Error> {
+    pub async fn wait(self) -> Result<(), tonic::transport::Error> {
         match self.server_handle.await {
             Ok(result) => result,
             Err(e) if e.is_cancelled() => Ok(()),
@@ -283,6 +293,7 @@ pub(crate) async fn create_environment(
     mut config: StepflowConfig,
     listener: &tokio::net::TcpListener,
     orchestrator_id: Option<OrchestratorId>,
+    grpc_address: Option<String>,
 ) -> error_stack::Result<Arc<StepflowEnvironment>, ConfigError> {
     let port = listener
         .local_addr()
@@ -319,8 +330,8 @@ pub(crate) async fn create_environment(
         .create_environment(
             orchestrator_id,
             Some(orchestrator_url),
-            None, // gRPC address set later by start_standalone
-            true, // skip plugin init — gRPC server must be running first
+            grpc_address,
+            true, // skip plugin init — server must be accepting first
         )
         .await
 }

@@ -61,7 +61,20 @@ async fn setup_two_queue_server() -> (
     server.register_queue("python".to_string(), python_queue.clone());
     server.register_queue("node".to_string(), node_queue.clone());
 
-    let address = server.start_standalone(&env).await.unwrap();
+    // Start a standalone tonic server for testing
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    server.set_address(address.clone()).await;
+
+    let routes = server.build_grpc_routes(&env);
+    let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+    tokio::spawn(async move {
+        tonic::transport::Server::builder()
+            .add_routes(routes)
+            .serve_with_incoming(incoming)
+            .await
+            .unwrap();
+    });
 
     (server, python_queue, node_queue, address, task_registry)
 }
