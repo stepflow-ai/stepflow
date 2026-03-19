@@ -213,11 +213,10 @@ impl StepflowConfig {
         // Insert the gRPC server for pull-based plugins.
         let grpc_server = Arc::new(stepflow_grpc::StepflowGrpcServer::new(task_registry));
 
-        // If gRPC services are multiplexed on an existing server, tell the
-        // gRPC server so pull plugins use that address instead of starting a
-        // standalone server.
+        // If gRPC services are multiplexed on an existing server, set the
+        // address so pull plugins know where workers should connect.
         if let Some(addr) = grpc_address {
-            grpc_server.set_multiplexed_address(addr).await;
+            grpc_server.set_address(addr).await;
         }
 
         env.insert(grpc_server);

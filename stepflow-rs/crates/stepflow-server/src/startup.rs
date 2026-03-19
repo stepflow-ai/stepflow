@@ -79,8 +79,12 @@ impl StepflowService {
     /// Build the service: bind port, create environment, assemble router.
     pub async fn new(
         config: StepflowConfig,
-        options: ServiceOptions,
+        mut options: ServiceOptions,
     ) -> error_stack::Result<Self, ConfigError> {
+        // Take orchestrator_id out early so we can still borrow `options`
+        // for `create_app_router` later without cloning.
+        let orchestrator_id = options.orchestrator_id.take();
+
         // Bind listener
         let bind_addr = format!("{}:{}", options.bind_address, options.port.unwrap_or(0));
         let listener = tokio::net::TcpListener::bind(&bind_addr)
@@ -93,8 +97,8 @@ impl StepflowService {
             .change_context(ConfigError::Configuration)?
             .port();
 
-        // Compute the multiplexed gRPC address when gRPC is enabled, so that
-        // pull plugins use this address instead of starting a standalone server.
+        // Compute the gRPC address when enabled, so pull plugins know where
+        // workers should connect (set before plugin initialization).
         let grpc_address = if options.include_grpc {
             Some(format!("{}:{}", options.bind_address, port))
         } else {
@@ -102,15 +106,8 @@ impl StepflowService {
         };
 
         // Create environment (auto-configures blob API URL from bound port).
-        // When grpc_address is set, the gRPC server is marked as multiplexed
-        // before plugins are initialized.
-        let env = create_environment(
-            config,
-            &listener,
-            options.orchestrator_id.clone(),
-            grpc_address,
-        )
-        .await?;
+        let env =
+            create_environment(config, &listener, orchestrator_id, grpc_address).await?;
 
         // Build HTTP router
         let mut app = options.create_app_router(env.clone(), port);
@@ -127,7 +124,7 @@ impl StepflowService {
 
         Ok(Self {
             port,
-            bind_address: options.bind_address.clone(),
+            bind_address: options.bind_address,
             env,
             listener,
             app,

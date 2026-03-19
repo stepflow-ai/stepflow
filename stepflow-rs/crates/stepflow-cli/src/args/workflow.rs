@@ -22,23 +22,17 @@ use crate::{
     args::{config::ConfigArgs, file_loader::load},
 };
 
-/// Create executor from StepflowConfig, starting a background HTTP server if needed.
+/// Create executor from StepflowConfig, starting a background server.
 ///
-/// When `blob_api.url` is not configured but `blob_api.enabled` is true,
-/// this function starts a background HTTP server to serve the blob API
-/// and other orchestrator endpoints.
+/// The background server provides the blob API, gRPC services for pull-based
+/// workers, and orchestrator callbacks (sub-run submission, run status).
 async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnvironment>> {
-    let needs_server = config.blob_api.enabled && config.blob_api.url.is_none();
-
     let service = StepflowService::new(config, ServiceOptions::default())
         .await
         .change_context(MainError::Configuration)?;
 
     let env = service.environment().clone();
-
-    if needs_server {
-        service.spawn_background();
-    }
+    service.spawn_background();
 
     Ok(env)
 }

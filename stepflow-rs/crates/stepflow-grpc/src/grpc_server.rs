@@ -26,17 +26,18 @@
 //! - `ComponentsService` — component discovery
 //! - `BlobService` — blob storage operations (shared)
 //!
-//! The server is stored in the [`StepflowEnvironment`] and started lazily
-//! on first use. Plugins register their task queues via [`register_queue`].
+//! The server is stored in the [`StepflowEnvironment`] and its address is set
+//! during service startup. Plugins register their task queues via
+//! [`register_queue`] and retrieve the server address via [`address`].
 //!
 //! [`PullPlugin`]: crate::grpc_plugin_config::PullPlugin
 //! [`register_queue`]: StepflowGrpcServer::register_queue
+//! [`address`]: StepflowGrpcServer::address
 
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use error_stack::ResultExt as _;
-use stepflow_plugin::{PluginError, StepflowEnvironment};
+use stepflow_plugin::StepflowEnvironment;
 use tokio::sync::Mutex;
 
 use crate::pending_tasks::PendingTasks;
@@ -76,40 +77,21 @@ impl QueueRegistry {
 
 /// gRPC server for all Stepflow services (worker-facing and client-facing).
 ///
-/// Created once and stored in the [`StepflowEnvironment`]. Plugins register
-/// their task queues via [`register_queue`] and workers connect to the
-/// single server address. CLI clients also connect for flow/run operations.
+/// Created once and stored in the [`StepflowEnvironment`]. The server address
+/// is set by [`StepflowService`] during startup via [`set_address`]. Plugins
+/// register their task queues via [`register_queue`] and workers connect to
+/// the single server address.
 ///
+/// [`StepflowService`]: stepflow_server::StepflowService
+/// [`set_address`]: StepflowGrpcServer::set_address
 /// [`register_queue`]: StepflowGrpcServer::register_queue
 pub struct StepflowGrpcServer {
     /// Registry of queue_name → PullTaskQueue, shared with TasksServiceImpl.
     queue_registry: Arc<QueueRegistry>,
     /// Shared task completion registry, shared with OrchestratorServiceImpl.
     pending_tasks: Arc<PendingTasks>,
-    /// Server state: None before start, Some after.
-    state: Mutex<Option<ServerState>>,
-}
-
-struct ServerState {
-    /// Address the server is listening on (e.g., "127.0.0.1:12345").
-    address: String,
-    /// The port that was requested (None = random, Some = fixed).
-    requested_port: Option<u16>,
-    /// Server task handle — aborted on drop. `None` when gRPC is multiplexed
-    /// on an existing HTTP server (no standalone task to manage).
-    server_handle: Option<tokio::task::JoinHandle<()>>,
-}
-
-impl Drop for StepflowGrpcServer {
-    fn drop(&mut self) {
-        if let Some(ServerState {
-            server_handle: Some(handle),
-            ..
-        }) = self.state.get_mut().take()
-        {
-            handle.abort();
-        }
-    }
+    /// Server address, set once during startup.
+    address: Mutex<Option<String>>,
 }
 
 impl std::fmt::Debug for StepflowGrpcServer {
@@ -121,20 +103,16 @@ impl std::fmt::Debug for StepflowGrpcServer {
 }
 
 impl StepflowGrpcServer {
-    /// Create a new server (not yet started).
+    /// Create a new server (address not yet set).
     ///
     /// The `task_registry` is the shared in-memory registry for result
     /// delivery. It is passed to [`PendingTasks`] which adds gRPC-specific
     /// timeout and heartbeat tracking on top.
-    ///
-    /// Call [`ensure_started`] to bind and start the gRPC server.
-    ///
-    /// [`ensure_started`]: StepflowGrpcServer::ensure_started
     pub fn new(task_registry: Arc<stepflow_plugin::TaskRegistry>) -> Self {
         Self {
             queue_registry: Arc::new(QueueRegistry::default()),
             pending_tasks: PendingTasks::new(task_registry),
-            state: Mutex::new(None),
+            address: Mutex::new(None),
         }
     }
 
@@ -155,37 +133,28 @@ impl StepflowGrpcServer {
         &self.pending_tasks
     }
 
-    /// Get the server address (e.g., "127.0.0.1:12345").
+    /// Set the address where gRPC services are reachable.
     ///
-    /// Returns `None` if the server has not been started yet.
-    pub async fn address(&self) -> Option<String> {
-        self.state.lock().await.as_ref().map(|s| s.address.clone())
-    }
-
-    /// Mark this server as multiplexed on an existing HTTP port.
-    ///
-    /// After this call, [`ensure_started`](Self::ensure_started) becomes a
-    /// no-op and returns the provided address instead of starting a separate
-    /// standalone gRPC server. This is the expected path when gRPC is
-    /// multiplexed on the same port as the HTTP server via
-    /// [`StepflowService`].
+    /// Called by [`StepflowService`] during startup after the port is bound
+    /// and gRPC routes are multiplexed on the HTTP server. Pull plugins use
+    /// this address to tell workers where to connect.
     ///
     /// [`StepflowService`]: stepflow_server::StepflowService
-    pub async fn set_multiplexed_address(&self, address: String) {
-        let mut state = self.state.lock().await;
-        if state.is_some() {
-            log::warn!(
-                "set_multiplexed_address called but gRPC server already running; \
-                 ignoring (standalone server will continue)"
-            );
-            return;
+    pub async fn set_address(&self, addr: String) {
+        let mut address = self.address.lock().await;
+        if address.is_some() {
+            log::warn!("gRPC server address already set; overwriting");
         }
-        log::info!("gRPC services multiplexed on {address}");
-        *state = Some(ServerState {
-            address,
-            requested_port: None,
-            server_handle: None,
-        });
+        log::info!("gRPC services available on {addr}");
+        *address = Some(addr);
+    }
+
+    /// Get the server address (e.g., `"127.0.0.1:7840"`).
+    ///
+    /// Returns `None` if [`set_address`](Self::set_address) has not been
+    /// called yet.
+    pub async fn address(&self) -> Option<String> {
+        self.address.lock().await.clone()
     }
 
     /// Build gRPC service routes as an [`axum::Router`] for multiplexing
@@ -217,46 +186,31 @@ impl StepflowGrpcServer {
             .into_axum_router()
     }
 
-    /// Start the gRPC server if not already running. Idempotent.
+    /// Start a standalone gRPC server for testing.
     ///
-    /// When `port` is `Some`, binds to `0.0.0.0:{port}` (fixed port for
-    /// CLI/external clients). When `None`, binds to `127.0.0.1:0` (random
-    /// port for worker-only use).
+    /// Production code should use [`StepflowService`] which multiplexes gRPC
+    /// on the HTTP port instead. This method is provided for integration tests
+    /// that need a real gRPC server without the full HTTP stack.
     ///
-    /// Returns the bound address.
-    pub async fn ensure_started(
+    /// [`StepflowService`]: stepflow_server::StepflowService
+    pub async fn start_standalone(
         &self,
         env: &Arc<StepflowEnvironment>,
-        port: Option<u16>,
     ) -> stepflow_plugin::Result<String> {
-        let mut state = self.state.lock().await;
-        if let Some(ref s) = *state {
-            if s.requested_port != port {
-                log::warn!(
-                    "gRPC server already running on {} (requested {:?}, now requesting {:?})",
-                    s.address,
-                    s.requested_port,
-                    port
-                );
-            }
-            return Ok(s.address.clone());
-        }
+        use error_stack::ResultExt as _;
+        use stepflow_plugin::PluginError;
 
-        let bind_addr = match port {
-            Some(p) => format!("0.0.0.0:{p}"),
-            None => {
-                std::env::var("STEPFLOW_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".to_string())
-            }
-        };
+        let bind_addr = std::env::var("STEPFLOW_BIND_ADDRESS")
+            .unwrap_or_else(|_| "127.0.0.1:0".to_string());
 
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await
             .change_context(PluginError::Initializing)
             .attach_printable_lazy(|| format!("Failed to bind gRPC server to {bind_addr}"))?;
-        let local_addr = listener
+        let address = listener
             .local_addr()
-            .change_context(PluginError::Initializing)?;
-        let address = local_addr.to_string();
+            .change_context(PluginError::Initializing)?
+            .to_string();
 
         // Worker-facing services
         let orchestrator_service =
@@ -270,7 +224,7 @@ impl StepflowGrpcServer {
         let health_service = HealthServiceImpl::new();
         let components_service = ComponentsServiceImpl::new(env.clone());
 
-        let server_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             if let Err(e) = tonic::transport::Server::builder()
                 .add_service(OrchestratorServiceServer::new(orchestrator_service))
@@ -287,15 +241,9 @@ impl StepflowGrpcServer {
             }
         });
 
-        log::info!("gRPC server started on {address}");
+        log::info!("Standalone gRPC server started on {address}");
+        self.set_address(address.clone()).await;
 
-        let addr = address.clone();
-        *state = Some(ServerState {
-            address,
-            requested_port: port,
-            server_handle: Some(server_handle),
-        });
-
-        Ok(addr)
+        Ok(address)
     }
 }

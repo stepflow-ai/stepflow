@@ -325,15 +325,17 @@ impl stepflow_plugin::Plugin for PullPlugin {
             }
         }
 
-        // Get or create the shared gRPC server from the environment.
-        // The first plugin to initialize will start the server.
+        // Get the shared gRPC server from the environment.
         let shared_server = env.get::<Arc<StepflowGrpcServer>>().ok_or_else(|| {
             error_stack::report!(PluginError::Initializing)
                 .attach_printable("StepflowGrpcServer not found in environment")
         })?;
 
-        // Start the server (idempotent — returns existing address if already running)
-        let server_address = shared_server.ensure_started(env, None).await?;
+        // Get the server address (set by StepflowService during startup).
+        let server_address = shared_server.address().await.ok_or_else(|| {
+            error_stack::report!(PluginError::Initializing)
+                .attach_printable("gRPC server address not set — StepflowService must be created before pull plugins are initialized")
+        })?;
 
         // Store server address for subprocess restarts
         *self.server_address.lock().await = Some(server_address.clone());
