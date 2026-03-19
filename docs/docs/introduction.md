@@ -11,8 +11,9 @@ Stepflow is a **workflow orchestrator** that enables you to create and execute A
 
 As an orchestrator, Stepflow manages workflow execution, data flow, and state persistence, while **component servers provide the actual business logic**. This separation allows for flexible, scalable architectures where components can execute locally during development or be distributed across multiple machines in production.
 
-Stepflow defines a protocol for component servers, allowing a combination of custom and off-the-shelf components to be orchestrated within a single workflow.
-By routing specific steps to different component servers, you can create workflows that run across multiple machines, containers, or cloud services.
+Stepflow defines an open protocol for component servers, allowing a combination of custom and off-the-shelf components to be orchestrated within a single workflow.
+Workers pull tasks from the orchestrator (or from message brokers like NATS or Kafka), process them, and return results via gRPC — controlling their own concurrency by choosing when to pull the next task.
+By routing specific steps to different worker pools, you can create workflows that run across multiple machines, containers, or cloud services.
 Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
 
 Stepflow further solves for production problems like durability and fault-tolerance by journalling the results of each component execution, allowing workflows to be resumed from the last successful step in the event of a failure without adding complexity to component servers.
@@ -94,9 +95,20 @@ Component servers provide:
   </TabItem>
 </Tabs>
 
+## Development to Production
+
+Stepflow scales from a single binary to a distributed cluster — with no workflow changes required.
+
+During **development**, the Stepflow orchestrator runs as a self-contained local binary (also available as the `stepflow-orchestrator` Python package) with embedded storage and subprocess-based workers.
+
+In **production**, the same workflows run on a cluster with separate storage, dedicated worker pools, and message brokers. Different components can be routed to different worker pools — GPU-heavy inference on specialized hardware, lightweight steps elsewhere.
+
+See [Production Deployment](./deployment/index.md) for architecture patterns and scaling strategies.
+
 ## Next Steps
 
 * [Get Started](./getting-started.md) by installing Stepflow and running your first flow.
 * Read more about writing your own [Workflows](./flows/index.md).
 * Learn about available components and creating your own in [Components](./components/index.md).
 * Learn about [production deployment](./deployment/index.md).
+* Read the [FAQ](./faq.md) for comparisons with other workflow and orchestration technologies.

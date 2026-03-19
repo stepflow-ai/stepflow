@@ -72,6 +72,8 @@ Control flow is determined by dependencies between steps.
 By default, if a step is skipped or fails to execute, subsequent steps that depend on it will also be skipped.
 However, you can define custom error handling and fallback logic to control how failures are managed.
 
+Stepflow also supports **nested flow execution** — a running workflow can spawn sub-workflows mid-execution via the [`eval` built-in](../components/builtins/eval.md). Combined with the declarative YAML format, this enables patterns like LLM-authored flows using a whitelisted set of allowed components.
+
 Learn more about [Control Flow](./control-flow.md).
 
 ## Batch Execution

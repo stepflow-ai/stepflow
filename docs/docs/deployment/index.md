@@ -284,6 +284,11 @@ Design for resilience:
 - **[Batch Execution](../flows/batch-execution.md)** - High-throughput processing patterns
 - **[Kubernetes Example](https://github.com/stepflow-ai/stepflow/tree/main/examples/kubernetes-batch-demo)** - Complete working example
 
+## Learn More
+
+- Read the [FAQ](../faq.md) for comparisons with other orchestration and workflow technologies
+- Learn about the [Stepflow Protocol](../protocol/index.md) that enables this architecture
+
 ## Future Topics
 
 This section will be expanded with:
