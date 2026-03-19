@@ -13,7 +13,7 @@
 # the License.
 
 # Orchestrator service — exposes facade (5001), HTTP API (7840), and gRPC (7837).
-# NodePort 30080 maps to facade port for kind cluster access.
+# NodePort 30501 maps to facade port for kind cluster access (matches kind-config.yaml).
 # gRPC port 7837 exposed as ClusterIP for worker pods to connect.
 
 apiVersion: v1
@@ -33,7 +33,7 @@ spec:
     port: 5001
     targetPort: facade
     protocol: TCP
-    nodePort: 30080
+    nodePort: 30501
   - name: http
     port: 7840
     targetPort: http
