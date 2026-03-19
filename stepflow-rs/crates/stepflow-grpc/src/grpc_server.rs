@@ -78,11 +78,10 @@ impl QueueRegistry {
 /// gRPC server for all Stepflow services (worker-facing and client-facing).
 ///
 /// Created once and stored in the [`StepflowEnvironment`]. The server address
-/// is set by [`StepflowService`] during startup via [`set_address`]. Plugins
+/// is set by `StepflowService` during startup via [`set_address`]. Plugins
 /// register their task queues via [`register_queue`] and workers connect to
 /// the single server address.
 ///
-/// [`StepflowService`]: stepflow_server::StepflowService
 /// [`set_address`]: StepflowGrpcServer::set_address
 /// [`register_queue`]: StepflowGrpcServer::register_queue
 pub struct StepflowGrpcServer {
@@ -135,11 +134,9 @@ impl StepflowGrpcServer {
 
     /// Set the address where gRPC services are reachable.
     ///
-    /// Called by [`StepflowService`] during startup after the port is bound
+    /// Called by `StepflowService` during startup after the port is bound
     /// and gRPC routes are multiplexed on the HTTP server. Pull plugins use
     /// this address to tell workers where to connect.
-    ///
-    /// [`StepflowService`]: stepflow_server::StepflowService
     pub async fn set_address(&self, addr: String) {
         let mut address = self.address.lock().await;
         if address.is_some() {
@@ -188,11 +185,9 @@ impl StepflowGrpcServer {
 
     /// Start a standalone gRPC server for testing.
     ///
-    /// Production code should use [`StepflowService`] which multiplexes gRPC
+    /// Production code should use `StepflowService` which multiplexes gRPC
     /// on the HTTP port instead. This method is provided for integration tests
     /// that need a real gRPC server without the full HTTP stack.
-    ///
-    /// [`StepflowService`]: stepflow_server::StepflowService
     pub async fn start_standalone(
         &self,
         env: &Arc<StepflowEnvironment>,
@@ -200,8 +195,8 @@ impl StepflowGrpcServer {
         use error_stack::ResultExt as _;
         use stepflow_plugin::PluginError;
 
-        let bind_addr = std::env::var("STEPFLOW_BIND_ADDRESS")
-            .unwrap_or_else(|_| "127.0.0.1:0".to_string());
+        let bind_addr =
+            std::env::var("STEPFLOW_BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:0".to_string());
 
         let listener = tokio::net::TcpListener::bind(&bind_addr)
             .await

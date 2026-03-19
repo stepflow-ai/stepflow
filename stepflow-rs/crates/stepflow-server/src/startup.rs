@@ -106,8 +106,7 @@ impl StepflowService {
         };
 
         // Create environment (auto-configures blob API URL from bound port).
-        let env =
-            create_environment(config, &listener, orchestrator_id, grpc_address).await?;
+        let env = create_environment(config, &listener, orchestrator_id, grpc_address).await?;
 
         // Build HTTP router
         let mut app = options.create_app_router(env.clone(), port);
