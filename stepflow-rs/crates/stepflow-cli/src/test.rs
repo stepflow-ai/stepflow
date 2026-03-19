@@ -525,13 +525,17 @@ const FLOW_SCHEMA_URL: &str = "https://stepflow.org/schemas/v1/flow.json";
 
 /// Check whether a YAML file declares itself as a Stepflow flow by looking for
 /// the `schema` key with the Stepflow flow schema URL.
-fn has_flow_schema(path: &Path) -> Result<bool> {
-    let content =
-        fs::read_to_string(path).change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)
-        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
-    let schema = value.get("schema").and_then(|v| v.as_str());
-    Ok(schema == Some(FLOW_SCHEMA_URL))
+///
+/// Returns `false` if the file cannot be read or parsed as single-document YAML
+/// (e.g., multi-document K8s manifests), since such files cannot be flow files.
+fn has_flow_schema(path: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(value) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&content) else {
+        return false;
+    };
+    value.get("schema").and_then(|v| v.as_str()) == Some(FLOW_SCHEMA_URL)
 }
 
 fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
@@ -544,7 +548,7 @@ fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
             // Check if the file declares itself as a flow via the schema key.
             // If it does, this is a broken flow file and should be reported as an error.
             // If not, it's just a non-flow YAML file and should be skipped.
-            if has_flow_schema(path)? {
+            if has_flow_schema(path) {
                 return Err(e).change_context_lazy(|| MainError::InvalidFile(path.to_owned()));
             }
             return Ok(None);
@@ -795,6 +799,25 @@ mod tests {
 
         let result = load_flow(&path).unwrap();
         assert!(result.is_none(), "Non-flow YAML should be skipped");
+    }
+
+    #[test]
+    fn test_load_flow_skips_multi_document_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("multi_doc.yaml");
+        // Multi-document YAML (e.g., K8s manifests) cannot be parsed as a single
+        // serde_yaml_ng::Value, so has_flow_schema returns false and we skip.
+        std::fs::write(
+            &path,
+            "apiVersion: v1\nkind: Namespace\n---\napiVersion: v1\nkind: Namespace\n",
+        )
+        .unwrap();
+
+        let result = load_flow(&path).unwrap();
+        assert!(
+            result.is_none(),
+            "Multi-document YAML should be skipped, not errored"
+        );
     }
 
     #[test]
