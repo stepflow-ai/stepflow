@@ -194,10 +194,9 @@ async fn main() {
         shutdown_signal().await;
         info!("Shutdown signal received, stopping server");
         service.shutdown();
-        service
-            .wait()
-            .await
-            .change_context(ServerError::ServerError)?;
+        if let Err(e) = service.wait().await {
+            warn!("Server error during shutdown: {e}");
+        }
 
         // Graceful shutdown: cancel background tasks and wait for them
         cancel_token.cancel();

@@ -32,10 +32,11 @@ async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnviro
         .await
         .change_context(MainError::Configuration)?;
 
-    // The service is now running in the background. We leak it intentionally —
-    // it will be cleaned up when the process exits.
+    // The service is running in the background. Dropping StepflowService
+    // detaches the server task (it keeps running until process exit).
+    // CancellationToken only cancels on explicit .cancel(), not on drop.
     let env = service.environment().clone();
-    std::mem::forget(service);
+    drop(service);
 
     Ok(env)
 }

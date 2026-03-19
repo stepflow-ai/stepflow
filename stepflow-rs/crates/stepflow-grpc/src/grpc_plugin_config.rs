@@ -331,10 +331,10 @@ impl stepflow_plugin::Plugin for PullPlugin {
                 .attach_printable("StepflowGrpcServer not found in environment")
         })?;
 
-        // Get the server address (set by StepflowService during startup).
+        // Get the server address (set during startup via set_address).
         let server_address = shared_server.address().await.ok_or_else(|| {
             error_stack::report!(PluginError::Initializing)
-                .attach_printable("gRPC server address not set — StepflowService must be created before pull plugins are initialized")
+                .attach_printable("gRPC server address not set; ensure startup sets it before initializing pull plugins")
         })?;
 
         // Store server address for subprocess restarts

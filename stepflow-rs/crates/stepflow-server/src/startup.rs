@@ -108,8 +108,17 @@ impl StepflowService {
 
         // Create environment without initializing plugins — the server must
         // be accepting connections before workers are spawned.
+        //
+        // For the gRPC address advertised to workers, use a connectable address.
+        // If bind_address is a wildcard (0.0.0.0 / ::), fall back to 127.0.0.1.
         let grpc_address = if options.include_grpc {
-            Some(format!("{}:{}", options.bind_address, port))
+            let advertise_host =
+                if options.bind_address == "0.0.0.0" || options.bind_address == "::" {
+                    "127.0.0.1"
+                } else {
+                    &options.bind_address
+                };
+            Some(format!("{advertise_host}:{port}"))
         } else {
             None
         };
@@ -165,9 +174,12 @@ impl StepflowService {
 
         // Now initialize plugins — the server is already accepting
         // connections, so worker subprocesses can connect immediately.
-        stepflow_plugin::initialize_environment(&env)
-            .await
-            .change_context(ConfigError::Configuration)?;
+        if let Err(e) = stepflow_plugin::initialize_environment(&env).await {
+            // Clean up the server task before propagating the error
+            cancel_token.cancel();
+            let _ = server_handle.await;
+            return Err(e.change_context(ConfigError::Configuration));
+        }
 
         Ok(Self {
             port,
@@ -197,14 +209,13 @@ impl StepflowService {
     }
 
     /// Wait for the server to finish (after [`shutdown`](Self::shutdown)).
-    pub async fn wait(self) -> Result<(), tonic::transport::Error> {
+    ///
+    /// Propagates server errors and panics so callers can fail fast.
+    pub async fn wait(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self.server_handle.await {
-            Ok(result) => result,
+            Ok(result) => result.map_err(Into::into),
             Err(e) if e.is_cancelled() => Ok(()),
-            Err(e) => {
-                log::error!("Server task panicked: {e:?}");
-                Ok(())
-            }
+            Err(e) => Err(e.into()),
         }
     }
 }
