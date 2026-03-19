@@ -235,6 +235,7 @@ fn test_combined_validation() {
             component_allow: None,
             component_deny: None,
             component: None,
+            params: std::collections::HashMap::new(),
         }],
     );
 

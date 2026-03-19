@@ -52,6 +52,7 @@ testcontainers.workspace = true
 [features]
 default = ["etcd"]
 etcd = ["stepflow-config/etcd", "stepflow-server/etcd"]
+nats = ["stepflow-config/nats"]
 
 [[bin]]
 name = "stepflow"

@@ -27,14 +27,14 @@ metadata:
 data:
   stepflow-config.yml: |
     # Stepflow Configuration for docling gRPC parity testbed
-    # Uses pull-based (gRPC) transport — no load balancer needed
+    # Uses gRPC pull transport — no load balancer needed
 
     plugins:
       builtin:
         type: builtin
 
       docling:
-        type: pull
+        type: grpc
         # NOTE: queueName must match STEPFLOW_QUEUE_NAME in worker deployment.
         # Both are "docling" — a single Helm value should feed both locations.
         queueName: docling

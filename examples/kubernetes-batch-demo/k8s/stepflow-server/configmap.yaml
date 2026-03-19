@@ -20,7 +20,7 @@ data:
       # Kubernetes components via pull-based gRPC transport
       # Workers connect to the orchestrator and pull tasks from this queue
       k8s_components:
-        type: pull
+        type: grpc
         queueName: k8s_components
 
     routes:

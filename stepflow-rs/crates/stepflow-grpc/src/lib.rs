@@ -47,6 +47,7 @@ pub mod pull_task_queue;
 pub mod queue_plugin;
 mod services;
 pub mod task_transport;
+pub mod transport_compliance;
 
 /// Generated REST route handlers from `google.api.http` annotations.
 #[allow(
@@ -61,7 +62,7 @@ pub mod rest {
 
 // Re-export commonly used types at the crate root.
 pub use component_health::ComponentHealthTracker;
-pub use grpc_plugin_config::PullPluginConfig;
+pub use grpc_plugin_config::GrpcPluginConfig;
 pub use grpc_server::StepflowGrpcServer;
 pub use in_memory_transport::InMemoryTaskTransport;
 pub use pending_tasks::PendingTasks;

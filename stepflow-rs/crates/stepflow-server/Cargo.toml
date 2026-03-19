@@ -50,6 +50,7 @@ uuid.workspace = true
 [features]
 default = ["etcd"]
 etcd = ["stepflow-config/etcd"]
+nats = ["stepflow-config/nats"]
 
 [dev-dependencies]
 stepflow-builtins.workspace = true

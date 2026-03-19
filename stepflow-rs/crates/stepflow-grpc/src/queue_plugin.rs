@@ -49,7 +49,7 @@ pub struct StepflowQueuePlugin {
     /// Override for the orchestrator service URL in TaskContext.
     /// When set, this URL is used instead of the one from the environment.
     /// This is needed when the gRPC server is started dynamically (e.g., by
-    /// PullPlugin) and the environment was built before the port was known.
+    /// GrpcPlugin) and the environment was built before the port was known.
     orchestrator_url_override: std::sync::RwLock<Option<String>>,
     /// Maximum time a task can sit in the queue before a worker sends its
     /// first heartbeat. Must be greater than zero (validated at config load time).
@@ -82,7 +82,7 @@ impl StepflowQueuePlugin {
 
     /// Set an override for the orchestrator service URL.
     ///
-    /// Used by `PullPlugin` after starting the gRPC server to inject
+    /// Used by `GrpcPlugin` after starting the gRPC server to inject
     /// the dynamically assigned port into task assignments.
     pub fn set_orchestrator_url(&self, url: String) {
         let mut guard = self
@@ -123,6 +123,7 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
+        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         // Build observability context
         let observability = build_observability_context(run_context, step);
@@ -176,7 +177,7 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         );
 
         // Dispatch the task via the configured transport
-        if let Err(e) = self.transport.send_task(task).await {
+        if let Err(e) = self.transport.send_task(task, route_params).await {
             // Clean up the tracking on send failure
             self.registry.untrack(task_id);
             return Err(e);

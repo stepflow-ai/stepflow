@@ -40,9 +40,12 @@ def main():
         description="Stepflow Python SDK Server",
         epilog="""
 Environment variables:
-  STEPFLOW_TRANSPORT         Transport mode: http, grpc (default: grpc)
+  STEPFLOW_TRANSPORT         Transport mode: http, grpc, nats (default: grpc)
   STEPFLOW_TASKS_URL         TasksService gRPC address (default: localhost:7837)
-  STEPFLOW_QUEUE_NAME        Queue name from orchestrator config (default: python)
+  STEPFLOW_NATS_URL          NATS server URL (default: nats://localhost:4222)
+  STEPFLOW_NATS_STREAM       NATS JetStream stream name (default: STEPFLOW_TASKS)
+  STEPFLOW_NATS_CONSUMER     NATS durable consumer name (default: stepflow-default)
+  STEPFLOW_QUEUE_NAME        Queue name for gRPC transport (default: python)
   STEPFLOW_MAX_CONCURRENT    Max concurrent task executions (default: 4)
   STEPFLOW_SERVICE_NAME      Service name for observability (default: stepflow-python)
   STEPFLOW_LOG_LEVEL         Log level: DEBUG, INFO, WARNING, ERROR (default: INFO)
@@ -77,6 +80,11 @@ Environment variables:
         action="store_true",
         help="Use HTTP JSON-RPC transport",
     )
+    transport_group.add_argument(
+        "--nats",
+        action="store_true",
+        help="Use NATS JetStream transport",
+    )
     parser.add_argument(
         "--tasks-url",
         type=str,
@@ -84,10 +92,28 @@ Environment variables:
         help="TasksService gRPC address (env: STEPFLOW_TASKS_URL)",
     )
     parser.add_argument(
+        "--nats-url",
+        type=str,
+        default=os.environ.get("STEPFLOW_NATS_URL", "nats://localhost:4222"),
+        help="NATS server URL (env: STEPFLOW_NATS_URL)",
+    )
+    parser.add_argument(
+        "--nats-stream",
+        type=str,
+        default=os.environ.get("STEPFLOW_NATS_STREAM", "STEPFLOW_TASKS"),
+        help="NATS JetStream stream name (env: STEPFLOW_NATS_STREAM)",
+    )
+    parser.add_argument(
+        "--nats-consumer",
+        type=str,
+        default=os.environ.get("STEPFLOW_NATS_CONSUMER", "stepflow-default"),
+        help="NATS durable consumer name (env: STEPFLOW_NATS_CONSUMER)",
+    )
+    parser.add_argument(
         "--queue-name",
         type=str,
         default=os.environ.get("STEPFLOW_QUEUE_NAME", "python"),
-        help="Queue name from orchestrator config (env: STEPFLOW_QUEUE_NAME)",
+        help="Queue name for gRPC transport (env: STEPFLOW_QUEUE_NAME)",
     )
     parser.add_argument(
         "--max-concurrent",
@@ -99,16 +125,32 @@ Environment variables:
     args = parser.parse_args()
 
     # Transport precedence: CLI flags > STEPFLOW_TRANSPORT env > default (grpc)
+    transport_env = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower()
     if args.http:
-        use_http = True
+        transport = "http"
+    elif args.nats:
+        transport = "nats"
     elif args.grpc:
-        use_http = False
+        transport = "grpc"
     else:
-        use_http = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower() == "http"
+        transport = transport_env
 
-    if use_http:
+    if transport == "http":
         # Start HTTP server with specified host/port
         asyncio.run(server.run(host=args.host, port=args.port))
+    elif transport == "nats":
+        # Start NATS JetStream worker
+        from stepflow_py.worker.nats_worker import run_nats_worker
+
+        asyncio.run(
+            run_nats_worker(
+                server=server,
+                nats_url=args.nats_url,
+                stream=args.nats_stream,
+                consumer=args.nats_consumer,
+                max_concurrent=args.max_concurrent,
+            )
+        )
     else:
         # Start gRPC pull-based worker (default)
         from stepflow_py.worker.grpc_worker import run_grpc_worker

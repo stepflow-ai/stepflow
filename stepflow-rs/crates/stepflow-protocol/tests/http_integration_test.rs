@@ -172,6 +172,7 @@ async fn test_http_protocol_integration() {
                                 let registry = env.task_registry();
                                 let rx = registry.register(task_id.clone());
 
+                                let empty_params = std::collections::HashMap::new();
                                 let execute_result = timeout(Duration::from_secs(5), async {
                                     plugin
                                         .start_task(
@@ -181,6 +182,7 @@ async fn test_http_protocol_integration() {
                                             None,
                                             input_ref,
                                             1,
+                                            &empty_params,
                                         )
                                         .await?;
                                     Ok::<_, error_stack::Report<stepflow_plugin::PluginError>>(

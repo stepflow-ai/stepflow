@@ -464,6 +464,7 @@ impl Plugin for StepflowPlugin {
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
+        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         // Blobify large input fields if the worker supports blob refs
         let should_blobify = self.should_blobify().await;

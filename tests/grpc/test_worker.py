@@ -15,7 +15,7 @@
 """Test worker for gRPC pull transport end-to-end tests.
 
 Registers multiple components for testing different aspects of the
-gRPC pull transport. Used with `type: pull` plugin config.
+gRPC pull transport. Used with `type: grpc` plugin config.
 
 Environment variables used:
   STEPFLOW_TASKS_URL       TasksService gRPC address (default: localhost:7837)

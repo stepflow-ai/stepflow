@@ -275,7 +275,7 @@ All `OrchestratorService` RPCs (`CompleteTask`, `TaskHeartbeat`, `SubmitRun`, `G
 - `OrchestratorService.CompleteTask` for result reporting
 - Python gRPC worker (`grpc_worker.py`) with `grpc.aio`, concurrent task execution
 - `GrpcContext` for worker callbacks (blobs, sub-runs — all via gRPC)
-- Config: `type: pull` plugin with subprocess management and queue timeout
+- Config: `type: grpc` plugin with subprocess management and queue timeout
 
 ### Heartbeat + worker deduplication
 
@@ -345,7 +345,7 @@ Run with: `./scripts/check-recovery.sh`
 ```yaml
 plugins:
   python_grpc:
-    type: pull
+    type: grpc
     command: uv
     args: ["--project", "../sdks/python", "run", "stepflow_worker"]
     queueTimeoutSecs: 30       # Max time without heartbeat (default 30)

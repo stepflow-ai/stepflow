@@ -13,7 +13,7 @@ This is the gRPC variant of `integrations/docling-step-worker/` (which uses HTTP
 | Transport | HTTP JSON-RPC (push) | gRPC pull (Protocol Buffers) |
 | Server pattern | `DoclingStepWorkerServer` class | Module-level `server` + `@server.component` decorators |
 | Component names | `/classify`, `/convert`, `/chunk` | `classify`, `convert`, `chunk` (no leading slash) |
-| Plugin type | `type: stepflow` | `type: pull` |
+| Plugin type | `type: stepflow` | `type: grpc` |
 | Worker role | HTTP server (accepts connections) | gRPC client (connects to orchestrator) |
 | Load balancer | Required (HTTP proxy) | Not needed (orchestrator manages queue) |
 | Blob store | Contextvars via `server._blob_api_url` | Same — HTTP REST blob API via `STEPFLOW_BLOB_API_URL` |

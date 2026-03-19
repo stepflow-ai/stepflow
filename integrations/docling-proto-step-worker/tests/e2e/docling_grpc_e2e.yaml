@@ -58,7 +58,7 @@ test:
       builtin:
         type: builtin
       docling:
-        type: pull
+        type: grpc
         command: uv
         args: ["run", "--project", "../..", "docling-proto-step-worker"]
         queueName: docling

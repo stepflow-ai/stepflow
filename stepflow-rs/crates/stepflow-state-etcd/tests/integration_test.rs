@@ -15,7 +15,6 @@
 //! These tests require Docker. When Docker is not available, tests are
 //! automatically skipped (reported as passed with a skip message).
 
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use stepflow_state::lease_compliance::LeaseComplianceTests;
@@ -27,62 +26,8 @@ use testcontainers::runners::AsyncRunner as _;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt as _};
 use uuid::Uuid;
 
-/// Check whether Docker is available on this machine.
-///
-/// Cached after the first call so the check only runs once per test binary.
-static DOCKER_AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
-    std::process::Command::new("docker")
-        .arg("info")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-});
-
-/// Skip the current test if Docker is not available.
-///
-/// Prints a message so `cargo test` output shows why the test was skipped,
-/// then returns early (test counts as passed).
-macro_rules! require_docker {
-    () => {
-        if !*DOCKER_AVAILABLE {
-            eprintln!("skipped (Docker not available)");
-            return;
-        }
-    };
-}
-
-/// One-time initialization to configure DOCKER_HOST for testcontainers.
-///
-/// Primarily supports Colima on macOS. If DOCKER_HOST is already set,
-/// or if HOME is not set / the Colima socket does not exist, this is a no-op.
-static INIT_DOCKER_HOST: LazyLock<()> = LazyLock::new(|| {
-    if std::env::var_os("DOCKER_HOST").is_some() {
-        return;
-    }
-    let Some(home) = std::env::var_os("HOME") else {
-        return;
-    };
-    let colima_socket = std::path::Path::new(&home).join(".colima/default/docker.sock");
-    if colima_socket.exists() {
-        // SAFETY: `set_var` is not thread-safe, but this runs inside a `LazyLock`
-        // that is forced (`let _ = *INIT_DOCKER_HOST`) at the top of `start_etcd()`
-        // before any etcd client / testcontainers work begins. The tokio runtime
-        // may already have worker threads, but none of them read `DOCKER_HOST`
-        // before this point because `start_etcd()` is the first thing every test
-        // calls. Acceptable trade-off for test-only code.
-        unsafe {
-            std::env::set_var("DOCKER_HOST", format!("unix://{}", colima_socket.display()));
-        }
-    }
-});
-
 /// Start an etcd container and return (container, client).
 async fn start_etcd() -> (ContainerAsync<GenericImage>, etcd_client::Client) {
-    // Ensure DOCKER_HOST is configured once in a thread-safe way
-    let _ = *INIT_DOCKER_HOST;
-
     let etcd = GenericImage::new("gcr.io/etcd-development/etcd", "v3.5.21")
         .with_wait_for(WaitFor::message_on_stderr("ready to serve client requests"))
         .with_exposed_port(2379.tcp())
@@ -126,7 +71,7 @@ fn create_manager(client: etcd_client::Client, prefix: &str) -> EtcdLeaseManager
 
 #[tokio::test]
 async fn compliance_suite_isolated() {
-    require_docker!();
+    stepflow_test_utils::require_docker!();
     let (_container, client) = start_etcd().await;
 
     // Each test gets its own key prefix for isolation
@@ -147,7 +92,7 @@ async fn compliance_suite_isolated() {
 
 #[tokio::test]
 async fn test_connect_from_config() {
-    require_docker!();
+    stepflow_test_utils::require_docker!();
     let (_container, _client) = start_etcd().await;
 
     let port = _container
@@ -174,7 +119,7 @@ async fn test_connect_from_config() {
 
 #[tokio::test]
 async fn test_watch_orphans_on_lease_expiry() {
-    require_docker!();
+    stepflow_test_utils::require_docker!();
     let (_container, client) = start_etcd().await;
 
     // Use a short TTL so the etcd lease expires quickly

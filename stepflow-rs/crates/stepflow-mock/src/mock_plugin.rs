@@ -230,6 +230,7 @@ impl Plugin for MockPlugin {
         _step: Option<&StepId>,
         input: ValueRef,
         _attempt: u32,
+        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         let mock_component = self
             .components

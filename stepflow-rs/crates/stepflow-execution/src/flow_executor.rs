@@ -1202,7 +1202,7 @@ impl FlowExecutor {
 
         // 2. For transport errors, prepare the plugin for retry (e.g. restart subprocess)
         if is_transport
-            && let Ok((plugin, _)) = self.lookup_plugin_for_task(task)
+            && let Ok((plugin, _, _)) = self.lookup_plugin_for_task(task)
             && let Err(e) = plugin.prepare_for_retry().await
         {
             log::warn!(
@@ -1301,7 +1301,11 @@ impl FlowExecutor {
     fn lookup_plugin_for_task(
         &self,
         task: Task,
-    ) -> Result<(std::sync::Arc<stepflow_plugin::DynPlugin<'static>>, String)> {
+    ) -> Result<(
+        std::sync::Arc<stepflow_plugin::DynPlugin<'static>>,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    )> {
         let run_state = self.run_state(task.run_id).ok_or_else(|| {
             error_stack::report!(ExecutionError::Deadlock)
                 .attach_printable(format!("Unknown run_id {} for retry lookup", task.run_id))

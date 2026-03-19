@@ -32,6 +32,7 @@ stepflow-state.workspace = true
 stepflow-state-etcd = { workspace = true, optional = true }
 stepflow-state-sql.workspace = true
 stepflow-mock.workspace = true
+stepflow-nats = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio.workspace = true
 log.workspace = true
@@ -39,3 +40,4 @@ schemars.workspace = true
 
 [features]
 etcd = ["dep:stepflow-state-etcd"]
+nats = ["dep:stepflow-nats"]

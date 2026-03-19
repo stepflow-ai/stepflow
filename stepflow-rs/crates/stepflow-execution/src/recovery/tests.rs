@@ -1010,6 +1010,7 @@ async fn build_env_with_checkpoint_interval(
         component_deny: None,
         plugin: "mock".into(),
         component: None,
+        params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()

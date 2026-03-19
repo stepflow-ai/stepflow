@@ -1,0 +1,15 @@
+[package]
+name = "stepflow-test-utils"
+description = "Shared test utilities for Stepflow (Docker helpers, test containers, etc.)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+
+[lints]
+workspace = true

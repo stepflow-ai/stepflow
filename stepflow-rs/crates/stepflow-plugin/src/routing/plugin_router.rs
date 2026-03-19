@@ -38,12 +38,20 @@ impl PluginRouter {
         PluginRouterBuilder::new()
     }
 
-    /// Get a plugin and resolved component name for the given component path and input data
+    /// Get a plugin, resolved component name, and route params for the given
+    /// component path and input data.
+    ///
+    /// Route params are additional key-value pairs from the route rule that
+    /// override plugin-level defaults (e.g., `subject` for NATS transport).
     pub fn get_plugin_and_component(
         &self,
         component_path: &str,
         input: ValueRef,
-    ) -> Result<(&Arc<DynPlugin<'static>>, String)> {
+    ) -> Result<(
+        &Arc<DynPlugin<'static>>,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    )> {
         // Route the component path to get a component router
         let component_router = self
             .router
@@ -67,7 +75,7 @@ impl PluginRouter {
             .expect("Plugin index should be valid")
             .1;
 
-        Ok((plugin, resolved_component))
+        Ok((plugin, resolved_component, route_rule.rule.params.clone()))
     }
 
     /// Get all registered plugins
@@ -199,6 +207,7 @@ mod tests {
             _step: Option<&stepflow_core::workflow::StepId>,
             _input: stepflow_core::workflow::ValueRef,
             _attempt: u32,
+            _route_params: &std::collections::HashMap<String, serde_json::Value>,
         ) -> crate::Result<()> {
             Ok(())
         }
@@ -221,6 +230,7 @@ mod tests {
                 component_deny: None,
                 plugin: "test".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -233,7 +243,7 @@ mod tests {
             .unwrap();
 
         let input = ValueRef::new(json!({}));
-        let (_plugin, path) = router
+        let (_plugin, path, _route_params) = router
             .get_plugin_and_component("/test/example", input)
             .unwrap();
         assert_eq!(path, "/example");
@@ -252,6 +262,7 @@ mod tests {
                 component_deny: None,
                 plugin: "test".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
         routes.insert(
@@ -262,6 +273,7 @@ mod tests {
                 component_deny: None,
                 plugin: "test".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -274,10 +286,10 @@ mod tests {
             .unwrap();
 
         let input = ValueRef::new(json!({}));
-        let (plugin1, path1) = router
+        let (plugin1, path1, _) = router
             .get_plugin_and_component("/test/example", input.clone())
             .unwrap();
-        let (plugin2, path2) = router
+        let (plugin2, path2, _) = router
             .get_plugin_and_component("/other/example", input)
             .unwrap();
 
@@ -298,6 +310,7 @@ mod tests {
                 component_deny: None,
                 plugin: "nonexistent".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 

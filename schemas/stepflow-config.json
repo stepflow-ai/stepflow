@@ -129,7 +129,10 @@
           "$ref": "#/$defs/McpPluginConfig"
         },
         {
-          "$ref": "#/$defs/PullPluginConfig"
+          "$ref": "#/$defs/GrpcPluginConfig"
+        },
+        {
+          "$ref": "#/$defs/NatsPluginConfig"
         }
       ],
       "discriminator": {
@@ -139,7 +142,8 @@
           "builtin": "#/$defs/BuiltinPluginConfig",
           "mock": "#/$defs/MockPlugin",
           "mcp": "#/$defs/McpPluginConfig",
-          "pull": "#/$defs/PullPluginConfig"
+          "grpc": "#/$defs/GrpcPluginConfig",
+          "nats": "#/$defs/NatsPluginConfig"
         }
       }
     },
@@ -439,8 +443,8 @@
         "type"
       ]
     },
-    "PullPluginConfig": {
-      "description": "Configuration for a gRPC pull-based plugin.\n\nWhen instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory\ntask queue. During `ensure_initialized`, registers its queue with the\norchestrator's [`StepflowGrpcServer`] and optionally spawns a worker\nsubprocess.\n\n# Config example\n\n```yaml\nplugins:\n  python:\n    type: pull\n    command: uv\n    args: [\"--project\", \"../sdks/python/stepflow-py\", \"run\", \"stepflow_py\", \"--grpc\"]\n    queueName: python\n```",
+    "GrpcPluginConfig": {
+      "description": "Configuration for a gRPC transport plugin.\n\nWhen instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory\ntask queue. During `ensure_initialized`, registers its queue with the\norchestrator's [`StepflowGrpcServer`] and optionally spawns a worker\nsubprocess.\n\n# Config example\n\n```yaml\nplugins:\n  python:\n    type: grpc\n    command: uv\n    args: [\"--project\", \"../sdks/python/stepflow-py\", \"run\", \"stepflow_py\", \"--grpc\"]\n    queueName: python\n```",
       "type": "object",
       "properties": {
         "command": {
@@ -476,7 +480,7 @@
           "description": "Maximum time (in seconds) a task can wait in the queue for a\nworker to send its first heartbeat. If no worker picks up the task\nwithin this window, it is treated as failed. Must be greater than 0.\n\nDefaults to 30 seconds.",
           "type": "integer",
           "format": "uint64",
-          "minimum": 0,
+          "minimum": 1,
           "default": 30
         },
         "executionTimeoutSecs": {
@@ -491,11 +495,83 @@
         },
         "type": {
           "type": "string",
-          "const": "pull",
-          "default": "pull"
+          "const": "grpc",
+          "default": "grpc"
         }
       },
       "required": [
+        "type"
+      ]
+    },
+    "NatsPluginConfig": {
+      "description": "Configuration for a NATS JetStream transport plugin.\n\nEach route (or the plugin default) maps to a JetStream **stream** with\nWorkQueue retention. The stream is the unit of isolation — one per\nworker pool. Within each stream, tasks are published to a fixed\ninternal subject (`tasks`).\n\n# Config example\n\n```yaml\nplugins:\n  nats:\n    type: nats\n    url: \"nats://localhost:4222\"\n    stream: PYTHON_TASKS\n    consumer: python-workers\n    queueTimeoutSecs: 30\n\nroutes:\n  \"/python/foo/{component}\":\n    - plugin: nats\n      stream: FOO_TASKS          # separate worker pool\n  \"/python/{*component}\":\n    - plugin: nats               # uses default stream\n```",
+      "type": "object",
+      "properties": {
+        "url": {
+          "description": "NATS server URL (e.g., \"nats://localhost:4222\").",
+          "type": "string"
+        },
+        "stream": {
+          "description": "Default JetStream stream name. Can be overridden per-route via\nthe `stream` route param. At least one of plugin-level or\nroute-level `stream` must be set.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consumer": {
+          "description": "Durable consumer name for NATS JetStream. Required — workers use\nthis to create/resume a durable pull consumer within the stream.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "command": {
+          "description": "Command to launch the worker subprocess.\nIf not set, the plugin expects an external worker to connect.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "args": {
+          "description": "Arguments for the worker subprocess command.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "description": "Environment variables for the worker subprocess.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "queueTimeoutSecs": {
+          "description": "Maximum time (in seconds) a task can wait in the queue for a\nworker to send its first heartbeat. Defaults to 30 seconds.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 1,
+          "default": 30
+        },
+        "executionTimeoutSecs": {
+          "description": "Maximum time (in seconds) from first heartbeat to `CompleteTask`.\nDefaults to `null` (no execution timeout).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0,
+          "default": null
+        },
+        "type": {
+          "type": "string",
+          "const": "nats",
+          "default": "nats"
+        }
+      },
+      "required": [
+        "url",
         "type"
       ]
     },
@@ -544,7 +620,8 @@
       },
       "required": [
         "plugin"
-      ]
+      ],
+      "additionalProperties": true
     },
     "InputCondition": {
       "description": "JSON path condition for matching specific parts of input data",

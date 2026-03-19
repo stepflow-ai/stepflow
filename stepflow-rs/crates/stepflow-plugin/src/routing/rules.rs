@@ -64,6 +64,15 @@ pub struct RouteRule {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<String>")]
     pub component: Option<Cow<'static, str>>,
+
+    /// Additional parameters passed to the plugin at task dispatch time.
+    ///
+    /// These are transport-specific overrides (e.g., `subject` for NATS,
+    /// `queueName` for gRPC) that the plugin merges with its own defaults.
+    /// Unknown fields in route rules are captured here via `#[serde(flatten)]`.
+    #[serde(flatten)]
+    #[schemars(with = "std::collections::HashMap<String, serde_json::Value>")]
+    pub params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// JSON path condition for matching specific parts of input data
@@ -105,6 +114,7 @@ mod tests {
                 component_deny: None,
                 plugin: "openai".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
         routes.insert(
@@ -119,6 +129,7 @@ mod tests {
                     component_deny: None,
                     plugin: "llama2_pool".into(),
                     component: None,
+                    params: std::collections::HashMap::new(),
                 },
                 RouteRule {
                     conditions: vec![],
@@ -126,6 +137,7 @@ mod tests {
                     component_deny: None,
                     plugin: "default_pool".into(),
                     component: None,
+                    params: std::collections::HashMap::new(),
                 },
             ],
         );
@@ -196,6 +208,7 @@ mod tests {
             component_deny: Some(vec!["denied_component".into()]),
             plugin: "test_plugin".into(),
             component: Some("rewritten_component".into()),
+            params: std::collections::HashMap::new(),
         };
 
         let serialized = serde_json::to_string(&rule).unwrap();
@@ -215,6 +228,7 @@ mod tests {
             component_deny: None,
             plugin: "simple_plugin".into(),
             component: None,
+            params: std::collections::HashMap::new(),
         };
 
         let serialized = serde_json::to_string(&rule).unwrap();
@@ -224,6 +238,80 @@ mod tests {
         assert!(deserialized.component_allow.is_none());
         assert!(deserialized.component_deny.is_none());
         assert_eq!(deserialized.plugin, "simple_plugin");
+    }
+
+    /// Extra fields in YAML (like `subject`) are captured in the `params` map.
+    #[test]
+    fn test_route_rule_with_params_deserialization() {
+        let yaml = r#"
+routes:
+  "/nats/{component}":
+    - plugin: nats
+      stream: "FOO_TASKS"
+"#;
+        let config: RoutingConfig = serde_yaml_ng::from_str(yaml).unwrap();
+        let rules = &config.routes["/nats/{component}"];
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].plugin, "nats");
+        assert_eq!(
+            rules[0].params.get("stream"),
+            Some(&serde_json::Value::String("FOO_TASKS".to_string()))
+        );
+    }
+
+    /// Serialize a RouteRule with params, then deserialize — params are preserved.
+    #[test]
+    fn test_route_rule_params_round_trip() {
+        let mut params = std::collections::HashMap::new();
+        params.insert("stream".to_string(), serde_json::json!("BAR_TASKS"));
+        params.insert("priority".to_string(), serde_json::json!(5));
+
+        let rule = RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "nats".into(),
+            component: None,
+            params,
+        };
+
+        let json = serde_json::to_string(&rule).unwrap();
+        let deserialized: RouteRule = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.plugin, "nats");
+        assert_eq!(
+            deserialized.params.get("stream"),
+            Some(&serde_json::json!("BAR_TASKS"))
+        );
+        assert_eq!(
+            deserialized.params.get("priority"),
+            Some(&serde_json::json!(5))
+        );
+    }
+
+    /// Empty params map should not add any extra fields to JSON output.
+    #[test]
+    fn test_route_rule_empty_params_not_serialized_json() {
+        let rule = RouteRule {
+            conditions: vec![],
+            component_allow: None,
+            component_deny: None,
+            plugin: "simple".into(),
+            component: None,
+            params: std::collections::HashMap::new(),
+        };
+
+        let json: serde_json::Value = serde_json::to_value(&rule).unwrap();
+        let obj = json.as_object().unwrap();
+
+        // Only the `plugin` field should be present (conditions, allow, deny
+        // are skipped when empty/None).
+        assert_eq!(
+            obj.len(),
+            1,
+            "Only 'plugin' should be serialized, got: {obj:?}"
+        );
+        assert!(obj.contains_key("plugin"));
     }
 
     #[test]
@@ -237,6 +325,7 @@ mod tests {
                 component_deny: None,
                 plugin: "mock".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 

@@ -2,7 +2,7 @@ plugins:
   builtin:
     type: builtin
   python_grpc:
-    type: pull
+    type: grpc
     command: uv
     args: ["run", "--project", "../../sdks/python/stepflow-py", "python", "test_worker.py"]
     queueName: python_grpc

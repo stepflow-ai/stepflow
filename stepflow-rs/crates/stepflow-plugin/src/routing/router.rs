@@ -336,6 +336,7 @@ mod tests {
                 component_deny: None,
                 plugin: "openai".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -350,6 +351,7 @@ mod tests {
                 component_deny: None,
                 plugin: "custom".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -361,6 +363,7 @@ mod tests {
                 component_deny: None,
                 plugin: "fallback".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -480,6 +483,7 @@ mod tests {
                 component_deny: None,
                 plugin: "openai".into(),
                 component: Some("/{subcomponent}".into()),
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -491,6 +495,7 @@ mod tests {
                 component_deny: None,
                 plugin: "anthropic".into(),
                 component: Some("/{model}".into()),
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -546,6 +551,7 @@ mod tests {
                     component_deny: None,
                     plugin: "high_priority".into(),
                     component: None,
+                    params: std::collections::HashMap::new(),
                 },
                 RouteRule {
                     conditions: vec![],
@@ -553,6 +559,7 @@ mod tests {
                     component_deny: None,
                     plugin: "default".into(),
                     component: None,
+                    params: std::collections::HashMap::new(),
                 },
             ],
         );
@@ -607,6 +614,7 @@ mod tests {
                 component_deny: None,
                 plugin: "target1".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -618,6 +626,7 @@ mod tests {
                 component_deny: None,
                 plugin: "target1".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -629,6 +638,7 @@ mod tests {
                 component_deny: None,
                 plugin: "target2".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -664,6 +674,7 @@ mod tests {
                 component_deny: None,
                 plugin: "api_router".into(),
                 component: Some("{service}_{action}".into()),
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -675,6 +686,7 @@ mod tests {
                 component_deny: None,
                 plugin: "ml_service".into(),
                 component: Some("{model}/inference".into()),
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -711,6 +723,7 @@ mod tests {
                 component_deny: None,
                 plugin: "fallback_service".into(),
                 component: None, // No component pattern specified
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -722,6 +735,7 @@ mod tests {
                 component_deny: None,
                 plugin: "custom_service".into(),
                 component: Some("/{name}".into()), // Use name parameter as component
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -758,6 +772,7 @@ mod tests {
                 component_deny: None,
                 plugin: "service".into(),
                 component: Some("/{endpoint}".into()),
+                params: std::collections::HashMap::new(),
             }],
         );
 

@@ -111,6 +111,7 @@ impl MockExecutorBuilder {
             component_deny: None,
             plugin: "mock".into(),
             component: None,
+            params: std::collections::HashMap::new(),
         }];
 
         let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
@@ -345,6 +346,7 @@ pub async fn create_executor_with_behaviors(
         component_deny: None,
         plugin: "mock".into(),
         component: None,
+        params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
@@ -411,6 +413,7 @@ pub async fn create_env_with_wait_signal(
         component_deny: None,
         plugin: "mock".into(),
         component: None,
+        params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()

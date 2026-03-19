@@ -211,7 +211,7 @@ impl StepflowConfig {
         let task_registry = Arc::new(stepflow_plugin::TaskRegistry::new());
         env.insert(task_registry.clone());
 
-        // Insert the gRPC server for pull-based plugins.
+        // Insert the gRPC server for queue-based plugins (gRPC, NATS, etc.).
         let grpc_server = Arc::new(stepflow_grpc::StepflowGrpcServer::new(task_registry));
 
         // If gRPC services are multiplexed on an existing server, set the
@@ -237,12 +237,12 @@ mod tests {
     use super::*;
 
     /// This test generates the StepflowConfig JSON schema to schemas/stepflow-config.json.
-    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config --features etcd test_schema_generation
+    /// Run with: STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features
     ///
-    /// The `etcd` feature gate ensures the reference schema always includes all
+    /// The feature gates ensure the reference schema always includes all
     /// optional types regardless of which features a dependent crate enables.
     #[test]
-    #[cfg(feature = "etcd")]
+    #[cfg(all(feature = "etcd", feature = "nats"))]
     fn test_schema_generation() {
         use std::env;
 

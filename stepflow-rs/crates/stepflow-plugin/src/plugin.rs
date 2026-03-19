@@ -60,8 +60,12 @@ pub trait Plugin: Send + Sync {
     ///   increasing counter that increments on every re-execution of this step,
     ///   regardless of the reason (transport error, component error, or
     ///   orchestrator recovery).
+    /// * `route_params` - Additional parameters from the route rule (e.g.,
+    ///   `subject` for NATS, `queueName` for gRPC). These override plugin-level
+    ///   defaults. Empty for most plugins.
     ///
     /// [`TaskRegistry`]: crate::TaskRegistry
+    #[allow(clippy::too_many_arguments)]
     async fn start_task(
         &self,
         task_id: &str,
@@ -70,6 +74,7 @@ pub trait Plugin: Send + Sync {
         step: Option<&StepId>,
         input: ValueRef,
         attempt: u32,
+        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()>;
 
     /// Prepare the plugin for a retry after a transport error.

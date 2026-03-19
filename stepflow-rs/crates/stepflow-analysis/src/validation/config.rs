@@ -108,6 +108,7 @@ mod tests {
                 component_allow: None,
                 component_deny: None,
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
@@ -164,6 +165,7 @@ mod tests {
                 component_allow: None,
                 component_deny: None,
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
 
