@@ -216,7 +216,7 @@ class GrpcContext(StepflowContext):
         finally:
             await channel.close()
 
-    async def submit_run_by_id(  # type: ignore[override]
+    async def submit_run_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
@@ -234,7 +234,7 @@ class GrpcContext(StepflowContext):
             overrides=overrides,
         )
 
-    async def evaluate_run_by_id(  # type: ignore[override]
+    async def evaluate_run_by_id(
         self,
         flow_id: str,
         inputs: list[Any],
@@ -269,7 +269,10 @@ class GrpcContext(StepflowContext):
                 error_code = item.get("error_code", "TASK_ERROR_CODE_UNSPECIFIED")
                 raise StepflowFailed(
                     error_code=error_code,
-                    message=f"Item at index {item.get('item_index', '?')} failed: {error_msg}",
+                    message=(
+                        f"Item at index {item.get('item_index', '?')} "
+                        f"failed: {error_msg}"
+                    ),
                 )
             output = item.get("output")
             if output is None:
