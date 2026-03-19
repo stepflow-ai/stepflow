@@ -3,83 +3,83 @@ name: OpenSearch Ingestion Flow
 description: null
 version: null
 schemas:
+  type: object
   defs: {}
-  input: null
-  output: null
-  variables:
-    type: object
-    properties:
-      OLLAMA_BASE_URL:
-        type:
-        - string
-        - 'null'
-        default: null
-      DOCLING_SERVE_URL:
-        type:
-        - string
-        - 'null'
-        default: null
-      OWNER:
-        type:
-        - string
-        - 'null'
-        default: null
-      OPENAI_API_KEY:
-        type:
-        - string
-        - 'null'
-        default: null
-      WATSONX_API_KEY:
-        type:
-        - string
-        - 'null'
-        default: null
-      WATSONX_PROJECT_ID:
-        type:
-        - string
-        - 'null'
-        default: null
-      OWNER_NAME:
-        type:
-        - string
-        - 'null'
-        default: null
-      CONNECTOR_TYPE:
-        type:
-        - string
-        - 'null'
-        default: null
-      OWNER_EMAIL:
-        type:
-        - string
-        - 'null'
-        default: null
-      FILENAME:
-        type:
-        - string
-        - 'null'
-        default: null
-      FILESIZE:
-        type:
-        - string
-        - 'null'
-        default: null
-      MIMETYPE:
-        type:
-        - string
-        - 'null'
-        default: null
-      SELECTED_EMBEDDING_MODEL:
-        type:
-        - string
-        - 'null'
-        default: null
-      OPENSEARCH_URL:
-        type:
-        - string
-        - 'null'
-        default: null
-  steps: {}
+  properties:
+    variables:
+      type: object
+      properties:
+        OLLAMA_BASE_URL:
+          type:
+          - string
+          - 'null'
+          default: null
+        DOCLING_SERVE_URL:
+          type:
+          - string
+          - 'null'
+          default: null
+        OWNER:
+          type:
+          - string
+          - 'null'
+          default: null
+        OPENAI_API_KEY:
+          type:
+          - string
+          - 'null'
+          default: null
+        WATSONX_API_KEY:
+          type:
+          - string
+          - 'null'
+          default: null
+        WATSONX_PROJECT_ID:
+          type:
+          - string
+          - 'null'
+          default: null
+        OWNER_NAME:
+          type:
+          - string
+          - 'null'
+          default: null
+        CONNECTOR_TYPE:
+          type:
+          - string
+          - 'null'
+          default: null
+        OWNER_EMAIL:
+          type:
+          - string
+          - 'null'
+          default: null
+        FILENAME:
+          type:
+          - string
+          - 'null'
+          default: null
+        FILESIZE:
+          type:
+          - string
+          - 'null'
+          default: null
+        MIMETYPE:
+          type:
+          - string
+          - 'null'
+          default: null
+        SELECTED_EMBEDDING_MODEL:
+          type:
+          - string
+          - 'null'
+          default: null
+        OPENSEARCH_URL:
+          type:
+          - string
+          - 'null'
+          default: null
+    steps: {}
 steps:
 - id: langflow_EmbeddingModel-E0hvR
   component: /langflow/core/lfx/components/models_and_agents/embedding_model/EmbeddingModelComponent
