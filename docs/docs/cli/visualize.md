@@ -14,7 +14,7 @@ This document contains the help content for the `visualize` command-line program
 
 Visualize workflow structure as a graph.
 
-Generate a visual representation of workflow structure showing steps, dependencies, and component routing. Supports multiple output formats (DOT, SVG, PNG) with optional features like component server coloring and detailed tooltips.
+Generate a visual representation of workflow structure showing steps, dependencies, and component routing. Supports multiple output formats (DOT, SVG, PNG) with optional features like worker coloring and detailed tooltips.
 
 For SVG and PNG formats, output defaults to a file next to the workflow with matching extension (e.g., workflow.yaml → workflow.svg). Use --output to override. DOT format outputs to stdout by default.
 
@@ -53,7 +53,7 @@ For SVG and PNG formats, output defaults to a file next to the workflow with mat
   - `png`:
     PNG image format
 
-* `--no-servers` — Hide component server information from nodes
+* `--no-servers` — Hide worker information from nodes
 * `--no-details` — Hide detailed tooltips and metadata
 * `--config <FILE>` — The path to the stepflow config file.
 

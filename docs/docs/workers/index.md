@@ -1,10 +1,10 @@
 ---
-sidebar_position: 1
+sidebar_position: 0
 ---
 
 # Workers
 
-Workers (also called component servers) are standalone processes that host workflow components for Stepflow. They allow you to implement custom logic, integrate with external systems, and extend the capabilities of Stepflow beyond the built-in components.
+Workers are standalone processes that host workflow components for Stepflow. They allow you to implement custom logic, integrate with external systems, and extend the capabilities of Stepflow beyond the built-in components.
 
 ## What is a Worker?
 
@@ -51,4 +51,4 @@ For other languages, you can implement the [Stepflow Protocol](./implementing-wo
 * [Create custom components](./custom-components.md) using the Python SDK
 * [Implement workers](./implementing-workers.md) in any language using the Stepflow Protocol
 * [Use user-defined functions (UDFs)](./udfs.md) to execute code dynamically within workflows
-* [Protocol reference](../../protocol/index.md) for complete protocol documentation
+* [Protocol reference](../protocol/index.md) for complete protocol documentation

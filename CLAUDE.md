@@ -46,6 +46,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 - **Flow**: Declarative workflow definition with steps, inputs, and outputs
 - **Step**: Single operation within a workflow that invokes a component
 - **Component**: Executable implementation provided by a plugin (e.g., `/python/my_func`, `/builtin/openai`)
+- **Worker**: A process that hosts and executes components. Workers pull tasks from the orchestrator and return results via gRPC. Prefer "worker" over the older "component server" terminology in documentation and code.
 - **Plugin**: Service providing one or more components (builtin, Python SDK, MCP server)
 - **Routing**: Configuration rules mapping component paths to plugin backends
 - **Value Expressions**: Data flow between steps using `$step`, `$input`, and `$variable` expressions
@@ -61,7 +62,7 @@ Configuration file (`stepflow-config.yml`) defines plugins, routing rules, and s
 ### Plugin Types
 
 **builtin**: Built-in components (OpenAI, eval, create_messages)
-**stepflow**: Component servers (subprocess or remote HTTP)
+**stepflow**: Workers (subprocess or remote HTTP)
 **mcp**: Model Context Protocol servers
 
 ### Example Configuration

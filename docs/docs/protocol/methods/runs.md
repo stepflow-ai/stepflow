@@ -6,7 +6,7 @@ import SchemaDisplay from "@site/src/components/SchemaDisplay";
 
 # Runs
 
-Run methods enable component servers to submit and retrieve workflow runs during execution. These methods provide bidirectional communication capabilities for components that need to orchestrate sub-workflows or check run status.
+Run methods enable workers to submit and retrieve workflow runs during execution. These methods provide bidirectional communication capabilities for components that need to orchestrate sub-workflows or check run status.
 
 ## Overview
 
@@ -15,7 +15,7 @@ The run methods currently include:
 1. **`runs/submit`** - Submit a workflow run for execution
 2. **`runs/get`** - Retrieve run status and results
 
-These methods allow component servers to programmatically execute workflows and retrieve their results, enabling patterns like sub-workflow orchestration and batch processing.
+These methods allow workers to programmatically execute workflows and retrieve their results, enabling patterns like sub-workflow orchestration and batch processing.
 
 ## Run Method Sequences
 
@@ -24,7 +24,7 @@ These methods allow component servers to programmatically execute workflows and 
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     Note over R,S: Component execution in progress
 
@@ -41,7 +41,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     Note over R,S: Component execution in progress
 
@@ -59,7 +59,7 @@ sequenceDiagram
 ## runs/submit Method
 
 **Method Name:** `runs/submit`
-**Direction:** Component Server → Runtime
+**Direction:** Worker → Runtime
 **Type:** Request (expects response)
 
 Submit a workflow run for execution. The workflow must already be stored as a blob in the runtime's blob storage.
@@ -134,7 +134,7 @@ Submit a workflow run for execution. The workflow must already be stored as a bl
 ## runs/get Method
 
 **Method Name:** `runs/get`
-**Direction:** Component Server → Runtime
+**Direction:** Worker → Runtime
 **Type:** Request (expects response)
 
 Retrieve the status and optionally results of a workflow run.

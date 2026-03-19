@@ -187,6 +187,6 @@ See [Configuration](../configuration/) for complete options.
 ## See Also
 
 - [Message Format](./message-format.md) - JSON-RPC message structure and validation
-- [Implementing Workers](../components/component-server/implementing-workers.md) - Complete worker implementation guide
+- [Implementing Workers](../workers/implementing-workers.md) - Complete worker implementation guide
 - [Protocol Overview](./index.md) - Protocol fundamentals
 - [Error Handling](./errors.md) - Error codes reference

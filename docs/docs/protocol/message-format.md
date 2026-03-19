@@ -217,12 +217,12 @@ sequenceDiagram
 
 ### Simple Method Call
 
-Runtime calls a method on component server:
+Runtime calls a method on a worker:
 
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     R->>+S: {"jsonrpc":"2.0","id":"list-001","method":"components/list","params":{}}
     S-->>-R: {"jsonrpc":"2.0","id":"list-001","result":{"components":[...]}}
@@ -235,7 +235,7 @@ Runtime calls method that fails:
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     R->>+S: {"jsonrpc":"2.0","id":"exec-001","method":"components/execute","params":{...}}
     S-->>-R: {"jsonrpc":"2.0","id":"exec-001","error":{"code":-32001,"message":"Component not found"}}
@@ -248,7 +248,7 @@ Component execution with bidirectional call and final notification:
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     R->>+S: Method: components/execute
     S->>+R: Method: blobs/put

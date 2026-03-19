@@ -7,7 +7,7 @@ sidebar_position: 1
 Components are the building blocks of Stepflow workflows, providing the actual business logic that the workflow orchestrator coordinates.
 Each step in a flow executes a specific component that implements a specific operation.
 
-Stepflow provides a set of built-in components for common tasks as well as the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while component servers handle the actual processing logic.
+Stepflow provides a set of built-in components for common tasks as well as the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while workers handle the actual processing logic.
 
 ## Types of Components
 
@@ -22,20 +22,20 @@ Stepflow provides a variety of built-in components that handle common operations
 
 [Learn more about built-in components →](./builtins/index.md)
 
-### 2. Stepflow Component Server
+### 2. Worker Components
 
-Use existing copmonent servers or create your own custom components using Stepflow SDKs:
+[Workers](../workers/index.md) host custom components built with Stepflow SDKs:
 
 - **Python SDK**: Build components in Python with full async support
 - **TypeScript SDK**: Create high-performance Node.js components (coming soon)
 - **Any Language**: Implement the Stepflow Protocol directly
 
-[Learn more about component servers →](./component-server/index.md).
+[Learn more about workers →](../workers/index.md)
 
 :::info User-Defined Functions (UDFs)
 Many of the SDKs also support user-defined functions (UDFs).
-These are typically impemented as a component provided by the SDK that takes code as an input and executes it.
-[Learn more about user-defined functions →](./component-server/udfs.md).
+These are typically implemented as a component provided by the SDK that takes code as an input and executes it.
+[Learn more about user-defined functions →](../workers/udfs.md).
 :::
 
 ### 3. MCP Tool Components
@@ -48,50 +48,9 @@ Use tools from Model Context Protocol (MCP) servers as components:
 
 [Learn more about MCP tools →](./mcp-tools.md).
 
-## Component Architecture
-
-Stepflow's architecture separates the **workflow orchestration** from **component serving**, enabling flexible deployment and scaling:
-
-- **Orchestrator**: Manages workflow execution, data flow, and state persistence
-- **Component Servers**: Provide business logic and can run locally or remotely
-
-Most components run in separate worker processes, ensuring security and stability.
-Workers pull tasks from the orchestrator (or from message brokers), process them, and return results via gRPC — controlling their own concurrency.
-
-During development, the Stepflow orchestrator manages workers as local subprocesses.
-In production, workers can be separately deployed and scaled across multiple machines or containers.
-Different components can be [routed to different worker pools](../deployment/index.md) based on their resource requirements — ML models on GPU nodes, data processing on memory-optimized nodes, and lightweight API calls on standard compute, all within the same workflow.
-
-The diagram below shows how the Stepflow orchestrator interacts with multiple component servers.
-
-```mermaid
-flowchart TB
-    subgraph "Stepflow Runtime"
-        W[Workflow Engine]
-        S1[Step 1]
-        S2[Step 2]
-        S3[Step 3]
-
-        B[Built-in Components]
-    end
-
-    subgraph "Component Servers"
-        CSP[Python SDK Server]
-        CSM[MCP Tool Server]
-    end
-
-    W --> S1 --> B
-    W --> S2 --> CSP
-    W --> S3 --> CSM
-
-    B --> AI[AI APIs]
-    CSP --> DB[(Database)]
-    CSM --> WEB[Web Services]
-```
-
 ## Next Steps
 
 - [Explore built-in components](./builtins/index.md) for common operations
-- [Learn how to create custom components](./component-server/custom-components.md) using Stepflow SDKs
+- [Learn how to create custom components](../workers/custom-components.md) using Stepflow SDKs
 - [Create steps](../flows/steps.md) to use components in a flow
 - Read the [FAQ](../faq.md) for comparisons with other workflow technologies

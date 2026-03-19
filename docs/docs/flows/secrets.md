@@ -251,8 +251,8 @@ The entire array will be redacted as `[REDACTED]` in logs.
 1. **Log Safety**: Secret redaction prevents accidental exposure in application logs
 2. **Error Messages**: Secrets are redacted in error messages and stack traces
 3. **Debug Output**: Development and debugging output automatically redacts secrets
-4. **Component Isolation**: Each component server handles its own secret redaction
-5. **Transport Security**: Use HTTPS/TLS for component server communication in production
+4. **Component Isolation**: Each worker handles its own secret redaction
+5. **Transport Security**: Use HTTPS/TLS for worker communication in production
 
 ## Limitations
 

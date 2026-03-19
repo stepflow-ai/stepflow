@@ -7,7 +7,7 @@ sidebar_position: 3
 User-Defined Functions (UDFs) allow you to execute custom Python code dynamically within Stepflow workflows. UDFs are particularly powerful because the code is stored as blobs and can be reused across multiple workflow steps, enabling flexible and maintainable data transformations.
 
 :::note
-Currently, UDFs are only supported in the Python component server.
+Currently, UDFs are only supported in the Python worker.
 However, the pattern described below should be possible in any language that supports dynamic code execution.
 :::
 
@@ -15,7 +15,7 @@ However, the pattern described below should be possible in any language that sup
 
 UDFs operate using a two-step process:
 
-1. **Code Storage**: Python code and its input schema are stored as blobs using [`put_blob`](../builtins/put_blob.md)
+1. **Code Storage**: Python code and its input schema are stored as blobs using [`put_blob`](../components/builtins/put_blob.md)
 2. **Code Execution**: The stored code is executed using `udf` with input data
 
 This approach provides several advantages:
@@ -176,5 +176,4 @@ Custom components offer slightly better performance and type safety, while UDFs 
 ## Next Steps
 
 - Learn more about [Custom Components](./custom-components.md) to create reusable component libraries
-- Explore [Blob Storage](../builtins/put_blob.md) for advanced data management patterns
-- Check out [Workflow Examples](../../examples/) that use UDFs for complex data processing
+- Explore [Blob Storage](../components/builtins/put_blob.md) for advanced data management patterns

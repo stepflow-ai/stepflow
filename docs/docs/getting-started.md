@@ -6,7 +6,7 @@ sidebar_position: 2
 
 This guide will help you install Stepflow and run your first workflow in just a few minutes.
 
-Stepflow is a **workflow orchestrator** that coordinates the execution of components across different servers. In this tutorial, you'll see how the Stepflow runtime orchestrates both built-in components and a custom Python component server to create a complete workflow.
+Stepflow is a **workflow orchestrator** that coordinates the execution of components across different workers. In this tutorial, you'll see how the Stepflow runtime orchestrates both built-in components and a custom Python worker to create a complete workflow.
 
 ## Setup
 
@@ -160,11 +160,11 @@ You should see output like:
 This workflow demonstrates Stepflow's key concepts as a **workflow orchestrator**:
 
 - **Orchestration**: Stepflow coordinated the execution of three different components, managing data flow and dependencies between them
-- **Component Servers**: The workflow used both built-in components (managed by Stepflow) and a custom Python component server (launched as a subprocess)
+- **Workers**: The workflow used both built-in components (managed by Stepflow) and a custom Python worker (launched as a subprocess)
 - **Input/Output Schemas**: Define the structure of your data using JSON Schema
 - **Steps**: Each step uses a component to process data and pass results to the next step
 - **Data Flow**: Use value references to pass data between steps, with Stepflow handling the routing and transformation
-- **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate servers
+- **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate workers
 
 :::tip From Development to Production
 The workflow you just ran locally works unchanged in production. Stepflow scales from a self-contained local binary to a distributed cluster with separate storage, dedicated worker pools, and message brokers — no workflow modifications required. See [Production Deployment](./deployment/index.md) to learn more.

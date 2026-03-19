@@ -6,7 +6,7 @@ import SchemaDisplay from "@site/src/components/SchemaDisplay";
 
 # Initialization
 
-Initialization methods establish the protocol connection and negotiate capabilities between the Stepflow runtime and component servers.
+Initialization methods establish the protocol connection and negotiate capabilities between the Stepflow runtime and workers.
 
 ## Overview
 
@@ -22,7 +22,7 @@ Both steps are required for proper protocol establishment.
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     Note over R,S: Transport connection established
 
@@ -33,7 +33,7 @@ sequenceDiagram
 
     alt Version compatible
         R->>S: initialized notification
-        Note over R,S: Server ready for component requests
+        Note over R,S: Worker ready for component requests
     else Version incompatible
         R->>R: Log error and close connection
     end
@@ -44,7 +44,7 @@ sequenceDiagram
 The `initialize` method negotiates protocol version and establishes basic capabilities.
 
 **Method Name:** `initialize`
-**Direction:** Runtime → Component Server
+**Direction:** Runtime → Worker
 **Type:** Request (expects response)
 
 ### Request Schema
@@ -104,7 +104,7 @@ The `initialize` method negotiates protocol version and establishes basic capabi
 The `initialized` notification is sent by the runtime to confirm the server is ready for component requests.
 
 **Method Name:** `initialized`
-**Direction:** Runtime → Component Server
+**Direction:** Runtime → Worker
 **Type:** Notification (no response expected)
 
 ### Notification Format

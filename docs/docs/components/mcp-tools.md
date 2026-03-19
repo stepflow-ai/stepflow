@@ -72,4 +72,4 @@ output:
 ## Next Steps
 
 - Browse [available MCP servers](https://github.com/modelcontextprotocol/servers) in the official repository
-- Learn about [Custom Components](./component-server/custom-components.md) for building your own tools
+- Learn about [Custom Components](../workers/custom-components.md) for building your own tools

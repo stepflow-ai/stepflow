@@ -4,13 +4,13 @@ sidebar_position: 4
 
 # Implementing Workers
 
-This guide describes how to implement a Stepflow worker (component server) in any programming language. Workers are standalone processes that provide components for workflow execution, communicating with the Stepflow runtime using a JSON-RPC 2.0 based protocol.
+This guide describes how to implement a Stepflow worker in any programming language. Workers are standalone processes that provide components for workflow execution, communicating with the Stepflow runtime using a JSON-RPC 2.0 based protocol.
 
 While the [Python SDK](./custom-components.md) provides a high-level API that handles protocol details automatically, you can implement workers in any language by following this specification.
 
 ## What is a Worker?
 
-A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
+A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
 
 - Provide a list of supported component paths
 - Receive component execution requests when workflows invoke those paths
@@ -97,7 +97,7 @@ This section uses RFC 2119 terminology:
 
 Workers communicate over HTTP using the Streamable HTTP transport, which supports bidirectional communication through Server-Sent Events (SSE).
 
-For complete transport details including request/response formats, headers, SSE streaming, and port announcement, see the [Transport documentation](../../protocol/transport.md).
+For complete transport details including request/response formats, headers, SSE streaming, and port announcement, see the [Transport documentation](../protocol/transport.md).
 
 **Key requirements:**
 - Workers MUST expose a POST `/` endpoint for JSON-RPC messages (MAY expose additional endpoints)
@@ -113,7 +113,7 @@ For complete transport details including request/response formats, headers, SSE 
 
 ## Protocol Methods
 
-Workers must implement the following JSON-RPC methods. See the [Protocol Methods Reference](../../protocol/methods/index.md) for detailed request/response schemas and examples.
+Workers must implement the following JSON-RPC methods. See the [Protocol Methods Reference](../protocol/methods/index.md) for detailed request/response schemas and examples.
 
 ### Initialization (MUST)
 
@@ -123,7 +123,7 @@ Workers MUST complete the initialization handshake before accepting other reques
 2. Worker responds with `server_protocol_version` (current version: `1`)
 3. Runtime sends `initialized` notification
 
-See [Initialization Methods](../../protocol/methods/initialization.md) for details.
+See [Initialization Methods](../protocol/methods/initialization.md) for details.
 
 ### Component Methods (MUST)
 
@@ -133,7 +133,7 @@ See [Initialization Methods](../../protocol/methods/initialization.md) for detai
 | `components/info` | Return metadata for a specific component |
 | `components/execute` | Execute a component with input data and observability context |
 
-See [Component Methods](../../protocol/methods/components.md) for details.
+See [Component Methods](../protocol/methods/components.md) for details.
 
 ### Bidirectional Methods (MAY)
 
@@ -146,7 +146,7 @@ During `components/execute`, workers MAY call back to the runtime for blob stora
 | `blobs/put` | Store JSON data, receive content-addressed ID (`sha256:...`) |
 | `blobs/get` | Retrieve JSON data by blob ID |
 
-See [Blob Storage Methods](../../protocol/methods/blobs.md) for details.
+See [Blob Storage Methods](../protocol/methods/blobs.md) for details.
 
 #### Subflow Execution
 
@@ -174,7 +174,7 @@ Both methods return a `RunStatus` with `run_id`, `status`, item statistics, and 
 
 Workers MUST return JSON-RPC error responses for failures. Use standard error codes (e.g., `-32004` for component execution failures) with descriptive messages and optional `data` for debugging context.
 
-See [Error Handling](../../protocol/errors.md) for the complete error codes reference.
+See [Error Handling](../protocol/errors.md) for the complete error codes reference.
 
 ## Observability
 
@@ -346,7 +346,7 @@ Here's a minimal worker implementation outline:
 
 ## See Also
 
-- [Protocol Overview](../../protocol/index.md) - Complete protocol specification
-- [Transport](../../protocol/transport.md) - HTTP transport details
-- [Error Handling](../../protocol/errors.md) - Error codes reference
+- [Protocol Overview](../protocol/index.md) - Complete protocol specification
+- [Transport](../protocol/transport.md) - HTTP transport details
+- [Error Handling](../protocol/errors.md) - Error codes reference
 - [Custom Components](./custom-components.md) - Python SDK guide
