@@ -526,8 +526,8 @@ const FLOW_SCHEMA_URL: &str = "https://stepflow.org/schemas/v1/flow.json";
 /// Check whether a YAML file declares itself as a Stepflow flow by looking for
 /// the `schema` key with the Stepflow flow schema URL.
 fn has_flow_schema(path: &Path) -> Result<bool> {
-    let content = fs::read_to_string(path)
-        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+    let content =
+        fs::read_to_string(path).change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
     let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)
         .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
     let schema = value.get("schema").and_then(|v| v.as_str());
@@ -545,8 +545,7 @@ fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
             // If it does, this is a broken flow file and should be reported as an error.
             // If not, it's just a non-flow YAML file and should be skipped.
             if has_flow_schema(path)? {
-                return Err(e)
-                    .change_context_lazy(|| MainError::InvalidFile(path.to_owned()));
+                return Err(e).change_context_lazy(|| MainError::InvalidFile(path.to_owned()));
             }
             return Ok(None);
         }
