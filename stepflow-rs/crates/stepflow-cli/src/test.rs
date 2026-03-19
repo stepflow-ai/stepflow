@@ -18,7 +18,7 @@ use clap::Args;
 use error_stack::ResultExt as _;
 use similar::{ChangeTag, TextDiff};
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use stepflow_config::StepflowConfig;
@@ -520,14 +520,34 @@ pub async fn run_tests(
     print_summary(&results)
 }
 
+/// The schema URL that identifies a YAML file as a Stepflow flow.
+const FLOW_SCHEMA_URL: &str = "https://stepflow.org/schemas/v1/flow.json";
+
+/// Check whether a YAML file declares itself as a Stepflow flow by looking for
+/// the `schema` key with the Stepflow flow schema URL.
+fn has_flow_schema(path: &Path) -> Result<bool> {
+    let content = fs::read_to_string(path)
+        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)
+        .change_context_lazy(|| MainError::InvalidFile(path.to_owned()))?;
+    let schema = value.get("schema").and_then(|v| v.as_str());
+    Ok(schema == Some(FLOW_SCHEMA_URL))
+}
+
 fn load_flow(path: &Path) -> Result<Option<Arc<Flow>>> {
     let rdr = File::open(path).change_context_lazy(|| MainError::MissingFile(path.to_owned()))?;
 
-    // Try to parse as a Flow directly - if it fails, treat as non-flow file
+    // Try to parse as a Flow directly
     let flow: Flow = match serde_yaml_ng::from_reader(rdr) {
         Ok(f) => f,
-        Err(_) => {
-            // Not a valid flow - skip this file
+        Err(e) => {
+            // Check if the file declares itself as a flow via the schema key.
+            // If it does, this is a broken flow file and should be reported as an error.
+            // If not, it's just a non-flow YAML file and should be skipped.
+            if has_flow_schema(path)? {
+                return Err(e)
+                    .change_context_lazy(|| MainError::InvalidFile(path.to_owned()));
+            }
             return Ok(None);
         }
     };
@@ -764,6 +784,51 @@ mod tests {
         );
         assert_eq!(stack["error"], "Test error");
         assert_eq!(stack["attachments"], json!([]));
+    }
+
+    #[test]
+    fn test_load_flow_skips_non_flow_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("not_a_flow.yaml");
+        // YAML that fails Flow deserialization (steps must be a list, not a string)
+        // and does NOT have the stepflow schema header — should be skipped.
+        std::fs::write(&path, "steps: not_a_list\n").unwrap();
+
+        let result = load_flow(&path).unwrap();
+        assert!(result.is_none(), "Non-flow YAML should be skipped");
+    }
+
+    #[test]
+    fn test_load_flow_errors_on_malformed_flow_with_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("broken.yaml");
+        // Has the schema header but is missing required fields / has invalid structure
+        std::fs::write(
+            &path,
+            "schema: https://stepflow.org/schemas/v1/flow.json\nname: broken\nsteps: not_a_list\n",
+        )
+        .unwrap();
+
+        let result = load_flow(&path);
+        assert!(
+            result.is_err(),
+            "Flow file with schema header but invalid structure should error"
+        );
+    }
+
+    #[test]
+    fn test_load_flow_succeeds_for_valid_flow() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("valid.yaml");
+        std::fs::write(
+            &path,
+            "schema: https://stepflow.org/schemas/v1/flow.json\nname: valid\nsteps: []\n",
+        )
+        .unwrap();
+
+        let result = load_flow(&path).unwrap();
+        assert!(result.is_some(), "Valid flow file should be loaded");
+        assert_eq!(result.unwrap().name, Some("valid".to_string()));
     }
 
     #[test]
