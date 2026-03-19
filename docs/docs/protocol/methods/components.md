@@ -19,7 +19,7 @@ The component methods provide a complete lifecycle for working with components:
 ## components/list Method
 
 **Method Name:** `components/list`
-**Direction:** Runtime → Component Server
+**Direction:** Runtime → Worker
 **Type:** Request (expects response)
 
 <SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentListParams"/>
@@ -61,7 +61,7 @@ The component methods provide a complete lifecycle for working with components:
 ## components/info Method
 
 **Method Name:** `components/info`
-**Direction:** Runtime → Component Server
+**Direction:** Runtime → Worker
 **Type:** Request (expects response)
 
 <SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentInfoParams"/>
@@ -129,7 +129,7 @@ The component methods provide a complete lifecycle for working with components:
 ## components/execute Method
 
 **Method Name:** `components/execute`
-**Direction:** Runtime → Component Server
+**Direction:** Runtime → Worker
 **Type:** Request (expects response)
 
 <SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentExecuteParams"/>
@@ -234,7 +234,7 @@ Components that need to interact with the runtime during execution can make requ
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     R->>+S: components/execute request
     Note over S: Component execution in progress

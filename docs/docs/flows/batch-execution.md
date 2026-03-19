@@ -12,7 +12,7 @@ Batch execution enables:
 - **Parallel Processing**: Execute multiple workflow instances simultaneously
 - **Concurrency Control**: Limit concurrent executions to manage resources
 - **Progress Tracking**: Monitor batch completion and individual run status
-- **Efficient Resource Usage**: Reuse component servers across batch items
+- **Efficient Resource Usage**: Reuse workers across batch items
 - **Fault Isolation**: Individual failures don't affect other batch items
 
 ## Local Batch Execution

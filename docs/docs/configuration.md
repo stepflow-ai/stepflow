@@ -6,7 +6,7 @@ sidebar_position: 6
 
 Stepflow configuration controls which plugins and components are available to workflows, state storage backends, and other runtime settings. Configuration enables you to use the same workflow definitions across different environments (development, staging, production) by changing only the underlying infrastructure and component implementations.
 
-Stepflow's flexible configuration supports a truly distributed architecture, allowing component servers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
+Stepflow's flexible configuration supports a truly distributed architecture, allowing workers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
 
 Key concepts:
 - **Plugins** provide components (built-in, external processes, HTTP services)
@@ -95,11 +95,11 @@ plugins:
 
 ### Stepflow Plugins
 
-External component servers that implement the Stepflow protocol.
+External workers that implement the Stepflow protocol.
 
 #### Subprocess Mode
 
-For local development and subprocess-based component servers:
+For local development and subprocess-based workers:
 
 ```yaml
 plugins:
@@ -120,7 +120,7 @@ plugins:
 
 #### Remote Mode
 
-For distributed architectures and remote component servers:
+For distributed architectures and remote workers:
 
 ```yaml
 plugins:
@@ -130,7 +130,7 @@ plugins:
 ```
 
 **Parameters:**
-- **`url`**: Base URL of the HTTP component server
+- **`url`**: Base URL of the HTTP worker
 - **`timeout`** (optional): Request timeout in seconds [default: 30]
 
 **Features:**
@@ -334,8 +334,8 @@ storageConfig:
 Specifically, note that both configurations provide the same paths, but use different plugin implementations and state stores.
 This specifically allows local development to use the same workflow definitions as production deployments without modification.
 
-Locally, component servers are started to execute the workflow.
-In production, the Stepflow runtime connects to remote component servers over HTTP, allowing the component servers to be separately deployed and scaled.
+Locally, workers are started to execute the workflow.
+In production, the Stepflow runtime connects to remote workers over HTTP, allowing the workers to be separately deployed and scaled.
 
 ## Runtime Environment Variables
 
@@ -345,13 +345,13 @@ Stepflow behavior can be configured through environment variables. These are sep
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STEPFLOW_COMPONENT_STDERR` | `quiet` | Controls how component server stderr is handled. `quiet` buffers stderr and only shows it on crash. `verbose` logs all stderr immediately (useful for debugging). |
+| `STEPFLOW_COMPONENT_STDERR` | `quiet` | Controls how worker stderr is handled. `quiet` buffers stderr and only shows it on crash. `verbose` logs all stderr immediately (useful for debugging). |
 
 #### Stderr Handling
 
-When using stdio transport, component servers write logs and errors to stderr. By default, Stepflow uses **quiet mode** to reduce log noise:
+When using stdio transport, workers write logs and errors to stderr. By default, Stepflow uses **quiet mode** to reduce log noise:
 
-- **Quiet mode** (default): Buffers stderr output and only displays it if the component server crashes. During initialization, all stderr is preserved (unbounded). After initialization, only the last 100 lines are kept.
+- **Quiet mode** (default): Buffers stderr output and only displays it if the worker crashes. During initialization, all stderr is preserved (unbounded). After initialization, only the last 100 lines are kept.
 - **Verbose mode**: Logs all stderr immediately with the prefix `Component stderr:`. Useful for debugging component issues.
 
 ```bash

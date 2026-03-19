@@ -18,18 +18,18 @@ Blobs are identified by SHA-256 hashes of their content, enabling:
 
 ## Initialization
 
-The blob API URL is communicated to component servers during the `initialize` handshake via `RuntimeCapabilities`:
+The blob API URL is communicated to workers during the `initialize` handshake via `RuntimeCapabilities`:
 
 ```mermaid
 sequenceDiagram
     participant R as Runtime
-    participant S as Component Server
+    participant S as Worker
 
     R->>S: initialize (with capabilities.blobApiUrl)
     S->>R: InitializeResult
     R->>S: initialized notification
 
-    Note over S: Component now knows blob API URL
+    Note over S: Worker now knows blob API URL
 
     R->>S: component_execute request
     S->>R: HTTP POST /blobs (store data)
@@ -53,7 +53,7 @@ sequenceDiagram
 }
 ```
 
-The `blobApiUrl` field tells the component server where to send blob HTTP requests. If this field is present, the component server should use HTTP for all blob operations.
+The `blobApiUrl` field tells the worker where to send blob HTTP requests. If this field is present, the worker should use HTTP for all blob operations.
 
 ## HTTP API Endpoints
 

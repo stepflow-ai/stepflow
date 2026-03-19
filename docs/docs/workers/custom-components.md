@@ -30,9 +30,9 @@ uv add stepflow-py[http]
 pip install stepflow-py[http]
 ```
 
-### Basic Component Server
+### Basic Worker
 
-Create a simple component server:
+Create a simple worker:
 
 ```python
 # my_server.py
@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
 ### Configuration
 
-Configure the component server in `stepflow-config.yml`:
+Configure the worker in `stepflow-config.yml`:
 
 ```yaml
 plugins:
@@ -83,7 +83,7 @@ routes:
     - plugin: my_components
 ```
 
-See the [Configuration Guide](../../configuration.md) for more details.
+See the [Configuration Guide](../configuration.md) for more details.
 
 ### Using in Workflows
 
@@ -114,7 +114,7 @@ output:
     { $step: greeting_step, path: message }
 ```
 
-See [Steps](../../flows/steps.md) for more details on using components in steps within a flow.
+See [Steps](../flows/steps.md) for more details on using components in steps within a flow.
 
 ## Component Development
 

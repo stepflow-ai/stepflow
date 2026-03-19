@@ -11,8 +11,8 @@ Stepflow's architecture enables flexible production deployments that scale compo
 In production, Stepflow separates concerns between:
 
 - **Workflow Orchestrator**: Manages workflow execution, data flow, and state persistence
-- **Component Servers**: Provide business logic and can be scaled independently
-- **Load Balancer**: Routes requests to component servers with SSE support and instance affinity
+- **Workers**: Provide business logic and can be scaled independently
+- **Load Balancer**: Routes requests to workers with SSE support and instance affinity
 
 This separation allows you to:
 - Scale different types of components independently based on resource requirements
@@ -24,10 +24,10 @@ This separation allows you to:
 
 ### Resource-Based Component Segregation
 
-Different component servers can be deployed with different resource profiles:
+Different workers can be deployed with different resource profiles:
 
 ```yaml
-# Configuration routing to different component server classes
+# Configuration routing to different worker pools
 plugins:
   builtin:
     type: builtin
@@ -69,24 +69,24 @@ flowchart TB
     Orch -->|/data/*| MemLB[Memory Load Balancer]
     Orch -->|builtin| Builtin[Built-in Components]
     
-    subgraph CPU[CPU Component Servers]
-        CPU1[CPU Server 1]
-        CPU2[CPU Server 2]
-        CPU3[CPU Server ...]
-        CPU4[CPU Server 10]
+    subgraph CPU[CPU Workers]
+        CPU1[CPU Worker 1]
+        CPU2[CPU Worker 2]
+        CPU3[CPU Worker ...]
+        CPU4[CPU Worker 10]
     end
-    
-    subgraph GPU[GPU Component Servers]
-        GPU1[GPU Server 1]
-        GPU2[GPU Server 2]
-        GPU3[GPU Server 3]
+
+    subgraph GPU[GPU Workers]
+        GPU1[GPU Worker 1]
+        GPU2[GPU Worker 2]
+        GPU3[GPU Worker 3]
     end
-    
-    subgraph MEM[Memory Component Servers]
-        MEM1[Memory Server 1]
-        MEM2[Memory Server 2]
-        MEM3[Memory Server ...]
-        MEM4[Memory Server 5]
+
+    subgraph MEM[Memory Workers]
+        MEM1[Memory Worker 1]
+        MEM2[Memory Worker 2]
+        MEM3[Memory Worker ...]
+        MEM4[Memory Worker 5]
     end
     
     CPULB --> CPU
@@ -94,7 +94,7 @@ flowchart TB
     MemLB --> MEM
 ```
 
-Each component server class:
+Each worker pool:
 - Has its own load balancer for intelligent routing
 - Scales independently based on workload
 - Runs on appropriate hardware (CPU, GPU, high-memory nodes)
@@ -111,13 +111,13 @@ The [Stepflow Load Balancer](./load-balancer.md) provides:
 - Health checking and failover
 
 **Use cases:**
-- Distributing requests across multiple component server pods
+- Distributing requests across multiple worker pods
 - Maintaining connection affinity for stateful operations
-- Enabling horizontal scaling of component servers
+- Enabling horizontal scaling of workers
 
-### 2. Component Server Classes
+### 2. Worker Pools
 
-Deploy different component servers for different workloads:
+Deploy different workers for different workloads:
 
 **CPU-Optimized:**
 - General-purpose Python components
@@ -142,9 +142,9 @@ Deploy different component servers for different workloads:
 Use [Configuration](../configuration.md) and [Variables](../flows/variables.md) to manage environment-specific settings:
 
 **Configuration** controls infrastructure:
-- Define plugin routes to different component server classes
+- Define plugin routes to different worker pools
 - Configure state storage backends
-- Set component server connection details
+- Set worker connection details
 
 **Variables** parameterize workflows:
 - API endpoints and credentials that differ between environments
@@ -159,13 +159,13 @@ This separation allows the same workflow definition to run across environments b
 The [Kubernetes Batch Demo](https://github.com/stepflow-ai/stepflow/tree/main/examples/kubernetes-batch-demo) provides a complete working example of:
 
 - Stepflow orchestrator deployed in Kubernetes
-- Multiple component server replicas with load balancing
+- Multiple worker replicas with load balancing
 - SSE-aware load balancer with instance affinity
 - Batch execution with distributed compute
 - Health checking and automatic failover
 
 **Key features demonstrated:**
-- Component servers scale from 3 to 20+ replicas
+- Workers scale from 3 to 20+ replicas
 - Load balancer distributes requests evenly
 - Bidirectional communication (blob storage) works correctly
 - Batch workflows process 1000+ items efficiently
@@ -174,7 +174,7 @@ The [Kubernetes Batch Demo](https://github.com/stepflow-ai/stepflow/tree/main/ex
 
 ### Horizontal Scaling
 
-Scale component servers based on load:
+Scale workers based on load:
 
 ```yaml
 # Kubernetes HorizontalPodAutoscaler
@@ -203,7 +203,7 @@ spec:
 Route components to appropriate hardware:
 
 ```yaml
-# GPU component server deployment
+# GPU worker deployment
 spec:
   template:
     spec:
@@ -247,9 +247,9 @@ See [Persistence and Recovery](./persistence-recovery.md) for the full architect
 ### 1. Separate Component Classes
 
 Group components by resource requirements:
-- **Light**: API calls, simple transformations → CPU servers
-- **Medium**: Data processing, batch operations → Memory servers  
-- **Heavy**: ML inference, GPU workloads → GPU servers
+- **Light**: API calls, simple transformations → CPU workers
+- **Medium**: Data processing, batch operations → Memory workers
+- **Heavy**: ML inference, GPU workloads → GPU workers
 
 ### 2. Use Load Balancers
 
@@ -262,7 +262,7 @@ Deploy load balancers for each component class:
 ### 3. Monitor and Scale
 
 Track key metrics:
-- Component server CPU/memory usage
+- Worker CPU/memory usage
 - Request latency and throughput
 - Error rates and health status
 - Queue depths and backpressure

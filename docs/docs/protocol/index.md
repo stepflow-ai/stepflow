@@ -58,8 +58,8 @@ The protocol builds on JSON-RPC 2.0, providing:
 
 ### Bidirectional Communication
 Unlike traditional client-server models, the protocol supports bidirectional communication:
-- **Runtime → Server**: Component execution, discovery, information requests
-- **Server → Runtime**: Blob storage operations, workflow introspection, resource access
+- **Runtime → Worker**: Component execution, discovery, information requests
+- **Worker → Runtime**: Blob storage operations, workflow introspection, resource access
 
 ### Content-Addressable Storage
 The protocol includes a built-in blob storage system:
@@ -162,4 +162,4 @@ See the [protocol schema](../reference/protocol-schema.mdx) for detailed message
 - **[Transport](./transport.md)**: HTTP transport specification
 - **[Methods](./methods/)**: Detailed method specifications with examples
 - **[Error Handling](./errors.md)**: Complete error code reference
-- **[Implementing Workers](../components/component-server/implementing-workers.md)**: Guide to building workers
+- **[Implementing Workers](../workers/implementing-workers.md)**: Guide to building workers

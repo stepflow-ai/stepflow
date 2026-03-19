@@ -4,13 +4,13 @@ sidebar_position: 1
 
 # Stepflow Load Balancer
 
-The Stepflow Load Balancer is a high-performance, SSE-aware load balancer built with Pingora (Rust) that enables distributed component server deployments in production environments. It provides intelligent routing with instance affinity for bidirectional communication patterns.
+The Stepflow Load Balancer is a high-performance, SSE-aware load balancer built with Pingora (Rust) that enables distributed worker deployments in production environments. It provides intelligent routing with instance affinity for bidirectional communication patterns.
 
 ## Overview
 
-The load balancer sits between the Stepflow orchestrator and component server pods, providing:
+The load balancer sits between the Stepflow orchestrator and worker pods, providing:
 
-- **Backend Discovery**: Automatic discovery of component server instances via DNS
+- **Backend Discovery**: Automatic discovery of worker instances via DNS
 - **Health Checking**: Continuous health monitoring of backend servers
 - **Load Distribution**: Round-robin and least-connections algorithms
 - **SSE Streaming**: Native Server-Sent Events (SSE) support with stream preservation
@@ -28,10 +28,10 @@ flowchart TB
         LB2[Load Balancer Pod 2]
     end
     
-    subgraph CS[Component Servers]
-        CS1[Component Server Pod A]
-        CS2[Component Server Pod B]
-        CS3[Component Server Pod C]
+    subgraph CS[Workers]
+        CS1[Worker Pod A]
+        CS2[Worker Pod B]
+        CS3[Worker Pod C]
     end
     
     Runtime -->|HTTP/SSE| LB
@@ -60,10 +60,10 @@ Unlike traditional load balancers, the Stepflow Load Balancer understands Server
 
 ### 2. Instance Affinity Routing
 
-Enables bidirectional communication between component servers and the orchestrator:
+Enables bidirectional communication between workers and the orchestrator:
 
 **How it works:**
-1. Component server sends SSE response with `Stepflow-Instance-Id` header
+1. Worker sends SSE response with `Stepflow-Instance-Id` header
 2. Orchestrator stores the instance ID for that execution
 3. When component makes callback (e.g., blob storage), orchestrator includes instance ID
 4. Load balancer routes the response back to the specific component instance
@@ -86,7 +86,7 @@ Orchestrator → Load Balancer → Component Pod-A
 
 ### 3. Backend Discovery
 
-Automatically discovers component server instances:
+Automatically discovers worker instances:
 
 - **DNS-Based**: Queries Kubernetes headless service for pod IPs
 - **Dynamic Updates**: Detects new pods and removed pods
@@ -130,7 +130,7 @@ spec:
           containerPort: 8080
         env:
         - name: UPSTREAM_SERVICE
-          value: "component-server.stepflow.svc.cluster.local:8080"
+          value: "stepflow-worker.stepflow.svc.cluster.local:8080"
         - name: RUST_LOG
           value: "info"
         resources:
@@ -172,7 +172,7 @@ The load balancer is configured via environment variables:
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `UPSTREAM_SERVICE` | DNS name and port of component server service | - | Yes |
+| `UPSTREAM_SERVICE` | DNS name and port of worker service | - | Yes |
 | `RUST_LOG` | Log level (error, warn, info, debug, trace) | `info` | No |
 | `HEALTH_CHECK_INTERVAL` | Health check interval in seconds | `10` | No |
 | `HEALTH_CHECK_TIMEOUT` | Health check timeout in seconds | `5` | No |
@@ -182,7 +182,7 @@ The load balancer is configured via environment variables:
 ```yaml
 env:
 - name: UPSTREAM_SERVICE
-  value: "component-server.stepflow.svc.cluster.local:8080"
+  value: "stepflow-worker.stepflow.svc.cluster.local:8080"
 - name: RUST_LOG
   value: "debug"
 - name: HEALTH_CHECK_INTERVAL
@@ -214,15 +214,15 @@ routes:
 
 ### 1. Distributed Component Execution
 
-Scale component servers independently from the orchestrator:
+Scale workers independently from the orchestrator:
 
 ```yaml
-# Component servers: 10 replicas
+# Workers: 10 replicas
 # Load balancer: 2 replicas
 # Orchestrator: 1 replica
 
 # Handles 1000+ concurrent component executions
-# Distributes load across all component server pods
+# Distributes load across all worker pods
 ```
 
 ### 2. High-Throughput Batch Processing
@@ -231,8 +231,8 @@ Process large batches with distributed compute:
 
 ```yaml
 # Batch workflow with 10,000 items
-# Component servers: 20 replicas
-# Each server handles ~500 items
+# Workers: 20 replicas
+# Each worker handles ~500 items
 # Load balancer distributes evenly
 ```
 
@@ -259,11 +259,11 @@ The load balancer ensures the blob storage response routes back to the correct c
 
 ### 4. Multi-Region Deployments
 
-Deploy component servers in different regions:
+Deploy workers in different regions:
 
 ```yaml
-# Region A: Load balancer + Component servers
-# Region B: Load balancer + Component servers
+# Region A: Load balancer + Workers
+# Region B: Load balancer + Workers
 # Orchestrator routes to nearest load balancer
 ```
 
@@ -343,18 +343,18 @@ env:
 **Symptom**: Load balancer returns 503 Service Unavailable
 
 **Causes:**
-1. Component server pods not running
+1. Worker pods not running
 2. DNS resolution failing
 3. All backends failing health checks
 
 **Solutions:**
 ```bash
-# Check component server pods
-kubectl get pods -l app=component-server
+# Check worker pods
+kubectl get pods -l app=stepflow-worker
 
 # Check DNS resolution
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  nslookup component-server.stepflow.svc.cluster.local
+  nslookup stepflow-worker.stepflow.svc.cluster.local
 
 # Check load balancer logs
 kubectl logs -l app=stepflow-load-balancer
@@ -365,20 +365,20 @@ kubectl logs -l app=stepflow-load-balancer
 **Symptom**: Bidirectional requests fail or timeout
 
 **Causes:**
-1. Component server not sending `Stepflow-Instance-Id` header
+1. Worker not sending `Stepflow-Instance-Id` header
 2. Orchestrator not including instance ID in callbacks
 3. Backend pod restarted (instance ID changed)
 
 **Solutions:**
 ```bash
-# Verify component server sends instance ID
-kubectl logs -l app=component-server | grep "Stepflow-Instance-Id"
+# Verify worker sends instance ID
+kubectl logs -l app=stepflow-worker | grep "Stepflow-Instance-Id"
 
 # Check load balancer routing logs
 kubectl logs -l app=stepflow-load-balancer | grep "instance_id"
 
 # Verify SSE stream headers
-curl -N http://component-server:8080/... -v
+curl -N http://stepflow-worker:8080/... -v
 ```
 
 ### High Latency
@@ -386,17 +386,17 @@ curl -N http://component-server:8080/... -v
 **Symptom**: Requests taking longer than expected
 
 **Causes:**
-1. Backend servers overloaded
+1. Backend workers overloaded
 2. Network congestion
 3. Health check failures causing retries
 
 **Solutions:**
 ```bash
 # Check backend CPU/memory
-kubectl top pods -l app=component-server
+kubectl top pods -l app=stepflow-worker
 
-# Scale component servers
-kubectl scale deployment component-server --replicas=10
+# Scale workers
+kubectl scale deployment stepflow-worker --replicas=10
 
 # Check load balancer metrics
 kubectl logs -l app=stepflow-load-balancer | grep "latency"

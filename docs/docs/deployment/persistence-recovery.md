@@ -491,4 +491,4 @@ trait LeaseManager {
 
 - **[Configuration](../configuration.md)** - State store configuration options
 - **[Deployment Overview](./index.md)** - Production deployment patterns
-- **[Load Balancer](./load-balancer.md)** - Scaling component servers
+- **[Load Balancer](./load-balancer.md)** - Scaling workers
