@@ -45,8 +45,12 @@ spec:
         runAsUser: 1000
       volumes:
       - name: config
-        configMap:
-          name: docling-orchestrator-config
+        projected:
+          sources:
+          - configMap:
+              name: docling-orchestrator-config
+          - configMap:
+              name: docling-flow-config
       # No init container — workers connect to orchestrator, not the other way around
       containers:
       # Container 1: docling-facade — docling-serve compatible HTTP API

@@ -51,7 +51,7 @@ spec:
           value: "grpc"
         # gRPC TasksService address (orchestrator's pull-plugin gRPC server)
         - name: STEPFLOW_TASKS_URL
-          value: "docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7837"
+          value: "docling-orchestrator:7837"
         # Queue name matching orchestrator plugin config
         - name: STEPFLOW_QUEUE_NAME
           value: "docling"
@@ -63,7 +63,7 @@ spec:
           value: "4"
         # Blob store — explicit URL so workers can resolve $blob refs
         - name: STEPFLOW_BLOB_API_URL
-          value: "http://docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7840/api/v1/blobs"
+          value: "http://docling-orchestrator:7840/api/v1/blobs"
         # Pod metadata
         - name: POD_NAME
           valueFrom:

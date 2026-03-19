@@ -1,0 +1,63 @@
+# Copyright 2025 DataStax Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not
+# use this file except in compliance with the License. You may obtain a copy of
+# the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations under
+# the License.
+
+# Infrastructure configuration for the orchestrator.
+# Contains plugin config, routes, blob API, storage, and retry settings.
+# This is the config that will need Helm templating (parameterized values).
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docling-orchestrator-config
+  namespace: stepflow-docling-grpc
+  labels:
+    app: docling-orchestrator
+    component: orchestration
+data:
+  stepflow-config.yml: |
+    # Stepflow Configuration for docling gRPC parity testbed
+    # Uses pull-based (gRPC) transport — no load balancer needed
+
+    plugins:
+      builtin:
+        type: builtin
+
+      docling:
+        type: pull
+        # NOTE: queueName must match STEPFLOW_QUEUE_NAME in worker deployment.
+        # Both are "docling" — a single Helm value should feed both locations.
+        queueName: docling
+
+    routes:
+      "/docling/{*component}":
+        - plugin: docling
+
+      "/builtin/{*component}":
+        - plugin: builtin
+
+    # Blob API URL exposed to workers so they can resolve $blob references.
+    # The orchestrator auto-configures to 127.0.0.1 which is unreachable from
+    # worker pods; this overrides it with the cluster-internal service address.
+    blobApi:
+      url: "http://docling-orchestrator:7840/api/v1/blobs"
+
+    storageConfig:
+      type: inMemory
+
+    retry:
+      transportMaxRetries: 60
+      backoff:
+        type: fibonacci
+        minDelayMs: 2000
+        maxDelayMs: 15000

@@ -40,8 +40,9 @@ stepflow-docling-grpc/
 ├── kind-config.yaml              # Kind cluster with NodePort 30501→5001
 ├── namespaces.yaml               # stepflow-docling-grpc + stepflow-o11y
 ├── orchestrator/
-│   ├── configmap.yaml            # stepflow-config.yml (pull plugin) + flow YAML
-│   ├── deployment.yaml           # 2-container pod: facade + stepflow-server
+│   ├── configmap-stepflow-config.yaml  # stepflow-config.yml (pull plugin, routes, blob API)
+│   ├── configmap-flow.yaml            # docling-process-document.yaml (workflow definition)
+│   ├── deployment.yaml           # 2-container pod: facade + stepflow-server (projected volume)
 │   └── service.yaml              # NodePort 30501→5001, ClusterIP 7840+7837
 ├── worker/
 │   └── deployment.yaml           # 3 replicas, no ports, file-based probes
@@ -57,15 +58,15 @@ stepflow-docling-grpc/
 |----------|-------|---------|
 | `STEPFLOW_BIND_ADDRESS` | `0.0.0.0:7837` | gRPC server binds all interfaces for external workers |
 | `STEPFLOW_ORCHESTRATOR_URL` | `$(POD_IP):7837` | Advertised callback URL (pod IP, not service DNS) |
-| `STEPFLOW_OTLP_ENDPOINT` | `http://otel-collector.stepflow-o11y...:4317` | OTel trace/metric export |
+| `STEPFLOW_OTLP_ENDPOINT` | `http://otel-collector.stepflow-o11y.svc.cluster.local:4317` | OTel trace/metric export (cross-namespace FQDN) |
 
 **Worker container:**
 | Variable | Value | Purpose |
 |----------|-------|---------|
 | `STEPFLOW_TRANSPORT` | `grpc` | Selects pull-based gRPC transport |
-| `STEPFLOW_TASKS_URL` | `docling-orchestrator...:7837` | Orchestrator gRPC endpoint |
+| `STEPFLOW_TASKS_URL` | `docling-orchestrator:7837` | Orchestrator gRPC endpoint (same-namespace short name) |
 | `STEPFLOW_QUEUE_NAME` | `docling` | Must match plugin config `queueName` |
-| `STEPFLOW_BLOB_API_URL` | `http://docling-orchestrator...:7840/api/v1/blobs` | HTTP blob store for `$blob` refs |
+| `STEPFLOW_BLOB_API_URL` | `http://docling-orchestrator:7840/api/v1/blobs` | HTTP blob store for `$blob` refs (same-namespace short name) |
 | `STEPFLOW_MAX_CONCURRENT` | `1` | Tasks per worker pod (docling is CPU-heavy) |
 
 ### Worker Probes
@@ -79,7 +80,7 @@ gRPC workers have **no HTTP server**, so K8s probes use a file sentinel:
 
 ## Building Images
 
-All three images are built from the repo root. The Kind cluster name is `stepflow`.
+All three images are built from the repo root. The Kind cluster name is `stepflow-docling-grpc`.
 
 ### 1. stepflow-server (Rust orchestrator)
 
@@ -91,7 +92,7 @@ docker build --load \
   -f stepflow-rs/release/Dockerfile.stepflow-server.build \
   -t localhost/stepflow-server:alpine-0.10.0 .
 
-kind load docker-image localhost/stepflow-server:alpine-0.10.0 --name stepflow
+kind load docker-image localhost/stepflow-server:alpine-0.10.0 --name stepflow-docling-grpc
 ```
 
 Build takes 5-10 minutes from scratch; subsequent builds use Docker layer caching. The Dockerfile auto-detects architecture (x86_64/aarch64).
@@ -106,7 +107,7 @@ docker build --load \
   -f docker/Dockerfile.facade \
   -t localhost/docling-facade:grpc-v1 .
 
-kind load docker-image localhost/docling-facade:grpc-v1 --name stepflow
+kind load docker-image localhost/docling-facade:grpc-v1 --name stepflow-docling-grpc
 ```
 
 ### 3. docling-proto-step-worker (Python gRPC worker)
@@ -119,7 +120,7 @@ docker build --load \
   -f integrations/docling-proto-step-worker/docker/Dockerfile \
   -t localhost/stepflow-docling-proto-worker:latest .
 
-kind load docker-image localhost/stepflow-docling-proto-worker:latest --name stepflow
+kind load docker-image localhost/stepflow-docling-proto-worker:latest --name stepflow-docling-grpc
 ```
 
 Build is fast (~1 min) if the base image is cached. Worker runs as UID 1001 (matches base image).
@@ -157,8 +158,8 @@ Shared across all deployments. Namespace: `stepflow-o11y`.
 | OTel Collector | Receives OTLP, exports to Prometheus/Jaeger/Loki | `:4317` (gRPC), `:4318` (HTTP) |
 | Prometheus | Metrics storage, scraped from OTel Collector `:8889` | `localhost:9090` (port-forward) |
 | Jaeger | Distributed traces | `localhost:16686` (port-forward) |
-| Loki + Promtail | Log aggregation | Queried via Grafana |
-| Grafana | Dashboards | `localhost:30001` (NodePort) or port-forward `:3000` |
+| Loki + Promtail | Log aggregation (scrapes `stepflow` + `stepflow-docling-grpc` namespaces) | Queried via Grafana |
+| Grafana | Dashboards | `localhost:3000` (NodePort 30001→host 3000) |
 
 ### Grafana Dashboards
 
@@ -203,6 +204,22 @@ All metrics carry a `queue_name` label.
 ---
 
 ## Conventions
+
+### Service DNS Names
+
+Use **short names** for same-namespace references and **FQDNs** for cross-namespace references:
+- Same-namespace: `docling-orchestrator:7837`, `otel-collector:4317`, `loki:3100`
+- Cross-namespace: `otel-collector.stepflow-o11y.svc.cluster.local:4317` (app → o11y)
+
+This minimizes the namespace parameterization surface for Helm migration — only cross-namespace FQDNs need templating.
+
+### ConfigMap Split
+
+The orchestrator uses two ConfigMaps combined via a `projected` volume:
+- `docling-orchestrator-config` — infrastructure config (`stepflow-config.yml`): plugins, routes, blob API, storage, retry. Will need Helm templating.
+- `docling-flow-config` — workflow definition (`docling-process-document.yaml`): opaque application logic. Swap without touching infrastructure config.
+
+Both mount at `/app/config` via a single projected volume, so container volumeMounts are unchanged.
 
 ### Container Users
 - Dockerfiles: Create named user `stepflow` with UID 1000 (`useradd -m -u 1000 stepflow`)
@@ -268,7 +285,7 @@ OTel metrics are exported through the Collector's Prometheus exporter:
 | `exported_job` | OTel: `{service.namespace}/{service.name}` | `stepflow-docling-grpc/stepflow-server` |
 | `exported_instance` | OTel: `service.instance.id` | `docling-orchestrator-5c96688ccf-tmr5s` |
 | `job` | Prometheus scrape config | `stepflow-via-otel` |
-| `instance` | Prometheus scrape target | `otel-collector.stepflow-o11y:8889` |
+| `instance` | Prometheus scrape target | `otel-collector:8889` |
 
 **Dashboard queries must use `exported_job`** for filtering OTel-sourced metrics.
 
@@ -327,7 +344,7 @@ kubectl scale deployment prometheus -n stepflow-o11y --replicas=1
 When code changes don't take effect in a pod:
 
 1. Rebuild with `--load`: `docker build --load -t localhost/image:tag ...`
-2. Load into Kind: `kind load docker-image localhost/image:tag --name stepflow`
+2. Load into Kind: `kind load docker-image localhost/image:tag --name stepflow-docling-grpc`
 3. Restart deployment: `kubectl rollout restart deployment/name -n namespace`
 4. Verify new pod starts: `kubectl get pods -n namespace -w`
 

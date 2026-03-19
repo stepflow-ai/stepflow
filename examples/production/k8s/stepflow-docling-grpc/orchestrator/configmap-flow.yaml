@@ -12,50 +12,18 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+# Workflow definition — opaque application logic, no Helm templating needed.
+# Swap this file to change the workflow without touching infrastructure config.
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: docling-orchestrator-config
+  name: docling-flow-config
   namespace: stepflow-docling-grpc
   labels:
     app: docling-orchestrator
     component: orchestration
 data:
-  stepflow-config.yml: |
-    # Stepflow Configuration for docling gRPC parity testbed
-    # Uses pull-based (gRPC) transport — no load balancer needed
-
-    plugins:
-      builtin:
-        type: builtin
-
-      docling:
-        type: pull
-        queueName: docling
-
-    routes:
-      "/docling/{*component}":
-        - plugin: docling
-
-      "/builtin/{*component}":
-        - plugin: builtin
-
-    # Blob API URL exposed to workers so they can resolve $blob references.
-    # The orchestrator auto-configures to 127.0.0.1 which is unreachable from
-    # worker pods; this overrides it with the cluster-internal service address.
-    blobApi:
-      url: "http://docling-orchestrator.stepflow-docling-grpc.svc.cluster.local:7840/api/v1/blobs"
-
-    storageConfig:
-      type: inMemory
-
-    retry:
-      transportMaxRetries: 60
-      backoff:
-        type: fibonacci
-        minDelayMs: 2000
-        maxDelayMs: 15000
-
   docling-process-document.yaml: |
     schema: https://stepflow.org/schemas/v1/flow.json
     name: docling-process-document

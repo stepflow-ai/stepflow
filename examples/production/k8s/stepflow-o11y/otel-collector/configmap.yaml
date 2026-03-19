@@ -78,7 +78,7 @@ data:
     exporters:
       # Export traces to Jaeger
       otlp/jaeger:
-        endpoint: jaeger.stepflow-o11y.svc.cluster.local:4317
+        endpoint: jaeger:4317
         tls:
           insecure: true
 
@@ -96,7 +96,7 @@ data:
 
       # Export logs to Loki
       loki:
-        endpoint: http://loki.stepflow-o11y.svc.cluster.local:3100/loki/api/v1/push
+        endpoint: http://loki:3100/loki/api/v1/push
 
       # Logging exporter for debugging (outputs to collector's stdout)
       logging:

@@ -27,16 +27,17 @@ data:
       filename: /tmp/positions.yaml
 
     clients:
-      - url: http://loki.stepflow-o11y.svc.cluster.local:3100/loki/api/v1/push
+      - url: http://loki:3100/loki/api/v1/push
 
     scrape_configs:
-      # Scrape logs from all pods in stepflow namespace
+      # Scrape logs from all stepflow application pods
       - job_name: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
             namespaces:
               names:
                 - stepflow
+                - stepflow-docling-grpc
         pipeline_stages:
           - cri: {}  # Parse CRI format (containerd)
           # Extract trace context from key=value format logs
