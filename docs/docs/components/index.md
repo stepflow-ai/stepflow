@@ -55,10 +55,12 @@ Stepflow's architecture separates the **workflow orchestration** from **componen
 - **Orchestrator**: Manages workflow execution, data flow, and state persistence
 - **Component Servers**: Provide business logic and can run locally or remotely
 
-Most components run in separate processes, ensuring security and stability.
-During development, the Stepflow orchestrator manages component server processes locally.
-In production, component servers can be separately deployed and scaled across multiple machines or containers.
-For instance, a component server running ML models can be deployed on GPU-enabled hardware while the orchestrator runs on standard compute nodes.
+Most components run in separate worker processes, ensuring security and stability.
+Workers pull tasks from the orchestrator (or from message brokers), process them, and return results via gRPC — controlling their own concurrency.
+
+During development, the Stepflow orchestrator manages workers as local subprocesses.
+In production, workers can be separately deployed and scaled across multiple machines or containers.
+Different components can be [routed to different worker pools](../deployment/index.md) based on their resource requirements — ML models on GPU nodes, data processing on memory-optimized nodes, and lightweight API calls on standard compute, all within the same workflow.
 
 The diagram below shows how the Stepflow orchestrator interacts with multiple component servers.
 
@@ -92,3 +94,4 @@ flowchart TB
 - [Explore built-in components](./builtins/index.md) for common operations
 - [Learn how to create custom components](./component-server/custom-components.md) using Stepflow SDKs
 - [Create steps](../flows/steps.md) to use components in a flow
+- Read the [FAQ](../faq.md) for comparisons with other workflow technologies

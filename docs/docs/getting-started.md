@@ -166,6 +166,10 @@ This workflow demonstrates Stepflow's key concepts as a **workflow orchestrator*
 - **Data Flow**: Use value references to pass data between steps, with Stepflow handling the routing and transformation
 - **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate servers
 
+:::tip From Development to Production
+The workflow you just ran locally works unchanged in production. Stepflow scales from a self-contained local binary to a distributed cluster with separate storage, dedicated worker pools, and message brokers — no workflow modifications required. See [Production Deployment](./deployment/index.md) to learn more.
+:::
+
 ## Next Steps
 
 Choose your learning path based on your goals:
@@ -174,3 +178,4 @@ Choose your learning path based on your goals:
 - **Use and create components**: Explore [Components](./components/index.md) - built-ins, Python SDK, and other language SDKs
 - **Test workflows**: Check out [Testing Best Practices](./best-practices/testing.md) for validation and testing strategies
 - **See more examples**: Browse [Workflow Examples](./examples/) for real-world use cases
+- **Compare approaches**: Read the [FAQ](./faq.md) to understand how Stepflow compares to other technologies

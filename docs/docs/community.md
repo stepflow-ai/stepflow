@@ -31,6 +31,7 @@ Our documentation is your first stop for learning about Stepflow:
 - 🔌 [Components](./components/index.md) - Build and use components
 - ⚙️ [Configuration](./configuration.md) - Configure your environment
 - 🚢 [Deployment](./deployment/index.md) - Deploy to production
+- ❓ [FAQ](./faq.md) - Comparisons and common questions
 
 ### Examples
 

@@ -81,6 +81,7 @@ const config: Config = {
           position: 'left',
           label: 'Docs',
         },
+        { to: '/docs/faq', label: 'FAQs', position: 'left' },
         { to: '/blog', label: 'Blog', position: 'left' },
         {
           href: 'https://github.com/stepflow-ai/stepflow',
