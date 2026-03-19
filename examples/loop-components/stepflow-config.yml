@@ -2,9 +2,16 @@ plugins:
   builtin:
     type: builtin
   python:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "python", "loop_server.py"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "loop_server.py"]
+    queueName: python
+    queueTimeoutSecs: 30
+    env:
+      # Iterate/map tests run 4 cases in batch, each holding a worker slot
+      # while waiting for sub-flows. Need enough capacity for parent tasks
+      # plus their sub-flow tasks.
+      STEPFLOW_MAX_CONCURRENT: "16"
 
 routes:
   "/builtin/{*component}":

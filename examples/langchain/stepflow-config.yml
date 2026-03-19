@@ -2,13 +2,15 @@ plugins:
   builtin:
     type: builtin
   python:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_worker"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
+    queueName: python
   langchain:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "python", "langchain_server.py"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "langchain_server.py"]
+    queueName: langchain
     env:
       PYTHONPATH: "${PYTHONPATH:-}:../../sdks/python/src"
 

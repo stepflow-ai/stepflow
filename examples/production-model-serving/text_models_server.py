@@ -34,7 +34,8 @@ import sys
 import os
 
 try:
-    from stepflow_worker import StepflowServer, StepflowContext
+    from stepflow_py.worker.main import main, server
+    from stepflow_py.worker.context import StepflowContext
     import msgspec
 
     SDK_AVAILABLE = True
@@ -70,8 +71,6 @@ except ImportError:
     HF_AVAILABLE = False
     logger.warning("Transformers library not available, using mock implementations")
 
-# Create the server - will be used for STDIO mode and component registration
-server = StepflowServer()
 
 # Model registry - in production this would be externalized
 MODEL_REGISTRY = {
@@ -352,10 +351,4 @@ async def model_health_check(input: ModelHealthInput) -> ModelHealthOutput:
 
 
 if __name__ == "__main__":
-    logger.info("Starting Text Models Server")
-    logger.info(f"Available models: {list(MODEL_REGISTRY.keys())}")
-    logger.info(
-        f"GPU available: {HF_AVAILABLE and torch.cuda.is_available() if HF_AVAILABLE else False}"
-    )
-
-    asyncio.run(server.run())
+    main()

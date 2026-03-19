@@ -58,9 +58,9 @@ test:
     output:
       outcome: success
       result:
-      - 2.0
-      - 4.0
-      - 6.0
+      - 2
+      - 4
+      - 6
   - name: double mixed numbers
     input:
       items:
@@ -71,10 +71,10 @@ test:
     output:
       outcome: success
       result:
-      - 0.0
-      - 10.0
-      - -4.0
-      - 20.0
+      - 0
+      - 10
+      - -4
+      - 20
   - name: empty array
     input:
       items: []
@@ -88,4 +88,4 @@ test:
     output:
       outcome: success
       result:
-      - 14.0
+      - 14

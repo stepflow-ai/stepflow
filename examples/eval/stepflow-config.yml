@@ -2,9 +2,10 @@ plugins:
   builtin:
     type: builtin
   python:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_worker"]
+    args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
+    queueName: python
 routes:
   "/builtin/{*component}":
     - plugin: builtin

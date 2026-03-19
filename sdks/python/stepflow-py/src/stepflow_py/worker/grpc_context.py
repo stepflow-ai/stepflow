@@ -249,6 +249,74 @@ class GrpcContext(StepflowContext):
         response = await self._call_orchestrator("GetRun", request)
         return MessageToDict(response, preserving_proto_field_name=True)
 
+    async def submit_run_by_id(
+        self,
+        flow_id: str,
+        inputs: list[Any],
+        wait: bool = False,
+        max_concurrency: int | None = None,
+        overrides: Any = None,
+        subflow_key: Any = None,
+    ) -> Any:
+        """Submit a run by flow ID via OrchestratorService.SubmitRun."""
+        return await self.submit_run(
+            flow_id=flow_id,
+            inputs=inputs,
+            wait=wait,
+            max_concurrency=max_concurrency,
+            overrides=overrides,
+        )
+
+    async def evaluate_run_by_id(
+        self,
+        flow_id: str,
+        inputs: list[Any],
+        max_concurrency: int | None = None,
+        overrides: Any = None,
+        subflow_key: Any = None,
+    ) -> list[Any]:
+        """Submit a run by flow ID, wait for completion, and return results.
+
+        Uses gRPC SubmitRun with wait=True, then extracts results from
+        the OrchestratorRunStatus dict response.
+        """
+        from stepflow_py.worker.exceptions import StepflowFailed
+
+        run_status = await self.submit_run(
+            flow_id=flow_id,
+            inputs=inputs,
+            wait=True,
+            max_concurrency=max_concurrency,
+            overrides=overrides,
+        )
+
+        item_results = run_status.get("results", [])
+        if not item_results:
+            raise Exception("Expected results in response when wait=True")
+
+        results = []
+        for item in item_results:
+            status = item.get("status", "")
+            if status == "EXECUTION_STATUS_FAILED":
+                error_msg = item.get("error_message", "Unknown error")
+                error_code = item.get("error_code", "TASK_ERROR_CODE_UNSPECIFIED")
+                raise StepflowFailed(
+                    error_code=error_code,
+                    message=(
+                        f"Item at index {item.get('item_index', '?')} "
+                        f"failed: {error_msg}"
+                    ),
+                )
+            output = item.get("output")
+            if output is None:
+                raise Exception(
+                    f"Item at index {item.get('item_index', '?')} has no output "
+                    f"(status: {status})"
+                )
+            results.append(output)
+
+        return results
+
     @property
     def attempt(self) -> int:
         """Current execution attempt number."""

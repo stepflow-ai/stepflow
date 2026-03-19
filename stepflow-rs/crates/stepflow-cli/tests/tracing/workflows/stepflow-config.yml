@@ -5,9 +5,10 @@ plugins:
     type: builtin
 
   python:
-    type: stepflow
+    type: pull
     command: uv
-    args: ["run", "--project", "../../../../../../sdks/python", "stepflow_worker"]
+    args: ["run", "--project", "../../../../../../sdks/python/stepflow-py", "stepflow_worker"]
+    queueName: python
     env:
       STEPFLOW_TRACE_ENABLED: "${STEPFLOW_TRACE_ENABLED:-false}"
       STEPFLOW_OTLP_ENDPOINT: "${STEPFLOW_OTLP_ENDPOINT}"
