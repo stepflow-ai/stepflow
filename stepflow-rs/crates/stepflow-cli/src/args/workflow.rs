@@ -22,17 +22,20 @@ use crate::{
     args::{config::ConfigArgs, file_loader::load},
 };
 
-/// Create executor from StepflowConfig, starting a background server.
+/// Create executor from StepflowConfig, starting the service.
 ///
-/// The background server provides the blob API, gRPC services for pull-based
+/// The service provides the blob API, gRPC services for pull-based
 /// workers, and orchestrator callbacks (sub-run submission, run status).
+/// It is already accepting connections when this function returns.
 async fn create_environment(config: StepflowConfig) -> Result<Arc<StepflowEnvironment>> {
     let service = StepflowService::new(config, ServiceOptions::default())
         .await
         .change_context(MainError::Configuration)?;
 
+    // The service is now running in the background. We leak it intentionally —
+    // it will be cleaned up when the process exits.
     let env = service.environment().clone();
-    service.spawn_background();
+    std::mem::forget(service);
 
     Ok(env)
 }

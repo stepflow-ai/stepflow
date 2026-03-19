@@ -149,6 +149,7 @@ impl StepflowConfig {
         orchestrator_id: Option<stepflow_state::OrchestratorId>,
         orchestrator_url: Option<String>,
         grpc_address: Option<String>,
+        skip_plugin_init: bool,
     ) -> Result<Arc<stepflow_plugin::StepflowEnvironment>> {
         use stepflow_core::StepflowEnvironment;
         use stepflow_plugin::routing::PluginRouter;
@@ -221,9 +222,11 @@ impl StepflowConfig {
 
         env.insert(grpc_server);
 
-        initialize_environment(&env)
-            .await
-            .change_context(ConfigError::Configuration)?;
+        if !skip_plugin_init {
+            initialize_environment(&env)
+                .await
+                .change_context(ConfigError::Configuration)?;
+        }
 
         Ok(env)
     }

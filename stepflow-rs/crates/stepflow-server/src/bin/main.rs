@@ -190,11 +190,13 @@ async fn main() {
             cancel_token.clone(),
         ));
 
-        // Run server until shutdown signal (axum drains connections gracefully)
+        // Wait for shutdown signal, then gracefully stop the server
+        shutdown_signal().await;
+        info!("Shutdown signal received, stopping server");
+        service.shutdown();
         service
-            .serve(shutdown_signal())
+            .wait()
             .await
-            .map_err(std::sync::Arc::<dyn std::error::Error + Send + Sync>::from)
             .change_context(ServerError::ServerError)?;
 
         // Graceful shutdown: cancel background tasks and wait for them
