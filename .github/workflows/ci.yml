@@ -158,9 +158,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Needed for buf breaking change detection against main
-          fetch-depth: 0
       - uses: ./.github/actions/proto-checks
 
   # Langflow integration checks

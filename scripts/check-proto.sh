@@ -49,29 +49,34 @@ cd "$PROJECT_ROOT/proto"
 
 run_check "Lint" buf lint || true
 
-# Detect backwards-incompatible proto changes against main branch.
-# Skips gracefully if proto/ doesn't exist on main yet.
+# Detect backwards-incompatible proto changes against the latest release tag.
+# Skips gracefully if the latest release has no proto files.
 check_breaking() {
     local git_toplevel
     git_toplevel="$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel)"
 
-    # In CI PR checkouts, `main` may only exist as `refs/remotes/origin/main`.
-    # Fetch it as a local branch so buf can resolve `branch=main`.
-    if ! git -C "$git_toplevel" rev-parse --verify main >/dev/null 2>&1; then
-        git -C "$git_toplevel" fetch origin "refs/heads/main:refs/heads/main" 2>/dev/null || true
+    # Ensure release tags are available (shallow CI checkouts may not have them).
+    git -C "$git_toplevel" fetch origin --tags --no-recurse-submodules 2>/dev/null || true
+
+    # Find the latest release tag to compare against.
+    # Breaking changes are measured from the last release, not from main.
+    local latest_tag
+    latest_tag=$(git -C "$git_toplevel" tag --sort=-creatordate \
+        --list 'stepflow-rs-*' \
+        | head -n1)
+
+    if [ -z "$latest_tag" ]; then
+        echo "No release tags found — skipping breaking change detection"
+        return 0
     fi
 
-    if ! buf breaking --against "${git_toplevel}/.git#branch=main,subdir=proto" 2>&1; then
-        # If main has no proto files, that's not a breaking change
-        local output
-        output=$(buf breaking --against "${git_toplevel}/.git#branch=main,subdir=proto" 2>&1 || true)
-        if echo "$output" | grep -q "had no .proto files"; then
-            echo "No proto files on main branch — skipping breaking change detection"
-            return 0
-        fi
-        echo "$output"
-        return 1
+    # Check if the release tag has any proto files
+    if [ -z "$(git -C "$git_toplevel" ls-tree "$latest_tag" proto/ 2>/dev/null)" ]; then
+        echo "No proto files in latest release ($latest_tag) — skipping breaking change detection"
+        return 0
     fi
+
+    buf breaking --against "${git_toplevel}/.git#tag=${latest_tag},subdir=proto" 2>&1
 }
 
 run_check "Breaking changes" \
