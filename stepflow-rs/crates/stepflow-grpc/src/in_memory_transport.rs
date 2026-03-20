@@ -87,7 +87,6 @@ impl TaskTransport for InMemoryTaskTransport {
         queue.push_task(task);
         Ok(())
     }
-
 }
 
 #[tonic::async_trait]
@@ -209,5 +208,4 @@ mod tests {
         let task = queue.pop_task().expect("default queue should have a task");
         assert_eq!(task.task_id, "t1");
     }
-
 }

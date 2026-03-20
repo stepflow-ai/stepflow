@@ -128,7 +128,9 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         // This is always set by GrpcPlugin::ensure_initialized() before tasks flow.
         let context = self.build_context(None);
         if context.is_none() {
-            log::warn!("No orchestrator URL available for discovery task — workers won't be able to respond");
+            log::warn!(
+                "No orchestrator URL available for discovery task — workers won't be able to respond"
+            );
         }
 
         let task = proto::TaskAssignment {
@@ -181,11 +183,12 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
             }
             Err(_) => {
                 // Our own timeout fired
-                Err(error_stack::report!(PluginError::ComponentInfo)
-                    .attach_printable(format!(
+                Err(
+                    error_stack::report!(PluginError::ComponentInfo).attach_printable(format!(
                         "discovery task timed out after {}s",
                         DISCOVERY_TIMEOUT.as_secs()
-                    )))
+                    )),
+                )
             }
         }
     }
@@ -227,14 +230,14 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
 
         let task = proto::TaskAssignment {
             task_id: task_id.to_string(),
-            task: Some(proto::task_assignment::Task::Execute(
+            task: Some(proto::task_assignment::Task::Execute(Box::new(
                 proto::ComponentExecuteRequest {
                     component: component.path().to_string(),
                     input: Some(proto_input),
                     attempt,
                     observability: Some(observability),
                 },
-            )),
+            ))),
             context,
             deadline_secs: self.queue_timeout.as_secs() as u32,
             heartbeat_interval_secs: HEARTBEAT_INTERVAL_SECS,
@@ -316,7 +319,10 @@ fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
     let mut components = Vec::with_capacity(components_json.len());
     for c in components_json {
         let name = c.get("name").and_then(|v| v.as_str()).unwrap_or_default();
-        let description = c.get("description").and_then(|v| v.as_str()).map(String::from);
+        let description = c
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
         let input_schema = c
             .get("input_schema")
             .and_then(|v| v.as_str())
@@ -363,7 +369,6 @@ fn extract_trace_context() -> (Option<String>, Option<String>) {
         (None, None)
     }
 }
-
 
 fn value_ref_to_proto(value: &ValueRef) -> Result<prost_wkt_types::Value> {
     let json = serde_json::to_value(value.as_ref())

@@ -130,7 +130,6 @@ impl NatsTaskTransport {
             })?;
         Ok(())
     }
-
 }
 
 #[tonic::async_trait]
@@ -171,7 +170,6 @@ impl TaskTransport for NatsTaskTransport {
 
         Ok(())
     }
-
 }
 
 #[tonic::async_trait]

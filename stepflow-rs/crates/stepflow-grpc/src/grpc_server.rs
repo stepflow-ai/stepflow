@@ -90,7 +90,6 @@ impl QueueRegistry {
             .value()
             .clone()
     }
-
 }
 
 /// gRPC server for all Stepflow services (worker-facing and client-facing).

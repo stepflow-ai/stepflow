@@ -3123,6 +3123,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.17.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3" },
     { name = "msgspec", specifier = ">=0.19.0" },
+    { name = "nats-py", marker = "extra == 'nats'", specifier = ">=2.9.0" },
     { name = "opentelemetry-api", specifier = ">=1.20.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'http'", specifier = ">=0.44b0" },
@@ -3134,7 +3135,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.7.1" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["http", "langchain", "local"]
+provides-extras = ["http", "nats", "langchain", "local"]
 
 [package.metadata.requires-dev]
 dev = [
