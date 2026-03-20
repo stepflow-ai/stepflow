@@ -9,6 +9,20 @@ import TOCInline from '@theme/TOCInline';
 
 <TOCInline toc={toc} />
 
+## What is Stepflow?
+
+Stepflow is a workflow orchestrator for AI applications. You define workflows declaratively in YAML, and Stepflow handles execution, data flow, parallelism, and fault tolerance — while workers provide the actual business logic.
+
+**What makes it different:**
+
+- **Combine anything in one workflow.** A single Stepflow workflow can call an LLM, run a Python function, invoke an MCP tool, and execute a component from a completely different framework — each in its own worker process, with no shared runtime or dependency conflicts. You're not locked into one library's ecosystem.
+- **Open protocol, any language.** Workers communicate with the orchestrator over an [open gRPC protocol](./protocol/index.md) using pull-based task queues. You can build workers in Python (using the [SDK](./workers/custom-components.md)), implement the protocol directly in any language, or use [MCP servers](./components/mcp-tools.md) as components with zero wrapping code.
+- **Dev to production, no workflow changes.** During development, Stepflow runs as a [single binary](./getting-started.md) with embedded storage and subprocess workers. In production, the same workflows run on a [distributed cluster](./deployment/index.md) with dedicated worker pools, persistent storage, and message brokers — you change the infrastructure, not the workflow.
+- **Production-grade by default.** Stepflow [journals every step result](./deployment/persistence-recovery.md), so workflows resume from the last successful step after a crash — no re-execution of expensive LLM calls. Workers run in isolated processes with independent scaling and [resource routing](./deployment/index.md) (GPU nodes for inference, standard compute for API calls).
+- **Dynamic, composable flows.** Workflows can [spawn sub-workflows](./components/builtins/eval.md) at runtime via nested execution. The declarative format is simple enough for LLMs to author flows dynamically using a whitelisted set of components — enabling safe agentic patterns that most frameworks can't support.
+
+Read on for detailed comparisons with [data processing technologies](#how-does-stepflow-compare-to-distributed-data-processing-technologies), [GenAI frameworks](#how-does-stepflow-compare-to-other-genai-workflow-systems), and [orchestration platforms](#how-does-stepflow-compare-to-other-orchestration-frameworks).
+
 ## How does Stepflow compare to distributed data processing technologies?
 
 Technologies like Apache Spark, Flink, and Dask are designed for moving and transforming large datasets — they optimize for operations like shuffle, partitioning, and windowing across distributed compute clusters.
