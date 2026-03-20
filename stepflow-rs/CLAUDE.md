@@ -114,6 +114,27 @@ uv run python generate.py --check
 - Documentation and examples
 - API validation in server components
 
+### Proto / gRPC Code Generation
+
+Proto files live in `proto/stepflow/v1/` at the repository root. Rust and Python stubs are generated separately:
+
+```bash
+# Rust: prost auto-generates from proto during cargo build.
+# No manual step needed — just rebuild.
+cargo build
+
+# Python: regenerate gRPC stubs after modifying any proto file.
+../scripts/generate-python-proto.sh
+```
+
+**Important**: After modifying any `.proto` file, always regenerate the Python stubs. Rust stubs are regenerated automatically by prost on build.
+
+Key proto files:
+- `tasks.proto` — TaskAssignment (oneof execute | list_components), PullTasksRequest, ComponentInfo
+- `orchestrator.proto` — CompleteTask, TaskHeartbeat, ListComponentsResult
+- `components.proto` — ComponentsService (public REST/gRPC API for listing components)
+- `common.proto` — Shared types (ObservabilityContext, TaskErrorCode)
+
 ## Project Architecture
 
 ### Crate Overview

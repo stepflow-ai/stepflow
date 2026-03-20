@@ -28,7 +28,8 @@ from urllib.parse import urlparse
 import grpc
 from google.protobuf import json_format, struct_pb2
 
-from stepflow_py.proto import flows_pb2, runs_pb2
+from stepflow_py.proto import components_pb2, flows_pb2, runs_pb2
+from stepflow_py.proto.components_pb2_grpc import ComponentsServiceStub
 from stepflow_py.proto.flows_pb2_grpc import FlowsServiceStub
 from stepflow_py.proto.health_pb2_grpc import HealthServiceStub
 from stepflow_py.proto.runs_pb2_grpc import RunsServiceStub
@@ -109,6 +110,7 @@ class StepflowClient:
         self._flows_stub = FlowsServiceStub(channel)
         self._runs_stub = RunsServiceStub(channel)
         self._health_stub = HealthServiceStub(channel)
+        self._components_stub = ComponentsServiceStub(channel)
 
     @classmethod
     def connect(
@@ -246,6 +248,31 @@ class StepflowClient:
             return True
         except Exception:
             return False
+
+    async def list_components(
+        self,
+        *,
+        exclude_schemas: bool = False,
+        timeout: float = 30.0,
+    ) -> components_pb2.ListRegisteredComponentsResponse:
+        """List all available components from registered plugins.
+
+        Triggers on-demand component discovery: the orchestrator sends
+        discovery tasks to connected workers and aggregates their responses.
+
+        Args:
+            exclude_schemas: If True, omit input/output schemas from response.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            ListRegisteredComponentsResponse with component entries.
+        """
+        return await self._components_stub.ListRegisteredComponents(
+            components_pb2.ListRegisteredComponentsRequest(
+                exclude_schemas=exclude_schemas,
+            ),
+            timeout=timeout,
+        )
 
     async def store_flow(
         self,
