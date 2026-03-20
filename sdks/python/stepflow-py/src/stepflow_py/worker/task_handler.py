@@ -441,9 +441,7 @@ async def execute_component(
         from stepflow_py.worker.orchestrator_tracker import OrchestratorTracker
 
         orch_url = (
-            task.context.orchestrator_service_url
-            if task.HasField("context")
-            else ""
+            task.context.orchestrator_service_url if task.HasField("context") else ""
         )
         root_run_id = (
             task.context.root_run_id
