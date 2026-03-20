@@ -1006,7 +1006,20 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ComponentInfoEntry'
-                    description: All available components, sorted by name.
+                    description: |-
+                        All available components, sorted by name.
+                         When some plugins fail discovery, this contains components from the
+                         plugins that succeeded — check `complete` and `failed_plugins`.
+                complete:
+                    type: boolean
+                    description: |-
+                        True if all plugins responded successfully. When false, the component
+                         list is partial — see `failed_plugins` for details.
+                failedPlugins:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PluginDiscoveryError'
+                    description: Plugins that failed component discovery (empty when complete is true).
         ListRunsResponse:
             type: object
             properties:
@@ -1014,6 +1027,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/RunSummary'
+        PluginDiscoveryError:
+            type: object
+            properties:
+                plugin:
+                    type: string
+                    description: Plugin name from the orchestrator config (e.g., "python", "node").
+                error:
+                    type: string
+                    description: Human-readable error message.
+            description: A plugin that failed during component discovery.
         PutBlobRequest:
             type: object
             properties:

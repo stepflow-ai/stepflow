@@ -71,8 +71,10 @@ from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
 # from this module.
 from stepflow_py.worker.task_handler import (
     _ensure_metrics,
-    build_component_info_list as _build_component_info_list,
     handle_task,
+)
+from stepflow_py.worker.task_handler import (
+    build_component_info_list as _build_component_info_list,
 )
 
 if TYPE_CHECKING:
@@ -329,9 +331,7 @@ async def _pull_loop(
 
             # Handle discovery tasks (ListComponentsRequest) inline
             if task.HasField("list_components"):
-                asyncio.create_task(
-                    _handle_list_components_grpc(task, components)
-                )
+                asyncio.create_task(_handle_list_components_grpc(task, components))
                 continue
 
             if _tasks_pulled is not None:
@@ -366,9 +366,7 @@ async def _handle_list_components_grpc(
     from stepflow_py.worker.task_handler import complete_task_with_retry
 
     orchestrator_url = (
-        task.context.orchestrator_service_url
-        if task.HasField("context")
-        else ""
+        task.context.orchestrator_service_url if task.HasField("context") else ""
     )
     if not orchestrator_url:
         logger.error(
@@ -442,5 +440,3 @@ async def _graceful_shutdown(
             pass
 
     logger.info("Graceful shutdown complete")
-
-

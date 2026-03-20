@@ -149,9 +149,7 @@ async def handle_task(
         tracer_name: Name for the OTel tracer.
     """
     orchestrator_url = (
-        task.context.orchestrator_service_url
-        if task.HasField("context")
-        else ""
+        task.context.orchestrator_service_url if task.HasField("context") else ""
     )
 
     heartbeat_task: asyncio.Task[None] | None = None
@@ -632,9 +630,7 @@ async def _complete_task_success(
 ) -> None:
     """Report successful task completion to the run-owning orchestrator."""
     orchestrator_url = (
-        task.context.orchestrator_service_url
-        if task.HasField("context")
-        else ""
+        task.context.orchestrator_service_url if task.HasField("context") else ""
     )
     if not orchestrator_url:
         logger.error(
@@ -665,9 +661,7 @@ async def _complete_task_error(
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
     orchestrator_url = (
-        task.context.orchestrator_service_url
-        if task.HasField("context")
-        else ""
+        task.context.orchestrator_service_url if task.HasField("context") else ""
     )
     if not orchestrator_url:
         logger.error(

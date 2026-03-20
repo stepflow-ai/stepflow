@@ -48,9 +48,11 @@ from stepflow_py.proto import (
 )
 from stepflow_py.worker.task_handler import (
     _ensure_metrics,
-    build_component_info_list as _build_component_info_list,
     complete_task_with_retry,
     handle_task,
+)
+from stepflow_py.worker.task_handler import (
+    build_component_info_list as _build_component_info_list,
 )
 
 if TYPE_CHECKING:
@@ -98,7 +100,6 @@ class _StreamNotFoundError(Exception):
     def __init__(self, stream: str) -> None:
         super().__init__(f"Stream {stream} not found")
         self.stream = stream
-
 
 
 async def run_nats_worker(
@@ -331,9 +332,7 @@ async def _handle_list_components(
     the worker's available components.
     """
     orchestrator_url = (
-        task.context.orchestrator_service_url
-        if task.HasField("context")
-        else ""
+        task.context.orchestrator_service_url if task.HasField("context") else ""
     )
     if not orchestrator_url:
         logger.error(
@@ -360,5 +359,3 @@ async def _handle_list_components(
             task.task_id,
             len(components),
         )
-
-

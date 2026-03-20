@@ -29,8 +29,10 @@ if TYPE_CHECKING:
     from stepflow_py import StepflowClient
 
 
-@pytest.mark.asyncio(loop_scope="module")
-async def test_list_components_returns_builtins(stepflow_client: StepflowClient) -> None:
+@pytest.mark.asyncio
+async def test_list_components_returns_builtins(
+    stepflow_client: StepflowClient,
+) -> None:
     """Builtin components should always be present."""
     response = await stepflow_client.list_components()
     component_paths = [c.component for c in response.components]
@@ -49,7 +51,7 @@ async def test_list_components_returns_builtins(stepflow_client: StepflowClient)
     )
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_list_components_includes_python_worker(
     stepflow_client: StepflowClient,
 ) -> None:
@@ -65,7 +67,7 @@ async def test_list_components_includes_python_worker(
     )
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_list_components_exclude_schemas(
     stepflow_client: StepflowClient,
 ) -> None:
@@ -85,7 +87,7 @@ async def test_list_components_exclude_schemas(
         )
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_list_components_include_schemas(
     stepflow_client: StepflowClient,
 ) -> None:
@@ -99,15 +101,15 @@ async def test_list_components_include_schemas(
         component.HasField("input_schema") or component.HasField("output_schema")
         for component in response.components
     )
-    assert has_schema, "At least one component should have a schema when schemas are included"
+    assert has_schema, (
+        "At least one component should have a schema when schemas are included"
+    )
 
 
-@pytest.mark.asyncio(loop_scope="module")
+@pytest.mark.asyncio
 async def test_list_components_sorted(stepflow_client: StepflowClient) -> None:
     """Components should be returned sorted by path."""
     response = await stepflow_client.list_components()
     paths = [c.component for c in response.components]
 
-    assert paths == sorted(paths), (
-        f"Components should be sorted, got: {paths}"
-    )
+    assert paths == sorted(paths), f"Components should be sorted, got: {paths}"
