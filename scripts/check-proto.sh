@@ -55,9 +55,6 @@ check_breaking() {
     local git_toplevel
     git_toplevel="$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel)"
 
-    # Ensure release tags are available (shallow CI checkouts may not have them).
-    git -C "$git_toplevel" fetch origin --tags --no-recurse-submodules 2>/dev/null || true
-
     # Find the latest release tag to compare against.
     # Breaking changes are measured from the last release, not from main.
     local latest_tag
@@ -65,13 +62,28 @@ check_breaking() {
         --list 'stepflow-rs-*' \
         | head -n1)
 
+    # In shallow CI checkouts, local tags may be missing. Fall back to the remote.
     if [ -z "$latest_tag" ]; then
-        echo "No release tags found — skipping breaking change detection"
-        return 0
+        latest_tag=$(git -C "$git_toplevel" ls-remote --tags --refs origin 'refs/tags/stepflow-rs-*' 2>/dev/null \
+            | awk '{print $2}' \
+            | sed 's#refs/tags/##' \
+            | sort -V \
+            | tail -n1)
+
+        if [ -z "$latest_tag" ]; then
+            echo "No release tags found — skipping breaking change detection"
+            return 0
+        fi
+
+        # Fetch only the single tag we need.
+        if ! git -C "$git_toplevel" fetch --depth=1 origin "refs/tags/${latest_tag}:refs/tags/${latest_tag}" --no-recurse-submodules 2>/dev/null; then
+            echo "Warning: failed to fetch release tag '$latest_tag' — skipping breaking change detection"
+            return 0
+        fi
     fi
 
-    # Check if the release tag has any proto files
-    if [ -z "$(git -C "$git_toplevel" ls-tree "$latest_tag" proto/ 2>/dev/null)" ]; then
+    # Check if the release tag actually has any .proto files
+    if ! git -C "$git_toplevel" ls-tree -r --name-only "$latest_tag" proto 2>/dev/null | grep -q '\.proto$'; then
         echo "No proto files in latest release ($latest_tag) — skipping breaking change detection"
         return 0
     fi
