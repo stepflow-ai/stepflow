@@ -139,9 +139,7 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
                 proto::ListComponentsRequest {},
             )),
             context,
-            deadline_secs: DISCOVERY_TIMEOUT.as_secs() as u32,
             heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
         };
 
         // Register in TaskRegistry + track in PendingTasks (for queue timeout).
@@ -239,9 +237,7 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
                 },
             ))),
             context,
-            deadline_secs: self.queue_timeout.as_secs() as u32,
             heartbeat_interval_secs: HEARTBEAT_INTERVAL_SECS,
-            execution_timeout_secs: self.execution_timeout.map_or(0, |d| d.as_secs() as u32),
         };
 
         // Set up timeout tracking in PendingTasks (heartbeat, queue timeout).

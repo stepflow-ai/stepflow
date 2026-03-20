@@ -235,7 +235,6 @@ async def run_grpc_worker(
                 queue_name=queue_name,
                 components=components,
                 semaphore=semaphore,
-                max_concurrent=max_concurrent,
                 worker_id=worker_id,
                 in_flight=in_flight,
                 shutdown_event=shutdown_event,
@@ -304,7 +303,6 @@ async def _pull_loop(
     queue_name: str,
     components: list[ComponentInfo],
     semaphore: asyncio.Semaphore,
-    max_concurrent: int,
     worker_id: str,
     in_flight: _InFlightTasks,
     shutdown_event: asyncio.Event,
@@ -318,7 +316,6 @@ async def _pull_loop(
 
         request = PullTasksRequest(
             queue_name=queue_name,
-            max_concurrent=max_concurrent,
             worker_id=worker_id,
         )
 

@@ -242,16 +242,11 @@ class PullTasksRequest(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     QUEUE_NAME_FIELD_NUMBER: builtins.int
-    MAX_CONCURRENT_FIELD_NUMBER: builtins.int
     WORKER_ID_FIELD_NUMBER: builtins.int
     queue_name: builtins.str
     """Queue name matching the plugin's key in the orchestrator config (e.g., "python").
     The orchestrator uses this to route tasks to the correct worker pool.
     Set via STEPFLOW_QUEUE_NAME environment variable on the worker.
-    """
-    max_concurrent: builtins.int
-    """Maximum concurrent tasks this worker can accept.
-    The orchestrator will not exceed this limit for this worker.
     """
     worker_id: builtins.str
     """Worker-assigned unique identifier (UUID).
@@ -265,10 +260,9 @@ class PullTasksRequest(google.protobuf.message.Message):
         self,
         *,
         queue_name: builtins.str = ...,
-        max_concurrent: builtins.int = ...,
         worker_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["max_concurrent", b"max_concurrent", "queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
 
 Global___PullTasksRequest: typing_extensions.TypeAlias = PullTasksRequest
 
@@ -290,19 +284,10 @@ class TaskAssignment(google.protobuf.message.Message):
     EXECUTE_FIELD_NUMBER: builtins.int
     LIST_COMPONENTS_FIELD_NUMBER: builtins.int
     CONTEXT_FIELD_NUMBER: builtins.int
-    DEADLINE_SECS_FIELD_NUMBER: builtins.int
     HEARTBEAT_INTERVAL_SECS_FIELD_NUMBER: builtins.int
-    EXECUTION_TIMEOUT_SECS_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """Unique ID for this task assignment.
     Used to correlate completion reports with assignments.
-    """
-    deadline_secs: builtins.int
-    """Queue timeout in seconds: maximum time the orchestrator will wait
-    for the worker to call TaskHeartbeat after receiving this assignment.
-    If the worker does not call TaskHeartbeat within this window, the
-    orchestrator treats the task as lost in the queue.
-    0 means no queue timeout.
     """
     heartbeat_interval_secs: builtins.int
     """Suggested heartbeat interval in seconds. The worker should send
@@ -310,10 +295,6 @@ class TaskAssignment(google.protobuf.message.Message):
     orchestrator uses a 5s crash-detection timeout — if no heartbeat
     or CompleteTask arrives within 5s, the task is treated as failed.
     0 means no heartbeating required.
-    """
-    execution_timeout_secs: builtins.int
-    """Optional execution timeout in seconds: maximum time from first
-    TaskHeartbeat to CompleteTask. 0 means no execution timeout.
     """
     @property
     def execute(self) -> Global___ComponentExecuteRequest:
@@ -338,12 +319,10 @@ class TaskAssignment(google.protobuf.message.Message):
         execute: Global___ComponentExecuteRequest | None = ...,
         list_components: Global___ListComponentsRequest | None = ...,
         context: Global___TaskContext | None = ...,
-        deadline_secs: builtins.int = ...,
         heartbeat_interval_secs: builtins.int = ...,
-        execution_timeout_secs: builtins.int = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["context", b"context", "execute", b"execute", "list_components", b"list_components", "task", b"task"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["context", b"context", "deadline_secs", b"deadline_secs", "execute", b"execute", "execution_timeout_secs", b"execution_timeout_secs", "heartbeat_interval_secs", b"heartbeat_interval_secs", "list_components", b"list_components", "task", b"task", "task_id", b"task_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["context", b"context", "execute", b"execute", "heartbeat_interval_secs", b"heartbeat_interval_secs", "list_components", b"list_components", "task", b"task", "task_id", b"task_id"]) -> None: ...
     def WhichOneof(self, oneof_group: typing.Literal["task", b"task"]) -> typing.Literal["execute", "list_components"] | None: ...
 
 Global___TaskAssignment: typing_extensions.TypeAlias = TaskAssignment

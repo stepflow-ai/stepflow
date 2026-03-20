@@ -182,9 +182,7 @@ mod tests {
             task_id: id.to_string(),
             task: None,
             context: None,
-            deadline_secs: 0,
             heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
         }
     }
 

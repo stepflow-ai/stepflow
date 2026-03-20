@@ -58,9 +58,7 @@ fn make_task(id: &str) -> TaskAssignment {
         task_id: id.to_string(),
         task: None,
         context: None,
-        deadline_secs: 30,
         heartbeat_interval_secs: 1,
-        execution_timeout_secs: 0,
     }
 }
 
@@ -155,9 +153,7 @@ async fn test_protobuf_field_preservation() {
         task_id: "fields-1".to_string(),
         task: None,
         context: None,
-        deadline_secs: 42,
         heartbeat_interval_secs: 2,
-        execution_timeout_secs: 300,
     };
 
     let empty_params = HashMap::new();
@@ -173,14 +169,9 @@ async fn test_protobuf_field_preservation() {
         .expect("Should receive task");
 
     assert_eq!(received.task_id, original.task_id);
-    assert_eq!(received.deadline_secs, original.deadline_secs);
     assert_eq!(
         received.heartbeat_interval_secs,
         original.heartbeat_interval_secs
-    );
-    assert_eq!(
-        received.execution_timeout_secs,
-        original.execution_timeout_secs
     );
 }
 

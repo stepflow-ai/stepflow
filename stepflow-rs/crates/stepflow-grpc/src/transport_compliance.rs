@@ -56,9 +56,7 @@ fn make_task(id: &str) -> TaskAssignment {
         task_id: id.to_string(),
         task: None,
         context: None,
-        deadline_secs: 30,
         heartbeat_interval_secs: 1,
-        execution_timeout_secs: 0,
     }
 }
 

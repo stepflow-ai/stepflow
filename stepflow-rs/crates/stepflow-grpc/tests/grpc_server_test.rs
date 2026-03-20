@@ -117,7 +117,6 @@ async fn test_queue_isolation() {
     let python_stream = python_client
         .pull_tasks(PullTasksRequest {
             queue_name: "python".to_string(),
-            max_concurrent: 1,
             worker_id: String::new(),
         })
         .await
@@ -129,7 +128,6 @@ async fn test_queue_isolation() {
     let node_stream = node_client
         .pull_tasks(PullTasksRequest {
             queue_name: "node".to_string(),
-            max_concurrent: 1,
             worker_id: String::new(),
         })
         .await
@@ -149,9 +147,7 @@ async fn test_queue_isolation() {
         task_id: "task-py-1".to_string(),
         task: None,
         context: None,
-        deadline_secs: 30,
         heartbeat_interval_secs: 5,
-        execution_timeout_secs: 0,
     });
 
     // Python worker should receive it
@@ -167,9 +163,7 @@ async fn test_queue_isolation() {
         task_id: "task-node-1".to_string(),
         task: None,
         context: None,
-        deadline_secs: 30,
         heartbeat_interval_secs: 5,
-        execution_timeout_secs: 0,
     });
 
     // Node worker should receive it
@@ -190,7 +184,6 @@ async fn test_unknown_queue_returns_not_found() {
     let result = client
         .pull_tasks(PullTasksRequest {
             queue_name: "unknown".to_string(),
-            max_concurrent: 1,
             worker_id: String::new(),
         })
         .await;
@@ -220,9 +213,7 @@ async fn test_complete_task_success_round_trip() {
         task_id: "task-1".to_string(),
         task: None,
         context: None,
-        deadline_secs: 30,
         heartbeat_interval_secs: 5,
-        execution_timeout_secs: 0,
     });
 
     let channel = endpoint(&address).connect().await.unwrap();
