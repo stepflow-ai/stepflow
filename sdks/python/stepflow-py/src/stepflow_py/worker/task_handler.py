@@ -307,7 +307,7 @@ async def handle_task(
             # Execute the component
             try:
                 output = await execute_component(
-                    server, component, input_data, req, path_params
+                    server, component, input_data, task, path_params
                 )
                 # Convert output to proto Value
                 proto_output = python_to_proto_value(output)
@@ -402,11 +402,13 @@ async def execute_component(
     server: StepflowServer,
     component: ComponentEntry,
     input_data: Any,
-    req: Any,
+    task: TaskAssignment,
     path_params: dict[str, str],
 ) -> Any:
     """Execute a component function and return its output."""
     import msgspec
+
+    req = task.execute
 
     # Parse input using component's input type
     try:
@@ -439,11 +441,13 @@ async def execute_component(
         from stepflow_py.worker.orchestrator_tracker import OrchestratorTracker
 
         orch_url = (
-            req.context.orchestrator_service_url if req.HasField("context") else ""
+            task.context.orchestrator_service_url
+            if task.HasField("context")
+            else ""
         )
         root_run_id = (
-            req.context.root_run_id
-            if req.HasField("context") and req.context.root_run_id
+            task.context.root_run_id
+            if task.HasField("context") and task.context.root_run_id
             else None
         )
         obs_run_id = (
