@@ -185,7 +185,6 @@ class ComponentExecuteRequest(google.protobuf.message.Message):
     INPUT_FIELD_NUMBER: builtins.int
     ATTEMPT_FIELD_NUMBER: builtins.int
     OBSERVABILITY_FIELD_NUMBER: builtins.int
-    CONTEXT_FIELD_NUMBER: builtins.int
     component: builtins.str
     """Component path to execute (e.g., "my_function")."""
     attempt: builtins.int
@@ -201,12 +200,6 @@ class ComponentExecuteRequest(google.protobuf.message.Message):
     def observability(self) -> common_pb2.ObservabilityContext:
         """Observability context for tracing and logging."""
 
-    @property
-    def context(self) -> Global___TaskContext:
-        """Task context with the orchestrator URL for worker callbacks.
-        Replaces stateful initialization — every request is self-describing.
-        """
-
     def __init__(
         self,
         *,
@@ -214,10 +207,9 @@ class ComponentExecuteRequest(google.protobuf.message.Message):
         input: google.protobuf.struct_pb2.Value | None = ...,
         attempt: builtins.int = ...,
         observability: common_pb2.ObservabilityContext | None = ...,
-        context: Global___TaskContext | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["context", b"context", "input", b"input", "observability", b"observability"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attempt", b"attempt", "component", b"component", "context", b"context", "input", b"input", "observability", b"observability"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["input", b"input", "observability", b"observability"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["attempt", b"attempt", "component", b"component", "input", b"input", "observability", b"observability"]) -> None: ...
 
 Global___ComponentExecuteRequest: typing_extensions.TypeAlias = ComponentExecuteRequest
 
@@ -251,7 +243,6 @@ class PullTasksRequest(google.protobuf.message.Message):
 
     QUEUE_NAME_FIELD_NUMBER: builtins.int
     MAX_CONCURRENT_FIELD_NUMBER: builtins.int
-    COMPONENTS_FIELD_NUMBER: builtins.int
     WORKER_ID_FIELD_NUMBER: builtins.int
     queue_name: builtins.str
     """Queue name matching the plugin's key in the orchestrator config (e.g., "python").
@@ -267,31 +258,23 @@ class PullTasksRequest(google.protobuf.message.Message):
     Used for logging and diagnostics on the orchestrator side. This is the
     same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
     correlation between PullTasks connections and heartbeat/completion RPCs.
-    Optional for backwards compatibility — if empty, the orchestrator
-    assigns an opaque internal ID for logging.
+    Optional — if empty, the orchestrator assigns an opaque internal ID
+    for logging.
     """
-    @property
-    def components(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___ComponentInfo]:
-        """Components available from this worker.
-        Sent once at connection time so the orchestrator knows what this worker
-        can handle. The orchestrator uses this for component routing.
-        """
-
     def __init__(
         self,
         *,
         queue_name: builtins.str = ...,
         max_concurrent: builtins.int = ...,
-        components: collections.abc.Iterable[Global___ComponentInfo] | None = ...,
         worker_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["components", b"components", "max_concurrent", b"max_concurrent", "queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["max_concurrent", b"max_concurrent", "queue_name", b"queue_name", "worker_id", b"worker_id"]) -> None: ...
 
 Global___PullTasksRequest: typing_extensions.TypeAlias = PullTasksRequest
 
 @typing.final
 class TaskAssignment(google.protobuf.message.Message):
-    """A task dispatched to a worker for execution.
+    """A task dispatched to a worker for execution or discovery.
 
     For queue-based transports (NATS JetStream, etc.), workers should
     acknowledge the queue message immediately upon receipt — before
@@ -304,7 +287,9 @@ class TaskAssignment(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     TASK_ID_FIELD_NUMBER: builtins.int
-    REQUEST_FIELD_NUMBER: builtins.int
+    EXECUTE_FIELD_NUMBER: builtins.int
+    LIST_COMPONENTS_FIELD_NUMBER: builtins.int
+    CONTEXT_FIELD_NUMBER: builtins.int
     DEADLINE_SECS_FIELD_NUMBER: builtins.int
     HEARTBEAT_INTERVAL_SECS_FIELD_NUMBER: builtins.int
     EXECUTION_TIMEOUT_SECS_FIELD_NUMBER: builtins.int
@@ -314,37 +299,52 @@ class TaskAssignment(google.protobuf.message.Message):
     """
     deadline_secs: builtins.int
     """Queue timeout in seconds: maximum time the orchestrator will wait
-    for the worker to call StartTask after receiving this assignment.
-    If the worker does not call StartTask within this window, the
+    for the worker to call TaskHeartbeat after receiving this assignment.
+    If the worker does not call TaskHeartbeat within this window, the
     orchestrator treats the task as lost in the queue.
     0 means no queue timeout.
     """
     heartbeat_interval_secs: builtins.int
     """Suggested heartbeat interval in seconds. The worker should send
-    TaskHeartbeat at this cadence after calling StartTask. The
+    TaskHeartbeat at this cadence after calling TaskHeartbeat. The
     orchestrator uses a 5s crash-detection timeout — if no heartbeat
     or CompleteTask arrives within 5s, the task is treated as failed.
     0 means no heartbeating required.
     """
     execution_timeout_secs: builtins.int
-    """Optional execution timeout in seconds: maximum time from StartTask
-    to CompleteTask. 0 means no execution timeout.
+    """Optional execution timeout in seconds: maximum time from first
+    TaskHeartbeat to CompleteTask. 0 means no execution timeout.
     """
     @property
-    def request(self) -> Global___ComponentExecuteRequest:
-        """The component execution request to process."""
+    def execute(self) -> Global___ComponentExecuteRequest:
+        """Execute a component."""
+
+    @property
+    def list_components(self) -> Global___ListComponentsRequest:
+        """List available components. Workers respond via CompleteTask with
+        a ListComponentsResult containing their available components.
+        """
+
+    @property
+    def context(self) -> Global___TaskContext:
+        """Per-task context for worker callbacks (CompleteTask, SubmitRun, etc.).
+        Contains the orchestrator URL that owns the current run.
+        """
 
     def __init__(
         self,
         *,
         task_id: builtins.str = ...,
-        request: Global___ComponentExecuteRequest | None = ...,
+        execute: Global___ComponentExecuteRequest | None = ...,
+        list_components: Global___ListComponentsRequest | None = ...,
+        context: Global___TaskContext | None = ...,
         deadline_secs: builtins.int = ...,
         heartbeat_interval_secs: builtins.int = ...,
         execution_timeout_secs: builtins.int = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["request", b"request"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["deadline_secs", b"deadline_secs", "execution_timeout_secs", b"execution_timeout_secs", "heartbeat_interval_secs", b"heartbeat_interval_secs", "request", b"request", "task_id", b"task_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["context", b"context", "execute", b"execute", "list_components", b"list_components", "task", b"task"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["context", b"context", "deadline_secs", b"deadline_secs", "execute", b"execute", "execution_timeout_secs", b"execution_timeout_secs", "heartbeat_interval_secs", b"heartbeat_interval_secs", "list_components", b"list_components", "task", b"task", "task_id", b"task_id"]) -> None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["task", b"task"]) -> typing.Literal["execute", "list_components"] | None: ...
 
 Global___TaskAssignment: typing_extensions.TypeAlias = TaskAssignment
 

@@ -21,6 +21,7 @@
 //! routes results back through the registry.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use error_stack::ResultExt as _;
@@ -29,6 +30,9 @@ use stepflow_core::workflow::{Component, StepId, ValueRef};
 use stepflow_plugin::{
     OrchestratorServiceUrl, PluginError, Result, RunContext, StepflowEnvironment,
 };
+
+/// Monotonic counter for generating unique discovery task IDs.
+static DISCOVERY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 use crate::pending_tasks::PendingTasks;
 use crate::proto::stepflow::v1 as proto;
@@ -100,6 +104,12 @@ impl StepflowQueuePlugin {
     }
 }
 
+/// Timeout for discovery tasks (how long to wait for a worker to respond).
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Sentinel component name used for discovery tasks in PendingTasks tracking.
+const DISCOVERY_COMPONENT: &str = "__stepflow/list_components";
+
 impl stepflow_plugin::Plugin for StepflowQueuePlugin {
     async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
         // Queue transports don't need stateful initialization.
@@ -108,11 +118,79 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
     }
 
     async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        self.transport.list_components().await
+        // Send a ListComponentsRequest task through the normal task pipeline.
+        // Any worker in the queue picks it up and responds with the component
+        // list via CompleteTask. The result flows through PendingTasks/TaskRegistry.
+        let seq = DISCOVERY_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let task_id = format!("discovery-{seq}");
+
+        // Build context with orchestrator URL so the worker can send CompleteTask
+        let context = self.build_context(None);
+
+        let task = proto::TaskAssignment {
+            task_id: task_id.clone(),
+            task: Some(proto::task_assignment::Task::ListComponents(
+                proto::ListComponentsRequest {},
+            )),
+            context,
+            deadline_secs: DISCOVERY_TIMEOUT.as_secs() as u32,
+            heartbeat_interval_secs: 0,
+            execution_timeout_secs: 0,
+        };
+
+        // Register in TaskRegistry + track in PendingTasks (for queue timeout)
+        let rx = self.registry.register_and_track(
+            task_id.clone(),
+            DISCOVERY_COMPONENT.to_string(),
+            DISCOVERY_TIMEOUT,
+            None,
+        );
+
+        // Dispatch via transport
+        if let Err(e) = self
+            .transport
+            .send_task(task, &std::collections::HashMap::new())
+            .await
+        {
+            self.registry.untrack(&task_id);
+            // If no workers are connected, return empty rather than erroring.
+            log::debug!("Discovery task dispatch failed: {e}");
+            return Ok(vec![]);
+        }
+
+        // Wait for the worker's response
+        match tokio::time::timeout(DISCOVERY_TIMEOUT, rx).await {
+            Ok(Ok(stepflow_core::FlowResult::Success(value))) => {
+                // Parse the JSON-wrapped component list
+                parse_discovery_result(&value)
+            }
+            Ok(Ok(stepflow_core::FlowResult::Failed(e))) => {
+                log::warn!("Discovery task failed: {e}");
+                Ok(vec![])
+            }
+            Ok(Err(_)) => {
+                // Receiver dropped (task timed out via PendingTasks)
+                log::debug!("Discovery task cancelled");
+                Ok(vec![])
+            }
+            Err(_) => {
+                // Our own timeout fired
+                log::debug!("Discovery task timed out");
+                Ok(vec![])
+            }
+        }
     }
 
     async fn component_info(&self, component: &Component) -> Result<ComponentInfo> {
-        self.transport.component_info(component.path()).await
+        // Use list_components and find the matching component
+        let components = self.list_components().await?;
+        components
+            .into_iter()
+            .find(|c| c.component.path() == component.path())
+            .ok_or_else(|| {
+                error_stack::report!(PluginError::ComponentInfo)
+                    .attach_printable(format!("component '{}' not found", component.path()))
+            })
     }
 
     async fn start_task(
@@ -128,23 +206,9 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         // Build observability context
         let observability = build_observability_context(run_context, step);
 
-        // Build execution context with orchestrator URL, applying any override
-        let mut context = build_execution_context(run_context.env());
-        if let Some(override_url) = self
-            .orchestrator_url_override
-            .read()
-            .expect("lock poisoned")
-            .as_ref()
-        {
-            let ctx = context.get_or_insert_with(|| proto::TaskContext {
-                orchestrator_service_url: String::new(),
-                root_run_id: String::new(),
-            });
-            ctx.orchestrator_service_url = override_url.clone();
-        }
-
-        // Set root_run_id so workers can include it in OrchestratorService
-        // requests for ownership validation.
+        // Build task context with orchestrator URL (override takes precedence
+        // over environment) and root_run_id for ownership validation.
+        let mut context = self.build_context(Some(run_context.env()));
         if let Some(ctx) = context.as_mut() {
             ctx.root_run_id = run_context.root_run_id.to_string();
         }
@@ -154,13 +218,15 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
 
         let task = proto::TaskAssignment {
             task_id: task_id.to_string(),
-            request: Some(proto::ComponentExecuteRequest {
-                component: component.path().to_string(),
-                input: Some(proto_input),
-                attempt,
-                observability: Some(observability),
-                context,
-            }),
+            task: Some(proto::task_assignment::Task::Execute(
+                proto::ComponentExecuteRequest {
+                    component: component.path().to_string(),
+                    input: Some(proto_input),
+                    attempt,
+                    observability: Some(observability),
+                },
+            )),
+            context,
             deadline_secs: self.queue_timeout.as_secs() as u32,
             heartbeat_interval_secs: HEARTBEAT_INTERVAL_SECS,
             execution_timeout_secs: self.execution_timeout.map_or(0, |d| d.as_secs() as u32),
@@ -193,6 +259,74 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
     }
 }
 
+impl StepflowQueuePlugin {
+    /// Build a TaskContext with the orchestrator URL.
+    ///
+    /// The override (set by `GrpcPlugin` after starting the gRPC server)
+    /// takes precedence. If `env` is provided, falls back to the
+    /// environment's `OrchestratorServiceUrl`. Returns `None` if no URL
+    /// is available from either source.
+    fn build_context(&self, env: Option<&StepflowEnvironment>) -> Option<proto::TaskContext> {
+        let orchestrator_url = self
+            .orchestrator_url_override
+            .read()
+            .expect("lock poisoned")
+            .clone()
+            .or_else(|| {
+                env.and_then(|e| {
+                    e.get::<OrchestratorServiceUrl>()
+                        .and_then(|u| u.url().map(|s| s.to_string()))
+                })
+            })
+            .unwrap_or_default();
+
+        if orchestrator_url.is_empty() {
+            return None;
+        }
+
+        Some(proto::TaskContext {
+            orchestrator_service_url: orchestrator_url,
+            root_run_id: String::new(),
+        })
+    }
+}
+
+/// Parse a discovery result from `FlowResult::Success(JSON)` back to
+/// `Vec<ComponentInfo>`.
+///
+/// The JSON format matches what `OrchestratorServiceImpl::complete_task`
+/// produces when converting `ListComponentsResult` to `FlowResult`.
+fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
+    let json = value.as_ref();
+    let components_json = json
+        .get("components")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&Vec::new())
+        .clone();
+
+    let mut components = Vec::with_capacity(components_json.len());
+    for c in components_json {
+        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+        let description = c.get("description").and_then(|v| v.as_str()).map(String::from);
+        let input_schema = c
+            .get("input_schema")
+            .and_then(|v| v.as_str())
+            .and_then(|s| serde_json::from_str(s).ok());
+        let output_schema = c
+            .get("output_schema")
+            .and_then(|v| v.as_str())
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        components.push(ComponentInfo {
+            component: stepflow_core::workflow::Component::from_string(name.to_string()),
+            description,
+            input_schema,
+            output_schema,
+        });
+    }
+    Ok(components)
+}
+
 // --- Conversion helpers (same logic as the former GrpcComponentClient) ---
 
 fn build_observability_context(
@@ -221,21 +355,6 @@ fn extract_trace_context() -> (Option<String>, Option<String>) {
     }
 }
 
-fn build_execution_context(env: &StepflowEnvironment) -> Option<proto::TaskContext> {
-    let orchestrator_url = env
-        .get::<OrchestratorServiceUrl>()
-        .and_then(|u| u.url().map(|s| s.to_string()))
-        .unwrap_or_default();
-
-    if orchestrator_url.is_empty() {
-        return None;
-    }
-
-    Some(proto::TaskContext {
-        orchestrator_service_url: orchestrator_url,
-        root_run_id: String::new(), // Set by start_task after this call
-    })
-}
 
 fn value_ref_to_proto(value: &ValueRef) -> Result<prost_wkt_types::Value> {
     let json = serde_json::to_value(value.as_ref())

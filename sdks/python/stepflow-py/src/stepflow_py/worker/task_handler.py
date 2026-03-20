@@ -148,8 +148,8 @@ async def handle_task(
         tracer_name: Name for the OTel tracer.
     """
     orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
+        task.context.orchestrator_service_url
+        if task.HasField("context")
         else ""
     )
 
@@ -157,7 +157,7 @@ async def handle_task(
     orch_channel: grpc.aio.Channel | None = None
 
     try:
-        req = task.request
+        req = task.execute
         logger.info(
             "Executing task %s: component=%s, attempt=%d",
             task.task_id,
@@ -543,8 +543,8 @@ def classify_exception(exc: Exception) -> tuple[int, dict | None]:
 
 def _extract_run_id(task: TaskAssignment) -> str | None:
     """Extract run_id from a task's observability context."""
-    if task.request.HasField("observability"):
-        obs = task.request.observability
+    if task.HasField("execute") and task.execute.HasField("observability"):
+        obs = task.execute.observability
         if obs.HasField("run_id"):
             return obs.run_id
     return None
@@ -631,8 +631,8 @@ async def _complete_task_success(
 ) -> None:
     """Report successful task completion to the run-owning orchestrator."""
     orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
+        task.context.orchestrator_service_url
+        if task.HasField("context")
         else ""
     )
     if not orchestrator_url:
@@ -664,8 +664,8 @@ async def _complete_task_error(
 ) -> None:
     """Report task failure to the run-owning orchestrator."""
     orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
+        task.context.orchestrator_service_url
+        if task.HasField("context")
         else ""
     )
     if not orchestrator_url:

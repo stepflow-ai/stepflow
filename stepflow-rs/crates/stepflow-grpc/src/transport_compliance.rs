@@ -55,7 +55,8 @@ use crate::task_transport::{TaskTransport, TaskTransportRead};
 fn make_task(id: &str) -> TaskAssignment {
     TaskAssignment {
         task_id: id.to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 30,
         heartbeat_interval_secs: 1,
         execution_timeout_secs: 0,

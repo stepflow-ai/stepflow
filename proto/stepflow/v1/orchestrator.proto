@@ -194,7 +194,7 @@ message CompleteTaskRequest {
     // Structured error (on failure).
     TaskError error = 3;
 
-    // Response to a /__stepflow/list_components discovery task.
+    // Response to a ListComponentsRequest discovery task.
     // Workers return their available components via this variant
     // instead of the normal response/error.
     ListComponentsResult list_components = 5;
@@ -206,7 +206,7 @@ message CompleteTaskRequest {
   optional string run_id = 4;
 }
 
-// Result of a component discovery task (/__stepflow/list_components).
+// Result of a ListComponentsRequest discovery task.
 // Returned by workers via CompleteTask to report available components.
 message ListComponentsResult {
   repeated ComponentInfo components = 1;

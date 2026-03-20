@@ -24,7 +24,6 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use stepflow_core::component::ComponentInfo;
 use tokio::sync::Notify;
 
 use crate::proto::stepflow::v1::TaskAssignment;
@@ -32,8 +31,8 @@ use crate::proto::stepflow::v1::TaskAssignment;
 /// Shared in-memory queue for pull-based task dispatch.
 ///
 /// Thread-safe: uses `Mutex` for the queue and `Notify` for wakeups.
-/// Workers register their components on connect so `list_components`
-/// can aggregate across all connected workers.
+/// Component discovery is handled at the plugin level via
+/// `ListComponentsRequest` tasks, not at connection time.
 #[derive(Debug)]
 pub struct PullTaskQueue {
     /// Human-readable name for this queue (used in metric labels).
@@ -44,7 +43,7 @@ pub struct PullTaskQueue {
     notify: Notify,
     /// Notifies waiters when a new worker connects (for startup readiness).
     worker_notify: Notify,
-    /// Components from connected workers (for `list_components`).
+    /// Connected workers (for worker count and lifecycle tracking).
     workers: Mutex<Vec<WorkerRegistration>>,
     /// Monotonically increasing worker ID counter.
     next_worker_id: AtomicU64,
@@ -54,8 +53,6 @@ pub struct PullTaskQueue {
 struct WorkerRegistration {
     /// Unique ID for this worker connection.
     id: u64,
-    /// Components this worker can handle.
-    components: Vec<ComponentInfo>,
 }
 
 impl PullTaskQueue {
@@ -98,12 +95,11 @@ impl PullTaskQueue {
 
     /// Register a worker and return its unique ID.
     ///
-    /// The worker's components are added to the aggregate list used by
-    /// `list_components`. Call `unregister_worker` when the connection closes.
-    pub fn register_worker(&self, components: Vec<ComponentInfo>) -> u64 {
+    /// Call `unregister_worker` when the connection closes.
+    pub fn register_worker(&self) -> u64 {
         let mut workers = self.workers.lock().expect("lock poisoned");
         let id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
-        workers.push(WorkerRegistration { id, components });
+        workers.push(WorkerRegistration { id });
         drop(workers);
         stepflow_observability::metrics::record_worker_connected(&self.name);
         self.worker_notify.notify_waiters();
@@ -158,15 +154,6 @@ impl PullTaskQueue {
         }
     }
 
-    /// Aggregate components from all connected workers.
-    pub fn list_components(&self) -> Vec<ComponentInfo> {
-        let workers = self.workers.lock().expect("lock poisoned");
-        workers
-            .iter()
-            .flat_map(|w| w.components.iter().cloned())
-            .collect()
-    }
-
     /// Number of pending tasks in the queue.
     pub fn pending_count(&self) -> usize {
         let queue = self.tasks.lock().expect("lock poisoned");
@@ -190,12 +177,14 @@ impl Default for PullTaskQueue {
 mod tests {
     use super::*;
 
-    fn make_component_info(name: &str) -> ComponentInfo {
-        ComponentInfo {
-            component: stepflow_core::workflow::Component::from_string(name.to_string()),
-            description: None,
-            input_schema: None,
-            output_schema: None,
+    fn make_task(id: &str) -> TaskAssignment {
+        TaskAssignment {
+            task_id: id.to_string(),
+            task: None,
+            context: None,
+            deadline_secs: 0,
+            heartbeat_interval_secs: 0,
+            execution_timeout_secs: 0,
         }
     }
 
@@ -204,14 +193,7 @@ mod tests {
         let queue = PullTaskQueue::new("test");
         assert_eq!(queue.pending_count(), 0);
 
-        let task = TaskAssignment {
-            task_id: "t1".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        };
-        queue.push_task(task);
+        queue.push_task(make_task("t1"));
         assert_eq!(queue.pending_count(), 1);
 
         let popped = queue.pop_task();
@@ -223,20 +205,8 @@ mod tests {
     #[test]
     fn test_fifo_order() {
         let queue = PullTaskQueue::new("test");
-        queue.push_task(TaskAssignment {
-            task_id: "t1".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
-        queue.push_task(TaskAssignment {
-            task_id: "t2".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
+        queue.push_task(make_task("t1"));
+        queue.push_task(make_task("t2"));
 
         assert_eq!(queue.pop_task().unwrap().task_id, "t1");
         assert_eq!(queue.pop_task().unwrap().task_id, "t2");
@@ -247,90 +217,36 @@ mod tests {
         let queue = PullTaskQueue::new("test");
         assert_eq!(queue.worker_count(), 0);
 
-        let comps = vec![make_component_info("transform")];
-        let id = queue.register_worker(comps);
+        let id = queue.register_worker();
         assert_eq!(queue.worker_count(), 1);
-
-        let listed = queue.list_components();
-        assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].component.path(), "transform");
 
         queue.unregister_worker(id);
         assert_eq!(queue.worker_count(), 0);
-        assert!(queue.list_components().is_empty());
-    }
-
-    #[test]
-    fn test_multiple_workers_aggregate_components() {
-        let queue = PullTaskQueue::new("test");
-        let _id1 = queue.register_worker(vec![make_component_info("a")]);
-        let _id2 = queue.register_worker(vec![make_component_info("b"), make_component_info("c")]);
-
-        let listed = queue.list_components();
-        assert_eq!(listed.len(), 3);
     }
 
     /// Two separate queues are fully independent — tasks pushed to one
-    /// are never visible to the other. This models the per-plugin queue
-    /// architecture where each `type: grpc` plugin gets its own queue.
+    /// are never visible to the other.
     #[test]
     fn test_separate_queues_are_isolated() {
         let queue_a = PullTaskQueue::new("test");
         let queue_b = PullTaskQueue::new("test");
 
-        // Register different workers on each queue
-        queue_a.register_worker(vec![make_component_info("python/transform")]);
-        queue_b.register_worker(vec![make_component_info("node/summarize")]);
+        queue_a.register_worker();
+        queue_b.register_worker();
 
-        // Push tasks to queue A only
-        queue_a.push_task(TaskAssignment {
-            task_id: "task-a1".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
-        queue_a.push_task(TaskAssignment {
-            task_id: "task-a2".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
+        queue_a.push_task(make_task("task-a1"));
+        queue_a.push_task(make_task("task-a2"));
+        queue_b.push_task(make_task("task-b1"));
 
-        // Push tasks to queue B only
-        queue_b.push_task(TaskAssignment {
-            task_id: "task-b1".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
-
-        // Queue A has 2 tasks, queue B has 1
         assert_eq!(queue_a.pending_count(), 2);
         assert_eq!(queue_b.pending_count(), 1);
 
-        // Popping from A only yields A's tasks
         assert_eq!(queue_a.pop_task().unwrap().task_id, "task-a1");
         assert_eq!(queue_a.pop_task().unwrap().task_id, "task-a2");
         assert!(queue_a.pop_task().is_none());
 
-        // Popping from B only yields B's tasks
         assert_eq!(queue_b.pop_task().unwrap().task_id, "task-b1");
         assert!(queue_b.pop_task().is_none());
-
-        // Components are isolated too
-        assert_eq!(queue_a.list_components().len(), 1);
-        assert_eq!(
-            queue_a.list_components()[0].component.path(),
-            "python/transform"
-        );
-        assert_eq!(queue_b.list_components().len(), 1);
-        assert_eq!(
-            queue_b.list_components()[0].component.path(),
-            "node/summarize"
-        );
     }
 
     /// Multiple workers on the same queue compete for tasks (work-stealing).
@@ -338,23 +254,14 @@ mod tests {
     async fn test_multiple_workers_compete_for_tasks() {
         let queue = std::sync::Arc::new(PullTaskQueue::new("test"));
 
-        // Register two workers on the same queue
-        queue.register_worker(vec![make_component_info("transform")]);
-        queue.register_worker(vec![make_component_info("transform")]);
+        queue.register_worker();
+        queue.register_worker();
         assert_eq!(queue.worker_count(), 2);
 
-        // Push 4 tasks
         for i in 0..4 {
-            queue.push_task(TaskAssignment {
-                task_id: format!("task-{i}"),
-                request: None,
-                deadline_secs: 0,
-                heartbeat_interval_secs: 0,
-                execution_timeout_secs: 0,
-            });
+            queue.push_task(make_task(&format!("task-{i}")));
         }
 
-        // Simulate two "workers" racing to pop
         let q1 = queue.clone();
         let q2 = queue.clone();
 
@@ -377,7 +284,6 @@ mod tests {
         let tasks1 = handle1.await.unwrap();
         let tasks2 = handle2.await.unwrap();
 
-        // Between the two workers, all 4 tasks were consumed exactly once
         let mut all_tasks: Vec<_> = tasks1.into_iter().chain(tasks2).collect();
         all_tasks.sort();
         assert_eq!(all_tasks, vec!["task-0", "task-1", "task-2", "task-3"]);
@@ -389,21 +295,13 @@ mod tests {
         let queue2 = queue.clone();
 
         let handle = tokio::spawn(async move {
-            // Wait for notification, then pop
             queue2.notified().await;
             queue2.pop_task()
         });
 
-        // Give the waiter a moment to register
         tokio::task::yield_now().await;
 
-        queue.push_task(TaskAssignment {
-            task_id: "t1".to_string(),
-            request: None,
-            deadline_secs: 0,
-            heartbeat_interval_secs: 0,
-            execution_timeout_secs: 0,
-        });
+        queue.push_task(make_task("t1"));
 
         let result = handle.await.unwrap();
         assert!(result.is_some());

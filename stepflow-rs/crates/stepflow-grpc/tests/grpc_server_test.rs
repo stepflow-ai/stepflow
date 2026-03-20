@@ -30,7 +30,7 @@ use stepflow_grpc::proto::stepflow::v1::blob_service_client::BlobServiceClient;
 use stepflow_grpc::proto::stepflow::v1::orchestrator_service_client::OrchestratorServiceClient;
 use stepflow_grpc::proto::stepflow::v1::tasks_service_client::TasksServiceClient;
 use stepflow_grpc::proto::stepflow::v1::{
-    CompleteTaskRequest, ComponentExecuteResponse, ComponentInfo, GetBlobRequest, PullTasksRequest,
+    CompleteTaskRequest, ComponentExecuteResponse, GetBlobRequest, PullTasksRequest,
     PutBlobRequest, TaskAssignment, TaskError, TaskErrorCode, TaskHeartbeatRequest, TaskStatus,
 };
 use stepflow_plugin::TaskRegistry;
@@ -83,15 +83,6 @@ fn endpoint(addr: &str) -> tonic::transport::Endpoint {
     tonic::transport::Channel::from_shared(format!("http://{addr}")).unwrap()
 }
 
-fn make_component(name: &str) -> ComponentInfo {
-    ComponentInfo {
-        name: name.to_string(),
-        description: Some("test component".to_string()),
-        input_schema: None,
-        output_schema: None,
-    }
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -127,7 +118,6 @@ async fn test_queue_isolation() {
         .pull_tasks(PullTasksRequest {
             queue_name: "python".to_string(),
             max_concurrent: 1,
-            components: vec![make_component("/python/transform")],
             worker_id: String::new(),
         })
         .await
@@ -140,7 +130,6 @@ async fn test_queue_isolation() {
         .pull_tasks(PullTasksRequest {
             queue_name: "node".to_string(),
             max_concurrent: 1,
-            components: vec![make_component("/node/summarize")],
             worker_id: String::new(),
         })
         .await
@@ -158,7 +147,8 @@ async fn test_queue_isolation() {
     // Push a task to the python queue only
     python_queue.push_task(TaskAssignment {
         task_id: "task-py-1".to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 30,
         heartbeat_interval_secs: 5,
         execution_timeout_secs: 0,
@@ -175,7 +165,8 @@ async fn test_queue_isolation() {
     // Push a task to the node queue
     node_queue.push_task(TaskAssignment {
         task_id: "task-node-1".to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 30,
         heartbeat_interval_secs: 5,
         execution_timeout_secs: 0,
@@ -200,7 +191,6 @@ async fn test_unknown_queue_returns_not_found() {
         .pull_tasks(PullTasksRequest {
             queue_name: "unknown".to_string(),
             max_concurrent: 1,
-            components: vec![make_component("/unknown/comp")],
             worker_id: String::new(),
         })
         .await;
@@ -228,7 +218,8 @@ async fn test_complete_task_success_round_trip() {
     // Push the task to the queue
     python_queue.push_task(TaskAssignment {
         task_id: "task-1".to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 30,
         heartbeat_interval_secs: 5,
         execution_timeout_secs: 0,

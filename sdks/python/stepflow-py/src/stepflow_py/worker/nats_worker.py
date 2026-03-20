@@ -19,9 +19,9 @@ durable consumer, and delegates execution to the shared task handler.
 Task completion is reported via gRPC OrchestratorService using the
 orchestrator_service_url from each task's TaskContext.
 
-Special ``/__stepflow/list_components`` tasks are handled inline: the
-worker responds with a ``ListComponentsResult`` via ``CompleteTask``
-so the orchestrator can discover available components.
+``ListComponentsRequest`` tasks are handled inline: the worker responds
+with a ``ListComponentsResult`` via ``CompleteTask`` so the orchestrator
+can discover available components.
 
 Worker configuration:
   - STEPFLOW_NATS_URL: NATS server URL (default: nats://localhost:4222)
@@ -99,9 +99,6 @@ class _StreamNotFoundError(Exception):
         super().__init__(f"Stream {stream} not found")
         self.stream = stream
 
-
-# Discovery component path used by the orchestrator for component listing.
-_LIST_COMPONENTS_PATH = "/__stepflow/list_components"
 
 
 async def run_nats_worker(
@@ -289,18 +286,22 @@ async def _fetch_loop(
             task = TaskAssignment()
             task.ParseFromString(msg.data)
 
-            logger.debug(
-                "Received task %s: component=%s",
-                task.task_id,
-                task.request.component,
-            )
-
             # Handle discovery tasks inline (release semaphore — these
             # are lightweight and don't count toward concurrency).
-            if task.request.component == _LIST_COMPONENTS_PATH:
+            if task.HasField("list_components"):
+                logger.debug(
+                    "Received list_components task %s",
+                    task.task_id,
+                )
                 semaphore.release()
                 asyncio.create_task(_handle_list_components(task, components, consumer))
                 continue
+
+            logger.debug(
+                "Received task %s: component=%s",
+                task.task_id,
+                task.execute.component,
+            )
 
             # Normal task — semaphore already acquired, delegate to handler.
             # handle_task claims via heartbeat, executes, and reports result.
@@ -324,14 +325,14 @@ async def _handle_list_components(
     components: list[ComponentInfo],
     consumer: str,
 ) -> None:
-    """Handle a /__stepflow/list_components discovery task.
+    """Handle a ListComponentsRequest discovery task.
 
     Responds via CompleteTask with a ListComponentsResult containing
     the worker's available components.
     """
     orchestrator_url = (
-        task.request.context.orchestrator_service_url
-        if task.request.HasField("context")
+        task.context.orchestrator_service_url
+        if task.HasField("context")
         else ""
     )
     if not orchestrator_url:

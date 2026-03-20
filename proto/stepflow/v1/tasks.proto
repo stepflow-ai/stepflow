@@ -45,9 +45,10 @@ service TasksService {
   // uses a compatible transport (e.g., "pull"). If the plugin uses a
   // queue-based transport (e.g., NATS, Kafka), this RPC returns FAILED_PRECONDITION.
   //
-  // The worker also declares its capabilities (concurrency, components).
-  // The stream stays open for the worker's lifetime — tasks are sent as
-  // they become available.
+  // The worker declares its concurrency limit. The stream stays open for
+  // the worker's lifetime — tasks are sent as they become available.
+  // Component discovery happens via ListComponentsRequest tasks sent
+  // through the stream, not at connection time.
   rpc PullTasks(PullTasksRequest) returns (stream TaskAssignment);
 
   // Look up the current orchestrator for a run.
@@ -141,10 +142,6 @@ message ComponentExecuteRequest {
 
   // Observability context for tracing and logging.
   ObservabilityContext observability = 4;
-
-  // Task context with the orchestrator URL for worker callbacks.
-  // Replaces stateful initialization — every request is self-describing.
-  TaskContext context = 5;
 }
 
 message ComponentExecuteResponse {
@@ -166,21 +163,16 @@ message PullTasksRequest {
   // The orchestrator will not exceed this limit for this worker.
   int32 max_concurrent = 2;
 
-  // Components available from this worker.
-  // Sent once at connection time so the orchestrator knows what this worker
-  // can handle. The orchestrator uses this for component routing.
-  repeated ComponentInfo components = 3;
-
   // Worker-assigned unique identifier (UUID).
   // Used for logging and diagnostics on the orchestrator side. This is the
   // same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
   // correlation between PullTasks connections and heartbeat/completion RPCs.
-  // Optional for backwards compatibility — if empty, the orchestrator
-  // assigns an opaque internal ID for logging.
-  string worker_id = 4;
+  // Optional — if empty, the orchestrator assigns an opaque internal ID
+  // for logging.
+  string worker_id = 3;
 }
 
-// A task dispatched to a worker for execution.
+// A task dispatched to a worker for execution or discovery.
 //
 // For queue-based transports (NATS JetStream, etc.), workers should
 // acknowledge the queue message immediately upon receipt — before
@@ -193,26 +185,37 @@ message TaskAssignment {
   // Used to correlate completion reports with assignments.
   string task_id = 1;
 
-  // The component execution request to process.
-  ComponentExecuteRequest request = 2;
+  // The task to perform — either a component execution or a discovery request.
+  oneof task {
+    // Execute a component.
+    ComponentExecuteRequest execute = 2;
+
+    // List available components. Workers respond via CompleteTask with
+    // a ListComponentsResult containing their available components.
+    ListComponentsRequest list_components = 3;
+  }
+
+  // Per-task context for worker callbacks (CompleteTask, SubmitRun, etc.).
+  // Contains the orchestrator URL that owns the current run.
+  TaskContext context = 4;
 
   // Queue timeout in seconds: maximum time the orchestrator will wait
-  // for the worker to call StartTask after receiving this assignment.
-  // If the worker does not call StartTask within this window, the
+  // for the worker to call TaskHeartbeat after receiving this assignment.
+  // If the worker does not call TaskHeartbeat within this window, the
   // orchestrator treats the task as lost in the queue.
   // 0 means no queue timeout.
-  uint32 deadline_secs = 3;
+  uint32 deadline_secs = 5;
 
   // Suggested heartbeat interval in seconds. The worker should send
-  // TaskHeartbeat at this cadence after calling StartTask. The
+  // TaskHeartbeat at this cadence after calling TaskHeartbeat. The
   // orchestrator uses a 5s crash-detection timeout — if no heartbeat
   // or CompleteTask arrives within 5s, the task is treated as failed.
   // 0 means no heartbeating required.
-  uint32 heartbeat_interval_secs = 4;
+  uint32 heartbeat_interval_secs = 6;
 
-  // Optional execution timeout in seconds: maximum time from StartTask
-  // to CompleteTask. 0 means no execution timeout.
-  uint32 execution_timeout_secs = 5;
+  // Optional execution timeout in seconds: maximum time from first
+  // TaskHeartbeat to CompleteTask. 0 means no execution timeout.
+  uint32 execution_timeout_secs = 7;
 }
 
 // CompleteTaskRequest and CompleteTaskResponse live in orchestrator.proto

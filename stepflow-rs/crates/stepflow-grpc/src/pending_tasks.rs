@@ -375,6 +375,24 @@ impl PendingTasks {
         self.tasks.len()
     }
 
+    /// Register and track a discovery task in a single call.
+    ///
+    /// Combines `TaskRegistry::register()` and `PendingTasks::track()` for
+    /// tasks initiated by the plugin itself (e.g., `ListComponentsRequest`).
+    /// Returns a receiver that will deliver the `FlowResult` when the worker
+    /// responds via `CompleteTask`.
+    pub fn register_and_track(
+        &self,
+        task_id: String,
+        component: String,
+        queue_timeout: Duration,
+        execution_timeout: Option<Duration>,
+    ) -> tokio::sync::oneshot::Receiver<FlowResult> {
+        let rx = self.task_registry.register(task_id.clone());
+        self.track(task_id, component, queue_timeout, execution_timeout);
+        rx
+    }
+
     /// Per-component health tracker for poison pill detection.
     pub fn component_health(&self) -> &ComponentHealthTracker {
         &self.component_health

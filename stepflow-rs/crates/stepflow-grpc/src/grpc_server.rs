@@ -91,13 +91,6 @@ impl QueueRegistry {
             .clone()
     }
 
-    /// Aggregate components from all registered queues.
-    pub fn list_all_components(&self) -> Vec<stepflow_core::component::ComponentInfo> {
-        self.queues
-            .iter()
-            .flat_map(|entry| entry.value().list_components())
-            .collect()
-    }
 }
 
 /// gRPC server for all Stepflow services (worker-facing and client-facing).
