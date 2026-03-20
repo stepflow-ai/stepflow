@@ -17,8 +17,3 @@ lint:
 breaking:
   use:
     - FILE
-  ignore:
-    # Pre-release: component discovery redesign (#797) intentionally
-    # renumbered fields and changed message shapes.
-    - stepflow/v1/tasks.proto
-    - stepflow/v1/components.proto
