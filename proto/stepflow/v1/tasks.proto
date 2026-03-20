@@ -157,17 +157,13 @@ message PullTasksRequest {
   // Set via STEPFLOW_QUEUE_NAME environment variable on the worker.
   string queue_name = 1;
 
-  // Maximum concurrent tasks this worker can accept.
-  // The orchestrator will not exceed this limit for this worker.
-  int32 max_concurrent = 2;
-
   // Worker-assigned unique identifier (UUID).
   // Used for logging and diagnostics on the orchestrator side. This is the
   // same ID the worker sends in TaskHeartbeatRequest.worker_id, allowing
   // correlation between PullTasks connections and heartbeat/completion RPCs.
   // Optional — if empty, the orchestrator assigns an opaque internal ID
   // for logging.
-  string worker_id = 3;
+  string worker_id = 2;
 }
 
 // A task dispatched to a worker for execution or discovery.
@@ -197,23 +193,12 @@ message TaskAssignment {
   // Contains the orchestrator URL that owns the current run.
   TaskContext context = 4;
 
-  // Queue timeout in seconds: maximum time the orchestrator will wait
-  // for the worker to call TaskHeartbeat after receiving this assignment.
-  // If the worker does not call TaskHeartbeat within this window, the
-  // orchestrator treats the task as lost in the queue.
-  // 0 means no queue timeout.
-  uint32 deadline_secs = 5;
-
   // Suggested heartbeat interval in seconds. The worker should send
   // TaskHeartbeat at this cadence after calling TaskHeartbeat. The
   // orchestrator uses a 5s crash-detection timeout — if no heartbeat
   // or CompleteTask arrives within 5s, the task is treated as failed.
   // 0 means no heartbeating required.
-  uint32 heartbeat_interval_secs = 6;
-
-  // Optional execution timeout in seconds: maximum time from first
-  // TaskHeartbeat to CompleteTask. 0 means no execution timeout.
-  uint32 execution_timeout_secs = 7;
+  uint32 heartbeat_interval_secs = 5;
 }
 
 // CompleteTaskRequest and CompleteTaskResponse live in orchestrator.proto

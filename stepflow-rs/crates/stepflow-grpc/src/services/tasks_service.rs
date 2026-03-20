@@ -81,12 +81,6 @@ impl TasksService for TasksServiceImpl {
             .get(&req.queue_name)
             .ok_or_else(|| grpc_err::not_found("queue", &req.queue_name))?;
 
-        let max_concurrent = if req.max_concurrent > 0 {
-            req.max_concurrent as usize
-        } else {
-            1
-        };
-
         // Use the worker's self-assigned UUID if provided, otherwise fall
         // back to the internal connection counter for logging.
         let internal_id = queue.register_worker();
@@ -97,16 +91,14 @@ impl TasksService for TasksServiceImpl {
         };
 
         log::info!(
-            "Worker {} connected for queue '{}', max_concurrent={}",
+            "Worker {} connected for queue '{}'",
             worker_label,
             req.queue_name,
-            max_concurrent,
         );
 
-        // Create a channel for the response stream.
-        // Buffer size matches max_concurrent so the worker can receive
-        // multiple tasks without backpressure stalling the queue.
-        let (tx, rx) = tokio::sync::mpsc::channel(max_concurrent);
+        // Channel buffer of 1 — workers control their own concurrency via
+        // a local semaphore and pull from the gRPC stream at their own pace.
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
 
         // Spawn a background task that pulls from the queue and sends
         // to the worker stream.
