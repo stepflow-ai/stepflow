@@ -35,7 +35,6 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use futures::stream::BoxStream;
-use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::{PluginError, Result};
 
 use stepflow_grpc::TaskAssignment;
@@ -173,11 +172,6 @@ impl TaskTransport for NatsTaskTransport {
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        // Component discovery is handled at the plugin level via
-        // ListComponentsRequest tasks, not by the transport.
-        Ok(vec![])
-    }
 }
 
 #[tonic::async_trait]

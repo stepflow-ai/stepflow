@@ -44,6 +44,7 @@ from google.protobuf import struct_pb2
 from stepflow_py.proto import (
     CompleteTaskRequest,
     ComponentExecuteResponse,
+    ComponentInfo,
     TaskAssignment,
     TaskError,
     TaskHeartbeatRequest,
@@ -715,6 +716,34 @@ def _set_execution_context(
         )
     except Exception:
         pass
+
+
+def build_component_info_list(
+    server: StepflowServer,
+) -> list[ComponentInfo]:
+    """Build proto ComponentInfo list from registered components.
+
+    Used by both gRPC and NATS workers to report available components
+    in response to ListComponentsRequest discovery tasks.
+    """
+    import json
+
+    infos = []
+    for name, entry in server._components.items():  # noqa: SLF001
+        info = ComponentInfo(
+            name=name,
+            description=entry.description or "",
+        )
+        try:
+            info.input_schema = json.dumps(entry.input_schema())
+        except Exception:
+            pass
+        try:
+            info.output_schema = json.dumps(entry.output_schema())
+        except Exception:
+            pass
+        infos.append(info)
+    return infos
 
 
 def proto_value_to_python(value: struct_pb2.Value) -> Any:

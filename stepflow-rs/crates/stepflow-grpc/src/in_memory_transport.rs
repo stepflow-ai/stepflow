@@ -23,7 +23,6 @@
 
 use std::sync::Arc;
 
-use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::Result;
 
 use crate::grpc_server::QueueRegistry;
@@ -89,11 +88,6 @@ impl TaskTransport for InMemoryTaskTransport {
         Ok(())
     }
 
-    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        // Component discovery is handled at the plugin level via
-        // ListComponentsRequest tasks, not by the transport.
-        Ok(vec![])
-    }
 }
 
 #[tonic::async_trait]
@@ -216,17 +210,4 @@ mod tests {
         assert_eq!(task.task_id, "t1");
     }
 
-    /// list_components returns empty — discovery is handled at plugin level.
-    #[tokio::test]
-    async fn test_list_components_returns_empty() {
-        let registry = Arc::new(QueueRegistry::default());
-        let transport = InMemoryTaskTransport::new(registry.clone(), "queue-a".to_string());
-
-        let components = transport
-            .list_components()
-            .await
-            .expect("list_components should succeed");
-
-        assert!(components.is_empty(), "Transport-level list_components should return empty");
-    }
 }

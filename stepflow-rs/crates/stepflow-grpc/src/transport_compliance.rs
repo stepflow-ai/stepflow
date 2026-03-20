@@ -15,8 +15,7 @@
 //! Provides two levels of compliance testing:
 //!
 //! - **Basic tests** ([`TransportComplianceTests::run_all`]) — require only
-//!   [`TaskTransport`]. Verify that send, list_components, and component_info
-//!   behave correctly.
+//!   [`TaskTransport`]. Verify that `send_task` behaves correctly.
 //!
 //! - **Round-trip tests** ([`TransportComplianceTests::run_all_readable`]) —
 //!   require [`TaskTransportRead`] (extends `TaskTransport` with a `recv_task`
@@ -75,8 +74,6 @@ impl TransportComplianceTests {
     {
         Self::test_send_task_succeeds(&factory).await;
         Self::test_send_task_with_route_params(&factory).await;
-        Self::test_list_components_empty_initially(&factory).await;
-        Self::test_component_info_not_found(&factory).await;
     }
 
     /// Run the full compliance suite including round-trip tests.
@@ -95,10 +92,6 @@ impl TransportComplianceTests {
         F: Fn() -> Fut,
         Fut: Future<Output = (Box<dyn TaskTransportRead>, String, String)>,
     {
-        // Basic tests
-        Self::test_list_components_empty_initially_read2(&factory).await;
-        Self::test_component_info_not_found_read2(&factory).await;
-
         // Round-trip tests — each gets isolated queue/subject names
         Self::test_round_trip2(&factory).await;
         Self::test_fifo_ordering2(&factory).await;
@@ -140,69 +133,6 @@ impl TransportComplianceTests {
             .send_task(make_task("compliance-send-params"), &params)
             .await
             .expect("send_task with route_params should succeed");
-    }
-
-    /// list_components on fresh transport returns empty.
-    pub async fn test_list_components_empty_initially<F, Fut>(factory: &F)
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = Box<dyn TaskTransport>>,
-    {
-        let transport = factory().await;
-        let components = transport
-            .list_components()
-            .await
-            .expect("list_components should succeed");
-        assert!(
-            components.is_empty(),
-            "Expected empty component list on fresh transport, got {} components",
-            components.len()
-        );
-    }
-
-    /// component_info for nonexistent component returns error.
-    pub async fn test_component_info_not_found<F, Fut>(factory: &F)
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = Box<dyn TaskTransport>>,
-    {
-        let transport = factory().await;
-        let result = transport.component_info("nonexistent/component").await;
-        assert!(
-            result.is_err(),
-            "component_info for nonexistent component should return error"
-        );
-    }
-
-    // =========================================================================
-    // Basic tests (TaskTransportRead — tuple factory)
-    // =========================================================================
-
-    async fn test_list_components_empty_initially_read2<F, Fut>(factory: &F)
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = (Box<dyn TaskTransportRead>, String, String)>,
-    {
-        let (transport, _, _) = factory().await;
-        let components = transport
-            .list_components()
-            .await
-            .expect("list_components should succeed");
-        assert!(components.is_empty());
-    }
-
-    async fn test_component_info_not_found_read2<F, Fut>(factory: &F)
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = (Box<dyn TaskTransportRead>, String, String)>,
-    {
-        let (transport, _, _) = factory().await;
-        assert!(
-            transport
-                .component_info("nonexistent/component")
-                .await
-                .is_err()
-        );
     }
 
     // =========================================================================

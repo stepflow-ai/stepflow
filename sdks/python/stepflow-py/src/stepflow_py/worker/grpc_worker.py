@@ -49,7 +49,6 @@ Task lifecycle:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import signal
@@ -72,6 +71,7 @@ from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
 # from this module.
 from stepflow_py.worker.task_handler import (
     _ensure_metrics,
+    build_component_info_list as _build_component_info_list,
     handle_task,
 )
 
@@ -444,23 +444,3 @@ async def _graceful_shutdown(
     logger.info("Graceful shutdown complete")
 
 
-def _build_component_info_list(
-    server: StepflowServer,
-) -> list[ComponentInfo]:
-    """Build proto ComponentInfo list from registered components."""
-    infos = []
-    for name, entry in server._components.items():  # noqa: SLF001
-        info = ComponentInfo(
-            name=name,
-            description=entry.description or "",
-        )
-        try:
-            info.input_schema = json.dumps(entry.input_schema())
-        except Exception:
-            pass
-        try:
-            info.output_schema = json.dumps(entry.output_schema())
-        except Exception:
-            pass
-        infos.append(info)
-    return infos

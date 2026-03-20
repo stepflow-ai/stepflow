@@ -33,7 +33,6 @@ Worker configuration:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -49,6 +48,7 @@ from stepflow_py.proto import (
 )
 from stepflow_py.worker.task_handler import (
     _ensure_metrics,
+    build_component_info_list as _build_component_info_list,
     complete_task_with_retry,
     handle_task,
 )
@@ -362,23 +362,3 @@ async def _handle_list_components(
         )
 
 
-def _build_component_info_list(
-    server: StepflowServer,
-) -> list[ComponentInfo]:
-    """Build proto ComponentInfo list from registered components."""
-    infos = []
-    for name, entry in server._components.items():  # noqa: SLF001
-        info = ComponentInfo(
-            name=name,
-            description=entry.description or "",
-        )
-        try:
-            info.input_schema = json.dumps(entry.input_schema())
-        except Exception:
-            pass
-        try:
-            info.output_schema = json.dumps(entry.output_schema())
-        except Exception:
-            pass
-        infos.append(info)
-    return infos
