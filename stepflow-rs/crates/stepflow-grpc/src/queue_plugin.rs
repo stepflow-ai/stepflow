@@ -124,8 +124,12 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         let seq = DISCOVERY_COUNTER.fetch_add(1, Ordering::Relaxed);
         let task_id = format!("discovery-{seq}");
 
-        // Build context with orchestrator URL so the worker can send CompleteTask
+        // Build context with orchestrator URL so the worker can send CompleteTask.
+        // This is always set by GrpcPlugin::ensure_initialized() before tasks flow.
         let context = self.build_context(None);
+        if context.is_none() {
+            log::warn!("No orchestrator URL available for discovery task — workers won't be able to respond");
+        }
 
         let task = proto::TaskAssignment {
             task_id: task_id.clone(),
@@ -138,7 +142,9 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
             execution_timeout_secs: 0,
         };
 
-        // Register in TaskRegistry + track in PendingTasks (for queue timeout)
+        // Register in TaskRegistry + track in PendingTasks (for queue timeout).
+        // Must happen before send_task to avoid a race where the worker
+        // completes before we register.
         let rx = self.registry.register_and_track(
             task_id.clone(),
             DISCOVERY_COMPONENT.to_string(),
@@ -152,9 +158,9 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
             .send_task(task, &std::collections::HashMap::new())
             .await
         {
-            self.registry.untrack(&task_id);
-            // If no workers are connected, return empty rather than erroring.
-            log::debug!("Discovery task dispatch failed: {e}");
+            // Clean up both PendingTasks tracking and TaskRegistry entry
+            self.registry.untrack_and_remove(&task_id);
+            log::debug!("Discovery task dispatch failed (no workers?): {e}");
             return Ok(vec![]);
         }
 
@@ -170,12 +176,12 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
             }
             Ok(Err(_)) => {
                 // Receiver dropped (task timed out via PendingTasks)
-                log::debug!("Discovery task cancelled");
+                log::warn!("Discovery task cancelled (worker timeout?)");
                 Ok(vec![])
             }
             Err(_) => {
                 // Our own timeout fired
-                log::debug!("Discovery task timed out");
+                log::warn!("Discovery task timed out after {}s", DISCOVERY_TIMEOUT.as_secs());
                 Ok(vec![])
             }
         }

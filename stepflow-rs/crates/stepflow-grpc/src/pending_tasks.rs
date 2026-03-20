@@ -271,6 +271,16 @@ impl PendingTasks {
         self.heartbeat_tracker.remove(task_id);
     }
 
+    /// Remove tracking AND the TaskRegistry entry for a task.
+    ///
+    /// Used for plugin-initiated tasks (e.g., discovery) where the plugin
+    /// owns both the registry entry and the tracking. The awaiting receiver
+    /// will get a `RecvError` (sender dropped).
+    pub fn untrack_and_remove(&self, task_id: &str) {
+        self.untrack(task_id);
+        self.task_registry.remove(task_id);
+    }
+
     /// Record a heartbeat from a worker (called by TaskHeartbeat RPC).
     ///
     /// This is the unified start + heartbeat method. On first call (task in
