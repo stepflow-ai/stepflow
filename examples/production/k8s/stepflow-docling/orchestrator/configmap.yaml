@@ -30,7 +30,7 @@ data:
         type: builtin
 
       docling:
-        type: pull
+        type: grpc
         queueName: docling
 
     routes:

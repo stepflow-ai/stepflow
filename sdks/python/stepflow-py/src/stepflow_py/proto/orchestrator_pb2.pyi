@@ -268,6 +268,7 @@ class CompleteTaskRequest(google.protobuf.message.Message):
     TASK_ID_FIELD_NUMBER: builtins.int
     RESPONSE_FIELD_NUMBER: builtins.int
     ERROR_FIELD_NUMBER: builtins.int
+    LIST_COMPONENTS_FIELD_NUMBER: builtins.int
     RUN_ID_FIELD_NUMBER: builtins.int
     task_id: builtins.str
     """The task ID from the TaskAssignment."""
@@ -284,22 +285,50 @@ class CompleteTaskRequest(google.protobuf.message.Message):
     def error(self) -> Global___TaskError:
         """Structured error (on failure)."""
 
+    @property
+    def list_components(self) -> Global___ListComponentsResult:
+        """Response to a /__stepflow/list_components discovery task.
+        Workers return their available components via this variant
+        instead of the normal response/error.
+        """
+
     def __init__(
         self,
         *,
         task_id: builtins.str = ...,
         response: tasks_pb2.ComponentExecuteResponse | None = ...,
         error: Global___TaskError | None = ...,
+        list_components: Global___ListComponentsResult | None = ...,
         run_id: builtins.str | None = ...,
     ) -> None: ...
-    def HasField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "response", b"response", "result", b"result", "run_id", b"run_id", "task_id", b"task_id"]) -> None: ...
+    def HasField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "list_components", b"list_components", "response", b"response", "result", b"result", "run_id", b"run_id"]) -> builtins.bool: ...
+    def ClearField(self, field_name: typing.Literal["_run_id", b"_run_id", "error", b"error", "list_components", b"list_components", "response", b"response", "result", b"result", "run_id", b"run_id", "task_id", b"task_id"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_run_id", b"_run_id"]) -> typing.Literal["run_id"] | None: ...
     @typing.overload
-    def WhichOneof(self, oneof_group: typing.Literal["result", b"result"]) -> typing.Literal["response", "error"] | None: ...
+    def WhichOneof(self, oneof_group: typing.Literal["result", b"result"]) -> typing.Literal["response", "error", "list_components"] | None: ...
 
 Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
+
+@typing.final
+class ListComponentsResult(google.protobuf.message.Message):
+    """Result of a component discovery task (/__stepflow/list_components).
+    Returned by workers via CompleteTask to report available components.
+    """
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    COMPONENTS_FIELD_NUMBER: builtins.int
+    @property
+    def components(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[tasks_pb2.ComponentInfo]: ...
+    def __init__(
+        self,
+        *,
+        components: collections.abc.Iterable[tasks_pb2.ComponentInfo] | None = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["components", b"components"]) -> None: ...
+
+Global___ListComponentsResult: typing_extensions.TypeAlias = ListComponentsResult
 
 @typing.final
 class CompleteTaskResponse(google.protobuf.message.Message):

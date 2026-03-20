@@ -24,7 +24,7 @@ plugins:
   # In production, text model workers connect to this queue and pull tasks.
   # Workers can run on CPU-optimized nodes and scale independently.
   text_models_cluster:
-    type: pull
+    type: grpc
     queueName: text_models
     # Workers connect to the orchestrator's gRPC service and pull tasks
     # No load balancer needed - the orchestrator manages task distribution
@@ -33,7 +33,7 @@ plugins:
   # Vision model workers connect to this queue, typically running on
   # GPU-enabled instances optimized for computer vision workloads.
   vision_models_cluster:
-    type: pull
+    type: grpc
     queueName: vision_models
     # Workers run on GPU instances (e.g., AWS p3, GCP n1-gpu)
     # and pull tasks from this queue

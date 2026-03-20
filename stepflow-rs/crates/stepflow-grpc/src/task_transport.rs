@@ -41,7 +41,15 @@ pub trait TaskTransport: Send + Sync + 'static {
     /// The transport should deliver the task to workers matching the
     /// component path. Returns once the task is durably enqueued (not
     /// necessarily delivered to a worker).
-    async fn send_task(&self, task: TaskAssignment) -> Result<()>;
+    ///
+    /// `route_params` contains transport-specific overrides from the route
+    /// rule (e.g., `subject` for NATS). Transports that don't use route
+    /// params may ignore this.
+    async fn send_task(
+        &self,
+        task: TaskAssignment,
+        route_params: &std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<()>;
 
     /// List components available from workers connected via this transport.
     ///
@@ -64,4 +72,29 @@ pub trait TaskTransport: Send + Sync + 'static {
                     .attach_printable(format!("component '{component}' not found"))
             })
     }
+}
+
+/// Read-side interface for consuming tasks from a transport queue.
+///
+/// This is a test-oriented trait — production workers use transport-specific
+/// clients (gRPC `PullTasks`, NATS `pull_subscribe`). The compliance test
+/// suite uses this trait to verify round-trip behavior (send → recv) without
+/// depending on transport-specific consumer APIs.
+///
+/// Implementations should consume from the same queue that [`TaskTransport::send_task`]
+/// writes to, allowing compliance tests to verify end-to-end delivery.
+#[tonic::async_trait]
+pub trait TaskTransportRead: TaskTransport {
+    /// Receive the next task from the queue.
+    ///
+    /// Blocks until a task is available or the timeout expires. Returns
+    /// `None` if no task is available within the timeout period.
+    ///
+    /// `subject_or_queue` identifies which queue/subject to read from
+    /// (e.g., queue name for in-memory, subject for NATS).
+    async fn recv_task(
+        &self,
+        subject_or_queue: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Option<TaskAssignment>>;
 }

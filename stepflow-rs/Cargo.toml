@@ -121,6 +121,7 @@ stepflow-dtos = { path = "./crates/stepflow-dtos" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
 stepflow-grpc = { path = "./crates/stepflow-grpc" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
+stepflow-nats = { path = "./crates/stepflow-nats" }
 stepflow-observability = { path = "./crates/stepflow-observability" }
 stepflow-plugin = { path = "./crates/stepflow-plugin" }
 stepflow-proto = { path = "./crates/stepflow-proto" }
@@ -129,6 +130,7 @@ stepflow-server = { path = "./crates/stepflow-server", default-features = false 
 stepflow-state = { path = "./crates/stepflow-state" }
 stepflow-state-etcd = { path = "./crates/stepflow-state-etcd" }
 stepflow-state-sql = { path = "./crates/stepflow-state-sql" }
+stepflow-test-utils = { path = "./crates/stepflow-test-utils" }
 stepflow-typecheck = { path = "./crates/stepflow-typecheck" }
 tempfile = "3.8"
 test-with = { version = "0.14.10", features = ["runtime"] }

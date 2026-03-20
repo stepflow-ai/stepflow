@@ -326,10 +326,10 @@ class GrpcContext(StepflowContext):
 def _python_to_proto_value(obj: Any) -> struct_pb2.Value:
     """Convert a Python object to a protobuf Value.
 
-    Delegates to grpc_worker's implementation which handles non-string dict keys.
+    Delegates to task_handler's implementation which handles non-string dict keys.
     """
-    from stepflow_py.worker.grpc_worker import (
-        _python_to_proto_value as _impl,
+    from stepflow_py.worker.task_handler import (
+        python_to_proto_value as _impl,
     )
 
     return _impl(obj)
@@ -338,10 +338,10 @@ def _python_to_proto_value(obj: Any) -> struct_pb2.Value:
 def _proto_value_to_python(value: struct_pb2.Value) -> Any:
     """Convert a protobuf Value to a Python object.
 
-    Delegates to grpc_worker's implementation which preserves integer types.
+    Delegates to task_handler's implementation which preserves integer types.
     """
-    from stepflow_py.worker.grpc_worker import (
-        _proto_value_to_python as _impl,
+    from stepflow_py.worker.task_handler import (
+        proto_value_to_python as _impl,
     )
 
     return _impl(value)

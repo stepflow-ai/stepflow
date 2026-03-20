@@ -20,7 +20,7 @@ plugins:
   # Python SDK Server - provides UDF functionality
   # This gives us access to the Python UDF component for embedded Python code
   python_sdk:
-    type: pull
+    type: grpc
     command: uv
     args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
     queueName: python_sdk
@@ -30,7 +30,7 @@ plugins:
   # Text Models Server - runs via subprocess with full Python environment
   # In development, this spawns a local Python process running the text models server
   text_models:
-    type: pull
+    type: grpc
     command: uv
     args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "text_models_server.py"]
     queueName: text_models
@@ -46,7 +46,7 @@ plugins:
   # Vision Models Server - runs via subprocess with full Python environment
   # Separate process for vision models allows independent scaling and resource allocation
   vision_models:
-    type: pull
+    type: grpc
     command: uv
     args: ["--project", "../../sdks/python/stepflow-py", "run", "python", "vision_models_server.py"]
     queueName: vision_models

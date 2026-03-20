@@ -291,6 +291,16 @@ Global___PullTasksRequest: typing_extensions.TypeAlias = PullTasksRequest
 
 @typing.final
 class TaskAssignment(google.protobuf.message.Message):
+    """A task dispatched to a worker for execution.
+
+    For queue-based transports (NATS JetStream, etc.), workers should
+    acknowledge the queue message immediately upon receipt — before
+    calling TaskHeartbeat or executing the component. The orchestrator
+    is the single source of truth for task lifecycle; queue-level
+    redelivery would conflict with the orchestrator's timeout and retry
+    tracking. See the ack semantics documentation in the NATS transport.
+    """
+
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     TASK_ID_FIELD_NUMBER: builtins.int

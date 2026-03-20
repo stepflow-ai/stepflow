@@ -229,9 +229,30 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     data,
                 })
             }
+            Some(TaskResult::ListComponents(list)) => {
+                // Convert the ListComponentsResult into a JSON value so it can
+                // flow through the existing task completion mechanism. The NATS
+                // plugin (or other queue transports) will parse this when the
+                // discovery task completes.
+                let components: Vec<serde_json::Value> = list
+                    .components
+                    .into_iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "name": c.name,
+                            "description": c.description,
+                            "input_schema": c.input_schema,
+                            "output_schema": c.output_schema,
+                        })
+                    })
+                    .collect();
+                FlowResult::Success(ValueRef::new(serde_json::json!({
+                    "components": components,
+                })))
+            }
             None => {
                 return Err(grpc_err::invalid_argument(
-                    "either response or error must be provided",
+                    "either response, error, or list_components must be provided",
                 ));
             }
         };

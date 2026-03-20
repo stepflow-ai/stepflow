@@ -140,7 +140,7 @@ class McpPluginConfig(Struct, kw_only=True, tag_field='type', tag='mcp'):
     ) = UNSET
 
 
-class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
+class GrpcPluginConfig(Struct, kw_only=True, tag_field='type', tag='grpc'):
     command: (
         Annotated[
             str | None,
@@ -186,6 +186,70 @@ class PullPluginConfig(Struct, kw_only=True, tag_field='type', tag='pull'):
             int | None,
             Meta(
                 description='Maximum time (in seconds) from first heartbeat to `CompleteTask`.\nIf the worker does not complete within this window, the task is\ntreated as failed. Heartbeat-based crash detection (5s timeout)\nprovides faster detection of hard worker crashes.\n\nDefaults to `null` (no execution timeout — relies on heartbeat\ncrash detection only).',
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+
+
+class NatsPluginConfig(Struct, kw_only=True, tag_field='type', tag='nats'):
+    url: Annotated[
+        str, Meta(description='NATS server URL (e.g., "nats://localhost:4222").')
+    ]
+    stream: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Default JetStream stream name. Can be overridden per-route via\nthe `stream` route param. At least one of plugin-level or\nroute-level `stream` must be set.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    consumer: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Durable consumer name for NATS JetStream. Required — workers use\nthis to create/resume a durable pull consumer within the stream.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    command: (
+        Annotated[
+            str | None,
+            Meta(
+                description='Command to launch the worker subprocess.\nIf not set, the plugin expects an external worker to connect.'
+            ),
+        ]
+        | UnsetType
+    ) = UNSET
+    args: (
+        Annotated[
+            list[str], Meta(description='Arguments for the worker subprocess command.')
+        ]
+        | UnsetType
+    ) = UNSET
+    env: (
+        Annotated[
+            dict[str, str],
+            Meta(description='Environment variables for the worker subprocess.'),
+        ]
+        | UnsetType
+    ) = UNSET
+    queueTimeoutSecs: (
+        Annotated[
+            int,
+            Meta(
+                description='Maximum time (in seconds) a task can wait in the queue for a\nworker to send its first heartbeat. Defaults to 30 seconds.',
+            ),
+        ]
+        | UnsetType
+    ) = 30
+    executionTimeoutSecs: (
+        Annotated[
+            int | None,
+            Meta(
+                description='Maximum time (in seconds) from first heartbeat to `CompleteTask`.\nDefaults to `null` (no execution timeout).',
             ),
         ]
         | UnsetType
@@ -582,7 +646,8 @@ SupportedPluginConfig: TypeAlias = (
     | BuiltinPluginConfig
     | MockPlugin
     | McpPluginConfig
-    | PullPluginConfig
+    | GrpcPluginConfig
+    | NatsPluginConfig
 )
 
 

@@ -215,7 +215,7 @@ impl StepRunner {
         };
 
         // Get plugin for this component (system error if fails)
-        let (plugin, resolved_component) = self
+        let (plugin, resolved_component, route_params) = self
             .run_context
             .env()
             .get_plugin_and_component(&self.step.component, input.clone())
@@ -223,7 +223,7 @@ impl StepRunner {
 
         // Execute the step (system error if infrastructure fails)
         let outcome = self
-            .execute(&plugin, &resolved_component, input, &step_id)
+            .execute(&plugin, &resolved_component, input, &step_id, &route_params)
             .await?;
 
         Ok(StepRunResult::new(step_id, component, outcome))
@@ -243,6 +243,7 @@ impl StepRunner {
         resolved_component: &str,
         input: ValueRef,
         step_id: &StepId,
+        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<FlowResult> {
         use stepflow_observability::fastrace::prelude::*;
 
@@ -285,6 +286,7 @@ impl StepRunner {
                     Some(step_id),
                     input,
                     attempt,
+                    route_params,
                 )
                 .await
             {

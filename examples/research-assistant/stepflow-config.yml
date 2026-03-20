@@ -8,7 +8,7 @@ plugins:
 
   # Research components via LangChain
   research:
-    type: pull
+    type: grpc
     command: uv
     args:
       - "--project"

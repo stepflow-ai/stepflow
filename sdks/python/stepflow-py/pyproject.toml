@@ -65,6 +65,9 @@ http = [
     "sse-starlette>=1.6.5",
     "opentelemetry-instrumentation-fastapi>=0.44b0",
 ]
+nats = [
+    "nats-py>=2.9.0",
+]
 langchain = [
     "langchain-core>=0.3",
 ]
@@ -138,6 +141,7 @@ opentelemetry-sdk = "opentelemetry"
 opentelemetry-exporter-otlp-proto-grpc = "opentelemetry"
 python-dateutil = "dateutil"
 grpcio = "grpc"
+nats-py = "nats"
 protobuf = "google"
 
 # Note: mypy configuration is at the workspace level (sdks/python/pyproject.toml)

@@ -30,7 +30,7 @@
 //! during service startup. Plugins register their task queues via
 //! [`register_queue`] and retrieve the server address via [`address`].
 //!
-//! [`PullPlugin`]: crate::grpc_plugin_config::PullPlugin
+//! [`GrpcPlugin`]: crate::grpc_plugin_config::GrpcPlugin
 //! [`register_queue`]: StepflowGrpcServer::register_queue
 //! [`address`]: StepflowGrpcServer::address
 
@@ -73,6 +73,31 @@ impl QueueRegistry {
     pub fn get(&self, name: &str) -> Option<Arc<PullTaskQueue>> {
         self.queues.get(name).map(|r| r.value().clone())
     }
+
+    /// Look up a queue by name, creating it on-demand if it doesn't exist.
+    ///
+    /// Used by `InMemoryTaskTransport` to support per-route `queueName`
+    /// overrides — new queues are automatically registered so that
+    /// `TasksService` can serve them to connecting workers.
+    pub fn get_or_create(&self, name: &str) -> Arc<PullTaskQueue> {
+        if let Some(queue) = self.queues.get(name) {
+            return queue.value().clone();
+        }
+        let queue = Arc::new(PullTaskQueue::new(name));
+        self.queues
+            .entry(name.to_string())
+            .or_insert(queue)
+            .value()
+            .clone()
+    }
+
+    /// Aggregate components from all registered queues.
+    pub fn list_all_components(&self) -> Vec<stepflow_core::component::ComponentInfo> {
+        self.queues
+            .iter()
+            .flat_map(|entry| entry.value().list_components())
+            .collect()
+    }
 }
 
 /// gRPC server for all Stepflow services (worker-facing and client-facing).
@@ -113,6 +138,14 @@ impl StepflowGrpcServer {
             pending_tasks: PendingTasks::new(task_registry),
             address: Mutex::new(None),
         }
+    }
+
+    /// Get the shared queue registry.
+    ///
+    /// Used by `InMemoryTaskTransport` to look up queues dynamically
+    /// based on route-level `queueName` overrides.
+    pub fn queue_registry(&self) -> &Arc<QueueRegistry> {
+        &self.queue_registry
     }
 
     /// Register a task queue under the given name.

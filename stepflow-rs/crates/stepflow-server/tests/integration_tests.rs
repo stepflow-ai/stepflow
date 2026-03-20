@@ -132,6 +132,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
             component_deny: None,
             plugin: "builtin".into(),
             component: None,
+            params: std::collections::HashMap::new(),
         }],
     );
 
@@ -144,6 +145,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
                 component_deny: None,
                 plugin: "mock".into(),
                 component: None,
+                params: std::collections::HashMap::new(),
             }],
         );
     }

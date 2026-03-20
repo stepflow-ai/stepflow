@@ -193,12 +193,23 @@ message CompleteTaskRequest {
 
     // Structured error (on failure).
     TaskError error = 3;
+
+    // Response to a /__stepflow/list_components discovery task.
+    // Workers return their available components via this variant
+    // instead of the normal response/error.
+    ListComponentsResult list_components = 5;
   }
 
   // The run ID (UUID) this task belongs to. Used for routing and
   // recovery gating — the orchestrator can check whether the run
   // is still being recovered before returning NOT_FOUND.
   optional string run_id = 4;
+}
+
+// Result of a component discovery task (/__stepflow/list_components).
+// Returned by workers via CompleteTask to report available components.
+message ListComponentsResult {
+  repeated ComponentInfo components = 1;
 }
 
 // Empty response — success is indicated by a non-error gRPC status.

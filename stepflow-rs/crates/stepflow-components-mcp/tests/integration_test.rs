@@ -84,8 +84,17 @@ async fn test_mcp_tool_execution() {
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
+    let empty_params = std::collections::HashMap::new();
     plugin
-        .start_task(&task_id, &echo_component, &run_context, None, echo_input, 1)
+        .start_task(
+            &task_id,
+            &echo_component,
+            &run_context,
+            None,
+            echo_input,
+            1,
+            &empty_params,
+        )
         .await
         .unwrap();
     let result = rx.await.unwrap();
@@ -112,8 +121,17 @@ async fn test_mcp_tool_execution() {
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
+    let empty_params = std::collections::HashMap::new();
     plugin
-        .start_task(&task_id, &add_component, &run_context, None, add_input, 1)
+        .start_task(
+            &task_id,
+            &add_component,
+            &run_context,
+            None,
+            add_input,
+            1,
+            &empty_params,
+        )
         .await
         .unwrap();
     let result = rx.await.unwrap();
@@ -152,8 +170,17 @@ async fn test_mcp_error_handling() {
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
+    let empty_params = std::collections::HashMap::new();
     let start_result = plugin
-        .start_task(&task_id, &bad_component, &run_context, None, input, 1)
+        .start_task(
+            &task_id,
+            &bad_component,
+            &run_context,
+            None,
+            input,
+            1,
+            &empty_params,
+        )
         .await;
     assert!(
         start_result.is_ok(),

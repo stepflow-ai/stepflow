@@ -272,7 +272,7 @@ mod tests {
 
     /// Two separate queues are fully independent — tasks pushed to one
     /// are never visible to the other. This models the per-plugin queue
-    /// architecture where each `type: pull` plugin gets its own queue.
+    /// architecture where each `type: grpc` plugin gets its own queue.
     #[test]
     fn test_separate_queues_are_isolated() {
         let queue_a = PullTaskQueue::new("test");

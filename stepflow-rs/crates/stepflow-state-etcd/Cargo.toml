@@ -25,6 +25,7 @@ uuid = { workspace = true }
 [dev-dependencies]
 etcd-client = "0.18"
 stepflow-state = { workspace = true }
+stepflow-test-utils.workspace = true
 testcontainers = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 uuid = { workspace = true }

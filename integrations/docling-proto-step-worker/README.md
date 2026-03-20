@@ -49,7 +49,7 @@ uv run docling-proto-step-worker
 ```yaml
 plugins:
   docling:
-    type: pull
+    type: grpc
     command: uv
     args: ["--project", "integrations/docling-proto-step-worker", "run", "docling-proto-step-worker"]
     queueName: docling

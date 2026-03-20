@@ -33,7 +33,7 @@ use crate::{DynPlugin, PluginError, Result};
 /// use stepflow_plugin::PluginRouterExt;
 ///
 /// async fn get_plugin(env: &StepflowEnvironment, component: &Component, input: ValueRef) {
-///     let (plugin, resolved_name) = env.get_plugin_and_component(component, input).unwrap();
+///     let (plugin, resolved_name, route_params) = env.get_plugin_and_component(component, input).unwrap();
 /// }
 /// ```
 pub trait PluginRouterExt {
@@ -44,12 +44,16 @@ pub trait PluginRouterExt {
     /// Panics if plugin router was not set during environment construction.
     fn plugin_router(&self) -> Arc<PluginRouter>;
 
-    /// Get a plugin and resolved component name for execution.
+    /// Get a plugin, resolved component name, and route params for execution.
     fn get_plugin_and_component(
         &self,
         component: &Component,
         input: ValueRef,
-    ) -> Result<(Arc<DynPlugin<'static>>, String)>;
+    ) -> Result<(
+        Arc<DynPlugin<'static>>,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    )>;
 
     /// List all registered plugins.
     fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>>;
@@ -65,12 +69,16 @@ impl PluginRouterExt for StepflowEnvironment {
         &self,
         component: &Component,
         input: ValueRef,
-    ) -> Result<(Arc<DynPlugin<'static>>, String)> {
+    ) -> Result<(
+        Arc<DynPlugin<'static>>,
+        String,
+        std::collections::HashMap<String, serde_json::Value>,
+    )> {
         let router = self.plugin_router();
-        let (plugin, name) = router
+        let (plugin, name, route_params) = router
             .get_plugin_and_component(component.path(), input)
             .change_context(PluginError::InvalidInput)?;
-        Ok((plugin.clone(), name))
+        Ok((plugin.clone(), name, route_params))
     }
 
     fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>> {

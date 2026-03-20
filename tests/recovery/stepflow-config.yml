@@ -2,7 +2,7 @@ plugins:
   builtin:
     type: builtin
   test-worker:
-    type: pull
+    type: grpc
     queueName: test-worker
     queueTimeoutSecs: 3
 

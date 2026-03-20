@@ -1063,6 +1063,15 @@ wheels = [
 ]
 
 [[package]]
+name = "nats-py"
+version = "2.14.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/f8/b956c4621ba88748ed707c52e69f95b7a50c8914e750edca59a5bef84a76/nats_py-2.14.0.tar.gz", hash = "sha256:4ed02cb8e3b55c68074a063aa2687087115d805d1513297da90cb2068fb07bed", size = 120751, upload-time = "2026-02-23T22:44:58.988Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/39/0e87753df1072254bac190b33ed34b264f28f6aa9bea0f01b7e818071756/nats_py-2.14.0-py3-none-any.whl", hash = "sha256:4116f5d2233ce16e63c3d5538fa40a5e207f75fcf42a741773929ddf1e29d19d", size = 82259, upload-time = "2026-02-23T22:45:00.152Z" },
+]
+
+[[package]]
 name = "openai"
 version = "1.97.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1855,6 +1864,9 @@ langchain = [
 local = [
     { name = "stepflow-orchestrator" },
 ]
+nats = [
+    { name = "nats-py" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1886,6 +1898,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.17.0" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3" },
     { name = "msgspec", specifier = ">=0.19.0" },
+    { name = "nats-py", marker = "extra == 'nats'", specifier = ">=2.9.0" },
     { name = "opentelemetry-api", specifier = ">=1.20.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
     { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'http'", specifier = ">=0.44b0" },
@@ -1897,7 +1910,7 @@ requires-dist = [
     { name = "typing-extensions", specifier = ">=4.7.1" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["http", "langchain", "local"]
+provides-extras = ["http", "nats", "langchain", "local"]
 
 [package.metadata.requires-dev]
 dev = [

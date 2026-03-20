@@ -53,13 +53,13 @@ plugins:
   # Langflow components via pull-based gRPC transport
   # Langflow workers connect to the orchestrator and pull tasks from this queue
   langflow_k8s:
-    type: pull
+    type: grpc
     queueName: langflow
 
   # Docling components via pull-based gRPC transport
   # Docling workers connect to the orchestrator and pull tasks from this queue
   docling_k8s:
-    type: pull
+    type: grpc
     queueName: docling
 
 # Routing rules

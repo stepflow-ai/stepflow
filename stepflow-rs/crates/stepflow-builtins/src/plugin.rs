@@ -81,6 +81,7 @@ impl Plugin for Builtins {
         step: Option<&StepId>,
         input: ValueRef,
         _attempt: u32,
+        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         let component = registry::get_component(component)?;
         let result = component

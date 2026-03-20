@@ -1,0 +1,42 @@
+[package]
+name = "stepflow-nats"
+description = "NATS JetStream task transport for Stepflow"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+async-nats = "0.40"
+dashmap.workspace = true
+error-stack.workspace = true
+futures.workspace = true
+log.workspace = true
+prost = "0.14"
+schemars.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+stepflow-core.workspace = true
+stepflow-grpc.workspace = true
+stepflow-plugin.workspace = true
+tokio.workspace = true
+tonic = { version = "0.14", features = ["transport"] }
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+async-nats = "0.40"
+futures.workspace = true
+prost = "0.14"
+serde_json.workspace = true
+stepflow-grpc.workspace = true
+stepflow-test-utils.workspace = true
+testcontainers.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true
