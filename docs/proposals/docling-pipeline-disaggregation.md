@@ -45,6 +45,8 @@ Three components registered by the worker: `/docling/classify`, `/docling/conver
   - `facade/translate.py` — Pure functions: request→flow_input, flow_output→response
 - `examples/production/k8s/stepflow-docling-grpc/` — K8s manifests, apply/teardown scripts, parity test
 
+> **Note on docling versioning:** All API references in this proposal (class names, import paths, option flags) have been verified against both the research base (commit 684f59f2, Feb 2026) and current docling v2.80.0 (March 2026). Key current-version facts: `StandardPdfPipeline` is the multi-threaded production pipeline; the sequential variant is `LegacyStandardPdfPipeline`; remote services require `enable_remote_services=True` on `PdfPipelineOptions`.
+
 ## Motivation: Why Disaggregate?
 
 ### Performance
@@ -61,17 +63,19 @@ The dual-pipeline approach lets callers choose between the standard pipeline (hi
 
 ## Docling Pipeline Internals — Why Naive Fan-Out Breaks
 
-> This section summarizes research into docling's `StandardPdfPipeline` source code (commit 684f59f2, Feb 2026) via DeepWiki analysis.
+> This section summarizes research into docling's `StandardPdfPipeline` source code (commit 684f59f2, Feb 2026) via DeepWiki analysis. All claims have been verified against current docling source (v2.80.0 as of March 2026).
+>
+> **Pipeline class naming:** In current docling, `StandardPdfPipeline` (in `docling/pipeline/standard_pdf_pipeline.py`) IS the multi-threaded production pipeline. The old sequential single-threaded variant has been moved to `LegacyStandardPdfPipeline`. Our worker correctly imports and uses `StandardPdfPipeline`.
 
 ### Phase 1: Per-Page Model Inference (parallelizable)
 
 Five stages, each in its own thread with bounded queues (`ThreadedQueue`, max 128 items):
 
-1. **Preprocess** (`PreprocessThreadedStage`) — Lazy-loads page backend via `backend.load_page(page_no)`, extracts page images at multiple scales, populates programmatic text cells (character/word/line level with bounding boxes from DoclingParse V4 backend).
-2. **OCR** (`BaseOcrModel`) — Tesseract/EasyOCR/RapidOCR on page images. Batch size 64.
-3. **Layout** (`LayoutModel` — HERON/EGRET) — Object detection for bounding boxes (text blocks, figures, tables, headers). Batch size 64.
-4. **Table Structure** (`TableStructureModel` — TableFormer FAST/ACCURATE) — Row/column structure within table bounding boxes. Batch size 4 (expensive: 2-6s per table on CPU).
-5. **Page Assembly** (`PageAssembleModel`) — Combines OCR + layout + table results into `page.assembled`. Batch size 1.
+1. **Preprocess** (`PreprocessThreadedStage` / `PagePreprocessingModel`) — Lazy-loads page backend via `backend.load_page(page_no - 1)` (0-indexed — docling page numbers are 1-indexed), extracts page images at multiple scales, populates programmatic text cells (character/word/line level with bounding boxes from configured PDF backend, default `dlparse_v2`).
+2. **OCR** (`BaseOcrModel`) — Tesseract/EasyOCR/RapidOCR on page images. Batch size 64. Only runs where programmatic text is absent unless `force_full_page_ocr=True`.
+3. **Layout** (`LayoutModel` — HERON/EGRET, RT-DETR architecture, ONNX Runtime) — Object detection for bounding boxes (text blocks, figures, tables, headers). Batch size 64. Always runs.
+4. **Table Structure** (`TableStructureModel` — TableFormer FAST/ACCURATE, ONNX Runtime) — Row/column structure within table bounding boxes. Batch size 4 (expensive: 2-6s per table on CPU). Gated by `do_table_structure=True` (default True).
+5. **Page Assembly** (`PageAssembleModel`) — Combines OCR + layout + table results into `page.assembled`. Batch size 1. Always runs.
 
 All five stages are per-page. Docling already exploits page-level parallelism within a single process via its threading model.
 
@@ -79,9 +83,9 @@ All five stages are per-page. Docling already exploits page-level parallelism wi
 
 After all pages complete Phase 1:
 
-1. **Layout Postprocessing** (`LayoutPostprocessor`) — Resolves overlapping bounding box clusters (R-tree + interval tree spatial indexing, UnionFind grouping). Maps text cells to clusters. Merges hierarchical elements. Type-specific overlap thresholds.
-2. **Reading Order** (`ReadingOrderModel`) — **CROSS-PAGE AWARE.** Sorts elements across all pages. Associates captions with figures/tables across page boundaries. Merges hyphenated text at page breaks. Groups consecutive list items. Places headers/footers in furniture layer.
-3. **Enrichment** (optional) — Picture classification, description, chart extraction, code/formula detection.
+1. **Layout Postprocessing** (`LayoutPostprocessor` at `docling/utils/layout_postprocessor.py`) — Resolves overlapping bounding box clusters (R-tree + interval tree spatial indexing, UnionFind grouping). Maps text cells to clusters. Merges hierarchical elements. Type-specific overlap thresholds.
+2. **Reading Order** (`ReadingOrderModel` at `docling/models/readingorder_model.py`) — **CROSS-PAGE AWARE.** Sorts elements across all pages. Associates captions with figures/tables across page boundaries. Merges hyphenated text at page breaks. Groups consecutive list items. Places headers/footers in furniture layer.
+3. **Enrichment** (optional) — Picture classification, description, chart extraction, code/formula detection. All default to `False`. See "Enrichment Models in the Disaggregated Context" section.
 
 ### The Cross-Page Problem
 
@@ -207,7 +211,7 @@ Fetches the source document once, extracts per-page data, stores each page as an
 3. For each page N:
    - `load_page(N)` — loads just that page
    - Extract page image at configured `images_scale` (default 2.0)
-   - Extract programmatic text cells (character/word/line level with bounding boxes) via DoclingParse V4 backend
+   - Extract programmatic text cells (character/word/line level with bounding boxes) via the configured docling-parse backend (default: `dlparse_v2`, passed through from `pipeline_config` — do NOT hardcode V4, see note below)
    - Extract page dimensions
    - Store as blob: `{page_no, image_bytes, text_cells, dimensions}`
 4. Return ordered list of page blob references
@@ -226,6 +230,10 @@ Fetches the source document once, extracts per-page data, stores each page as an
 
 **Performance:** Serial, I/O-bound. pypdfium2 renders at ~50-100ms/page, so 500 pages ≈ 25-50s. This is the cost of avoiding 25GB of blob traffic (vs. 500 workers each fetching a 50MB PDF).
 
+**Note — backend selection:** Always pass the `pdf_backend` value from `pipeline_config` through to the backend constructor. The docling-serve default is `dlparse_v2`. `dlparse_v4` is a valid enum value but has a known memory accumulation issue on long documents (>20GB for 500-page PDFs, docling issue #2077) — exactly the documents that motivate fan-out. Using it unconditionally would violate parity for default-configured clients and introduce a memory regression.
+
+**Note — page indexing:** The backend `load_page()` API is **0-indexed**. DoclingDocument page numbers are 1-indexed. Always call `backend.load_page(page_no - 1)` — this is how `PreprocessThreadedStage` calls it internally.
+
 #### `per_page_inference` (NEW — standard pipeline only)
 
 Runs the expensive ML models on a single page.
@@ -241,7 +249,7 @@ Runs the expensive ML models on a single page.
 
 **Output:** Serialized page assembly result (layout clusters with bounding boxes, text cells mapped to clusters, table structures with row/column spans). Stored as blob.
 
-**Notes:** This component wraps the same models that docling's `StandardPdfPipeline` stages 1-5 run internally. The key difference is that we invoke them for a single page from extracted data (blob), not by driving the pipeline's threading model. The `ConverterCache` pattern still applies for model loading.
+**Notes:** This component invokes the same model classes that `StandardPdfPipeline` uses internally, but directly — without the `ThreadedPipelineStage` wrappers. The relevant classes are `PagePreprocessingModel`, `BaseOcrModel` (and its implementations), `LayoutModel`, `TableStructureModel`, and `PageAssembleModel`. The canonical reference for how to initialize them standalone is `StandardPdfPipeline._init_models()` — that method instantiates all five models in one place. The `ConverterCache` pattern still applies for model loading across tasks.
 
 #### `vlm_infer_page` (NEW — VLM pipeline only)
 
@@ -266,14 +274,21 @@ Takes ordered per-page inference results and produces a fully assembled `Docling
 
 **Processing:**
 1. Deserialize per-page results from blobs
-2. Run `LayoutPostprocessor` — overlap resolution, cell-to-cluster mapping, hierarchy merging
-3. Run `ReadingOrderModel` — cross-page element sorting, caption association, hyphenation merging, list grouping, header/footer classification
-4. Construct `DoclingDocument` from assembled structure
-5. Run exports (markdown, HTML, etc.) per requested `to_formats`
+2. Run `_integrate_results()` — final per-page cleanup/integration step, merges page elements into `ConversionResult.assembled`
+3. Run `LayoutPostprocessor` (`docling/utils/layout_postprocessor.py`) via `_assemble_document()` — overlap resolution, cell-to-cluster mapping, hierarchy merging
+4. Run `ReadingOrderModel` (`docling/models/readingorder_model.py`) via `_assemble_document()` — cross-page element sorting, caption association, hyphenation merging, list grouping, header/footer classification
+5. Construct `DoclingDocument` from assembled structure
+6. Run exports (markdown, HTML, etc.) per requested `to_formats`
 
 **Output:** Same shape as current `convert` component: `{document, document_dict, status, errors, processing_time, timings}`
 
-**Notes:** `ReadingOrderModel` and `LayoutPostprocessor` are pure computation (spatial sorting, R-tree indexing). No GPU, no large model weights. They need to be instantiated outside of `StandardPdfPipeline.__init__()` — initialization requirements need verification. This is the most complex new component because it replicates docling's `_assemble_document()` and `_integrate_results()` logic.
+**Notes:** `ReadingOrderModel` and `LayoutPostprocessor` are pure computation (spatial sorting, R-tree indexing). No GPU, no large model weights. They need to be instantiated outside of `StandardPdfPipeline.__init__()` — initialization requirements need verification (`StandardPdfPipeline._init_models()` is the reference).
+
+This is the most complex new component. The two key methods from `standard_pdf_pipeline.py` run in this order:
+1. `_integrate_results()` — final per-page cleanup/integration step, merges page elements into `ConversionResult.assembled`
+2. `_assemble_document()` — runs `LayoutPostprocessor`, then `ReadingOrderModel`, constructs `DoclingDocument`, generates page/element images, aggregates confidence scores
+
+Method names are stable; avoid relying on specific line numbers as these shift with each release. The implementation should trace these methods in order.
 
 #### `assemble_doctags` (NEW)
 
@@ -283,13 +298,23 @@ Takes ordered per-page DocTags strings and produces a `DoclingDocument`.
 
 **Processing:**
 1. Collect DocTags strings and page images in order
-2. Call `DocTagsDocument.from_doctags_and_image_pairs(doctags_pages, image_pages)` — well-defined docling-core API
-3. Optionally extract text from PDF backend if `force_backend_text=True`
-4. Run exports per requested `to_formats`
+2. Call `DocTagsDocument.from_doctags_and_image_pairs(doctags_strings, page_images)` — returns a `DocTagsDocument` (not yet a `DoclingDocument`)
+3. Call `DoclingDocument.load_from_doctags(doctags_doc, document_name=name)` — converts to the final `DoclingDocument`
+4. Optionally extract text from PDF backend if `force_backend_text=True`
+5. Run exports per requested `to_formats`
 
 **Output:** Same shape as `assemble_standard`.
 
 **Notes:** Simpler than `assemble_standard` — DocTags already encode element types, hierarchy, and bounding boxes. Reading order is implicit in the DocTags sequence. No `ReadingOrderModel` needed.
+
+**Import paths:** `DocTagsDocument` lives in `docling_core.types.doc.document` (note the `.document` submodule, not the top-level `docling_core.types.doc`). `DoclingDocument` is in `docling_core.types.doc`. Both steps are required — calling only `from_doctags_and_image_pairs()` and treating the result as a `DoclingDocument` will fail at runtime:
+```python
+from docling_core.types.doc import DoclingDocument
+from docling_core.types.doc.document import DocTagsDocument
+
+doctags_doc = DocTagsDocument.from_doctags_and_image_pairs(doctags_strings, page_images)
+doc = DoclingDocument.load_from_doctags(doctags_doc, document_name="document")
+```
 
 #### `chunk` (EXISTING — unchanged)
 
@@ -335,8 +360,9 @@ Implement the standard pipeline fan-out. Components: `preprocess_pages`, `per_pa
 **Key risks:**
 1. Serializing `page.assembled` through the blob store — docling's internal types (`DocItemLabel`, `Cluster`, `TableCell`) must be JSON-serializable. They're Pydantic-based (docling-core), which is promising.
 2. Instantiating `ReadingOrderModel` and `LayoutPostprocessor` outside `StandardPdfPipeline.__init__()`. Both are pure computation, but their initialization path needs verification.
-3. `MapComponent.execute_batch()` — referenced in `map.rs` but not found in codebase via grep. **Hard blocker.** Must be implemented or discovered before fan-out works.
+3. `MapComponent.execute_batch()` — implemented in `stepflow-plugin/src/context.rs` (not in builtins as previously thought). Confirmed working. See note below on `max_concurrency`.
 4. Intermediate data contract — the per-page result schema must be well-defined and versioned.
+5. **`max_concurrency` not yet enforced in `execute_batch`** — `context.rs` accepts the parameter but has a `// TODO: Pass max_concurrency to subflow submission` comment. For a 500-page document this means 500 concurrent subflows all competing for blob store writes simultaneously. The fix is a semaphore in `execute_via_channel` gating the submission rate. Must be resolved before testing with large documents. See also "Future Ideas Under Discussion".
 
 ### Phase 3: VLM Pipeline
 
@@ -346,6 +372,47 @@ Add the VLM path. Components: `vlm_infer_page`, `assemble_doctags`. New flow YAM
 
 **Why Phase 3 and not Phase 2:** The VLM path is simpler — `vlm_infer_page` is an HTTP POST returning a string, `assemble_doctags` calls one well-defined API. Building the fan-out skeleton for the harder standard pipeline first ensures the architecture handles complex intermediate data. The VLM path then slots in trivially.
 
+## Enrichment Models in the Disaggregated Context
+
+### What Enrichment Models Are
+
+Docling's pipeline has a third optional phase that runs after document assembly. These models operate on fully assembled `DoclingDocument` elements — not on raw pages — and are all **disabled by default**. They are gated individually by `PdfPipelineOptions` flags:
+
+| Model | Gate flag | Default | Notes |
+|---|---|---|---|
+| `DocumentPictureClassifier` | `do_picture_classification` | `False` | EfficientNet-B0, 16 picture classes |
+| `PictureDescriptionVlmModel` | `do_picture_description` | `False` | VLM captioning; supports inline HF models or OpenAI-compatible API |
+| `CodeFormulaModel` | `do_code_enrichment` / `do_formula_enrichment` | `False` / `False` | Single model, two flags; HF `AutoModelForImageTextToText` |
+
+### The Page Backend Dependency
+
+All three enrichment models crop image regions from page images to do their work. In the monolithic pipeline, they can do this because `_release_page_resources()` (called after `PageAssembleModel`) sets `keep_backend=True` when any enrichment model is enabled — the page backend stays in memory through the enrichment phase.
+
+In the disaggregated design, `per_page_inference` workers do not hold page backends after they return their results. The page blob contains the **rendered page image**, not a live backend handle. This means:
+
+**Enrichment models cannot run in `per_page_inference`. They must run in `assemble_standard`.**
+
+`assemble_standard` already has access to the page images (they are in the page blobs), so it can crop element bounding boxes from them to feed enrichment models. The flow is:
+
+1. Fan-in completes — `assemble_standard` has all per-page blobs
+2. `_integrate_results()` + `_assemble_document()` → `DoclingDocument` constructed
+3. If any enrichment flags are enabled: run enrichment models using page images from blobs
+4. Export to requested `to_formats`
+
+### Implementation Implications
+
+**`assemble_standard` must receive enrichment flags.** The input schema needs `do_picture_classification`, `do_picture_description`, `do_code_enrichment`, `do_formula_enrichment` from the original request options — either passed directly or forwarded through `pipeline_config`.
+
+**Page images must be retained in blobs until assembly completes.** Option B's page blob design already satisfies this — blobs persist until the assembly component finishes. No architectural change needed, but blob TTL policy (a future concern, see Blob Store section below) must not expire page blobs before enrichment runs.
+
+**`CodeFormulaModel` requires `keep_backend=True` in the original pipeline** because it needs PDF backend access for some operations. In the disaggregated design, this translates to: the page image in the blob is sufficient for code/formula crops, but any operation requiring the raw PDF backend (e.g., text cell access) is not available post-fan-in. This needs verification when implementing enrichment in `assemble_standard`.
+
+**`PictureDescriptionVlmModel` with API backend** requires `enable_remote_services=True` on `PdfPipelineOptions`. When not set, docling raises `OperationNotAllowed`. This is an external HTTP call — structurally similar to `vlm_infer_page`. At high enrichment volume it may warrant its own worker queue rather than blocking `assemble_standard`. This is a future optimization.
+
+### Default Behaviour and Parity
+
+Since all enrichment models default to `False`, the initial Phase 2 implementation of `assemble_standard` can defer enrichment support entirely without breaking parity. A docling-serve client using default options will see identical output. Enrichment support in the disaggregated path can be added as a follow-on once the core fan-out is validated.
+
 ## Blob Store Considerations (Future)
 
 The in-memory blob store is sufficient for the local kind cluster and development. At scale, per-page blob traffic becomes significant: a 500-page document produces ~500 page blobs during preprocess, ~500 result blobs during inference, all consumed by assembly. Consider:
@@ -354,6 +421,50 @@ The in-memory blob store is sufficient for the local kind cluster and developmen
 - Compression of page blobs (page images are the dominant size)
 
 These are not blockers for the initial implementation but should be tracked as the system handles larger workloads.
+
+## Future Ideas Under Discussion
+
+This section captures ideas that are deliberately deferred from the current proposal scope. They are worth preserving for future sessions rather than losing in conversation.
+
+### Short-Document Fan-Out Bypass
+
+For documents below a page threshold (likely 3-5 pages), the fan-out overhead — blob store round-trips for page extraction, MapComponent subflow setup, assembly component startup — may exceed the ML inference savings. The monolithic `convert` component path should remain registered, and a future optimisation could route short documents directly to it, bypassing the fan-out flow entirely. The classify step already has visibility into page count, making it a natural routing point.
+
+Deliberately deferred: adds conditional routing complexity and the threshold requires empirical data from real workloads to set correctly. For now, every document regardless of page count goes through the fan-out path. "Every page is a page."
+
+### `max_concurrency` Enforcement in `MapComponent`
+
+`execute_batch` in `context.rs` currently accepts `max_concurrency` but has a `// TODO: Pass max_concurrency to subflow submission` comment — the parameter is not yet enforced. For a 500-page document this means 500 concurrent subflows all competing for blob store writes simultaneously. This is a real Phase 2 implementation item and should be resolved before testing with large documents. The fix is a semaphore in `execute_via_channel` gating the submission rate.
+
+### `preprocess_pages` in Rust via `pdfium-render`
+
+`preprocess_pages` is the serial bottleneck that scales with document size: N page renders + N concurrent blob writes. The PDF rendering is already C++ (pdfium) regardless of language — pypdfium2 is a thin Python wrapper. The `pdfium-render` Rust crate wraps the same underlying library. A Rust implementation would benefit from native async concurrent blob writes without `asyncio.to_thread` overhead, and would scale better as document size grows. Most compelling for the large-document case (100+ pages) that motivates fan-out in the first place. Track after Phase 2 is validated.
+
+### `/docling/chunk` as a Rust Worker Component
+
+`HybridChunker` is algorithm + token counting — pure CPU, no ML, no GPU path. The `tokenizers` crate is literally the Rust library that `pip install tokenizers` wraps. A Rust `chunk` component would eliminate the Python worker overhead and could run in the same pod as `assemble_standard` to avoid a blob store write/read cycle for the assembled document dict. This is the highest-payoff Rust component because:
+- No new dependencies: `tokenizers` crate already exists
+- Well-encapsulated: input is a `DoclingDocument` JSON blob, output is a chunk list
+- Naturally CPU-bound: no GPU consideration needed
+- HybridChunker logic is algorithmic and straightforward to port
+
+Note: this runs as a proper gRPC pull worker, not as an in-process builtin, per the principle that no flow execution runs in the orchestrator.
+
+### Rust Inference via `ort` Crate (ONNX Runtime Bindings)
+
+Docling's layout model (HERON/RT-DETR) and table structure model (TableFormer) are already ONNX models — no conversion step needed. The `ort` crate provides production-grade Rust bindings for ONNX Runtime and supports CUDA, TensorRT, and OpenVINO execution providers. This is the right Rust path for running the models in `per_page_inference` natively, not Candle (see below). Relevant when considering a full Rust `per_page_inference` worker that eliminates the Python process entirely.
+
+### HuggingFace Candle for Enrichment Models
+
+Candle is HuggingFace's Rust ML framework — actively developed, production-ready, CUDA/Metal support, genuinely no longer Python-only. However, Candle is optimised for Transformer/LLM-style architectures. The docling models relevant to `per_page_inference` (HERON RT-DETR layout, TableFormer table structure) are object-detection models best served by the `ort` crate via their existing ONNX representations.
+
+Candle becomes relevant for the enrichment model path: `CodeFormulaModel` and `PictureDescriptionVlmModel` use HuggingFace Transformers and could eventually run natively in Rust via Candle. For models that are already ONNX (`ort`) or need to stay in the HuggingFace Python ecosystem for now, Candle is lower priority. Worth revisiting when enrichment support is being added to `assemble_standard` in earnest.
+
+### Per-Model Fan-Out Within `per_page_inference`
+
+For workloads dominated by table-heavy documents (financial reports, regulatory filings), individual pages with many complex tables become stragglers under page-level fan-out. A deeper decomposition would fan out at the model level: layout inference → per-table TableFormer inference → page assembly, with each stage having its own worker queue and independent scaling.
+
+This would require owning the coordination between model stages and tracking docling's model API surface as it evolves. The right trigger is profiling data from real workloads showing table structure as the dominant bottleneck. Deliberately deferred until page-level fan-out is validated and real traffic patterns are understood.
 
 ## Success Criteria
 
