@@ -91,8 +91,6 @@ class TasksServiceServicer(object):
 
         The worker declares its concurrency limit. The stream stays open for
         the worker's lifetime — tasks are sent as they become available.
-        Component discovery happens via ListComponentsRequest tasks sent
-        through the stream, not at connection time.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

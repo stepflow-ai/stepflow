@@ -47,8 +47,6 @@ service TasksService {
   //
   // The worker declares its concurrency limit. The stream stays open for
   // the worker's lifetime — tasks are sent as they become available.
-  // Component discovery happens via ListComponentsRequest tasks sent
-  // through the stream, not at connection time.
   rpc PullTasks(PullTasksRequest) returns (stream TaskAssignment);
 
   // Look up the current orchestrator for a run.

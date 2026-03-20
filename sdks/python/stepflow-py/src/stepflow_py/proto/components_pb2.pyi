@@ -55,18 +55,55 @@ class ListRegisteredComponentsResponse(google.protobuf.message.Message):
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
     COMPONENTS_FIELD_NUMBER: builtins.int
+    COMPLETE_FIELD_NUMBER: builtins.int
+    FAILED_PLUGINS_FIELD_NUMBER: builtins.int
+    complete: builtins.bool
+    """True if all plugins responded successfully. When false, the component
+    list is partial — see `failed_plugins` for details.
+    """
     @property
     def components(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___ComponentInfoEntry]:
-        """All available components, sorted by name."""
+        """All available components, sorted by name.
+        When some plugins fail discovery, this contains components from the
+        plugins that succeeded — check `complete` and `failed_plugins`.
+        """
+
+    @property
+    def failed_plugins(self) -> google.protobuf.internal.containers.RepeatedCompositeFieldContainer[Global___PluginDiscoveryError]:
+        """Plugins that failed component discovery (empty when complete is true)."""
 
     def __init__(
         self,
         *,
         components: collections.abc.Iterable[Global___ComponentInfoEntry] | None = ...,
+        complete: builtins.bool = ...,
+        failed_plugins: collections.abc.Iterable[Global___PluginDiscoveryError] | None = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["components", b"components"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["complete", b"complete", "components", b"components", "failed_plugins", b"failed_plugins"]) -> None: ...
 
 Global___ListRegisteredComponentsResponse: typing_extensions.TypeAlias = ListRegisteredComponentsResponse
+
+@typing.final
+class PluginDiscoveryError(google.protobuf.message.Message):
+    """A plugin that failed during component discovery."""
+
+    DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+    PLUGIN_FIELD_NUMBER: builtins.int
+    ERROR_FIELD_NUMBER: builtins.int
+    plugin: builtins.str
+    """Plugin name from the orchestrator config (e.g., "python", "node")."""
+    error: builtins.str
+    """Human-readable error message."""
+    def __init__(
+        self,
+        *,
+        plugin: builtins.str = ...,
+        error: builtins.str = ...,
+    ) -> None: ...
+    def ClearField(self, field_name: typing.Literal["error", b"error", "plugin", b"plugin"]) -> None: ...
+
+Global___PluginDiscoveryError: typing_extensions.TypeAlias = PluginDiscoveryError
 
 @typing.final
 class ComponentInfoEntry(google.protobuf.message.Message):

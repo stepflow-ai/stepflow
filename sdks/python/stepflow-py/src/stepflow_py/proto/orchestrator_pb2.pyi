@@ -287,7 +287,7 @@ class CompleteTaskRequest(google.protobuf.message.Message):
 
     @property
     def list_components(self) -> Global___ListComponentsResult:
-        """Response to a /__stepflow/list_components discovery task.
+        """Response to a ListComponentsRequest discovery task.
         Workers return their available components via this variant
         instead of the normal response/error.
         """
@@ -312,7 +312,7 @@ Global___CompleteTaskRequest: typing_extensions.TypeAlias = CompleteTaskRequest
 
 @typing.final
 class ListComponentsResult(google.protobuf.message.Message):
-    """Result of a component discovery task (/__stepflow/list_components).
+    """Result of a ListComponentsRequest discovery task.
     Returned by workers via CompleteTask to report available components.
     """
 

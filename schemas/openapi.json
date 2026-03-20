@@ -1454,10 +1454,22 @@
             "items": {
               "$ref": "#/components/schemas/ComponentInfo"
             }
+          },
+          "complete": {
+            "description": "True if all plugins responded successfully.",
+            "type": "boolean"
+          },
+          "failedPlugins": {
+            "description": "Plugins that failed component discovery (empty when complete is true).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginDiscoveryError"
+            }
           }
         },
         "required": [
-          "components"
+          "components",
+          "complete"
         ]
       },
       "ComponentInfo": {
@@ -1518,6 +1530,24 @@
         "description": "A valid JSON Schema object.",
         "type": "object",
         "additionalProperties": true
+      },
+      "PluginDiscoveryError": {
+        "description": "Error from a plugin that failed component discovery.",
+        "type": "object",
+        "properties": {
+          "plugin": {
+            "description": "Plugin name from the orchestrator config.",
+            "type": "string"
+          },
+          "error": {
+            "description": "Human-readable error message.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "error"
+        ]
       },
       "StatusEventStepReady": {
         "title": "StatusEventStepReady",

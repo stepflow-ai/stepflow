@@ -35,6 +35,11 @@ async def test_list_components_returns_builtins(stepflow_client: StepflowClient)
     response = await stepflow_client.list_components()
     component_paths = [c.component for c in response.components]
 
+    # All plugins should succeed
+    assert response.complete, (
+        f"Expected complete=True, failed_plugins={response.failed_plugins}"
+    )
+
     # Builtin plugin should provide at least these core components
     assert any("openai" in p for p in component_paths), (
         f"Expected an openai component in {component_paths}"

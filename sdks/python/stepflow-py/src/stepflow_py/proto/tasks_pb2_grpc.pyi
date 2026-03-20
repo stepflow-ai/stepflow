@@ -123,8 +123,6 @@ class TasksServiceStub(typing.Generic[_TasksServicePullTasksType, _TasksServiceG
 
     The worker declares its concurrency limit. The stream stays open for
     the worker's lifetime — tasks are sent as they become available.
-    Component discovery happens via ListComponentsRequest tasks sent
-    through the stream, not at connection time.
     """
 
     GetOrchestratorForRun: _TasksServiceGetOrchestratorForRunType
@@ -183,8 +181,6 @@ class TasksServiceServicer(metaclass=abc.ABCMeta):
 
         The worker declares its concurrency limit. The stream stays open for
         the worker's lifetime — tasks are sent as they become available.
-        Component discovery happens via ListComponentsRequest tasks sent
-        through the stream, not at connection time.
         """
 
     @abc.abstractmethod

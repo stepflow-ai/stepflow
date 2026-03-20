@@ -171,18 +171,21 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
                 parse_discovery_result(&value)
             }
             Ok(Ok(stepflow_core::FlowResult::Failed(e))) => {
-                log::warn!("Discovery task failed: {e}");
-                Ok(vec![])
+                Err(error_stack::report!(PluginError::ComponentInfo)
+                    .attach_printable(format!("discovery task failed: {e}")))
             }
             Ok(Err(_)) => {
                 // Receiver dropped (task timed out via PendingTasks)
-                log::warn!("Discovery task cancelled (worker timeout?)");
-                Ok(vec![])
+                Err(error_stack::report!(PluginError::ComponentInfo)
+                    .attach_printable("discovery task cancelled (worker timeout?)"))
             }
             Err(_) => {
                 // Our own timeout fired
-                log::warn!("Discovery task timed out after {}s", DISCOVERY_TIMEOUT.as_secs());
-                Ok(vec![])
+                Err(error_stack::report!(PluginError::ComponentInfo)
+                    .attach_printable(format!(
+                        "discovery task timed out after {}s",
+                        DISCOVERY_TIMEOUT.as_secs()
+                    )))
             }
         }
     }
