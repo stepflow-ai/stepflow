@@ -271,6 +271,16 @@ impl PendingTasks {
         self.heartbeat_tracker.remove(task_id);
     }
 
+    /// Remove tracking AND the TaskRegistry entry for a task.
+    ///
+    /// Used for plugin-initiated tasks (e.g., discovery) where the plugin
+    /// owns both the registry entry and the tracking. The awaiting receiver
+    /// will get a `RecvError` (sender dropped).
+    pub fn untrack_and_remove(&self, task_id: &str) {
+        self.untrack(task_id);
+        self.task_registry.remove(task_id);
+    }
+
     /// Record a heartbeat from a worker (called by TaskHeartbeat RPC).
     ///
     /// This is the unified start + heartbeat method. On first call (task in
@@ -373,6 +383,24 @@ impl PendingTasks {
     /// Number of tasks currently tracked (any phase).
     pub fn pending_count(&self) -> usize {
         self.tasks.len()
+    }
+
+    /// Register and track a discovery task in a single call.
+    ///
+    /// Combines `TaskRegistry::register()` and `PendingTasks::track()` for
+    /// tasks initiated by the plugin itself (e.g., `ListComponentsRequest`).
+    /// Returns a receiver that will deliver the `FlowResult` when the worker
+    /// responds via `CompleteTask`.
+    pub fn register_and_track(
+        &self,
+        task_id: String,
+        component: String,
+        queue_timeout: Duration,
+        execution_timeout: Option<Duration>,
+    ) -> tokio::sync::oneshot::Receiver<FlowResult> {
+        let rx = self.task_registry.register(task_id.clone());
+        self.track(task_id, component, queue_timeout, execution_timeout);
+        rx
     }
 
     /// Per-component health tracker for poison pill detection.

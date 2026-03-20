@@ -23,7 +23,6 @@
 
 use std::sync::Arc;
 
-use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::Result;
 
 use crate::grpc_server::QueueRegistry;
@@ -88,11 +87,6 @@ impl TaskTransport for InMemoryTaskTransport {
         queue.push_task(task);
         Ok(())
     }
-
-    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        // Aggregate components from all queues in the registry
-        Ok(self.registry.list_all_components())
-    }
 }
 
 #[tonic::async_trait]
@@ -127,19 +121,11 @@ mod tests {
 
     use crate::transport_compliance::TransportComplianceTests;
 
-    fn make_component_info(name: &str) -> ComponentInfo {
-        ComponentInfo {
-            component: stepflow_core::workflow::Component::from_string(name.to_string()),
-            description: None,
-            input_schema: None,
-            output_schema: None,
-        }
-    }
-
     fn make_task(id: &str) -> TaskAssignment {
         TaskAssignment {
             task_id: id.to_string(),
-            request: None,
+            task: None,
+            context: None,
             deadline_secs: 30,
             heartbeat_interval_secs: 1,
             execution_timeout_secs: 0,
@@ -221,31 +207,5 @@ mod tests {
             .expect("default queue must exist");
         let task = queue.pop_task().expect("default queue should have a task");
         assert_eq!(task.task_id, "t1");
-    }
-
-    /// list_components aggregates components from workers on all queues.
-    #[tokio::test]
-    async fn test_list_components_aggregates_all_queues() {
-        let registry = Arc::new(QueueRegistry::default());
-        let transport = InMemoryTaskTransport::new(registry.clone(), "queue-a".to_string());
-
-        // Register a worker on queue-a
-        let queue_a = registry.get("queue-a").expect("queue-a must exist");
-        queue_a.register_worker(vec![make_component_info("comp-a")]);
-
-        // Create queue-b and register a worker there
-        let queue_b = registry.get_or_create("queue-b");
-        queue_b.register_worker(vec![make_component_info("comp-b")]);
-
-        let components = transport
-            .list_components()
-            .await
-            .expect("list_components should succeed");
-
-        assert_eq!(components.len(), 2, "Should aggregate from both queues");
-
-        let paths: Vec<&str> = components.iter().map(|c| c.component.path()).collect();
-        assert!(paths.contains(&"comp-a"));
-        assert!(paths.contains(&"comp-b"));
     }
 }

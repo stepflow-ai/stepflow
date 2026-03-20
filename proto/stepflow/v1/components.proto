@@ -49,7 +49,25 @@ message ListRegisteredComponentsRequest {
 
 message ListRegisteredComponentsResponse {
   // All available components, sorted by name.
+  // When some plugins fail discovery, this contains components from the
+  // plugins that succeeded — check `complete` and `failed_plugins`.
   repeated ComponentInfoEntry components = 1;
+
+  // True if all plugins responded successfully. When false, the component
+  // list is partial — see `failed_plugins` for details.
+  bool complete = 2;
+
+  // Plugins that failed component discovery (empty when complete is true).
+  repeated PluginDiscoveryError failed_plugins = 3;
+}
+
+// A plugin that failed during component discovery.
+message PluginDiscoveryError {
+  // Plugin name from the orchestrator config (e.g., "python", "node").
+  string plugin = 1;
+
+  // Human-readable error message.
+  string error = 2;
 }
 
 // A component registered with the orchestrator.

@@ -49,7 +49,6 @@ Task lifecycle:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import signal
@@ -60,7 +59,9 @@ import grpc
 import grpc.aio
 
 from stepflow_py.proto import (
+    CompleteTaskRequest,
     ComponentInfo,
+    ListComponentsResult,
     PullTasksRequest,
 )
 from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
@@ -71,6 +72,9 @@ from stepflow_py.proto.tasks_pb2_grpc import TasksServiceStub
 from stepflow_py.worker.task_handler import (
     _ensure_metrics,
     handle_task,
+)
+from stepflow_py.worker.task_handler import (
+    build_component_info_list as _build_component_info_list,
 )
 
 if TYPE_CHECKING:
@@ -315,7 +319,6 @@ async def _pull_loop(
         request = PullTasksRequest(
             queue_name=queue_name,
             max_concurrent=max_concurrent,
-            components=components,
             worker_id=worker_id,
         )
 
@@ -325,6 +328,12 @@ async def _pull_loop(
         async for task in stream:
             if shutdown_event.is_set():
                 break
+
+            # Handle discovery tasks (ListComponentsRequest) inline
+            if task.HasField("list_components"):
+                asyncio.create_task(_handle_list_components_grpc(task, components))
+                continue
+
             if _tasks_pulled is not None:
                 _tasks_pulled.add(1, {"queue_name": queue_name})
             await semaphore.acquire()
@@ -343,6 +352,47 @@ async def _pull_loop(
         if _connection_status is not None:
             _connection_status.add(-1, {"queue_name": queue_name})
         await channel.close()
+
+
+async def _handle_list_components_grpc(
+    task: Any,
+    components: list[ComponentInfo],
+) -> None:
+    """Handle a ListComponentsRequest task from the orchestrator.
+
+    Responds via CompleteTask with a ListComponentsResult containing
+    the worker's available components.
+    """
+    from stepflow_py.worker.task_handler import complete_task_with_retry
+
+    orchestrator_url = (
+        task.context.orchestrator_service_url if task.HasField("context") else ""
+    )
+    if not orchestrator_url:
+        logger.error(
+            "No orchestrator_service_url for list_components task %s",
+            task.task_id,
+        )
+        return
+
+    logger.info(
+        "Handling list_components discovery task %s (%d components)",
+        task.task_id,
+        len(components),
+    )
+
+    result = ListComponentsResult(components=components)
+    request = CompleteTaskRequest(
+        task_id=task.task_id,
+        list_components=result,
+    )
+
+    if await complete_task_with_retry(orchestrator_url, request, task.task_id):
+        logger.debug(
+            "Completed list_components task %s (%d components)",
+            task.task_id,
+            len(components),
+        )
 
 
 async def _graceful_shutdown(
@@ -390,25 +440,3 @@ async def _graceful_shutdown(
             pass
 
     logger.info("Graceful shutdown complete")
-
-
-def _build_component_info_list(
-    server: StepflowServer,
-) -> list[ComponentInfo]:
-    """Build proto ComponentInfo list from registered components."""
-    infos = []
-    for name, entry in server._components.items():  # noqa: SLF001
-        info = ComponentInfo(
-            name=name,
-            description=entry.description or "",
-        )
-        try:
-            info.input_schema = json.dumps(entry.input_schema())
-        except Exception:
-            pass
-        try:
-            info.output_schema = json.dumps(entry.output_schema())
-        except Exception:
-            pass
-        infos.append(info)
-    return infos

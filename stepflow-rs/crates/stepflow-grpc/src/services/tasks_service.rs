@@ -26,7 +26,6 @@
 
 use std::sync::Arc;
 
-use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::LeaseManagerExt as _;
 use tokio_stream::wrappers::ReceiverStream;
@@ -82,31 +81,15 @@ impl TasksService for TasksServiceImpl {
             .get(&req.queue_name)
             .ok_or_else(|| grpc_err::not_found("queue", &req.queue_name))?;
 
-        // Convert proto ComponentInfo to domain ComponentInfo
-        let components: Vec<ComponentInfo> = req
-            .components
-            .into_iter()
-            .map(proto_component_to_domain)
-            .collect();
-
-        if components.is_empty() {
-            return Err(grpc_err::invalid_field(
-                "components",
-                "at least one component must be declared",
-            ));
-        }
-
         let max_concurrent = if req.max_concurrent > 0 {
             req.max_concurrent as usize
         } else {
             1
         };
 
-        let num_components = components.len();
-
         // Use the worker's self-assigned UUID if provided, otherwise fall
         // back to the internal connection counter for logging.
-        let internal_id = queue.register_worker(components);
+        let internal_id = queue.register_worker();
         let worker_label = if req.worker_id.is_empty() {
             format!("{internal_id}")
         } else {
@@ -114,10 +97,9 @@ impl TasksService for TasksServiceImpl {
         };
 
         log::info!(
-            "Worker {} connected for queue '{}' with {} components, max_concurrent={}",
+            "Worker {} connected for queue '{}', max_concurrent={}",
             worker_label,
             req.queue_name,
-            num_components,
             max_concurrent,
         );
 
@@ -207,19 +189,5 @@ impl TasksService for TasksServiceImpl {
         Ok(Response::new(GetOrchestratorForRunResponse {
             orchestrator_service_url: orchestrator_url,
         }))
-    }
-}
-
-/// Convert a proto `ComponentInfo` to a domain `ComponentInfo`.
-fn proto_component_to_domain(proto: crate::proto::stepflow::v1::ComponentInfo) -> ComponentInfo {
-    ComponentInfo {
-        component: stepflow_core::workflow::Component::from_string(proto.name),
-        description: proto.description,
-        input_schema: proto
-            .input_schema
-            .and_then(|s| serde_json::from_str(&s).ok()),
-        output_schema: proto
-            .output_schema
-            .and_then(|s| serde_json::from_str(&s).ok()),
     }
 }

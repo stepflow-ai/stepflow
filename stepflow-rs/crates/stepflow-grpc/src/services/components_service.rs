@@ -15,11 +15,10 @@ use std::sync::Arc;
 use stepflow_plugin::{Plugin as _, PluginRouterExt as _, StepflowEnvironment};
 use tonic::{Request, Response, Status};
 
-use crate::error as grpc_err;
-
 use crate::proto::stepflow::v1::components_service_server::ComponentsService;
 use crate::proto::stepflow::v1::{
     ComponentInfoEntry, ListRegisteredComponentsRequest, ListRegisteredComponentsResponse,
+    PluginDiscoveryError,
 };
 
 /// gRPC implementation of [ComponentsService].
@@ -44,21 +43,27 @@ impl ComponentsService for ComponentsServiceImpl {
         let include_schemas = !req.exclude_schemas;
 
         let mut all_components = Vec::new();
+        let mut failed_plugins = Vec::new();
 
-        for plugin in self.env.plugins() {
-            let mut components = plugin
-                .list_components()
-                .await
-                .map_err(|e| grpc_err::internal(format!("failed to list components: {e}")))?;
-
-            if !include_schemas {
-                for c in components.iter_mut() {
-                    c.input_schema = None;
-                    c.output_schema = None;
+        for (name, plugin) in self.env.plugins_with_names() {
+            match plugin.list_components().await {
+                Ok(mut components) => {
+                    if !include_schemas {
+                        for c in components.iter_mut() {
+                            c.input_schema = None;
+                            c.output_schema = None;
+                        }
+                    }
+                    all_components.extend(components);
+                }
+                Err(e) => {
+                    log::warn!("Component discovery failed for plugin '{name}': {e}");
+                    failed_plugins.push(PluginDiscoveryError {
+                        plugin: name,
+                        error: format!("{e}"),
+                    });
                 }
             }
-
-            all_components.extend(components);
         }
 
         all_components.sort_by(|a, b| a.component.cmp(&b.component));
@@ -85,8 +90,11 @@ impl ComponentsService for ComponentsServiceImpl {
             })
             .collect();
 
+        let complete = failed_plugins.is_empty();
         Ok(Response::new(ListRegisteredComponentsResponse {
             components: entries,
+            complete,
+            failed_plugins,
         }))
     }
 }

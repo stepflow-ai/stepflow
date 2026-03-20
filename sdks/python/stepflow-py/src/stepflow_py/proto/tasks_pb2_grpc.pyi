@@ -121,9 +121,8 @@ class TasksServiceStub(typing.Generic[_TasksServicePullTasksType, _TasksServiceG
     uses a compatible transport (e.g., "pull"). If the plugin uses a
     queue-based transport (e.g., NATS, Kafka), this RPC returns FAILED_PRECONDITION.
 
-    The worker also declares its capabilities (concurrency, components).
-    The stream stays open for the worker's lifetime — tasks are sent as
-    they become available.
+    The worker declares its concurrency limit. The stream stays open for
+    the worker's lifetime — tasks are sent as they become available.
     """
 
     GetOrchestratorForRun: _TasksServiceGetOrchestratorForRunType
@@ -180,9 +179,8 @@ class TasksServiceServicer(metaclass=abc.ABCMeta):
         uses a compatible transport (e.g., "pull"). If the plugin uses a
         queue-based transport (e.g., NATS, Kafka), this RPC returns FAILED_PRECONDITION.
 
-        The worker also declares its capabilities (concurrency, components).
-        The stream stays open for the worker's lifetime — tasks are sent as
-        they become available.
+        The worker declares its concurrency limit. The stream stays open for
+        the worker's lifetime — tasks are sent as they become available.
         """
 
     @abc.abstractmethod

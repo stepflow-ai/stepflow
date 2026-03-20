@@ -56,7 +56,8 @@ async fn create_transport(url: &str, default_stream: Option<String>) -> NatsTask
 fn make_task(id: &str) -> TaskAssignment {
     TaskAssignment {
         task_id: id.to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 30,
         heartbeat_interval_secs: 1,
         execution_timeout_secs: 0,
@@ -152,7 +153,8 @@ async fn test_protobuf_field_preservation() {
 
     let original = TaskAssignment {
         task_id: "fields-1".to_string(),
-        request: None,
+        task: None,
+        context: None,
         deadline_secs: 42,
         heartbeat_interval_secs: 2,
         execution_timeout_secs: 300,

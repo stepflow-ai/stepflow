@@ -33,10 +33,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use error_stack::ResultExt as _;
 use futures::stream::BoxStream;
-use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::{PluginError, Result};
 
 use stepflow_grpc::TaskAssignment;
@@ -83,12 +81,10 @@ pub struct NatsTaskTransport {
     jetstream: async_nats::jetstream::Context,
     /// Plugin-level default stream name (e.g., "PYTHON_TASKS").
     default_stream: Option<String>,
-    /// Cached component lists, keyed by stream name.
-    component_cache: Arc<DashMap<String, Vec<ComponentInfo>>>,
     /// Cached message streams for recv_task (test-only), keyed by consumer name.
     /// Each stream is individually locked so concurrent recv_task calls on
     /// different subjects don't block each other.
-    recv_streams: Arc<DashMap<String, Arc<tokio::sync::Mutex<NatsMessageStream>>>>,
+    recv_streams: Arc<dashmap::DashMap<String, Arc<tokio::sync::Mutex<NatsMessageStream>>>>,
 }
 
 impl NatsTaskTransport {
@@ -109,8 +105,7 @@ impl NatsTaskTransport {
         Ok(Self {
             jetstream,
             default_stream,
-            component_cache: Arc::new(DashMap::new()),
-            recv_streams: Arc::new(DashMap::new()),
+            recv_streams: Arc::new(dashmap::DashMap::new()),
         })
     }
 
@@ -134,11 +129,6 @@ impl NatsTaskTransport {
                 format!("Failed to create/update NATS stream '{stream_name}'")
             })?;
         Ok(())
-    }
-
-    /// Get the shared component cache.
-    pub fn component_cache(&self) -> &Arc<DashMap<String, Vec<ComponentInfo>>> {
-        &self.component_cache
     }
 }
 
@@ -179,15 +169,6 @@ impl TaskTransport for NatsTaskTransport {
         );
 
         Ok(())
-    }
-
-    async fn list_components(&self) -> Result<Vec<ComponentInfo>> {
-        let all_components: Vec<ComponentInfo> = self
-            .component_cache
-            .iter()
-            .flat_map(|entry| entry.value().clone())
-            .collect();
-        Ok(all_components)
     }
 }
 
@@ -275,15 +256,6 @@ impl stepflow_grpc::task_transport::TaskTransportRead for NatsTaskTransport {
 mod tests {
     use super::*;
 
-    fn make_component_info(name: &str) -> ComponentInfo {
-        ComponentInfo {
-            component: stepflow_core::workflow::Component::from_string(name.to_string()),
-            description: None,
-            input_schema: None,
-            output_schema: None,
-        }
-    }
-
     // =========================================================================
     // resolve_stream() tests
     // =========================================================================
@@ -318,41 +290,5 @@ mod tests {
             err.contains("No NATS stream specified"),
             "Error should mention stream, got: {err}"
         );
-    }
-
-    // =========================================================================
-    // component_cache tests
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_component_cache_empty_initially() {
-        let cache: Arc<DashMap<String, Vec<ComponentInfo>>> = Arc::new(DashMap::new());
-        let components: Vec<ComponentInfo> = cache
-            .iter()
-            .flat_map(|entry| entry.value().clone())
-            .collect();
-        assert!(components.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_component_cache_populated() {
-        let cache: Arc<DashMap<String, Vec<ComponentInfo>>> = Arc::new(DashMap::new());
-        cache.insert(
-            "PYTHON_TASKS".to_string(),
-            vec![
-                make_component_info("python/transform"),
-                make_component_info("python/validate"),
-            ],
-        );
-        cache.insert(
-            "NODE_TASKS".to_string(),
-            vec![make_component_info("node/summarize")],
-        );
-
-        let components: Vec<ComponentInfo> = cache
-            .iter()
-            .flat_map(|entry| entry.value().clone())
-            .collect();
-        assert_eq!(components.len(), 3);
     }
 }

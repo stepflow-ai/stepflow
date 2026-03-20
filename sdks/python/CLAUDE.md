@@ -55,6 +55,17 @@ uv run python generate.py --check
 
 **Important**: Run type generation after Rust schema updates (see `stepflow-rs/CLAUDE.md` for schema generation commands).
 
+### Proto / gRPC Stub Generation
+
+Proto files live in `proto/stepflow/v1/` at the repository root. Generated Python stubs live in `stepflow-py/src/stepflow_py/proto/`.
+
+```bash
+# Regenerate Python gRPC stubs after modifying any .proto file
+./scripts/generate-python-proto.sh
+```
+
+**Important**: Always regenerate after modifying `.proto` files. The script cleans the output directory, runs `grpc_tools.protoc`, fixes imports for the flat package layout, and writes the `__init__.py` with public re-exports.
+
 ## Python Version Compatibility
 
 The Python SDK supports Python 3.10, 3.11, 3.12, and 3.13. All versions are tested in CI.

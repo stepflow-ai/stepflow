@@ -27,7 +27,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from .gnostic.openapi.v3 import annotations_pb2 as gnostic_dot_openapi_dot_v3_dot_annotations__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1cstepflow/v1/components.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a$gnostic/openapi/v3/annotations.proto\":\n\x1fListRegisteredComponentsRequest\x12\x17\n\x0f\x65xclude_schemas\x18\x01 \x01(\x08\"W\n ListRegisteredComponentsResponse\x12\x33\n\ncomponents\x18\x01 \x03(\x0b\x32\x1f.stepflow.v1.ComponentInfoEntry\"\xdd\x01\n\x12\x43omponentInfoEntry\x12\x11\n\tcomponent\x18\x01 \x01(\t\x12\x18\n\x0b\x64\x65scription\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x32\n\x0cinput_schema\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructH\x01\x88\x01\x01\x12\x33\n\routput_schema\x18\x04 \x01(\x0b\x32\x17.google.protobuf.StructH\x02\x88\x01\x01\x42\x0e\n\x0c_descriptionB\x0f\n\r_input_schemaB\x10\n\x0e_output_schema2\xd4\x01\n\x11\x43omponentsService\x12\xbe\x01\n\x18ListRegisteredComponents\x12,.stepflow.v1.ListRegisteredComponentsRequest\x1a-.stepflow.v1.ListRegisteredComponentsResponse\"E\xbaG/\x12\x1dList all available components*\x0elistComponents\x82\xd3\xe4\x93\x02\r\x12\x0b/componentsB;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1cstepflow/v1/components.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a$gnostic/openapi/v3/annotations.proto\":\n\x1fListRegisteredComponentsRequest\x12\x17\n\x0f\x65xclude_schemas\x18\x01 \x01(\x08\"\xa4\x01\n ListRegisteredComponentsResponse\x12\x33\n\ncomponents\x18\x01 \x03(\x0b\x32\x1f.stepflow.v1.ComponentInfoEntry\x12\x10\n\x08\x63omplete\x18\x02 \x01(\x08\x12\x39\n\x0e\x66\x61iled_plugins\x18\x03 \x03(\x0b\x32!.stepflow.v1.PluginDiscoveryError\"5\n\x14PluginDiscoveryError\x12\x0e\n\x06plugin\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"\xdd\x01\n\x12\x43omponentInfoEntry\x12\x11\n\tcomponent\x18\x01 \x01(\t\x12\x18\n\x0b\x64\x65scription\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x32\n\x0cinput_schema\x18\x03 \x01(\x0b\x32\x17.google.protobuf.StructH\x01\x88\x01\x01\x12\x33\n\routput_schema\x18\x04 \x01(\x0b\x32\x17.google.protobuf.StructH\x02\x88\x01\x01\x42\x0e\n\x0c_descriptionB\x0f\n\r_input_schemaB\x10\n\x0e_output_schema2\xd4\x01\n\x11\x43omponentsService\x12\xbe\x01\n\x18ListRegisteredComponents\x12,.stepflow.v1.ListRegisteredComponentsRequest\x1a-.stepflow.v1.ListRegisteredComponentsResponse\"E\xbaG/\x12\x1dList all available components*\x0elistComponents\x82\xd3\xe4\x93\x02\r\x12\x0b/componentsB;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -39,10 +39,12 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_COMPONENTSSERVICE'].methods_by_name['ListRegisteredComponents']._serialized_options = b'\272G/\022\035List all available components*\016listComponents\202\323\344\223\002\r\022\013/components'
   _globals['_LISTREGISTEREDCOMPONENTSREQUEST']._serialized_start=143
   _globals['_LISTREGISTEREDCOMPONENTSREQUEST']._serialized_end=201
-  _globals['_LISTREGISTEREDCOMPONENTSRESPONSE']._serialized_start=203
-  _globals['_LISTREGISTEREDCOMPONENTSRESPONSE']._serialized_end=290
-  _globals['_COMPONENTINFOENTRY']._serialized_start=293
-  _globals['_COMPONENTINFOENTRY']._serialized_end=514
-  _globals['_COMPONENTSSERVICE']._serialized_start=517
-  _globals['_COMPONENTSSERVICE']._serialized_end=729
+  _globals['_LISTREGISTEREDCOMPONENTSRESPONSE']._serialized_start=204
+  _globals['_LISTREGISTEREDCOMPONENTSRESPONSE']._serialized_end=368
+  _globals['_PLUGINDISCOVERYERROR']._serialized_start=370
+  _globals['_PLUGINDISCOVERYERROR']._serialized_end=423
+  _globals['_COMPONENTINFOENTRY']._serialized_start=426
+  _globals['_COMPONENTINFOENTRY']._serialized_end=647
+  _globals['_COMPONENTSSERVICE']._serialized_start=650
+  _globals['_COMPONENTSSERVICE']._serialized_end=862
 # @@protoc_insertion_point(module_scope)

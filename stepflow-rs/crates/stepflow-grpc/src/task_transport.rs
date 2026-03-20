@@ -23,8 +23,7 @@
 //! Workers always report task completion via
 //! `OrchestratorService::CompleteTask`, regardless of transport.
 
-use stepflow_core::component::ComponentInfo;
-use stepflow_plugin::{PluginError, Result};
+use stepflow_plugin::Result;
 
 use crate::proto::stepflow::v1::TaskAssignment;
 
@@ -34,6 +33,11 @@ use crate::proto::stepflow::v1::TaskAssignment;
 /// to workers via the appropriate backend. The orchestrator plugin
 /// (`StepflowQueuePlugin`) calls `send_task` for each component execution
 /// and waits for the result via the `TaskCompletionRegistry`.
+///
+/// Component discovery is handled at the plugin level: `StepflowQueuePlugin`
+/// sends `ListComponentsRequest` tasks through the transport and collects
+/// results via `TaskRegistry`. Transports do not need to track or cache
+/// component information.
 #[tonic::async_trait]
 pub trait TaskTransport: Send + Sync + 'static {
     /// Dispatch a task to the worker queue.
@@ -50,28 +54,6 @@ pub trait TaskTransport: Send + Sync + 'static {
         task: TaskAssignment,
         route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()>;
-
-    /// List components available from workers connected via this transport.
-    ///
-    /// For pull-based transports, this returns components from currently
-    /// connected workers. For queue-based transports, this may return a
-    /// cached or configured set of components.
-    async fn list_components(&self) -> Result<Vec<ComponentInfo>>;
-
-    /// Get component info for a specific component by name.
-    ///
-    /// Default implementation searches `list_components()`. Transports
-    /// with more efficient lookup can override this.
-    async fn component_info(&self, component: &str) -> Result<ComponentInfo> {
-        let components = self.list_components().await?;
-        components
-            .into_iter()
-            .find(|c| c.component.path() == component)
-            .ok_or_else(|| {
-                error_stack::report!(PluginError::ComponentInfo)
-                    .attach_printable(format!("component '{component}' not found"))
-            })
-    }
 }
 
 /// Read-side interface for consuming tasks from a transport queue.

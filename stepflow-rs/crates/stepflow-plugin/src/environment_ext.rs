@@ -57,6 +57,9 @@ pub trait PluginRouterExt {
 
     /// List all registered plugins.
     fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>>;
+
+    /// List all registered plugins with their config names.
+    fn plugins_with_names(&self) -> Vec<(String, Arc<DynPlugin<'static>>)>;
 }
 
 impl PluginRouterExt for StepflowEnvironment {
@@ -83,5 +86,12 @@ impl PluginRouterExt for StepflowEnvironment {
 
     fn plugins(&self) -> Vec<Arc<DynPlugin<'static>>> {
         self.plugin_router().plugins().cloned().collect()
+    }
+
+    fn plugins_with_names(&self) -> Vec<(String, Arc<DynPlugin<'static>>)> {
+        self.plugin_router()
+            .plugins_with_names()
+            .map(|(name, plugin)| (name.to_string(), plugin.clone()))
+            .collect()
     }
 }
