@@ -420,16 +420,16 @@ impl RunsService for RunsServiceImpl {
 
         // Check asof consistency: if the metadata store hasn't caught up to
         // the requested journal sequence number, signal the caller to retry.
-        if let Some(asof) = req.asof {
-            if entry.journal_seqno < asof {
-                return Err(grpc_err::failed_precondition(
-                    "METADATA_NOT_CONSISTENT",
-                    format!(
-                        "metadata not yet consistent: step has journal_seqno={}, requested asof={}",
-                        entry.journal_seqno, asof
-                    ),
-                ));
-            }
+        if let Some(asof) = req.asof
+            && entry.journal_seqno < asof
+        {
+            return Err(grpc_err::failed_precondition(
+                "METADATA_NOT_CONSISTENT",
+                format!(
+                    "metadata not yet consistent: step has journal_seqno={}, requested asof={}",
+                    entry.journal_seqno, asof
+                ),
+            ));
         }
 
         Ok(Response::new(GetStepDetailResponse {

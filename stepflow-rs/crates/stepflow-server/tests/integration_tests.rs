@@ -1257,9 +1257,7 @@ async fn test_sse_stream_basic() {
     // Now stream events for the completed run — should replay all events and close.
     // SSE handler requires runId in query string (no path extraction).
     let sse_request = Request::builder()
-        .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}"
-        ))
+        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1280,10 +1278,7 @@ async fn test_sse_stream_basic() {
         events.len() >= 2,
         "Expected at least 2 SSE events, got {}: {:?}",
         events.len(),
-        events
-            .iter()
-            .map(|(t, _)| t.as_str())
-            .collect::<Vec<_>>()
+        events.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>()
     );
 
     // First event should be RunCreated
@@ -1335,9 +1330,7 @@ async fn test_sse_stream_resume_with_since() {
 
     // Stream all events first
     let sse_request = Request::builder()
-        .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}"
-        ))
+        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1446,9 +1439,7 @@ async fn test_sse_stream_include_results() {
 
     // Stream without includeResults (default)
     let sse_request = Request::builder()
-        .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}"
-        ))
+        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1525,9 +1516,7 @@ async fn test_sse_stream_multi_step_workflow() {
 
     // Stream events
     let sse_request = Request::builder()
-        .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}"
-        ))
+        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1561,10 +1550,7 @@ async fn test_sse_stream_multi_step_workflow() {
     );
 
     // Should have step events for both steps
-    let step_started_count = event_types
-        .iter()
-        .filter(|&&t| t == "StepStarted")
-        .count();
+    let step_started_count = event_types.iter().filter(|&&t| t == "StepStarted").count();
     assert!(
         step_started_count >= 2,
         "Expected at least 2 StepStarted events, got {}",
@@ -1582,10 +1568,7 @@ async fn test_sse_stream_multi_step_workflow() {
     );
 
     // Step events should include stepId (resolved from the flow)
-    let step_started_events: Vec<_> = events
-        .iter()
-        .filter(|(t, _)| t == "StepStarted")
-        .collect();
+    let step_started_events: Vec<_> = events.iter().filter(|(t, _)| t == "StepStarted").collect();
     for (_, data) in &step_started_events {
         assert!(
             data["event"]["StepStarted"].get("stepId").is_some(),
