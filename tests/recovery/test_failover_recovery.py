@@ -33,6 +33,7 @@ import pytest
 from helpers import (
     ORCH1_URL,
     ORCH2_URL,
+    STATUS_COMPLETED,
     assert_checkpoints_used_in_recovery,
     count_step_executions,
     docker_kill,
@@ -43,6 +44,7 @@ from helpers import (
     read_tracker_records,
     release_all_delays,
     release_delay,
+    status_name,
     store_flow,
     submit_run,
     wait_for_run,
@@ -83,7 +85,7 @@ async def test_failover_recovery_sequential(compose_env):
     result = await wait_for_run(ORCH2_URL, run_id, timeout=60)
 
     # 7. Assertions
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 
@@ -147,7 +149,7 @@ async def test_failover_recovery_parallel(compose_env):
     release_delay("aggregate")
 
     result = await wait_for_run(ORCH2_URL, run_id, timeout=90)
-    assert result["status"] == "completed"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 

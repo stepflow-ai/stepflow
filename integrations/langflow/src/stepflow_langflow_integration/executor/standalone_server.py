@@ -80,13 +80,19 @@ async def component_tool_component(
 def main():
     """Main entry point for the Langflow component server.
 
-    Logging is automatically configured by the SDK via setup_observability().
+    Supports gRPC (default) and HTTP transports, matching the SDK worker pattern.
+
     Configure via environment variables:
+    - STEPFLOW_TRANSPORT: Transport mode: grpc, http (default: grpc)
+    - STEPFLOW_TASKS_URL: TasksService gRPC address (default: localhost:7837)
+    - STEPFLOW_QUEUE_NAME: Queue name for gRPC transport (default: langflow)
+    - STEPFLOW_MAX_CONCURRENT: Max concurrent tasks (default: 4)
     - STEPFLOW_LOG_LEVEL: Log level (DEBUG, INFO, WARNING, ERROR, default: INFO)
     - STEPFLOW_LOG_DESTINATION: Log destination (stderr, file, otlp)
     - STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for tracing/logging
-    - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-workerthon)
+    - STEPFLOW_SERVICE_NAME: Service name (default: stepflow-python)
     """
+    import argparse
     import asyncio
     import os
 
@@ -110,8 +116,59 @@ def main():
         asyncio.run(teardown_services())
         asyncio.run(initialize_services())
 
-    # Start the HTTP server - this handles all the asyncio setup correctly
-    asyncio.run(server.run())
+    parser = argparse.ArgumentParser(description="Langflow Stepflow Component Server")
+    transport_group = parser.add_mutually_exclusive_group()
+    transport_group.add_argument(
+        "--grpc", action="store_true", help="Use gRPC pull-based transport (default)"
+    )
+    transport_group.add_argument(
+        "--http", action="store_true", help="Use HTTP transport"
+    )
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
+    parser.add_argument("--port", type=int, default=0, help="HTTP port")
+    parser.add_argument(
+        "--tasks-url",
+        type=str,
+        default=os.environ.get("STEPFLOW_TASKS_URL", "localhost:7837"),
+        help="TasksService gRPC address (env: STEPFLOW_TASKS_URL)",
+    )
+    parser.add_argument(
+        "--queue-name",
+        type=str,
+        default=os.environ.get("STEPFLOW_QUEUE_NAME", "langflow"),
+        help="Queue name for gRPC transport (env: STEPFLOW_QUEUE_NAME)",
+    )
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=int(os.environ.get("STEPFLOW_MAX_CONCURRENT", "4")),
+        help="Max concurrent tasks (env: STEPFLOW_MAX_CONCURRENT)",
+    )
+    args = parser.parse_args()
+
+    # Transport precedence: CLI flags > STEPFLOW_TRANSPORT env > default (grpc)
+    transport_env = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower()
+    if args.http:
+        transport = "http"
+    elif args.grpc:
+        transport = "grpc"
+    else:
+        transport = transport_env
+
+    if transport == "http":
+        asyncio.run(server.run(host=args.host, port=args.port))
+    else:
+        # Default: gRPC pull-based worker
+        from stepflow_py.worker.grpc_worker import run_grpc_worker
+
+        asyncio.run(
+            run_grpc_worker(
+                server=server,
+                tasks_url=args.tasks_url,
+                queue_name=args.queue_name,
+                max_concurrent=args.max_concurrent,
+            )
+        )
 
 
 if __name__ == "__main__":
