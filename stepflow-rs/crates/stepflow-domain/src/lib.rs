@@ -215,7 +215,7 @@ impl RunStatus {
             run_id: s.run_id,
             flow_id: s.flow_id.clone(),
             flow_name: s.flow_name.clone(),
-            status: s.status.clone(),
+            status: s.status,
             items: s.items.clone(),
             created_at: s.created_at,
             completed_at: s.completed_at,
@@ -232,7 +232,7 @@ impl RunStatus {
             run_id: s.run_id,
             flow_id: s.flow_id.clone(),
             flow_name: s.flow_name.clone(),
-            status: s.status.clone(),
+            status: s.status,
             items: s.items.clone(),
             created_at: s.created_at,
             completed_at: s.completed_at,
@@ -312,8 +312,8 @@ pub struct StepInfo {
 
 /// Simple step status pair used when recording item results.
 ///
-/// This is a lightweight summary of step status, used by
-/// [`MetadataStore::record_item_result`] to persist per-item step statuses.
+/// This is a lightweight summary of step status, used to persist
+/// per-item step statuses.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StepStatusInfo {

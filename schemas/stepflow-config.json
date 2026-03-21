@@ -117,9 +117,6 @@
       "type": "object",
       "oneOf": [
         {
-          "$ref": "#/$defs/StepflowPluginConfig"
-        },
-        {
           "$ref": "#/$defs/BuiltinPluginConfig"
         },
         {
@@ -138,7 +135,6 @@
       "discriminator": {
         "propertyName": "type",
         "mapping": {
-          "stepflow": "#/$defs/StepflowPluginConfig",
           "builtin": "#/$defs/BuiltinPluginConfig",
           "mock": "#/$defs/MockPlugin",
           "mcp": "#/$defs/McpPluginConfig",
@@ -146,103 +142,6 @@
           "nats": "#/$defs/NatsPluginConfig"
         }
       }
-    },
-    "HealthCheckConfig": {
-      "description": "Configuration for health check polling when launching subprocess servers.",
-      "type": "object",
-      "properties": {
-        "path": {
-          "description": "Health check endpoint path. Default: \"/health\"",
-          "type": "string",
-          "default": "/health"
-        },
-        "timeoutMs": {
-          "description": "Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 60000
-        },
-        "retryDelayMs": {
-          "description": "Delay between health check attempts in milliseconds. Default: 100",
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0,
-          "default": 100
-        }
-      }
-    },
-    "StepflowPluginConfig": {
-      "description": "Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server",
-      "type": "object",
-      "anyOf": [
-        {
-          "title": "StepflowSubprocessConfig",
-          "description": "Subprocess mode: launch a process that runs an HTTP server.\nThe process must print {\"port\": N} to stdout when ready.",
-          "type": "object",
-          "properties": {
-            "command": {
-              "type": "string"
-            },
-            "args": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
-            },
-            "env": {
-              "description": "Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.",
-              "type": [
-                "object",
-                "null"
-              ],
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
-            "healthCheck": {
-              "description": "Health check configuration for the subprocess server.",
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/HealthCheckConfig"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "command"
-          ]
-        },
-        {
-          "title": "StepflowRemoteConfig",
-          "description": "Remote mode: connect directly to an existing HTTP endpoint.",
-          "type": "object",
-          "properties": {
-            "url": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "url"
-          ]
-        }
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "stepflow",
-          "default": "stepflow"
-        }
-      },
-      "required": [
-        "type"
-      ]
     },
     "MockComponent": {
       "type": "object",

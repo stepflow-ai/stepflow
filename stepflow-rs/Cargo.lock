@@ -5156,21 +5156,14 @@ dependencies = [
 name = "stepflow-server"
 version = "0.11.1"
 dependencies = [
- "async-stream",
  "axum",
- "chrono",
  "clap",
  "error-stack",
- "futures",
  "log",
- "serde",
  "serde_json",
- "serde_with",
- "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-config",
  "stepflow-core",
- "stepflow-domain",
  "stepflow-execution",
  "stepflow-grpc",
  "stepflow-mock",
