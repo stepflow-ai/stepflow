@@ -170,7 +170,7 @@ impl RunsService for RunsServiceImpl {
 
         let run_status = stepflow_execution::submit_run(&self.env, flow, flow_id, inputs, params)
             .await
-            .map_err(|e| grpc_err::internal(format!("failed to submit run: {e}")))?;
+            .map_err(|e| grpc_err::from_execution_error(&e))?;
 
         let summary = run_summary_from_run_status(&run_status);
 

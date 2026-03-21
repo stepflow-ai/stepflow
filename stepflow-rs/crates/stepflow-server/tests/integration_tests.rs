@@ -647,10 +647,11 @@ async fn test_create_run_with_invalid_overrides() {
         .await
         .unwrap();
     // Overrides are validated upfront - referencing non-existent steps should fail.
-    // tonic-rest maps gRPC errors: INVALID_ARGUMENT -> 400, INTERNAL -> 500.
-    assert!(
-        response.status().is_client_error() || response.status().is_server_error(),
-        "Expected error status for invalid overrides, got {}",
+    // gRPC INVALID_ARGUMENT maps to HTTP 400.
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Expected 400 Bad Request for invalid overrides, got {}",
         response.status()
     );
 }
@@ -898,9 +899,10 @@ async fn test_error_responses() {
         .unwrap();
 
     let response = app.clone().oneshot(request).await.unwrap();
-    assert!(
-        response.status().is_client_error(),
-        "Expected client error for invalid flow_id, got {}",
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Expected 400 BAD_REQUEST for invalid flow_id, got {}",
         response.status()
     );
 
