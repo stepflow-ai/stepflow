@@ -71,6 +71,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "#[derive(schemars::JsonSchema)] #[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]",
     );
 
+    // Request types deserialized from query strings or JSON bodies need
+    // #[serde(default)] so that path-extracted fields (e.g. run_id),
+    // repeated fields (e.g. event_types), and scalar fields with proto3
+    // defaults can be absent. We use message_attribute (not type_attribute)
+    // so the attribute is placed AFTER the #[derive(serde::Deserialize)]
+    // added by ProstSerdeConfig — serde helper attributes must follow their
+    // derive.
+    for msg in [
+        ".stepflow.v1.GetRunRequest",
+        ".stepflow.v1.GetRunStepsRequest",
+        ".stepflow.v1.GetRunFlowRequest",
+        ".stepflow.v1.GetRunItemsRequest",
+        ".stepflow.v1.GetRunEventsRequest",
+        ".stepflow.v1.GetStepDetailRequest",
+        ".stepflow.v1.GetFlowRequest",
+        ".stepflow.v1.GetFlowVariablesRequest",
+        ".stepflow.v1.ListRunsRequest",
+        ".stepflow.v1.ListComponentsRequest",
+        ".stepflow.v1.ListRegisteredComponentsRequest",
+        ".stepflow.v1.HealthCheckRequest",
+        ".stepflow.v1.StoreFlowRequest",
+        ".stepflow.v1.CreateRunRequest",
+        ".stepflow.v1.DeleteRunRequest",
+        ".stepflow.v1.DeleteFlowRequest",
+        ".stepflow.v1.CancelRunRequest",
+    ] {
+        config.message_attribute(msg, "#[serde(default)]");
+    }
+
     // Phase 3: Compile protos with tonic-prost-build (types + gRPC server/client codegen)
     tonic_prost_build::configure()
         .build_server(true)
