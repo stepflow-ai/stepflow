@@ -36,7 +36,7 @@ cargo build --release
 cargo check
 
 # Check specific crate
-cargo check -p stepflow-protocol
+cargo check -p stepflow-core
 ```
 
 ### Testing
@@ -99,7 +99,7 @@ When modifying core types, regenerate schemas and derived code:
 
 ```bash
 # Regenerate JSON schemas from Rust types
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-protocol
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core
 
 # Then regenerate Python types from updated schemas
 cd ../sdks/python
@@ -109,7 +109,7 @@ uv run python generate.py
 uv run python generate.py --check
 ```
 
-**Important**: Always regenerate schemas after modifying workflow and protocol types in `stepflow-core` and `stepflow-protocol`. Schema files are used by:
+**Important**: Always regenerate schemas after modifying workflow and configuration types in `stepflow-core`. Schema files are used by:
 - Python SDK type generation
 - Documentation and examples
 - API validation in server components
@@ -159,12 +159,6 @@ Key proto files:
 - OpenAI API integration and other core components
 - Plugin trait implementation for built-in functionality
 
-**Protocol** (`stepflow-protocol`):
-- JSON-RPC protocol for component communication
-- Serde-based serialization/deserialization
-- Stdio-based communication with sub-processes
-- Bidirectional communication (components can call runtime)
-
 **MCP Integration** (`stepflow-components-mcp`):
 - Model Context Protocol (MCP) tool integration
 - Allows workflows to use MCP-compatible components
@@ -188,7 +182,7 @@ Key proto files:
    - Manages state and data flow between steps
 4. Steps executed by components:
    - Built-in components from `stepflow-builtins`
-   - External services via JSON-RPC (`stepflow-protocol`)
+   - Workers via gRPC (PullTasks/CompleteTask)
    - MCP tools via `stepflow-components-mcp`
    - Python, TypeScript, or other SDK-based components
 
@@ -492,27 +486,6 @@ Use consistent derive patterns based on type purpose:
 
 **Note**: Avoid `Clone` on large structs like `Step` unless absolutely necessary. Use `Arc` references instead.
 
-### API Path Parameters (aide)
-
-For OpenAPI documentation, use typed structs for path parameters so aide
-auto-generates parameter names and descriptions from the JSON schema:
-
-```rust
-#[derive(Deserialize, schemars::JsonSchema)]
-pub struct RunPath {
-    /// Run ID (UUID)
-    pub run_id: Uuid,
-}
-
-pub async fn get_run(
-    Path(RunPath { run_id }): Path<RunPath>,
-) -> Result<Json<RunDetails>, ErrorResponse> { ... }
-```
-
-Doc comments on struct fields become OpenAPI parameter descriptions. The
-`Deserialize` derive is required for axum's path extraction at runtime;
-`JsonSchema` is required for aide's OpenAPI generation at build time.
-
 ## Handling Explicit Null in JSON
 
 Structs deserialized from JSON/YAML must tolerate explicit `null` for fields that have `#[serde(default)]`. This is critical because Python clients (Pydantic `model_dump()`, msgspec `to_builtins()`) may serialize optional fields as `null` rather than omitting them.
@@ -570,7 +543,7 @@ fn test_my_config_null_fields_use_custom_defaults() {
 }
 ```
 
-See `stepflow-config/src/recovery_config.rs` and `stepflow-protocol/src/plugin.rs` for real examples.
+See `stepflow-config/src/recovery_config.rs` for a real example.
 
 ## OpenAPI Discriminator Pattern
 
@@ -628,9 +601,6 @@ Both transforms live in `stepflow-core/src/discriminator_schema.rs`.
 ### Regenerating after schema changes
 
 ```bash
-# Regenerate OpenAPI schema
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --lib test_openapi_schema_generation
-
 # Regenerate Python SDK
 cd ../sdks/python && uv run poe codegen-fix
 ```

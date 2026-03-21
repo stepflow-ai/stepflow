@@ -81,15 +81,15 @@ pub fn step_status_to_proto(status: stepflow_core::status::StepStatus) -> i32 {
 }
 
 /// Convert a proto `ResultOrder` i32 to a domain `ResultOrder`.
-pub fn proto_to_result_order(value: i32) -> stepflow_dtos::ResultOrder {
+pub fn proto_to_result_order(value: i32) -> stepflow_domain::ResultOrder {
     match proto::ResultOrder::try_from(value) {
-        Ok(proto::ResultOrder::ByCompletion) => stepflow_dtos::ResultOrder::ByCompletion,
-        _ => stepflow_dtos::ResultOrder::ByIndex,
+        Ok(proto::ResultOrder::ByCompletion) => stepflow_domain::ResultOrder::ByCompletion,
+        _ => stepflow_domain::ResultOrder::ByIndex,
     }
 }
 
 /// Convert a domain `ItemStatistics` to proto.
-pub fn item_stats_to_proto(s: &stepflow_dtos::ItemStatistics) -> proto::ItemStatistics {
+pub fn item_stats_to_proto(s: &stepflow_domain::ItemStatistics) -> proto::ItemStatistics {
     proto::ItemStatistics {
         total: s.total as u32,
         completed: s.completed as u32,
@@ -145,7 +145,7 @@ pub fn proto_value_to_json(value: &prost_wkt_types::Value) -> serde_json::Value 
 }
 
 /// Convert a domain `ItemResult` to proto.
-pub fn item_result_to_proto(r: &stepflow_dtos::ItemResult) -> proto::ItemResult {
+pub fn item_result_to_proto(r: &stepflow_domain::ItemResult) -> proto::ItemResult {
     let (output, error_message, error_code) = match &r.result {
         Some(stepflow_core::FlowResult::Success(v)) => {
             let val: Option<prost_wkt_types::Value> = serde_json::to_value(v)

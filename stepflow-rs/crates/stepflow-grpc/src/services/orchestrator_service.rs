@@ -336,7 +336,7 @@ impl OrchestratorServiceImpl {
     }
 }
 
-fn run_status_to_proto(s: &stepflow_dtos::RunStatus) -> OrchestratorRunStatus {
+fn run_status_to_proto(s: &stepflow_domain::RunStatus) -> OrchestratorRunStatus {
     OrchestratorRunStatus {
         run_id: s.run_id.to_string(),
         flow_id: s.flow_id.to_string(),

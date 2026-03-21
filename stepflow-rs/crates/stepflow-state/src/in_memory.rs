@@ -25,9 +25,8 @@ use crate::{
     state_store::CreateRunParams,
 };
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
-use stepflow_dtos::{
-    ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
-    StepStatusEntry,
+use stepflow_domain::{
+    ItemResult, ItemStatistics, ResultOrder, RunFilters, RunSummary, StepStatusEntry,
 };
 use uuid::Uuid;
 
@@ -37,20 +36,23 @@ use crate::StateError;
 /// Groups all run-related data together under a single key.
 #[derive(Debug)]
 struct RunState {
-    /// Run metadata and input information (no results - stored separately)
-    details: RunDetails,
-    /// Item results by item index
+    /// Run summary metadata.
+    summary: RunSummary,
+    /// Workflow overrides (if any).
+    overrides: Option<WorkflowOverrides>,
+    /// Item results by item index.
     item_results: HashMap<usize, FlowResult>,
-    /// Per-item step statuses by item index
-    item_step_statuses: HashMap<usize, Vec<stepflow_dtos::StepStatusInfo>>,
-    /// Per-item completion timestamps
+    /// Per-item step statuses by item index.
+    item_step_statuses: HashMap<usize, Vec<stepflow_domain::StepStatusInfo>>,
+    /// Per-item completion timestamps.
     item_completed_at: HashMap<usize, chrono::DateTime<chrono::Utc>>,
 }
 
 impl RunState {
-    fn new(details: RunDetails) -> Self {
+    fn new(summary: RunSummary, overrides: Option<WorkflowOverrides>) -> Self {
         Self {
-            details,
+            summary,
+            overrides,
             item_results: HashMap::new(),
             item_step_statuses: HashMap::new(),
             item_completed_at: HashMap::new(),
@@ -124,51 +126,35 @@ impl InMemoryStateStore {
         let now = chrono::Utc::now();
         let item_count = params.item_count();
 
-        // Build item_details from inputs
-        let item_details: Vec<ItemDetails> = params
-            .inputs
-            .iter()
-            .enumerate()
-            .map(|(idx, input)| ItemDetails {
-                item_index: idx as u32,
-                input: input.clone(),
-                status: ExecutionStatus::Running,
-                steps: Vec::new(),
-                completed_at: None,
-            })
-            .collect();
+        let summary = RunSummary {
+            run_id: params.run_id,
+            flow_id: params.flow_id,
+            flow_name: params.workflow_name,
+            status: ExecutionStatus::Running,
+            items: ItemStatistics {
+                total: item_count,
+                running: item_count,
+                ..Default::default()
+            },
+            created_at: now,
+            completed_at: None,
+            root_run_id: params.root_run_id,
+            parent_run_id: params.parent_run_id,
+            orchestrator_id: params.orchestrator_id,
+            created_at_seqno: params.created_at_seqno.value(),
+            finished_at_seqno: None,
+        };
 
-        let execution_details = RunDetails {
-            summary: RunSummary {
-                run_id: params.run_id,
-                flow_id: params.flow_id,
-                flow_name: params.workflow_name,
-                status: ExecutionStatus::Running,
-                items: ItemStatistics {
-                    total: item_count,
-                    running: item_count,
-                    ..Default::default()
-                },
-                created_at: now,
-                completed_at: None,
-                root_run_id: params.root_run_id,
-                parent_run_id: params.parent_run_id,
-                orchestrator_id: params.orchestrator_id,
-                created_at_seqno: params.created_at_seqno.value(),
-                finished_at_seqno: None,
-            },
-            item_details: Some(item_details),
-            overrides: if params.overrides.is_empty() {
-                None
-            } else {
-                Some(params.overrides)
-            },
+        let overrides = if params.overrides.is_empty() {
+            None
+        } else {
+            Some(params.overrides)
         };
 
         // Idempotent: only insert if not exists (preserves existing run)
         self.runs
             .entry(params.run_id)
-            .or_insert_with(|| RunState::new(execution_details));
+            .or_insert_with(|| RunState::new(summary, overrides));
     }
 }
 
@@ -233,33 +219,12 @@ impl MetadataStore for InMemoryStateStore {
     fn get_run(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunSummary>, StateError>> {
         async move {
-            Ok(self.runs.get(&run_id).map(|run_state| {
-                let mut details = run_state.details.clone();
-                // Populate item_details with step statuses and results from storage
-                if let Some(ref mut item_details) = details.item_details {
-                    for item in item_details.iter_mut() {
-                        let idx = item.item_index as usize;
-                        // Update steps from stored step_statuses
-                        if let Some(step_statuses) = run_state.item_step_statuses.get(&idx) {
-                            item.steps = step_statuses.clone();
-                        }
-                        // Update status from stored result
-                        if let Some(result) = run_state.item_results.get(&idx) {
-                            item.status = match result {
-                                FlowResult::Success(_) => ExecutionStatus::Completed,
-                                FlowResult::Failed(_) => ExecutionStatus::Failed,
-                            };
-                        }
-                        // Update completed_at from stored timestamp
-                        if let Some(completed_at) = run_state.item_completed_at.get(&idx) {
-                            item.completed_at = Some(*completed_at);
-                        }
-                    }
-                }
-                details
-            }))
+            Ok(self
+                .runs
+                .get(&run_id)
+                .map(|run_state| run_state.summary.clone()))
         }
         .boxed()
     }
@@ -274,7 +239,7 @@ impl MetadataStore for InMemoryStateStore {
             let mut results: Vec<RunSummary> = self
                 .runs
                 .iter()
-                .map(|entry| entry.details.summary.clone())
+                .map(|entry| entry.summary.clone())
                 .filter(|exec| {
                     // Apply status filter
                     if let Some(ref status) = filters.status
@@ -372,12 +337,12 @@ impl MetadataStore for InMemoryStateStore {
             );
 
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                run_state.details.summary.status = status;
+                run_state.summary.status = status;
 
                 if is_terminal {
-                    run_state.details.summary.completed_at = Some(chrono::Utc::now());
+                    run_state.summary.completed_at = Some(chrono::Utc::now());
                     if let Some(seqno) = finished_at_seqno {
-                        run_state.details.summary.finished_at_seqno = Some(seqno.value());
+                        run_state.summary.finished_at_seqno = Some(seqno.value());
                     }
                 }
             }
@@ -400,7 +365,7 @@ impl MetadataStore for InMemoryStateStore {
             Ok(self
                 .runs
                 .get(&run_id)
-                .map(|run_state| run_state.details.overrides.clone())
+                .map(|run_state| run_state.overrides.clone())
                 .unwrap_or(None))
         }
         .boxed()
@@ -411,7 +376,7 @@ impl MetadataStore for InMemoryStateStore {
         run_id: Uuid,
         item_index: usize,
         result: FlowResult,
-        step_statuses: Vec<stepflow_dtos::StepStatusInfo>,
+        step_statuses: Vec<stepflow_domain::StepStatusInfo>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
             let mut run_completed = false;
@@ -431,28 +396,28 @@ impl MetadataStore for InMemoryStateStore {
 
                 // Update item statistics
                 if was_running {
-                    run_state.details.summary.items.running =
-                        run_state.details.summary.items.running.saturating_sub(1);
+                    run_state.summary.items.running =
+                        run_state.summary.items.running.saturating_sub(1);
                 }
                 match result {
                     FlowResult::Success(_) => {
-                        run_state.details.summary.items.completed += 1;
+                        run_state.summary.items.completed += 1;
                     }
                     FlowResult::Failed(_) => {
-                        run_state.details.summary.items.failed += 1;
+                        run_state.summary.items.failed += 1;
                     }
                 }
 
                 // Check if all items are complete
-                if run_state.details.summary.items.running == 0 {
+                if run_state.summary.items.running == 0 {
                     // Determine overall status based on item outcomes
-                    let status = if run_state.details.summary.items.failed > 0 {
+                    let status = if run_state.summary.items.failed > 0 {
                         ExecutionStatus::Failed
                     } else {
                         ExecutionStatus::Completed
                     };
-                    run_state.details.summary.status = status;
-                    run_state.details.summary.completed_at = Some(now);
+                    run_state.summary.status = status;
+                    run_state.summary.completed_at = Some(now);
                     run_completed = true;
                 }
             }
@@ -478,7 +443,7 @@ impl MetadataStore for InMemoryStateStore {
                 None => return Ok(Vec::new()),
             };
 
-            let item_count = run_state.details.summary.items.total;
+            let item_count = run_state.summary.items.total;
             let mut items: Vec<ItemResult> = (0..item_count)
                 .map(|idx| {
                     let result = run_state.item_results.get(&idx).cloned();
@@ -523,7 +488,7 @@ impl MetadataStore for InMemoryStateStore {
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
             if let Some(mut run_state) = self.runs.get_mut(&run_id) {
-                run_state.details.summary.orchestrator_id = orchestrator_id;
+                run_state.summary.orchestrator_id = orchestrator_id;
             }
             Ok(())
         }
@@ -538,7 +503,7 @@ impl MetadataStore for InMemoryStateStore {
         async move {
             let mut orphaned = 0;
             for mut entry in self.runs.iter_mut() {
-                let summary = &mut entry.details.summary;
+                let summary = &mut entry.summary;
                 if summary.status == ExecutionStatus::Running
                     && let Some(ref orch_id) = summary.orchestrator_id
                     && !live_ids.contains(orch_id)
@@ -632,7 +597,7 @@ impl MetadataStore for InMemoryStateStore {
             // Now check if already complete
             if let Some(run_state) = self.runs.get(&run_id) {
                 if matches!(
-                    run_state.details.summary.status,
+                    run_state.summary.status,
                     ExecutionStatus::Completed
                         | ExecutionStatus::Failed
                         | ExecutionStatus::Cancelled
@@ -655,7 +620,7 @@ impl MetadataStore for InMemoryStateStore {
             loop {
                 if let Some(run_state) = self.runs.get(&run_id) {
                     if matches!(
-                        run_state.details.summary.status,
+                        run_state.summary.status,
                         ExecutionStatus::Completed
                             | ExecutionStatus::Failed
                             | ExecutionStatus::Cancelled

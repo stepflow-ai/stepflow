@@ -327,7 +327,7 @@ impl ItemsState {
     ///
     /// Returns step status info for each step that was needed for the item.
     /// This is used when recording item results to include step status summary.
-    pub fn get_item_step_statuses(&self, item_index: u32) -> Vec<stepflow_dtos::StepStatusInfo> {
+    pub fn get_item_step_statuses(&self, item_index: u32) -> Vec<stepflow_domain::StepStatusInfo> {
         self.item(item_index).get_step_statuses()
     }
 

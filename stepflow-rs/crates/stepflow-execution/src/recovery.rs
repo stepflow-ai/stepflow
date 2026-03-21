@@ -70,7 +70,7 @@ use std::sync::Arc;
 
 use error_stack::ResultExt as _;
 use stepflow_core::status::ExecutionStatus;
-use stepflow_dtos::RunFilters;
+use stepflow_domain::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, ActiveRecoveriesExt as _, ExecutionJournalExt as _,

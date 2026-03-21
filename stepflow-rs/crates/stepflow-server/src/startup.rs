@@ -26,8 +26,6 @@ use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use crate::api::{create_api_router, finalize_openapi};
-
 /// Options for building a [`StepflowService`].
 pub struct ServiceOptions {
     /// Port to bind. `None` uses port 0 (OS-assigned dynamic port).
@@ -38,8 +36,6 @@ pub struct ServiceOptions {
     pub orchestrator_id: Option<OrchestratorId>,
     /// Multiplex gRPC services on the same port as HTTP.
     pub include_grpc: bool,
-    /// Include Swagger UI endpoint.
-    pub include_swagger: bool,
     /// Include CORS headers.
     pub include_cors: bool,
     /// Print JSON port announcement (`{"port":N}`) to stdout.
@@ -53,7 +49,6 @@ impl Default for ServiceOptions {
             bind_address: "127.0.0.1".into(),
             orchestrator_id: None,
             include_grpc: true,
-            include_swagger: false,
             include_cors: false,
             announce_port: false,
         }
@@ -225,48 +220,12 @@ impl ServiceOptions {
     ///
     /// This is used internally by [`StepflowService::new`], but is also
     /// available for tests that build an environment manually.
-    pub fn create_app_router(&self, executor: Arc<StepflowEnvironment>, port: u16) -> Router {
-        // Create the main API router with state using aide for OpenAPI generation
-        let (api_router, mut api) = create_api_router();
-
-        // Override the default server with the actual port
-        api.servers = vec![aide::openapi::Server {
-            url: format!("http://localhost:{port}/api/v1"),
-            description: Some("Localhost development server".into()),
-            ..Default::default()
-        }];
-
-        let api_json = Arc::new(finalize_openapi(&api));
-
-        // Add state to the router
-        let api_router = api_router.with_state(executor.clone());
-
-        // Proto-generated REST routes (mounted at /proto/api/v1 for coexistence during migration).
-        // Proto annotations use relative paths (/health, /blobs, etc.) and are nested under
-        // a prefix. Once validated, change the nest path to /api/v1 and remove the aide routes.
+    pub fn create_app_router(&self, executor: Arc<StepflowEnvironment>, _port: u16) -> Router {
+        // Proto-generated REST routes from google.api.http annotations,
+        // sharing the same business logic as the gRPC services.
         let grpc_rest_router = create_grpc_rest_router(executor);
 
-        // Create the full app router
-        let mut app = Router::new()
-            .nest("/api/v1/", api_router)
-            .nest("/proto/api/v1", grpc_rest_router)
-            .route(
-                "/api/v1/openapi.json",
-                axum::routing::get({
-                    let api_json = api_json.clone();
-                    move || {
-                        let api_json = api_json.clone();
-                        async move { axum::Json(api_json.as_ref().clone()) }
-                    }
-                }),
-            );
-
-        // Add swagger if requested
-        if self.include_swagger {
-            let swagger_handler =
-                aide::swagger::Swagger::new("/api/v1/openapi.json").axum_handler();
-            app = app.route("/swagger-ui", axum::routing::get(swagger_handler));
-        }
+        let mut app = Router::new().nest("/api/v1", grpc_rest_router);
 
         // Setup CORS if requested.
         let cors_layer = if self.include_cors {

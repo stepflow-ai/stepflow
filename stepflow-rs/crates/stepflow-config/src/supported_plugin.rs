@@ -19,7 +19,6 @@ use stepflow_components_mcp::McpPluginConfig;
 use stepflow_grpc::GrpcPluginConfig;
 use stepflow_mock::MockPlugin;
 use stepflow_plugin::{DynPlugin, PluginConfig};
-use stepflow_protocol::StepflowPluginConfig;
 
 use crate::{ConfigError, Result};
 
@@ -27,8 +26,6 @@ use crate::{ConfigError, Result};
 #[serde(tag = "type", rename_all = "camelCase")]
 #[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum SupportedPlugin {
-    #[schemars(title = "StepflowPluginConfig")]
-    Stepflow(StepflowPluginConfig),
     #[schemars(title = "BuiltinPluginConfig")]
     Builtin(BuiltinPluginConfig),
     #[schemars(title = "MockPlugin")]
@@ -61,7 +58,6 @@ async fn create_plugin<P: PluginConfig>(
 impl SupportedPluginConfig {
     pub async fn instantiate(self, working_directory: &Path) -> Result<Box<DynPlugin<'static>>> {
         let plugin = match self.plugin {
-            SupportedPlugin::Stepflow(plugin) => create_plugin(plugin, working_directory).await?,
             SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
             SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
             SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,

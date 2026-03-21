@@ -22,7 +22,6 @@ chrono.workspace = true
 futures.workspace = true
 clap.workspace = true
 error-stack.workspace = true
-indexmap.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 serde_with.workspace = true
@@ -30,7 +29,7 @@ stepflow-analysis.workspace = true
 stepflow-config.workspace = true
 stepflow-grpc.workspace = true
 stepflow-core.workspace = true
-stepflow-dtos.workspace = true
+stepflow-domain.workspace = true
 stepflow-execution.workspace = true
 stepflow-plugin.workspace = true
 stepflow-state.workspace = true
@@ -43,8 +42,6 @@ tower-http.workspace = true
 tower.workspace = true
 log.workspace = true
 stepflow-observability.workspace = true
-aide.workspace = true
-schemars.workspace = true
 uuid.workspace = true
 
 [features]

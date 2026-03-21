@@ -20,7 +20,7 @@ use stepflow_core::{
     BlobId, FlowResult, StepflowEnvironment,
     workflow::{Flow, ValueRef, WorkflowOverrides},
 };
-use stepflow_dtos::ResultOrder;
+use stepflow_domain::ResultOrder;
 use stepflow_state::{BlobStore, BlobStoreExt as _, MetadataStore, MetadataStoreExt as _};
 use uuid::Uuid;
 

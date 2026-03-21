@@ -16,10 +16,9 @@ use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, sqlite::SqlitePoolOptions};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
-use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::ValueRef};
-use stepflow_dtos::{
-    ItemDetails, ItemResult, ItemStatistics, ResultOrder, RunDetails, RunFilters, RunSummary,
-    StepStatusEntry,
+use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult};
+use stepflow_domain::{
+    ItemResult, ItemStatistics, ResultOrder, RunFilters, RunSummary, StepStatusEntry,
 };
 use stepflow_state::{
     BlobStore, CheckpointStore, ExecutionJournal, JournalEntry, JournalEvent, MetadataStore,
@@ -338,7 +337,7 @@ impl MetadataStore for SqliteStateStore {
     fn get_run(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>> {
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunSummary>, StateError>> {
         let pool = self.pool.clone();
 
         async move {
@@ -376,72 +375,38 @@ impl MetadataStore for SqliteStateStore {
                         .get::<Option<String>, _>("completed_at")
                         .and_then(|s| parse_sqlite_datetime(&s));
 
-                    let items_sql = "SELECT item_index, input_json, status, step_statuses_json, completed_at FROM run_items WHERE run_id = ? ORDER BY item_index";
-                    let item_rows = sqlx::query(items_sql)
+                    // Compute item statistics from the run_items table
+                    let items_sql = "SELECT status, COUNT(*) as cnt FROM run_items WHERE run_id = ? GROUP BY status";
+                    let stat_rows = sqlx::query(items_sql)
                         .bind(run_id.to_string())
                         .fetch_all(&pool)
                         .await
                         .change_context(StateError::Internal)?;
 
-                    let mut item_details = Vec::new();
                     let mut running = 0usize;
-                    let mut completed = 0usize;
+                    let mut completed_count = 0usize;
                     let mut failed = 0usize;
                     let mut cancelled = 0usize;
+                    let mut total = 0usize;
 
-                    for item_row in item_rows {
-                        let item_index: i64 = item_row.get("item_index");
-                        let input_json: String = item_row.get("input_json");
-                        let input_value: serde_json::Value = serde_json::from_str(&input_json)
-                            .change_context(StateError::Serialization)?;
-
-                        let item_status_str: String = item_row.get("status");
-                        let item_status = match item_status_str.as_str() {
-                            "running" => {
-                                running += 1;
-                                ExecutionStatus::Running
-                            }
-                            "completed" => {
-                                completed += 1;
-                                ExecutionStatus::Completed
-                            }
-                            "failed" => {
-                                failed += 1;
-                                ExecutionStatus::Failed
-                            }
-                            "cancelled" => {
-                                cancelled += 1;
-                                ExecutionStatus::Cancelled
-                            }
-                            _ => {
-                                running += 1;
-                                ExecutionStatus::Running
-                            }
-                        };
-
-                        let item_completed_at = item_row
-                            .get::<Option<String>, _>("completed_at")
-                            .and_then(|s| parse_sqlite_datetime(&s));
-
-                        // Parse step statuses from JSON if available
-                        let step_statuses: Vec<stepflow_dtos::StepStatusInfo> = item_row
-                            .get::<Option<String>, _>("step_statuses_json")
-                            .and_then(|json| serde_json::from_str(&json).ok())
-                            .unwrap_or_default();
-
-                        item_details.push(ItemDetails {
-                            item_index: item_index as u32,
-                            input: ValueRef::new(input_value),
-                            status: item_status,
-                            steps: step_statuses,
-                            completed_at: item_completed_at,
-                        });
+                    for stat_row in stat_rows {
+                        let s: String = stat_row.get("status");
+                        let cnt: i64 = stat_row.get("cnt");
+                        let cnt = cnt as usize;
+                        total += cnt;
+                        match s.as_str() {
+                            "running" => running += cnt,
+                            "completed" => completed_count += cnt,
+                            "failed" => failed += cnt,
+                            "cancelled" => cancelled += cnt,
+                            _ => running += cnt,
+                        }
                     }
 
                     let items = ItemStatistics {
-                        total: item_details.len(),
+                        total,
                         running,
-                        completed,
+                        completed: completed_count,
                         failed,
                         cancelled,
                     };
@@ -461,26 +426,22 @@ impl MetadataStore for SqliteStateStore {
                     let created_at_seqno: i64 = row.get("created_at_seqno");
                     let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
 
-                    let details = RunDetails {
-                        summary: RunSummary {
-                            run_id,
-                            flow_name,
-                            flow_id,
-                            status,
-                            items,
-                            created_at,
-                            completed_at,
-                            root_run_id,
-                            parent_run_id,
-                            orchestrator_id,
-                            created_at_seqno: sql_to_u64(created_at_seqno),
-                            finished_at_seqno: finished_at_seqno.map(sql_to_u64),
-                        },
-                        item_details: Some(item_details),
-                        overrides: None,
+                    let summary = RunSummary {
+                        run_id,
+                        flow_name,
+                        flow_id,
+                        status,
+                        items,
+                        created_at,
+                        completed_at,
+                        root_run_id,
+                        parent_run_id,
+                        orchestrator_id,
+                        created_at_seqno: sql_to_u64(created_at_seqno),
+                        finished_at_seqno: finished_at_seqno.map(sql_to_u64),
                     };
 
-                    Ok(Some(details))
+                    Ok(Some(summary))
                 },
                 None => Ok(None),
             }
@@ -736,7 +697,7 @@ impl MetadataStore for SqliteStateStore {
         run_id: Uuid,
         item_index: usize,
         result: FlowResult,
-        step_statuses: Vec<stepflow_dtos::StepStatusInfo>,
+        step_statuses: Vec<stepflow_domain::StepStatusInfo>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
 

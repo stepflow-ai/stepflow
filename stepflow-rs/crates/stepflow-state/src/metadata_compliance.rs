@@ -48,7 +48,7 @@ use serde_json::json;
 use stepflow_core::status::ExecutionStatus;
 use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
 use stepflow_core::{FlowResult, ValueExpr};
-use stepflow_dtos::ResultOrder;
+use stepflow_domain::ResultOrder;
 use uuid::Uuid;
 
 use crate::{BlobStore, CreateRunParams, MetadataStore, SequenceNumber};
@@ -163,14 +163,14 @@ impl MetadataComplianceTests {
             .expect("get_run should succeed")
             .expect("Run should exist");
 
-        assert_eq!(run.summary.run_id, run_id, "Run ID should match");
-        assert_eq!(run.summary.flow_id, flow_id, "Flow ID should match");
+        assert_eq!(run.run_id, run_id, "Run ID should match");
+        assert_eq!(run.flow_id, flow_id, "Flow ID should match");
         assert_eq!(
-            run.summary.status,
+            run.status,
             ExecutionStatus::Running,
             "Initial status should be Running"
         );
-        assert_eq!(run.summary.items.total, 1, "Item count should be 1");
+        assert_eq!(run.items.total, 1, "Item count should be 1");
     }
 
     /// Test that create_run is idempotent.
@@ -212,7 +212,7 @@ impl MetadataComplianceTests {
             .expect("get_run should succeed")
             .expect("Run should exist");
 
-        assert_eq!(run.summary.run_id, run_id);
+        assert_eq!(run.run_id, run_id);
     }
 
     /// Test that getting a non-existent run returns None.
@@ -247,7 +247,7 @@ impl MetadataComplianceTests {
 
         // Initial status should be Running
         let run = store.get_run(run_id).await.unwrap().unwrap();
-        assert_eq!(run.summary.status, ExecutionStatus::Running);
+        assert_eq!(run.status, ExecutionStatus::Running);
 
         // Update to Completed
         store
@@ -257,7 +257,7 @@ impl MetadataComplianceTests {
 
         let run = store.get_run(run_id).await.unwrap().unwrap();
         assert_eq!(
-            run.summary.status,
+            run.status,
             ExecutionStatus::Completed,
             "Status should be updated to Completed"
         );
@@ -270,7 +270,7 @@ impl MetadataComplianceTests {
 
         let run = store.get_run(run_id).await.unwrap().unwrap();
         assert_eq!(
-            run.summary.status,
+            run.status,
             ExecutionStatus::Failed,
             "Status should be updated to Failed"
         );
@@ -280,7 +280,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs with no matching runs returns an empty vec.
     pub async fn test_list_runs_empty<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         // Use a filter that won't match any runs (non-existent root_run_id)
         let fake_root_id = Uuid::now_v7();
@@ -304,7 +304,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs with status filter only returns runs with matching status.
     pub async fn test_list_runs_with_status_filter<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
@@ -381,7 +381,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs returns at most `limit` runs.
     pub async fn test_list_runs_with_limit<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
@@ -452,17 +452,17 @@ impl MetadataComplianceTests {
 
         // Verify root run
         let root_run = store.get_run(root_run_id).await.unwrap().unwrap();
-        assert_eq!(root_run.summary.root_run_id, root_run_id);
-        assert!(root_run.summary.parent_run_id.is_none());
+        assert_eq!(root_run.root_run_id, root_run_id);
+        assert!(root_run.parent_run_id.is_none());
 
         // Verify subflow
         let subflow_run = store.get_run(subflow_run_id).await.unwrap().unwrap();
         assert_eq!(
-            subflow_run.summary.root_run_id, root_run_id,
+            subflow_run.root_run_id, root_run_id,
             "Subflow should have correct root_run_id"
         );
         assert_eq!(
-            subflow_run.summary.parent_run_id,
+            subflow_run.parent_run_id,
             Some(root_run_id),
             "Subflow should have correct parent_run_id"
         );
@@ -472,7 +472,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs with root_run_id returns all runs in that execution tree.
     pub async fn test_list_runs_by_root<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
@@ -545,7 +545,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs with parent_run_id returns only direct children.
     pub async fn test_list_runs_by_parent<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
@@ -630,7 +630,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: root_run_id filter includes all descendants at any depth.
     pub async fn test_multilevel_hierarchy<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
@@ -688,11 +688,11 @@ impl MetadataComplianceTests {
         // Verify hierarchy relationships
         let grandchild_run = store.get_run(grandchild_id).await.unwrap().unwrap();
         assert_eq!(
-            grandchild_run.summary.root_run_id, root_id,
+            grandchild_run.root_run_id, root_id,
             "Grandchild should point to root"
         );
         assert_eq!(
-            grandchild_run.summary.parent_run_id,
+            grandchild_run.parent_run_id,
             Some(child_id),
             "Grandchild's parent should be child"
         );
@@ -702,7 +702,7 @@ impl MetadataComplianceTests {
     ///
     /// Contract: list_runs with roots_only=true returns only top-level runs (no parent).
     pub async fn test_list_runs_roots_only<M: MetadataStore + BlobStore>(store: &M) {
-        use stepflow_dtos::RunFilters;
+        use stepflow_domain::RunFilters;
 
         let flow = Arc::new(create_test_flow());
         let flow_id = store.store_flow(flow).await.unwrap();
