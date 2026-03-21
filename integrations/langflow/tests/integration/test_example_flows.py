@@ -35,10 +35,10 @@ import pytest_asyncio
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
+    GrpcPluginConfig,
     InMemoryStoreConfig,
     RouteRule,
     StepflowConfig,
-    StepflowSubprocessPluginConfig,
 )
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
@@ -131,7 +131,7 @@ def shared_config():
     yield StepflowConfig(
         plugins={
             "builtin": BuiltinPluginConfig(),
-            "langflow": StepflowSubprocessPluginConfig(
+            "langflow": GrpcPluginConfig(
                 command="uv",
                 args=[
                     "--project",
@@ -140,6 +140,7 @@ def shared_config():
                     "stepflow-langflow-server",
                 ],
                 env=plugin_env,
+                queueName="langflow",
             ),
         },
         routes={

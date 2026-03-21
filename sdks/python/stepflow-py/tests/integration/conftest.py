@@ -28,10 +28,10 @@ import pytest_asyncio
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
+    GrpcPluginConfig,
     InMemoryStoreConfig,
     RouteRule,
     StepflowConfig,
-    StepflowSubprocessPluginConfig,
 )
 
 
@@ -57,15 +57,15 @@ def integration_config():
     return StepflowConfig(
         plugins={
             "builtin": BuiltinPluginConfig(),
-            "python": StepflowSubprocessPluginConfig(
+            "python": GrpcPluginConfig(
                 command="uv",
                 args=[
                     "--project",
                     str(python_sdk_path),
                     "run",
                     "stepflow_worker",
-                    "--http",
                 ],
+                queueName="python",
             ),
         },
         routes={
