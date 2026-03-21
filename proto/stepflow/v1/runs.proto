@@ -168,9 +168,9 @@ message CreateRunRequest {
 
 // Response for create run.
 //
-// The summary fields are included directly (not nested) to match the existing
-// REST API's flattened JSON shape. tonic-rest serializes this as a flat object
-// where RunSummary fields appear at the top level alongside `results`.
+// In REST (tonic-rest) JSON, the summary is nested under a `summary` key:
+//   { "summary": { "runId": "...", ... }, "results": [...] }
+// In gRPC, the summary is a standard sub-message field.
 message CreateRunResponse {
   // Run summary.
   RunSummary summary = 1;

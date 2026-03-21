@@ -408,22 +408,32 @@ impl RunsService for RunsServiceImpl {
     ) -> Result<Response<GetStepDetailResponse>, Status> {
         let req = request.into_inner();
         let run_id = parse_uuid(&req.run_id)?;
-        let item_index = req.item_index.map(|i| i as usize);
+        let item_index = req.item_index.unwrap_or(0) as usize;
 
-        let steps = self
+        let entry = self
             .env
             .metadata_store()
-            .get_step_statuses(run_id, item_index, None)
+            .get_step_status(run_id, item_index, &req.step_id)
             .await
-            .map_err(|e| grpc_err::internal(format!("failed to get step statuses: {e}")))?;
-
-        let step = steps
-            .iter()
-            .find(|s| s.step_id == req.step_id)
+            .map_err(|e| grpc_err::internal(format!("failed to get step status: {e}")))?
             .ok_or_else(|| grpc_err::not_found("step", &req.step_id))?;
 
+        // Check asof consistency: if the metadata store hasn't caught up to
+        // the requested journal sequence number, signal the caller to retry.
+        if let Some(asof) = req.asof {
+            if entry.journal_seqno < asof {
+                return Err(grpc_err::failed_precondition(
+                    "METADATA_NOT_CONSISTENT",
+                    format!(
+                        "metadata not yet consistent: step has journal_seqno={}, requested asof={}",
+                        entry.journal_seqno, asof
+                    ),
+                ));
+            }
+        }
+
         Ok(Response::new(GetStepDetailResponse {
-            step: Some(step_status_to_proto(step)),
+            step: Some(step_status_to_proto(&entry)),
         }))
     }
 
