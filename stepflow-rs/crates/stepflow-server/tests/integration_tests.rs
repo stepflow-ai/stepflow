@@ -222,7 +222,7 @@ fn create_multi_step_workflow() -> Flow {
         .build()
 }
 
-/// Helper: store a flow via proto route and return its flow_id.
+/// Helper: store a flow via REST API and return its flow_id.
 async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
     let request = Request::builder()
         .uri("/api/v1/flows")
@@ -244,7 +244,7 @@ async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
     result["flowId"].as_str().unwrap().to_string()
 }
 
-/// Helper: execute a run (wait=true) via proto route and return the run_id.
+/// Helper: execute a run (wait=true) via REST API and return the run_id.
 async fn execute_run(app: &mut Router, flow_id: &str, input: serde_json::Value) -> String {
     let request = Request::builder()
         .uri("/api/v1/runs")
@@ -334,7 +334,7 @@ fn determine_event_type(data: &serde_json::Value) -> String {
 }
 
 // =============================================================================
-// REST Tests via proto routes
+// REST Tests via REST APIs
 // =============================================================================
 
 #[tokio::test]
@@ -891,7 +891,7 @@ async fn test_error_responses() {
     let (app, _executor) = create_basic_test_server().await;
 
     // Test error for non-existent flow.
-    // "nonexistent" is not a valid blob ID format, so the proto route returns
+    // "nonexistent" is not a valid blob ID format, so the route returns
     // 400 (INVALID_ARGUMENT) rather than 404.
     let request = Request::builder()
         .uri("/api/v1/flows/nonexistent")
@@ -1139,7 +1139,7 @@ async fn test_blob_json_round_trip() {
 
     let test_data = json!({"message": "Hello, blobs!", "number": 42, "nested": {"key": "value"}});
 
-    // Store a JSON blob via proto route
+    // Store a JSON blob via REST API
     let store_request = Request::builder()
         .uri("/api/v1/blobs")
         .method("POST")
@@ -1187,7 +1187,7 @@ async fn test_blob_binary_round_trip() {
 
     let binary_data: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD, 0x42, 0x43];
 
-    // Store a binary blob via proto route
+    // Store a binary blob via REST API
     let store_request = Request::builder()
         .uri("/api/v1/blobs")
         .method("POST")

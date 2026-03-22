@@ -95,15 +95,16 @@ async def submit_run(base_url: str, flow_id: str, input_data: dict) -> str:
 async def get_run(base_url: str, run_id: str) -> dict:
     """Get current run status (non-blocking).
 
-    Returns a dict with at least a "status" key (integer proto enum value).
+    Returns a dict with summary fields including ``status`` (integer proto
+    enum value), or ``None`` if the run is not found (HTTP 404).
     """
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{base_url}/api/v1/runs/{run_id}")
         if resp.status_code == 404:
-            return {"status": "not_found"}
+            return None
         resp.raise_for_status()
         data = resp.json()
-        # Flatten summary to top level for backward compatibility with tests.
+        # Flatten summary to top level for convenience.
         summary = data.get("summary", {})
         summary["steps"] = data.get("steps", [])
         return summary
@@ -157,8 +158,7 @@ async def wait_for_run_on_either(
         for url in [ORCH1_URL, ORCH2_URL]:
             try:
                 data = await get_run(url, run_id)
-                status = data.get("status")
-                if isinstance(status, int) and status in TERMINAL_STATUSES:
+                if data is not None and data.get("status") in TERMINAL_STATUSES:
                     return data
             except Exception:
                 pass
