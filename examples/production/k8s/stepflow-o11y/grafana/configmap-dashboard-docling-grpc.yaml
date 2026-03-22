@@ -130,7 +130,18 @@ data:
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "fieldConfig": {
             "defaults": {
-              "color": {"mode": "thresholds"},
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
+                "axisLabel": "documents", "axisPlacement": "auto", "barAlignment": 0,
+                "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1,
+                "pointSize": 5, "scaleDistribution": {"type": "linear"},
+                "showPoints": "never", "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
               "mappings": [],
               "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
               "unit": "short"
@@ -140,21 +151,20 @@ data:
           "gridPos": {"h": 5, "w": 8, "x": 0, "y": 7},
           "id": 53,
           "options": {
-            "colorMode": "value", "graphMode": "area", "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
-            "textMode": "auto"
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
           },
           "pluginVersion": "10.3.3",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "sum(increase(stepflow_docling_documents_processed_total[5m]))",
+              "expr": "sum(rate(stepflow_docling_documents_processed_total[5m])) * 60",
+              "legendFormat": "docs/min",
               "refId": "A"
             }
           ],
-          "title": "Documents Processed (5m)",
-          "type": "stat"
+          "title": "Document Throughput",
+          "type": "timeseries"
         },
         {
           "datasource": {"type": "prometheus", "uid": "prometheus"},
@@ -206,7 +216,18 @@ data:
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "fieldConfig": {
             "defaults": {
-              "color": {"mode": "thresholds"},
+              "color": {"mode": "palette-classic"},
+              "custom": {
+                "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text",
+                "axisLabel": "pages", "axisPlacement": "auto", "barAlignment": 0,
+                "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none",
+                "hideFrom": {"tooltip": false, "viz": false, "legend": false},
+                "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 1,
+                "pointSize": 5, "scaleDistribution": {"type": "linear"},
+                "showPoints": "never", "spanNulls": false,
+                "stacking": {"group": "A", "mode": "none"},
+                "thresholdsStyle": {"mode": "off"}
+              },
               "mappings": [],
               "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
               "unit": "short"
@@ -216,22 +237,20 @@ data:
           "gridPos": {"h": 5, "w": 8, "x": 16, "y": 7},
           "id": 55,
           "options": {
-            "colorMode": "value", "graphMode": "area", "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""},
-            "textMode": "auto"
+            "legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
           },
           "pluginVersion": "10.3.3",
           "targets": [
             {
               "datasource": {"type": "prometheus", "uid": "prometheus"},
-              "expr": "histogram_quantile(0.50, sum(rate(stepflow_docling_classify_page_count_pages_bucket[5m])) by (le))",
-              "legendFormat": "p50",
+              "expr": "sum(rate(stepflow_docling_classify_page_count_pages_sum[5m])) * 60",
+              "legendFormat": "pages/min",
               "refId": "A"
             }
           ],
-          "title": "Page Count (p50)",
-          "type": "stat"
+          "title": "Page Throughput",
+          "type": "timeseries"
         },
         {
           "collapsed": false,
