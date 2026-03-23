@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.12.0"></a> [Stepflow 0.12.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.12.0) - 2026-03-23
+### Bug Fixes
+
+- Update and add build scripts to cover docling-step-worker ([#730](https://github.com/stepflow-ai/stepflow/pull/730))
+- Detect malformed flow files in `stepflow test` via schema header ([#789](https://github.com/stepflow-ai/stepflow/pull/789))
+- Run buf breaking change detection against latest release ([#805](https://github.com/stepflow-ai/stepflow/pull/805))
+- Update release scripts for gRPC-first architecture ([#823](https://github.com/stepflow-ai/stepflow/pull/823))
+
+### Documentation
+
+- Standardize on 'worker' terminology and promote workers to top-level section ([#791](https://github.com/stepflow-ai/stepflow/pull/791))
+- Update documentation for gRPC-first architecture ([#816](https://github.com/stepflow-ai/stepflow/pull/816))
+
+### Features
+
+- Add SSE streaming endpoint for run status events ([#723](https://github.com/stepflow-ai/stepflow/pull/723))
+- Add StepsNeeded event to journal and SSE stream ([#729](https://github.com/stepflow-ai/stepflow/pull/729))
+- 732 simple backpressure ([#733](https://github.com/stepflow-ai/stepflow/pull/733))
+- Add Protocol Buffers + gRPC pull-based transport (Phase 3-5b) ([#734](https://github.com/stepflow-ai/stepflow/pull/734))
+- Default CLI submit command to gRPC client ([#755](https://github.com/stepflow-ai/stepflow/pull/755))
+- Convert Python API client from REST to gRPC with HTTP/gRPC multiplexing ([#759](https://github.com/stepflow-ai/stepflow/pull/759))
+- Add Python 3.10 support for stepflow-py and stepflow-orchestrator ([#764](https://github.com/stepflow-ai/stepflow/pull/764))
+- Enable gRPC pull-based worker deployment to K8s ([#754](https://github.com/stepflow-ai/stepflow/pull/754)) ([#758](https://github.com/stepflow-ai/stepflow/pull/758))
+- Migrate Python integration tests to gRPC pull transport ([#770](https://github.com/stepflow-ai/stepflow/pull/770))
+- Restart pull-transport worker subprocess on crash ([#771](https://github.com/stepflow-ai/stepflow/pull/771))
+- Replace FlowError integer code with TaskErrorCode enum ([#773](https://github.com/stepflow-ai/stepflow/pull/773))
+- Journal task IDs for crash recovery ([#746](https://github.com/stepflow-ai/stepflow/pull/746)) ([#776](https://github.com/stepflow-ai/stepflow/pull/776))
+- Add observability for gRPC pull transport ([#757](https://github.com/stepflow-ai/stepflow/pull/757)) ([#774](https://github.com/stepflow-ai/stepflow/pull/774))
+- GRPC pull transport recovery + unified heartbeat ([#746](https://github.com/stepflow-ai/stepflow/pull/746)) ([#778](https://github.com/stepflow-ai/stepflow/pull/778))
+- Worker graceful shutdown with explicit failure reporting ([#781](https://github.com/stepflow-ai/stepflow/pull/781))
+- Add ComponentHealthTracker for poison pill detection ([#742](https://github.com/stepflow-ai/stepflow/pull/742)) ([#782](https://github.com/stepflow-ai/stepflow/pull/782))
+- Worker orchestrator discovery and ownership validation ([#784](https://github.com/stepflow-ai/stepflow/pull/784))
+- Update examples and tests to use pull-based gRPC transport ([#783](https://github.com/stepflow-ai/stepflow/pull/783))
+- NATS JetStream task transport ([#740](https://github.com/stepflow-ai/stepflow/pull/740)) ([#792](https://github.com/stepflow-ai/stepflow/pull/792))
+
+### Miscellaneous Tasks
+
+- Upgrade pingora to fix advisory ([#724](https://github.com/stepflow-ai/stepflow/pull/724))
+- Package Python gRPC stubs with type stubs and CI freshness check ([#756](https://github.com/stepflow-ai/stepflow/pull/756))
+
+### Refactoring
+
+- Remove null-stripping workarounds from Python SDK ([#721](https://github.com/stepflow-ai/stepflow/pull/721))
+- Remove OpenAPI REST client, replace flow types with msgspec ([#761](https://github.com/stepflow-ai/stepflow/pull/761))
+- Remove StepflowEnvironmentBuilder in favor of direct construction ([#765](https://github.com/stepflow-ai/stepflow/pull/765))
+- Decouple Plugin trait from result delivery via shared TaskRegistry ([#772](https://github.com/stepflow-ai/stepflow/pull/772))
+- Unify service startup into StepflowService ([#786](https://github.com/stepflow-ai/stepflow/pull/786))
+- Redesign component discovery protocol ([#801](https://github.com/stepflow-ai/stepflow/pull/801))
+- Simplify TaskAssignment and PullTasksRequest fields ([#806](https://github.com/stepflow-ai/stepflow/pull/806))
+- Bring gRPC API to parity with REST routes ([#807](https://github.com/stepflow-ai/stepflow/pull/807))
+- Remove aide routes, JSON-RPC protocol, and prune DTOs ([#808](https://github.com/stepflow-ai/stepflow/pull/808))
+- Remove TypeScript UI module ([#795](https://github.com/stepflow-ai/stepflow/pull/795)) ([#819](https://github.com/stepflow-ai/stepflow/pull/819))
+- Remove TypeScript SDK module ([#796](https://github.com/stepflow-ai/stepflow/pull/796)) ([#821](https://github.com/stepflow-ai/stepflow/pull/821))
+- Remove stepflow load balancer ([#760](https://github.com/stepflow-ai/stepflow/pull/760)) ([#820](https://github.com/stepflow-ai/stepflow/pull/820))
+
 ## <a id="0.11.1"></a> [Stepflow 0.11.1](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.11.1) - 2026-03-03
 ### Bug Fixes
 
