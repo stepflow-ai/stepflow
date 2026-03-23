@@ -79,7 +79,6 @@ Stepflow is an open protocol and runtime for building, executing, and scaling Ge
 This repository contains multiple components:
 
 - **`stepflow-rs/`** - Main Rust-based execution engine and runtime
-- **`stepflow-ui/`** - Web-based frontend for workflow management
 - **`sdks/python/`** (`stepflow-py`) - Python SDK for building components
 - **`sdks/typescript/`** (`stepflow-ts`) - TypeScript SDK for building components
 

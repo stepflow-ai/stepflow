@@ -43,8 +43,6 @@ jobs:
               - 'sdks/typescript/**'
             docs:
               - 'docs/**'
-            ui:
-              - 'stepflow-ui/**'
 
       - name: Determine labels
         id: determine_labels
@@ -58,13 +56,12 @@ jobs:
           fi
 
           # Add labels for changed areas
-          for area in core py ts docs ui; do
+          for area in core py ts docs; do
             case $area in
               core) changed="${{ steps.changes.outputs.core }}" ;;
               py) changed="${{ steps.changes.outputs.py }}" ;;
               ts) changed="${{ steps.changes.outputs.ts }}" ;;
               docs) changed="${{ steps.changes.outputs.docs }}" ;;
-              ui) changed="${{ steps.changes.outputs.ui }}" ;;
             esac
 
             if [[ "$changed" == "true" ]] && [[ "$labels" != *"$area"* ]]; then

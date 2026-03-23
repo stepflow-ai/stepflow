@@ -206,7 +206,6 @@ Your PR should:
 The repository contains:
 
 - **`stepflow-rs/`** - Main Rust execution engine and runtime
-- **`stepflow-ui/`** - Web-based frontend for workflow management
 - **`sdks/python/`** - Python SDK for building components
 - **`sdks/typescript/`** - TypeScript SDK for building components
 - **`docs/`** - Documentation site (Docusaurus)
