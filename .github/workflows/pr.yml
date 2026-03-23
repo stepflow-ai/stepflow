@@ -24,7 +24,6 @@ jobs:
           scopes: |
             core
             py
-            ts
             docs
             ui
 
@@ -39,8 +38,6 @@ jobs:
               - 'stepflow-rs/**'
             py:
               - 'sdks/python/**'
-            ts:
-              - 'sdks/typescript/**'
             docs:
               - 'docs/**'
 
@@ -56,11 +53,10 @@ jobs:
           fi
 
           # Add labels for changed areas
-          for area in core py ts docs; do
+          for area in core py docs; do
             case $area in
               core) changed="${{ steps.changes.outputs.core }}" ;;
               py) changed="${{ steps.changes.outputs.py }}" ;;
-              ts) changed="${{ steps.changes.outputs.ts }}" ;;
               docs) changed="${{ steps.changes.outputs.docs }}" ;;
             esac
 

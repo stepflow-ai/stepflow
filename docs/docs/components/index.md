@@ -27,7 +27,6 @@ Stepflow provides a variety of built-in components that handle common operations
 [Workers](../workers/index.md) host custom components built with Stepflow SDKs:
 
 - **Python SDK**: Build components in Python with full async support
-- **TypeScript SDK**: Create high-performance Node.js components (coming soon)
 - **Any Language**: Implement the Stepflow Protocol directly
 
 [Learn more about workers →](../workers/index.md)

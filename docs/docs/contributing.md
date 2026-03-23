@@ -207,7 +207,6 @@ The repository contains:
 
 - **`stepflow-rs/`** - Main Rust execution engine and runtime
 - **`sdks/python/`** - Python SDK for building components
-- **`sdks/typescript/`** - TypeScript SDK for building components
 - **`docs/`** - Documentation site (Docusaurus)
 - **`examples/`** - Example workflows and use cases
 
