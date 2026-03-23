@@ -53,8 +53,7 @@ BEHAVIOR:
     - Updates version in stepflow-rs/Cargo.toml
     - Updates version in sdks/python/stepflow-orchestrator/pyproject.toml
     - Updates Cargo.lock
-    - Regenerates OpenAPI schema (schemas/openapi.json)
-    - Regenerates Python API client (stepflow-py)
+    - Regenerates JSON schemas (schemas/flow.json, schemas/stepflow-config.json)
     - Generates/updates CHANGELOG.md
 
     With --pr flag, it also:
@@ -64,8 +63,7 @@ BEHAVIOR:
 
 REQUIREMENTS:
     - git-cliff (for changelog generation)
-    - uv (for Python dependency management)
-    - Java Runtime Environment 11+ (for OpenAPI generator)
+    - protoc (for protobuf compilation)
     - gh CLI (only needed with --pr flag)
     - Clean git working directory (only needed with --pr flag)
 
@@ -125,12 +123,6 @@ echo -e "${BLUE}Checking dependencies...${NC}"
 if ! command_exists git-cliff; then
     echo -e "${RED}Error: git-cliff is not installed${NC}" >&2
     echo "Install with: cargo install git-cliff" >&2
-    exit 1
-fi
-
-if ! command_exists uv; then
-    echo -e "${RED}Error: uv is not installed${NC}" >&2
-    echo "Install from: https://docs.astral.sh/uv/getting-started/installation/" >&2
     exit 1
 fi
 
@@ -204,22 +196,16 @@ fi
 echo -e "${BLUE}Updating Cargo.lock...${NC}"
 cargo update -w > /dev/null
 
-# Regenerate OpenAPI schema with new version
-echo -e "${BLUE}Regenerating OpenAPI schema...${NC}"
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-server --no-default-features test_openapi_schema_generation --quiet || {
-    echo -e "${RED}Error: Failed to regenerate OpenAPI schema${NC}" >&2
+# Regenerate JSON schemas (flow + config)
+echo -e "${BLUE}Regenerating JSON schemas...${NC}"
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core test_schema_comparison_with_flow_json --quiet || {
+    echo -e "${RED}Error: Failed to regenerate flow JSON schema${NC}" >&2
     exit 1
 }
-
-# Regenerate Python API client
-echo -e "${BLUE}Regenerating Python API client...${NC}"
-cd ../sdks/python
-uv run python scripts/generate_api_client.py || {
-    echo -e "${RED}Error: Failed to regenerate Python API client${NC}" >&2
+STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features --quiet || {
+    echo -e "${RED}Error: Failed to regenerate config JSON schema${NC}" >&2
     exit 1
 }
-cd ../..
-cd stepflow-rs
 
 # Generate changelog
 echo -e "${BLUE}Generating changelog...${NC}"
@@ -251,8 +237,7 @@ echo -e "${BLUE}Changes made:${NC}"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in stepflow-orchestrator/pyproject.toml"
 echo "  - Updated Cargo.lock"
-echo "  - Regenerated schemas/openapi.json"
-echo "  - Regenerated Python API client (stepflow-py)"
+echo "  - Regenerated JSON schemas (flow.json, stepflow-config.json)"
 echo "  - Generated/updated CHANGELOG.md"
 
 if [[ "$CREATE_PR" == false ]]; then
@@ -288,13 +273,12 @@ git checkout -b "$RELEASE_BRANCH"
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
 git add Cargo.toml Cargo.lock CHANGELOG.md "$ORCHESTRATOR_PYPROJECT"
-git add ../schemas/openapi.json
-git add ../sdks/python/stepflow-py/src/stepflow_py/api/
+git add ../schemas/flow.json ../schemas/stepflow-config.json
 git commit -m "chore: release stepflow v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
 - Update stepflow-orchestrator Python package version
-- Regenerate OpenAPI schema and Python API client
+- Regenerate JSON schemas
 - Update CHANGELOG.md with release notes"
 
 # Push branch
@@ -309,7 +293,7 @@ This PR prepares the release of Stepflow v$NEW_VERSION.
 ### Changes
 - Version bump from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml
 - Version bump in stepflow-orchestrator Python package
-- Regenerated OpenAPI schema and Python API client
+- Regenerated JSON schemas
 - Updated CHANGELOG.md with release notes
 
 ### Next Steps

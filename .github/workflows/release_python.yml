@@ -186,11 +186,6 @@ jobs:
           pip install stepflow-py==${{ needs.determine-version.outputs.version }}
           ```
 
-          **With HTTP support:**
-          ```bash
-          pip install stepflow-py[http]==${{ needs.determine-version.outputs.version }}
-          ```
-
           **Via uv:**
           ```bash
           uv add stepflow-py==${{ needs.determine-version.outputs.version }}
@@ -221,11 +216,6 @@ jobs:
 
           import asyncio
           asyncio.run(server.run())
-          ```
-
-          For HTTP server mode:
-          ```bash
-          stepflow_py --http --port 8080
           ```
           EOF
 
@@ -303,8 +293,7 @@ jobs:
           echo "### 🐍 Python SDK Features" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Version**: ${{ env.PYTHON_VERSION }}+" >> $GITHUB_STEP_SUMMARY
           echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
-          echo "- **HTTP Support**: Optional extra (stepflow-py[http])" >> $GITHUB_STEP_SUMMARY
-          echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
+          echo "- **Transport Modes**: gRPC (default) and NATS" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY

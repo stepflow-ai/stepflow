@@ -220,11 +220,6 @@ jobs:
           pip install stepflow-langflow-integration==${{ needs.determine-version.outputs.version }}
           ```
 
-          **With HTTP support:**
-          ```bash
-          pip install stepflow-langflow-integration[http]==${{ needs.determine-version.outputs.version }}
-          ```
-
           **Via uv:**
           ```bash
           uv add stepflow-langflow-integration==${{ needs.determine-version.outputs.version }}
@@ -333,8 +328,7 @@ jobs:
           echo "### 📦 Langflow Integration Features" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Version**: ${{ env.PYTHON_VERSION }}+" >> $GITHUB_STEP_SUMMARY
           echo "- **Package Management**: uv" >> $GITHUB_STEP_SUMMARY
-          echo "- **HTTP Support**: Optional extra (stepflow-langflow-integration[http])" >> $GITHUB_STEP_SUMMARY
-          echo "- **Transport Modes**: STDIO and HTTP" >> $GITHUB_STEP_SUMMARY
+          echo "- **Transport Modes**: gRPC (default) and NATS" >> $GITHUB_STEP_SUMMARY
           echo "- **Docker Image**: langflow-component-server" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
