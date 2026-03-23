@@ -16,9 +16,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install stepflow Python SDK with HTTP (for delay-control API) and gRPC (base package)
+# Install stepflow Python SDK and HTTP deps for the delay-control test API
 COPY sdks/python/stepflow-py /build/stepflow-py
-RUN pip install --no-cache-dir "/build/stepflow-py[http]"
+RUN pip install --no-cache-dir "/build/stepflow-py" "fastapi>=0.104.1" "uvicorn>=0.24.0"
 
 # Copy the delay component
 COPY tests/recovery/components/delay_server.py /app/delay_server.py
