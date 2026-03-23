@@ -11,15 +11,11 @@ Workers are standalone processes that host workflow components for Stepflow. The
 A worker is a process that:
 
 - **Hosts components**: Provides one or more executable components for workflows
-- **Executes requests**: Receives execution requests from the Stepflow runtime and returns results
-- **Communicates bidirectionally**: Can make calls back to the runtime (e.g., for blob storage)
+- **Pulls tasks**: Pulls tasks from named queues hosted by the orchestrator
+- **Returns results**: Executes components and reports results back to the orchestrator via gRPC
+- **Calls back**: Can make gRPC requests back to the orchestrator (e.g., submit sub-workflows, store blobs)
 
-Workers communicate with the Stepflow orchestrator using a gRPC pull-based protocol. This architecture provides several key benefits:
-
-- **Process Isolation**: Each worker runs in its own process, providing security and fault isolation
-- **Language Flexibility**: Workers can be written in any language that implements the Stepflow Protocol
-- **Independent Scaling**: Workers can be deployed and scaled independently
-- **Distributed Execution**: Workers can run on different machines, enabling horizontal scaling
+Because workers communicate over an [open protocol](../protocol/index.md) (task queues for dispatch, gRPC for results and callbacks), they can be written in any language, deployed independently, and scaled horizontally.
 
 ## Getting Started
 

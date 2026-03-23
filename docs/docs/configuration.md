@@ -96,7 +96,7 @@ plugins:
 
 ### gRPC Plugins
 
-External workers that communicate via the gRPC pull-based protocol (PullTasks/CompleteTask).
+External workers that pull tasks from named queues and return results via gRPC (PullTasks/CompleteTask).
 
 #### Subprocess Mode
 
@@ -341,7 +341,7 @@ storageConfig:
 Specifically, note that both configurations provide the same paths, but use different plugin implementations and state stores.
 This specifically allows local development to use the same workflow definitions as production deployments without modification.
 
-Locally, workers are launched as subprocesses and connect to the orchestrator via gRPC.
+Locally, workers are launched as subprocesses and pull tasks from the orchestrator's task queues.
 In production, workers connect to the orchestrator's gRPC endpoint independently, allowing the workers to be separately deployed and scaled.
 
 ## Runtime Environment Variables

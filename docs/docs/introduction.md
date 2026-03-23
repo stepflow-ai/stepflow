@@ -7,108 +7,118 @@ import TabItem from '@theme/TabItem';
 
 # Stepflow Introduction
 
-Stepflow is a **workflow orchestrator** that enables you to create and execute AI workflows by combining components from different tools and services, both locally and in the cloud.
+Stepflow is a **workflow orchestrator** for AI applications. You define workflows declaratively in YAML, and Stepflow coordinates execution across workers — handling data flow, parallelism, fault tolerance, and scaling.
 
-As an orchestrator, Stepflow manages workflow execution, data flow, and state persistence, while **workers provide the actual business logic**. This separation allows for flexible, scalable architectures where components can execute locally during development or be distributed across multiple machines in production.
+The orchestrator and workers are **separate processes** connected by an [open protobuf protocol](./protocol/index.md). This separation is the foundation of Stepflow's architecture: workers can be written in any language, scaled independently, and deployed on hardware matched to their workload — all without changing the workflow definition.
 
-Stepflow defines an open protocol for workers, allowing a combination of custom and off-the-shelf components to be orchestrated within a single workflow.
-Workers pull tasks from the orchestrator (or from message brokers like NATS or Kafka), process them, and return results via gRPC — controlling their own concurrency by choosing when to pull the next task.
-By routing specific steps to different worker pools, you can create workflows that run across multiple machines, containers, or cloud services.
-Its modular architecture ensures secure, isolated execution of components—whether running locally or deployed to production.
+## Key Features
 
-Stepflow further solves for production problems like durability and fault-tolerance by journalling the results of each component execution, allowing workflows to be resumed from the last successful step in the event of a failure without adding complexity to workers.
+- **Combine anything in one workflow.** A single workflow can call an LLM, run a Python function, invoke an MCP tool, and execute a component from a different framework — each in its own worker process with no shared runtime or dependency conflicts.
+
+- **Open protocol, any language.** Workers communicate over [pull-based task queues and gRPC](./protocol/index.md). Build workers with the [Python SDK](./workers/custom-components.md), implement the protocol directly in any language, or use [MCP servers](./components/mcp-tools.md) as components with zero wrapping code.
+
+- **Dev to production, no workflow changes.** Locally, Stepflow runs as a [single binary](./getting-started.md) with embedded storage and subprocess workers. In production, the same workflows run on a [distributed cluster](./deployment/index.md) with dedicated worker pools, persistent storage, and message brokers like [NATS](./protocol/index.md#nats-queues) — you change the infrastructure, not the workflow.
+
+- **Production-grade by default.** Stepflow [journals every step result](./deployment/persistence-recovery.md), so workflows resume from the last successful step after a crash. Workers run in isolated processes with independent scaling and [resource routing](./deployment/index.md) to appropriate hardware.
+
+- **Batch execution.** Process thousands of inputs in parallel with [configurable concurrency](./flows/batch-execution.md), progress tracking, and fault isolation — locally or on remote servers.
+
+- **Dynamic, composable flows.** Workflows can [spawn sub-workflows](./components/builtins/eval.md) at runtime. The declarative format is simple enough for LLMs to author flows dynamically using a whitelisted set of components — enabling safe agentic patterns.
 
 ## Architecture
 
-Stepflow consists of a **workflow orchestrator** that manages the execution of workflows and **workers** that provide the actual business logic using the Stepflow protocol or Model Context Protocol.
-
-The orchestrator handles:
-- Workflow execution and step coordination
-- Data flow between components
-- State persistence and fault tolerance
-- Resource management and scaling
-
-Workers provide:
-- Business logic implementation
-- Domain-specific functionality
-- Integration with external services
-- Custom processing capabilities
-
 <Tabs>
-  <TabItem value="local" label="Local" default>
-    During development, the Stepflow orchestrator manages workers and MCP servers in subprocesses, communicating over stdio.
+  <TabItem value="local" label="Local Development" default>
+    During development, Stepflow manages workers as subprocesses. Everything runs on a single machine.
 
     ```mermaid
     flowchart LR
         Workflows@{ shape: docs, label:"Workflows" }
 
-        subgraph "Cluster"
-            Host@{shape: process, label: "Stepflow Orchestrator"}
+        subgraph Stepflow
+            Host@{shape: process, label: "Orchestrator"}
 
             S1@{shape: processes, label: "Worker A"}
-            S2@{shape: processes, label: "MCP Tool Server B"}
+            S2@{shape: processes, label: "MCP Server B"}
             S3@{shape: processes, label: "Worker C"}
             D1@{shape: cylinder, label: "Data Source A"}
             D2@{shape: cylinder, label: "Data Source B"}
         end
 
-        subgraph "Internet"
-            D3@{shape: cylinder, label: "Remote Data C"}
+        subgraph Internet
+            D3@{shape: cylinder, label: "Remote API"}
         end
 
-        Workflows <-->|"Workflow YAML"| Host
+        Workflows <-->|"YAML"| Host
         S1 <--> D1
         S2 <--> D2
-        Host <-->|"Stepflow Protocol"| S1
-        Host <-->|"MCP Protocol"| S2
-        Host <-->|"Stepflow Protocol"| S3
-        S3 <-->|"Web APIs"| D3
+        Host --> |"Task Queue"| S1
+        S1   --> |"gRPC"| Host
+        Host <-->|"MCP"| S2
+        Host --> |"Task Queue"| S3
+        S3   --> |"gRPC"| Host
+        S3 <-->|"HTTP"| D3
     ```
   </TabItem>
   <TabItem value="production" label="Production">
-    In production, the Stepflow orchestrator communicates with remote workers in separate containers or k8s nodes.
-    This allows sharing workers across multiple runtimes and isolating specific components on dedicated workers for better security and resource management.
+    In production, workers run in separate containers or nodes. The orchestrator routes tasks to worker pools via named queues, enabling independent scaling and resource isolation.
 
     ```mermaid
     flowchart LR
-        Workflows["Workflows"]@{ shape: docs }
-        Workflows <-->|"Workflow YAML"| Host
-        subgraph "Orchestrator Node"
-            Host["Stepflow Orchestrator"]
+        Workflows@{ shape: docs, label:"Workflows" }
+
+        subgraph Orchestrator Node
+            Host["Orchestrator"]
         end
-        subgraph "Components A+B service"
+
+        subgraph Worker Pool A
             S1["Worker A"]
-            S2["MCP Tool Server B"]
-            S1 <--> D1[("Local<br>Data Source A")]
-            S2 <--> D2[("Local<br>Data Source B")]
+            S2["MCP Server B"]
+            D1[("Data Source A")]
+            D2[("Data Source B")]
+            S1 <--> D1
+            S2 <--> D2
         end
-        subgraph "Components C service"
+
+        subgraph Worker Pool B
             S3["Worker C"]
-            Host <-->|"Stepflow Protocol"| S1
-            Host <-->|"MCP Protocol"| S2
-            Host <-->|"Stepflow Protocol"| S3
         end
-        subgraph "Internet"
-            S3 <-->|"Web APIs"| D3[("Remote<br>Service C")]
+
+        subgraph Internet
+            D3[("Remote API")]
         end
+
+        Workflows <-->|"YAML"| Host
+        Host --> |"Task Queue"| S1
+        S1   --> |"gRPC"| Host
+        Host <-->|"MCP"| S2
+        Host --> |"Task Queue"| S3
+        S3   --> |"gRPC"| Host
+        S3 <-->|"HTTP"| D3
     ```
   </TabItem>
 </Tabs>
 
-## Development to Production
+The **orchestrator** executes workflows, manages data flow between steps, persists state, and routes tasks to worker pools. **Workers** pull tasks, execute components, and return results — controlling their own concurrency by choosing when to pull the next task.
 
-Stepflow scales from a single binary to a distributed cluster — with no workflow changes required.
+## Dev to Production
 
-During **development**, the Stepflow orchestrator runs as a self-contained local binary (also available as the `stepflow-orchestrator` Python package) with embedded storage and subprocess-based workers.
+Stepflow scales from a single binary to a distributed cluster — no workflow changes required.
 
-In **production**, the same workflows run on a cluster with separate storage, dedicated worker pools, and message brokers. Different components can be routed to different worker pools — GPU-heavy inference on specialized hardware, lightweight steps elsewhere.
+| | Development | Production |
+|---|---|---|
+| **Orchestrator** | Single local binary | Cluster with persistent storage |
+| **Workers** | Subprocesses | Separate containers/nodes |
+| **Task routing** | In-process task queues | Named queues (gRPC or NATS) |
+| **Scaling** | Single machine | Independent worker pool scaling |
+| **Workflows** | Same YAML | Same YAML |
 
 See [Production Deployment](./deployment/index.md) for architecture patterns and scaling strategies.
 
 ## Next Steps
 
-* [Get Started](./getting-started.md) by installing Stepflow and running your first flow.
-* Read more about writing your own [Workflows](./flows/index.md).
-* Learn about available components and creating your own in [Components](./components/index.md).
-* Learn about [production deployment](./deployment/index.md).
-* Read the [FAQ](./faq.md) for comparisons with other workflow and orchestration technologies.
+* [Get Started](./getting-started.md) — install Stepflow and run your first workflow
+* [Flows](./flows/index.md) — learn the workflow definition language
+* [Components](./components/index.md) — explore built-in and custom components
+* [Deployment](./deployment/index.md) — production architecture and scaling
+* [FAQ](./faq.md) — comparisons with other workflow and orchestration technologies
