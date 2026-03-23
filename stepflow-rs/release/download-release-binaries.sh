@@ -110,7 +110,7 @@ for target in "${targets[@]}"; do
     tar -xzf "$TEMP_DIR/$archive" -C "$TEMP_DIR"
 
     # Move binaries to binaries directory with target suffix
-    for binary in stepflow stepflow-server stepflow-load-balancer; do
+    for binary in stepflow stepflow-server; do
       if [ -f "$TEMP_DIR/$binary" ]; then
         mv "$TEMP_DIR/$binary" "$BINARIES_DIR/${binary}-${target}"
         chmod +x "$BINARIES_DIR/${binary}-${target}"

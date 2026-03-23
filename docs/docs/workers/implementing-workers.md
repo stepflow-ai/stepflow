@@ -87,7 +87,7 @@ This section uses RFC 2119 terminology:
 
 | Requirement | Description |
 |------------|-------------|
-| **Health Endpoint** | Workers SHOULD provide a `/health` endpoint for load balancer health checks |
+| **Health Endpoint** | Workers SHOULD provide a `/health` endpoint for health checks |
 | **JSON Schemas** | Workers SHOULD provide input/output JSON schemas for components |
 | **Schema Inference** | Workers SHOULD implement `components/infer_schema` for static type checking |
 | **Graceful Shutdown** | Workers SHOULD handle shutdown signals gracefully |

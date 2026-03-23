@@ -4,7 +4,7 @@ This directory contains Dockerfiles and configuration for building release conta
 
 **Location:** `stepflow-rs/release/`
 
-Three distinct images are available, each optimized for a specific use case.
+Two distinct images are available, each optimized for a specific use case.
 
 ## Available Images
 
@@ -25,25 +25,7 @@ HTTP workflow execution server for running workflows via REST API.
 docker run -p 7840:7840 ghcr.io/datastax/stepflow/stepflow-server:debian-X.Y.Z
 ```
 
-### 2. stepflow-load-balancer
-Load balancer for distributed component servers using Pingora.
-
-**Images:**
-- `Dockerfile.stepflow-load-balancer.debian` - Debian-based (bookworm-slim)
-- `Dockerfile.stepflow-load-balancer.alpine` - Alpine-based (3.19)
-
-**Configuration:**
-- **Port:** 8080 (default)
-- **Environment:** `UPSTREAM_SERVICE` (default: `component-server.stepflow-demo.svc.cluster.local:8080`)
-
-**Usage:**
-```bash
-docker run -p 8080:8080 \
-  -e UPSTREAM_SERVICE=my-components.example.com:8080 \
-  ghcr.io/datastax/stepflow/stepflow-load-balancer:alpine-X.Y.Z
-```
-
-### 3. stepflow (CLI)
+### 2. stepflow (CLI)
 Command-line interface for workflow execution and management.
 
 **Images:**
@@ -89,17 +71,16 @@ Build your own binaries and create Docker images:
 cd stepflow-rs
 
 # Build binaries for Linux targets
-cargo build --release --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
+cargo build --release --bin stepflow --bin stepflow-server
 
 # For cross-compilation (e.g., ARM64)
 cross build --release --target aarch64-unknown-linux-gnu \
-  --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
+  --bin stepflow --bin stepflow-server
 
 # Copy binaries to release/binaries/ directory
 mkdir -p release/binaries
 cp target/release/stepflow release/binaries/stepflow-x86_64-unknown-linux-gnu
 cp target/release/stepflow-server release/binaries/stepflow-server-x86_64-unknown-linux-gnu
-cp target/release/stepflow-load-balancer release/binaries/stepflow-load-balancer-x86_64-unknown-linux-gnu
 
 # Build Docker images
 cd release
@@ -176,8 +157,6 @@ stepflow-rs/release/
 │   └── ... (other binaries)
 ├── Dockerfile.stepflow-server.debian
 ├── Dockerfile.stepflow-server.alpine
-├── Dockerfile.stepflow-load-balancer.debian
-├── Dockerfile.stepflow-load-balancer.alpine
 ├── Dockerfile.stepflow.debian
 └── Dockerfile.stepflow.alpine
 ```
@@ -201,8 +180,6 @@ The `.dockerignore` ensures minimal build context - only the required binary is 
 Published images are available at:
 - `ghcr.io/datastax/stepflow/stepflow-server:debian-X.Y.Z`
 - `ghcr.io/datastax/stepflow/stepflow-server:alpine-X.Y.Z`
-- `ghcr.io/datastax/stepflow/stepflow-load-balancer:debian-X.Y.Z`
-- `ghcr.io/datastax/stepflow/stepflow-load-balancer:alpine-X.Y.Z`
 - `ghcr.io/datastax/stepflow/stepflow:debian-X.Y.Z`
 - `ghcr.io/datastax/stepflow/stepflow:alpine-X.Y.Z`
 

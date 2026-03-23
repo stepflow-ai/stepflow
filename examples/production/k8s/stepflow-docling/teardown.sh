@@ -35,19 +35,15 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 # 1. Orchestrator
-echo "[1/5] Removing orchestrator..."
+echo "[1/4] Removing orchestrator..."
 kubectl delete -f orchestrator/ --ignore-not-found
 
-# 2. Load balancer
-echo "[2/5] Removing load balancer..."
-kubectl delete -f loadbalancer/ --ignore-not-found
-
-# 3. Workers
-echo "[3/5] Removing workers..."
+# 2. Workers
+echo "[2/4] Removing workers..."
 kubectl delete -f worker/ --ignore-not-found
 
-# 4. Observability stack
-echo "[4/5] Removing observability stack..."
+# 3. Observability stack
+echo "[3/4] Removing observability stack..."
 kubectl delete -f ../stepflow-o11y/grafana/ --ignore-not-found
 kubectl delete -f ../stepflow-o11y/promtail/ --ignore-not-found
 kubectl delete -f ../stepflow-o11y/loki/ --ignore-not-found
@@ -55,8 +51,8 @@ kubectl delete -f ../stepflow-o11y/prometheus/ --ignore-not-found
 kubectl delete -f ../stepflow-o11y/jaeger/ --ignore-not-found
 kubectl delete -f ../stepflow-o11y/otel-collector/ --ignore-not-found
 
-# 5. Namespaces
-echo "[5/5] Removing namespaces..."
+# 4. Namespaces
+echo "[4/4] Removing namespaces..."
 kubectl delete -f namespaces.yaml --ignore-not-found
 
 echo ""
