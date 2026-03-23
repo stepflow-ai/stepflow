@@ -41,7 +41,7 @@ echo "📋 Proto"
 # Check for required tool
 require_tool "buf" "brew install bufbuild/buf/buf"
 
-cd "$PROJECT_ROOT/proto"
+cd "$PROJECT_ROOT/stepflow-rs/proto"
 
 # =============================================================================
 # PROTO CHECKS
@@ -83,12 +83,12 @@ check_breaking() {
     fi
 
     # Check if the release tag actually has any .proto files
-    if ! git -C "$git_toplevel" ls-tree -r --name-only "$latest_tag" proto 2>/dev/null | grep -q '\.proto$'; then
+    if ! git -C "$git_toplevel" ls-tree -r --name-only "$latest_tag" stepflow-rs/proto 2>/dev/null | grep -q '\.proto$'; then
         echo "No proto files in latest release ($latest_tag) — skipping breaking change detection"
         return 0
     fi
 
-    buf breaking --against "${git_toplevel}/.git#tag=${latest_tag},subdir=proto" 2>&1
+    buf breaking --against "${git_toplevel}/.git#tag=${latest_tag},subdir=stepflow-rs/proto" 2>&1
 }
 
 run_check "Breaking changes" \

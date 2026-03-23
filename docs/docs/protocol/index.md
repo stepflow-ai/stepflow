@@ -136,7 +136,7 @@ See [Task Lifecycle](./task-lifecycle.md) for the full details on task types, he
 
 ## Proto Definitions
 
-The protocol is defined in Protocol Buffer files in `proto/stepflow/v1/`:
+The protocol is defined in Protocol Buffer files in `stepflow-rs/proto/stepflow/v1/`:
 
 - `tasks.proto` — `TasksService`: PullTasks, GetOrchestratorForRun
 - `orchestrator.proto` — `OrchestratorService`: CompleteTask, TaskHeartbeat, SubmitRun, GetRun

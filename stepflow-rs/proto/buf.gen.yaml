@@ -1,7 +1,7 @@
 version: v2
 plugins:
   - remote: buf.build/community/google-gnostic-openapi:v0.7.1
-    out: ../schemas
+    out: ../../schemas
     opt:
       - title=Stepflow API
       - description=Stepflow orchestration engine REST API

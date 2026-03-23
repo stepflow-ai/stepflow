@@ -35,9 +35,9 @@ excludes:
   - env.*
   - \.dockerignore
   - \.gitkeep
-  - proto/buf.lock
-  - proto/gnostic/.*
-  - proto/google/.*
+  - stepflow-rs/proto/buf.lock
+  - stepflow-rs/proto/gnostic/.*
+  - stepflow-rs/proto/google/.*
 
 licenses:
   - files: any

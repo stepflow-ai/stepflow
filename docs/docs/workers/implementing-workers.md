@@ -135,7 +135,7 @@ Workers SHOULD support these environment variables:
 ## Reference Implementations
 
 - **Python SDK**: See [sdks/python/stepflow-py](https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-py) for a complete implementation
-- **Proto definitions**: See [proto/stepflow/v1/](https://github.com/stepflow-ai/stepflow/tree/main/proto/stepflow/v1) for the gRPC service definitions
+- **Proto definitions**: See [stepflow-rs/proto/stepflow/v1/](https://github.com/stepflow-ai/stepflow/tree/main/stepflow-rs/proto/stepflow/v1) for the gRPC service definitions
 
 ## See Also
 

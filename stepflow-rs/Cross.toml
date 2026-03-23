@@ -1,5 +1,5 @@
 # Cross-compilation configuration for the `cross` tool.
-# Install protobuf compiler needed by etcd-client's build script.
+# Install protobuf compiler needed by prost/tonic build scripts.
 
 [target.aarch64-unknown-linux-gnu]
 pre-build = ["apt-get update && apt-get install -y protobuf-compiler"]
