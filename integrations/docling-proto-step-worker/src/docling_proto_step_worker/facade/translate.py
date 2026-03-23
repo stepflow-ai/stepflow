@@ -144,3 +144,69 @@ def flow_output_to_response(flow_output: dict[str, Any]) -> dict[str, Any]:
         "processing_time": flow_output.get("processing_time", 0.0),
         "timings": flow_output.get("timings", {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# Stepflow run status -> async poll response
+# ---------------------------------------------------------------------------
+
+# Map stepflow run statuses to docling-serve TaskStatus values.
+_STATUS_MAP: dict[str, str] = {
+    "running": "started",
+    "pending": "pending",
+    "completed": "success",
+    "failed": "failure",
+}
+
+
+def run_status_to_poll_response(
+    run_data: dict[str, Any],
+    task_type: str = "convert",
+) -> dict[str, Any]:
+    """Convert a Stepflow run status to a docling-serve ``TaskStatusResponse``.
+
+    Matches the docling-serve response shape:
+    - ``task_id``: str
+    - ``task_type``: "convert" | "chunk"
+    - ``task_status``: "pending" | "started" | "success" | "failure"
+    - ``task_position``: optional int (queue position)
+    - ``task_meta``: optional processing progress
+    - ``error_message``: optional str on failure
+    """
+    stepflow_status = run_data.get("status", "pending")
+    task_status = _STATUS_MAP.get(stepflow_status, "pending")
+
+    response: dict[str, Any] = {
+        "task_id": run_data.get("runId", ""),
+        "task_type": task_type,
+        "task_status": task_status,
+        "task_position": None,
+        "task_meta": None,
+        "error_message": None,
+    }
+
+    if task_status == "failure":
+        results = run_data.get("results") or []
+        if results:
+            item = results[0]
+            flow_result = item.get("result", {})
+            error = flow_result.get("error", {})
+            response["error_message"] = error.get(
+                "message", "Flow execution failed"
+            )
+
+    return response
+
+
+def run_result_to_convert_response(run_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract the ``ConvertDocumentResponse`` from a completed run.
+
+    Returns ``None`` if the run has no results yet.
+    """
+    results = run_data.get("results") or []
+    if not results:
+        return None
+    item = results[0]
+    flow_result = item.get("result", {})
+    flow_output = flow_result.get("result", {})
+    return flow_output_to_response(flow_output)

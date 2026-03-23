@@ -36,6 +36,7 @@ from docling_proto_step_worker.facade.translate import (
     flow_output_to_response,
     normalize_v1alpha_request,
     request_to_flow_input,
+    run_status_to_poll_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,42 @@ def create_app() -> FastAPI:
     ) -> JSONResponse:
         return await _handle_convert_file(files, options)
 
+    # -- v1 async endpoints -------------------------------------------------
+
+    @app.post("/v1/convert/source/async", status_code=202)
+    async def convert_source_async(request: dict[str, Any]) -> JSONResponse:
+        sources = request.get("sources", [])
+        options = request.get("options")
+        try:
+            flow_input = request_to_flow_input(sources=sources, options=options)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return await _submit_async(flow_input)
+
+    @app.post("/v1/convert/file/async", status_code=202)
+    async def convert_file_async(
+        files: UploadFile = _FILE_PARAM,
+        options: str | None = _FORM_PARAM,
+    ) -> JSONResponse:
+        file_bytes = await files.read()
+        opts = json.loads(options) if options else None
+        flow_input = request_to_flow_input(
+            file_bytes=file_bytes,
+            filename=files.filename or "document.pdf",
+            options=opts,
+        )
+        return await _submit_async(flow_input)
+
+    # -- Async status polling -----------------------------------------------
+
+    @app.get("/v1/status/poll/{task_id}")
+    async def poll_task_status(task_id: str) -> JSONResponse:
+        return await _poll_task(task_id)
+
+    @app.get("/v1/result/{task_id}")
+    async def get_task_result(task_id: str) -> JSONResponse:
+        return await _get_result(task_id)
+
     # -- Stubbed chunked endpoints (501) ------------------------------------
 
     @app.post("/v1/convert/chunked/{chunker_type}/source", status_code=501)
@@ -276,6 +313,110 @@ async def _submit_and_respond(flow_input: dict[str, Any]) -> JSONResponse:
         )
 
     item = results[0]
+    flow_result = item.get("result", {})
+    outcome = flow_result.get("outcome")
+
+    if outcome == "failed":
+        error = flow_result.get("error", {})
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": error.get("message", "Flow execution failed"),
+                "error": error,
+            },
+        )
+
+    flow_output = flow_result.get("result", {})
+    response_body = flow_output_to_response(flow_output)
+    return JSONResponse(content=response_body)
+
+
+async def _submit_async(flow_input: dict[str, Any]) -> JSONResponse:
+    """Submit a flow run without waiting, return ``TaskStatusResponse``."""
+    try:
+        resp = await _state.client.post(
+            "/api/v1/runs",
+            json={
+                "flowId": _state.flow_id,
+                "input": [flow_input],
+                "wait": False,
+            },
+        )
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Cannot reach stepflow-server",
+        ) from exc
+
+    if resp.status_code >= 400:
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={"detail": "Stepflow server error", "upstream": resp.text},
+        )
+
+    run_data = resp.json()
+    response_body = run_status_to_poll_response(run_data)
+    return JSONResponse(status_code=202, content=response_body)
+
+
+async def _poll_task(task_id: str) -> JSONResponse:
+    """Poll stepflow-server for run status, return ``TaskStatusResponse``."""
+    try:
+        resp = await _state.client.get(
+            f"/api/v1/runs/{task_id}",
+            timeout=10.0,
+        )
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Cannot reach stepflow-server",
+        ) from exc
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    if resp.status_code >= 400:
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={"detail": "Stepflow server error", "upstream": resp.text},
+        )
+
+    run_data = resp.json()
+    response_body = run_status_to_poll_response(run_data)
+    return JSONResponse(content=response_body)
+
+
+async def _get_result(task_id: str) -> JSONResponse:
+    """Fetch completed run result, return ``ConvertDocumentResponse``."""
+    try:
+        resp = await _state.client.get(
+            f"/api/v1/runs/{task_id}/items",
+            timeout=10.0,
+        )
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Cannot reach stepflow-server",
+        ) from exc
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    if resp.status_code >= 400:
+        return JSONResponse(
+            status_code=resp.status_code,
+            content={"detail": "Stepflow server error", "upstream": resp.text},
+        )
+
+    items_data = resp.json()
+    items = items_data.get("items") or []
+    if not items:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task {task_id} has not completed yet",
+        )
+
+    item = items[0]
     flow_result = item.get("result", {})
     outcome = flow_result.get("outcome")
 
