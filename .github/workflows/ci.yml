@@ -99,12 +99,10 @@ jobs:
               - 'scripts/check-proto.sh'
               - 'scripts/generate-python-proto.sh'
               - 'scripts/_lib.sh'
-              - 'proto/**'
+              - 'stepflow-rs/proto/**'
               - 'sdks/python/stepflow-py/src/stepflow_py/proto/**'
               - 'schemas/openapi.yaml'
               - '.redocly.yaml'
-              - 'buf.yaml'
-              - 'buf.lock'
 
   # Rust checks (combined style, build, and test)
   rust-checks:
