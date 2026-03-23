@@ -379,5 +379,3 @@ def get_diagnostic_context() -> dict[str, str]:
         Dictionary with current diagnostic context fields.
     """
     return _diagnostic_context.get() or {}
-
-

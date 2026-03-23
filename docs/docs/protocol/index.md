@@ -148,18 +148,11 @@ See the [Error Handling](./errors.md) document for a complete list of error code
 
 ## Schema Integration
 
-All protocol messages are defined with JSON Schema:
-- **Request/response validation**: Ensures message conformity
-- **Development tooling**: Enables auto-completion and validation in IDEs
-- **Documentation generation**: Schemas serve as authoritative message specifications
-- **Multi-language support**: Schemas generate types for Python, TypeScript, and other SDKs
-
-See the [protocol schema](../reference/protocol-schema.mdx) for detailed message definitions.
+All protocol messages are defined with Protocol Buffers (`.proto` files) in [`proto/stepflow/v1/`](https://github.com/datastax/stepflow/tree/main/proto/stepflow/v1).
 
 ## Next Steps
 
-- **[Message Format](./message-format.md)**: JSON-RPC message structure and correlation
-- **[Transport](./transport.md)**: HTTP transport specification
+- **[Message Format](./message-format.md)**: Message structure and correlation
 - **[Methods](./methods/)**: Detailed method specifications with examples
 - **[Error Handling](./errors.md)**: Complete error code reference
 - **[Implementing Workers](../workers/implementing-workers.md)**: Guide to building workers

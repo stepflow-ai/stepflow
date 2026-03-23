@@ -188,28 +188,38 @@ def analyze(input_file: Path):
 
 
 @main.command()
-@click.option("--host", default="localhost", help="Server host")
-@click.option("--port", default=0, help="Server port (0 for auto-assign)")
-@click.option("--protocol-prefix", default="langflow", help="Protocol prefix")
+@click.option(
+    "--tasks-url",
+    default=None,
+    help="TasksService gRPC address (env: STEPFLOW_TASKS_URL)",
+)
+@click.option(
+    "--queue-name",
+    default=None,
+    help="Queue name for gRPC transport (env: STEPFLOW_QUEUE_NAME)",
+)
 def serve(
-    host: str,
-    port: int,
+    tasks_url: str | None,
+    queue_name: str | None,
 ):
-    """Start the Langflow component server.
+    """Start the Langflow component server as a gRPC pull-based worker."""
+    import os
 
-    The server always runs in HTTP mode and prints the port as JSON to stdout
-    for the stepflow orchestrator to discover.
-    """
     try:
-        click.echo("🚀 Starting Langflow component server...")
+        click.echo("Starting Langflow component server (gRPC)...")
 
         server = StepflowLangflowServer()
-        server.run(host=host, port=port)
+        server.run_grpc(
+            tasks_url=tasks_url
+            or os.environ.get("STEPFLOW_TASKS_URL", "localhost:7837"),
+            queue_name=queue_name
+            or os.environ.get("STEPFLOW_QUEUE_NAME", "langflow"),
+        )
 
     except KeyboardInterrupt:
-        click.echo("\n🛑 Server stopped")
+        click.echo("\nServer stopped")
     except Exception as e:
-        click.echo(f"❌ Server error: {e}", err=True)
+        click.echo(f"Server error: {e}", err=True)
         sys.exit(1)
 
 

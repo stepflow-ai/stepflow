@@ -143,6 +143,7 @@ class StepflowServer:
                 self._components[component_name] = entry
 
             if inspect.iscoroutinefunction(f):
+
                 @wraps(f)
                 async def wrapper(*args, **kwargs):
                     return await f(*args, **kwargs)
