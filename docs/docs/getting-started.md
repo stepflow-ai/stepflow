@@ -158,14 +158,13 @@ You should see output like:
 
 ## What Just Happened?
 
-This workflow demonstrates Stepflow's key concepts as a **workflow orchestrator**:
+Stepflow orchestrated three steps across two different workers:
 
-- **Orchestration**: Stepflow coordinated the execution of three different components, managing data flow and dependencies between them
-- **Workers**: The workflow used both built-in components (managed by Stepflow) and a custom Python worker (launched as a subprocess)
-- **Input/Output Schemas**: Define the structure of your data using JSON Schema
-- **Steps**: Each step uses a component to process data and pass results to the next step
-- **Data Flow**: Use value references to pass data between steps, with Stepflow handling the routing and transformation
-- **Configuration**: The `stepflow-config.yml` file told Stepflow how to route component requests to the appropriate workers
+1. **`format_greeting`** — routed to a Python worker (launched as a subprocess) that formatted the greeting
+2. **`create_messages`** — routed to the built-in component worker that structured the prompt
+3. **`ai_response`** — routed to the built-in OpenAI component that called the LLM
+
+The orchestrator managed the data flow between steps (using `$step` and `$input` references), while the `stepflow-config.yml` configuration determined which worker handled each component.
 
 :::tip From Development to Production
 The workflow you just ran locally works unchanged in production. Stepflow scales from a self-contained local binary to a distributed cluster with separate storage, dedicated worker pools, and message brokers — no workflow modifications required. See [Production Deployment](./deployment/index.md) to learn more.

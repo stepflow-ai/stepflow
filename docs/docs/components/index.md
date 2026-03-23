@@ -4,10 +4,7 @@ sidebar_position: 1
 
 # Components Overview
 
-Components are the building blocks of Stepflow workflows, providing the actual business logic that the workflow orchestrator coordinates.
-Each step in a flow executes a specific component that implements a specific operation.
-
-Stepflow provides a set of built-in components for common tasks as well as the ability to create custom components using Stepflow SDKs or the Model Context Protocol (MCP). The Stepflow orchestrator manages the execution flow and data passing between components, while workers handle the actual processing logic.
+Components are the executable units in Stepflow workflows — each step invokes a component to do its work. Stepflow provides built-in components for common tasks, and you can create custom components using the [Python SDK](../workers/custom-components.md), the [gRPC protocol](../protocol/index.md) directly, or [MCP servers](./mcp-tools.md).
 
 ## Types of Components
 

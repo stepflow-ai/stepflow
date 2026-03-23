@@ -93,13 +93,13 @@ Each worker pool:
 - Pulls tasks from a dedicated named queue
 - Scales independently based on workload
 - Runs on appropriate hardware (CPU, GPU, high-memory nodes)
-- Communicates with the orchestrator via gRPC
+- Pulls tasks from the orchestrator and returns results via gRPC
 
 ## Key Components
 
 ### 1. Task Routing
 
-Workers connect to the orchestrator's `TasksService` and pull tasks from named queues. The gRPC pull-based protocol provides:
+Workers pull tasks from named queues and return results to the orchestrator via gRPC. The pull-based protocol provides:
 - Named queue-based task routing
 - Heartbeat-based crash detection
 - Automatic retry on transport failures
@@ -254,10 +254,10 @@ Track key metrics:
 ### 4. Plan for Failures
 
 Design for resilience:
-- Multiple load balancer replicas
 - Health checks with automatic failover
-- Retry logic in workflows
-- Persistent state storage
+- Heartbeat-based crash detection and retry
+- Configurable per-step error handling in workflows
+- Persistent state storage for crash recovery
 
 ## Next Steps
 
@@ -272,12 +272,3 @@ Design for resilience:
 - Read the [FAQ](../faq.md) for comparisons with other orchestration and workflow technologies
 - Learn about the [Stepflow Protocol](../protocol/index.md) that enables this architecture
 
-## Future Topics
-
-This section will be expanded with:
-- Multi-region deployments
-- Service mesh integration
-- Observability and monitoring
-- Security and authentication
-- CI/CD pipelines
-- Cost optimization strategies

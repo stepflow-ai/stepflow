@@ -4,17 +4,9 @@ sidebar_position: 1
 
 # Flows Overview
 
-Flows are the core abstraction in Stepflow, defining the workflow executed by the orchestrator.
-Some of the most important parts of a flow are:
+Flows define what Stepflow executes: the inputs, the steps, and the output. They are written declaratively in YAML.
 
-- **Input** - The schema for the input to the flow
-- **Steps** - The steps to perform for the flow
-- **Output** - The output the flow should produce
-
-The steps and output are able to reference the input and the results of previous steps.
-This creates data dependencies between steps, determining which steps must run in sequence and which can run in parallel.
-
-Flows are typically defined in YAML files and executed by the Stepflow orchestrator, which coordinates component execution, manages data flow, and handles state persistence.
+Each step references a component and specifies its input using expressions (`$input`, `$step`). These references create data dependencies — Stepflow analyzes them to determine which steps must run in sequence and which can run in parallel automatically.
 
 :::note
 Flows conform to a [JSON schema](../reference/flow-schema.mdx) that defines the structure and requirements for flow definitions.
