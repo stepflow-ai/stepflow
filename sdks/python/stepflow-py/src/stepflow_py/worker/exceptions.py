@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+import sys
+from enum import IntEnum
 from typing import Any
 
 from stepflow_py.proto.common_pb2 import (
@@ -21,7 +23,34 @@ from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
     TASK_ERROR_CODE_WORKER_ERROR,
 )
-from stepflow_py.worker.generated_protocol import ErrorCode
+
+
+class ErrorCode(IntEnum):
+    PARSE_ERROR = -32700
+    JSON_RPC_INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    JSON_RPC_INTERNAL_ERROR = -32603
+    WORKER_ERROR = -32000
+    COMPONENT_NOT_FOUND = -32001
+    WORKER_NOT_INITIALIZED = -32002
+    INVALID_INPUT_SCHEMA = -32003
+    INVALID_VALUE = -32004
+    NOT_FOUND = -32005
+    PROTOCOL_VERSION_MISMATCH = -32006
+    WORKER_DEPENDENCY_ERROR = -32007
+    WORKER_CONFIGURATION_ERROR = -32008
+    COMPONENT_EXECUTION_FAILED = -32100
+    COMPONENT_VALUE_ERROR = -32101
+    COMPONENT_RESOURCE_UNAVAILABLE = -32102
+    COMPONENT_BAD_REQUEST = -32103
+    UNDEFINED_FIELD = -32200
+    ENTITY_NOT_FOUND = -32201
+    INTERNAL_ERROR = -32202
+    TRANSPORT_ERROR = -32300
+    TRANSPORT_SPAWN_ERROR = -32301
+    TRANSPORT_CONNECTION_ERROR = -32302
+    TRANSPORT_PROTOCOL_ERROR = -32303
 
 
 def is_transport_error(code: int) -> bool:

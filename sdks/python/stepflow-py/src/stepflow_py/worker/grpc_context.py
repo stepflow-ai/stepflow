@@ -72,13 +72,7 @@ class GrpcContext(StepflowContext):
         step_id: str | None = None,
         attempt: int = 1,
     ):
-        # Initialize the parent with minimal params — we override the
-        # methods that actually talk to the runtime.
-        # We pass None for queue/decoder/http_client since we use gRPC instead.
         super().__init__(
-            outgoing_queue=None,  # type: ignore[arg-type]
-            message_decoder=None,  # type: ignore[arg-type]
-            http_client=None,
             run_id=run_id,
             flow_id=flow_id,
             step_id=step_id,

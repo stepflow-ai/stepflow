@@ -59,12 +59,6 @@ Changelog = "https://github.com/stepflow-ai/stepflow/blob/main/sdks/python/CHANG
 "Source Code" = "https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-py"
 
 [project.optional-dependencies]
-http = [
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
-    "sse-starlette>=1.6.5",
-    "opentelemetry-instrumentation-fastapi>=0.44b0",
-]
 nats = [
     "nats-py>=2.9.0",
 ]
@@ -85,9 +79,6 @@ dev = [
     "ruff>=0.9.4",
     "mypy==1.19.1",
     "deptry>=0.22.0",
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
-    "sse-starlette>=1.6.5",
     "openai>=1.97.1",
     "httpx>=0.25.0",
     "pytest-mock>=3.14.1",

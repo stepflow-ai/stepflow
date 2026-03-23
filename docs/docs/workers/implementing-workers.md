@@ -342,7 +342,7 @@ Here's a minimal worker implementation outline:
 ## Reference Implementations
 
 - **Python SDK**: See [sdks/python/stepflow-py](https://github.com/datastax/stepflow/tree/main/sdks/python/stepflow-py) for a complete implementation
-- **Protocol Schema**: See [schemas/protocol.json](https://github.com/datastax/stepflow/blob/main/schemas/protocol.json) for message definitions
+- **Protocol Definition**: See [proto/stepflow/v1/](https://github.com/datastax/stepflow/tree/main/proto/stepflow/v1) for gRPC service and message definitions
 
 ## See Also
 

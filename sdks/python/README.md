@@ -123,27 +123,15 @@ The generation script automatically handles the generation and applies necessary
 
 ### Project Structure
 
-- `src/stepflow_worker/` - Main SDK code
-  - `generated_protocol.py` - Auto-generated protocol types from JSON schema
-  - `protocol.py` - Hybrid protocol layer with envelope patterns for efficient deserialization
-  - `server.py` - Component server implementation
-  - `context.py` - Runtime context API
-  - `exceptions.py` - SDK-specific exceptions
+- `src/stepflow_py/` - Main SDK code
+  - `worker/server.py` - Component registry
+  - `worker/context.py` - Runtime context API (base class)
+  - `worker/grpc_context.py` - gRPC context implementation
+  - `worker/grpc_worker.py` - gRPC pull-based worker
+  - `worker/task_handler.py` - Shared task execution logic
+  - `worker/exceptions.py` - SDK-specific exceptions and error codes
+  - `proto/` - Generated protobuf/gRPC stubs
 - `tests/` - Test suite
-
-### Architecture
-
-The SDK uses a hybrid approach for protocol handling:
-
-1. **Generated Types** (`generated_protocol.py`) - Auto-generated from the Stepflow JSON schema using `datamodel-code-generator`
-2. **Protocol Layer** (`protocol.py`) - Combines generated types with manual envelope patterns for two-stage deserialization using `msgspec.Raw`
-3. **Server Implementation** - Uses the protocol layer for efficient JSON-RPC message handling
-
-This design provides:
-- **Type Safety** - All protocol messages use properly typed structs
-- **Schema Consistency** - Generated types match the Rust protocol exactly
-- **Performance** - Two-stage deserialization with `msgspec.Raw` for optimal speed
-- **Maintainability** - Protocol changes can be regenerated automatically
 
 ## License
 

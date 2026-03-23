@@ -40,7 +40,7 @@ def main():
         description="Stepflow Python SDK Server",
         epilog="""
 Environment variables:
-  STEPFLOW_TRANSPORT         Transport mode: http, grpc, nats (default: grpc)
+  STEPFLOW_TRANSPORT         Transport mode: grpc, nats (default: grpc)
   STEPFLOW_TASKS_URL         TasksService gRPC address (default: localhost:7837)
   STEPFLOW_NATS_URL          NATS server URL (default: nats://localhost:4222)
   STEPFLOW_NATS_STREAM       NATS JetStream stream name (default: STEPFLOW_TASKS)
@@ -57,28 +57,11 @@ Environment variables:
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=0,
-        help="HTTP port (0 for auto-assign, default: 0)",
-    )
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="HTTP host (default: 127.0.0.1)",
-    )
     transport_group = parser.add_mutually_exclusive_group()
     transport_group.add_argument(
         "--grpc",
         action="store_true",
         help="Use gRPC pull-based transport (default)",
-    )
-    transport_group.add_argument(
-        "--http",
-        action="store_true",
-        help="Use HTTP JSON-RPC transport",
     )
     transport_group.add_argument(
         "--nats",
@@ -126,19 +109,14 @@ Environment variables:
 
     # Transport precedence: CLI flags > STEPFLOW_TRANSPORT env > default (grpc)
     transport_env = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower()
-    if args.http:
-        transport = "http"
-    elif args.nats:
+    if args.nats:
         transport = "nats"
     elif args.grpc:
         transport = "grpc"
     else:
         transport = transport_env
 
-    if transport == "http":
-        # Start HTTP server with specified host/port
-        asyncio.run(server.run(host=args.host, port=args.port))
-    elif transport == "nats":
+    if transport == "nats":
         # Start NATS JetStream worker
         from stepflow_py.worker.nats_worker import run_nats_worker
 
