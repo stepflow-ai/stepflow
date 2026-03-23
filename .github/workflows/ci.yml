@@ -32,7 +32,7 @@ env:
 # - docs: docs/ Docusaurus documentation site
 #
 # EXTENDING THIS PATTERN:
-# To add new sub-packages (e.g., TypeScript SDK, UI):
+# To add new sub-packages:
 # 1. Create a new composite action in .github/actions/
 # 2. Add path filters below in the 'changes' job
 # 3. Add a conditional job that uses the new composite action

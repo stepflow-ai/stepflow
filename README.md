@@ -80,7 +80,6 @@ This repository contains multiple components:
 
 - **`stepflow-rs/`** - Main Rust-based execution engine and runtime
 - **`sdks/python/`** (`stepflow-py`) - Python SDK for building components
-- **`sdks/typescript/`** (`stepflow-ts`) - TypeScript SDK for building components
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

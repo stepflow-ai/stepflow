@@ -344,7 +344,7 @@ git log --oneline stepflow-rs-0.1.0..HEAD -- stepflow-rs/ CLAUDE.md CONTRIBUTING
 
 ### Future Multi-Package Support
 
-The system is designed to be extensible for additional packages (Python SDK, TypeScript SDK, etc.):
+The system is designed to be extensible for additional packages (Python SDK, etc.):
 
 **To add a new package:**
 1. Add package option to `release_prepare.yml` workflow inputs
