@@ -107,7 +107,7 @@ uv run --project sdks/python/stepflow-py stepflow_py
 ```yaml
 plugins:
   python_stdio:
-    type: stepflow
+    type: grpc
     command: uv
     args: ["--project", "../sdks/python/stepflow-py", "run", "stepflow_py"]
 
@@ -148,7 +148,7 @@ stepflow_py --http --host 0.0.0.0 --port 8080
 ```yaml
 plugins:
   python_http:
-    type: stepflow
+    type: grpc
     url: "http://localhost:8080"
 
 routes:

@@ -672,7 +672,7 @@ impl<'a> Recovery<'a> {
         &self,
         replay_start_offset: Option<SequenceNumber>,
     ) -> Result<SubflowMetadata> {
-        let filters = stepflow_dtos::RunFilters {
+        let filters = stepflow_domain::RunFilters {
             root_run_id: Some(self.root_run_id),
             not_finished_before_seqno: replay_start_offset.map(|s| s.value()),
             ..Default::default()

@@ -132,7 +132,7 @@ async fn test_recovery_missing_flow_marks_run_failed() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Failed);
+    assert_eq!(run.status, ExecutionStatus::Failed);
 }
 
 #[tokio::test]
@@ -180,7 +180,7 @@ async fn test_recovery_missing_journal_entries_marks_run_failed() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Failed);
+    assert_eq!(run.status, ExecutionStatus::Failed);
 }
 
 #[tokio::test]
@@ -241,7 +241,7 @@ async fn test_recovery_missing_root_run_created_event_marks_run_failed() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Failed);
+    assert_eq!(run.status, ExecutionStatus::Failed);
 }
 
 #[tokio::test]
@@ -508,7 +508,7 @@ async fn test_recovery_resumes_partial_execution() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Run should have completed status after recovery"
     );
@@ -590,7 +590,7 @@ async fn test_recovery_preserves_attempt_counts() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Completed);
+    assert_eq!(run.status, ExecutionStatus::Completed);
 
     // Verify the journal now has a second TasksStarted with attempt=2
     let all_entries: Vec<_> = journal
@@ -727,7 +727,7 @@ async fn test_recovery_batches_parallel_tasks() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Completed);
+    assert_eq!(run.status, ExecutionStatus::Completed);
 
     // Check journal for the recovery TasksStarted
     let all_entries: Vec<_> = journal
@@ -908,7 +908,7 @@ async fn test_recovery_groups_by_root_run_id() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Root run should have completed status after recovery"
     );
@@ -987,7 +987,7 @@ async fn test_recovery_ignores_orphaned_subflows() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Running,
         "Orphaned subflow should remain in Running (not independently recovered)"
     );
@@ -1106,7 +1106,7 @@ async fn test_execution_creates_checkpoints() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Completed);
+    assert_eq!(run.status, ExecutionStatus::Completed);
 
     // Verify that checkpoints were actually created during execution.
     // The InMemoryStateStore tracks total put_checkpoint calls.
@@ -1216,7 +1216,7 @@ async fn test_recovery_with_checkpoint() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Running,
         "Run should still be Running after abort"
     );
@@ -1258,7 +1258,7 @@ async fn test_recovery_with_checkpoint() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Run should have completed status after checkpoint-based recovery"
     );
@@ -1325,7 +1325,7 @@ async fn test_recovery_without_checkpoint_backwards_compat() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Completed);
+    assert_eq!(run.status, ExecutionStatus::Completed);
 }
 
 /// Recovery should correctly apply all journal events (including subflow events)
@@ -1496,7 +1496,7 @@ async fn test_recovery_root_ignores_subflow_events_in_journal() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Root run should complete despite subflow events in journal"
     );
@@ -1643,7 +1643,7 @@ async fn test_recovery_skips_completed_subflow_runstate() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with completed subflow in journal"
     );
@@ -1816,7 +1816,7 @@ async fn test_recovery_resumes_inflight_subflow() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with in-flight subflow"
     );
@@ -1962,7 +1962,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        subflow_before.summary.status,
+        subflow_before.status,
         ExecutionStatus::Running,
         "Subflow should still be Running before recovery (crash window)"
     );
@@ -1994,7 +1994,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        subflow_after.summary.status,
+        subflow_after.status,
         ExecutionStatus::Completed,
         "Subflow metadata should be synced to Completed during recovery"
     );
@@ -2006,7 +2006,7 @@ async fn test_journal_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        root_run.summary.status,
+        root_run.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with metadata sync"
     );
@@ -2122,7 +2122,7 @@ async fn test_checkpoint_recovery_syncs_metadata_for_crash_window_completion() {
         .await
         .expect("should get run")
         .expect("run should exist");
-    assert_eq!(run.summary.status, ExecutionStatus::Running);
+    assert_eq!(run.status, ExecutionStatus::Running);
 
     // Phase 2: Recover with a new env (same stores, no wait signal)
     let mock_plugin2 = create_standard_mock_plugin();
@@ -2156,7 +2156,7 @@ async fn test_checkpoint_recovery_syncs_metadata_for_crash_window_completion() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run.summary.status,
+        run.status,
         ExecutionStatus::Completed,
         "Run should complete after checkpoint-based recovery with metadata sync"
     );
@@ -2247,7 +2247,7 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run_before.summary.status,
+        run_before.status,
         ExecutionStatus::Running,
         "Root run should still be Running before recovery (crash window)"
     );
@@ -2266,7 +2266,7 @@ async fn test_root_run_completion_crash_window_syncs_metadata() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        run_after.summary.status,
+        run_after.status,
         ExecutionStatus::Completed,
         "Root run metadata should be synced to Completed during recovery"
     );
@@ -2433,7 +2433,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
         .expect("subflow metadata should exist after recovery");
     assert!(
         matches!(
-            subflow_after.summary.status,
+            subflow_after.status,
             ExecutionStatus::Completed | ExecutionStatus::Running
         ),
         "Subflow should have been created and processed"
@@ -2446,7 +2446,7 @@ async fn test_subrun_creation_crash_window_creates_metadata() {
         .expect("should get run")
         .expect("run should exist");
     assert_eq!(
-        root_run.summary.status,
+        root_run.status,
         ExecutionStatus::Completed,
         "Root run should complete after recovery with missing subflow metadata"
     );

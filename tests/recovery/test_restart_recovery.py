@@ -34,6 +34,8 @@ import pytest
 
 from helpers import (
     ORCH1_URL,
+    STATUS_COMPLETED,
+    TERMINAL_STATUSES,
     assert_checkpoints_used_in_recovery,
     count_step_executions,
     docker_kill,
@@ -44,6 +46,7 @@ from helpers import (
     read_tracker_records,
     release_all_delays,
     release_delay,
+    status_name,
     store_flow,
     submit_run,
     wait_for_health,
@@ -87,7 +90,7 @@ async def test_restart_recovery_sequential(compose_env):
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
 
     # 8. Assertions
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 
@@ -162,11 +165,11 @@ async def test_restart_recovery_parallel(compose_env):
         release_all_delays()
         await asyncio.sleep(1)
         status = query_run_status(run_id)
-        if status in {"completed", "failed"}:
+        if status in TERMINAL_STATUSES:
             break
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
-    assert result["status"] == "completed"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 

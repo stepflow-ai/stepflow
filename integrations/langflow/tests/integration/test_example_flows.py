@@ -35,10 +35,10 @@ import pytest_asyncio
 from stepflow_py import StepflowClient
 from stepflow_py.config import (
     BuiltinPluginConfig,
+    GrpcPluginConfig,
     InMemoryStoreConfig,
     RouteRule,
     StepflowConfig,
-    StepflowSubprocessPluginConfig,
 )
 
 from stepflow_langflow_integration.converter.translator import LangflowConverter
@@ -62,12 +62,11 @@ def shared_config():
     Yields a StepflowConfig object for use with StepflowClient.local().
     Cleans up the database file after all tests complete.
     """
-    # Create shared database path
-    shared_db_path = Path(tempfile.gettempdir()) / "stepflow_langflow_shared_test.db"
-
-    # Always initialize database (remove old file to ensure clean state)
-    if shared_db_path.exists():
-        shared_db_path.unlink()
+    # Create shared database in an isolated temp directory.
+    # Using a dedicated directory avoids conflicts between parallel CI jobs
+    # and sidesteps SQLite disk I/O errors on some CI filesystems.
+    tmp_dir = tempfile.mkdtemp(prefix="stepflow_langflow_test_")
+    shared_db_path = Path(tmp_dir) / "langflow.db"
 
     # Initialize Langflow database using their service
     original_db_url = os.environ.get("LANGFLOW_DATABASE_URL")
@@ -131,7 +130,7 @@ def shared_config():
     yield StepflowConfig(
         plugins={
             "builtin": BuiltinPluginConfig(),
-            "langflow": StepflowSubprocessPluginConfig(
+            "langflow": GrpcPluginConfig(
                 command="uv",
                 args=[
                     "--project",
@@ -140,6 +139,7 @@ def shared_config():
                     "stepflow-langflow-server",
                 ],
                 env=plugin_env,
+                queueName="langflow",
             ),
         },
         routes={
@@ -150,7 +150,9 @@ def shared_config():
     )
 
     # Cleanup after all tests in module complete
-    shared_db_path.unlink(missing_ok=True)
+    import shutil
+
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module")

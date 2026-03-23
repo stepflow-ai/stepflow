@@ -14,7 +14,7 @@
 //!
 //! This trait handles durable storage of workflow state that needs to be accessible
 //! across orchestrator instances. It stores:
-//! - Run metadata (for RunDetails/RunSummary API responses)
+//! - Run metadata (for RunSummary API responses)
 //! - Item-level results
 //! - Step-level status entries with journal sequence tracking
 //!
@@ -29,8 +29,8 @@ use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
 use uuid::Uuid;
 
 use crate::{SequenceNumber, StateError};
-use stepflow_dtos::{
-    ItemResult, ResultOrder, RunDetails, RunFilters, RunSummary, StepStatusEntry, StepStatusInfo,
+use stepflow_domain::{
+    ItemResult, ResultOrder, RunFilters, RunSummary, StepStatusEntry, StepStatusInfo,
 };
 
 use super::state_store::CreateRunParams;
@@ -69,17 +69,17 @@ pub trait MetadataStore: Send + Sync {
         params: CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
 
-    /// Get run details.
+    /// Get run summary.
     ///
     /// # Arguments
     /// * `run_id` - The run identifier
     ///
     /// # Returns
-    /// The run details if found
+    /// The run summary if found
     fn get_run(
         &self,
         run_id: Uuid,
-    ) -> BoxFuture<'_, error_stack::Result<Option<RunDetails>, StateError>>;
+    ) -> BoxFuture<'_, error_stack::Result<Option<RunSummary>, StateError>>;
 
     /// List runs with optional filtering.
     ///

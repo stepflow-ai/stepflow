@@ -51,40 +51,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aide"
-version = "0.16.0-alpha.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e03dae8ee60626675f62a8d0c503fdc2721b01ae7feb2fd1e233b6bb16223a"
-dependencies = [
- "aide-macros",
- "axum",
- "bytes",
- "cfg-if",
- "http",
- "indexmap 2.13.0",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "serde_qs",
- "thiserror 2.0.18",
- "tower-layer",
- "tower-service",
- "tracing",
-]
-
-[[package]]
-name = "aide-macros"
-version = "0.16.0-alpha.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a02baae51c9c0637df98b62762a431aff6d13d34f05cfc9a30f059dbb8dff72f"
-dependencies = [
- "darling 0.20.11",
- "proc-macro2",
- "quote",
- "syn 2.0.114",
-]
-
-[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1314,17 +1280,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "eventsource-stream"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fef4569247a5f429d9156b9d0a2599914385dd189c539334c625d8099d90ab"
-dependencies = [
- "futures-core",
- "nom",
- "pin-project-lite",
-]
-
-[[package]]
 name = "fastant"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1582,12 +1537,6 @@ name = "futures-task"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f90f7dce0722e95104fcb095585910c0977252f286e354b5e3bd38902cd99988"
-
-[[package]]
-name = "futures-timer"
-version = "3.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
 
 [[package]]
 name = "futures-util"
@@ -2594,12 +2543,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minimal-lexical"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2730,16 +2673,6 @@ dependencies = [
  "log",
  "rand 0.8.5",
  "signatory",
-]
-
-[[package]]
-name = "nom"
-version = "7.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
-dependencies = [
- "memchr",
- "minimal-lexical",
 ]
 
 [[package]]
@@ -3941,32 +3874,14 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
- "tokio-util",
  "tower",
  "tower-http",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-streams",
  "web-sys",
  "webpki-roots 1.0.6",
-]
-
-[[package]]
-name = "reqwest-eventsource"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632c55746dbb44275691640e7b40c907c16a2dc1a5842aa98aaec90da6ec6bde"
-dependencies = [
- "eventsource-stream",
- "futures-core",
- "futures-timer",
- "mime",
- "nom",
- "pin-project-lite",
- "reqwest",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4445,19 +4360,6 @@ dependencies = [
  "itoa",
  "serde",
  "serde_core",
-]
-
-[[package]]
-name = "serde_qs"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b417bedc008acbdf6d6b4bc482d29859924114bbe2650b7921fb68a261d0aa6"
-dependencies = [
- "axum",
- "futures",
- "percent-encoding",
- "serde",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5028,7 +4930,6 @@ dependencies = [
  "stepflow-mock",
  "stepflow-nats",
  "stepflow-plugin",
- "stepflow-protocol",
  "stepflow-state",
  "stepflow-state-etcd",
  "stepflow-state-sql",
@@ -5063,13 +4964,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "stepflow-dtos"
+name = "stepflow-domain"
 version = "0.11.1"
 dependencies = [
  "chrono",
- "schemars 1.2.1",
  "serde",
- "serde_json",
  "stepflow-core",
  "uuid",
 ]
@@ -5089,7 +4988,7 @@ dependencies = [
  "serde_json",
  "stepflow-analysis",
  "stepflow-core",
- "stepflow-dtos",
+ "stepflow-domain",
  "stepflow-mock",
  "stepflow-observability",
  "stepflow-plugin",
@@ -5118,7 +5017,7 @@ dependencies = [
  "serde_json",
  "stepflow-analysis",
  "stepflow-core",
- "stepflow-dtos",
+ "stepflow-domain",
  "stepflow-execution",
  "stepflow-observability",
  "stepflow-plugin",
@@ -5229,7 +5128,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "stepflow-core",
- "stepflow-dtos",
+ "stepflow-domain",
  "stepflow-state",
  "thiserror 2.0.18",
  "tokio",
@@ -5254,59 +5153,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "stepflow-protocol"
-version = "0.11.1"
-dependencies = [
- "async-stream",
- "erased-serde",
- "error-stack",
- "fastrace",
- "futures",
- "indexmap 2.13.0",
- "log",
- "nix 0.29.0",
- "reqwest",
- "reqwest-eventsource",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "serde_with",
- "similar-asserts",
- "stepflow-core",
- "stepflow-dtos",
- "stepflow-execution",
- "stepflow-plugin",
- "stepflow-state",
- "strum",
- "subst",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
- "which 7.0.3",
-]
-
-[[package]]
 name = "stepflow-server"
 version = "0.11.1"
 dependencies = [
- "aide",
- "async-stream",
  "axum",
- "chrono",
  "clap",
  "error-stack",
- "futures",
- "indexmap 2.13.0",
  "log",
- "schemars 1.2.1",
- "serde",
  "serde_json",
- "serde_with",
- "stepflow-analysis",
  "stepflow-builtins",
  "stepflow-config",
  "stepflow-core",
- "stepflow-dtos",
  "stepflow-execution",
  "stepflow-grpc",
  "stepflow-mock",
@@ -5338,7 +5195,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stepflow-core",
- "stepflow-dtos",
+ "stepflow-domain",
  "stepflow-observability",
  "tempfile",
  "thiserror 2.0.18",
@@ -5380,7 +5237,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "stepflow-core",
- "stepflow-dtos",
+ "stepflow-domain",
  "stepflow-state",
  "tempfile",
  "tokio",
@@ -6598,19 +6455,6 @@ dependencies = [
  "indexmap 2.13.0",
  "wasm-encoder",
  "wasmparser",
-]
-
-[[package]]
-name = "wasm-streams"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
-dependencies = [
- "futures-util",
- "js-sys",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

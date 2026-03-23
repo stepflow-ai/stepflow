@@ -222,10 +222,10 @@ fn create_multi_step_workflow() -> Flow {
         .build()
 }
 
-/// Helper: store a flow via proto route and return its flow_id.
+/// Helper: store a flow via REST API and return its flow_id.
 async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
     let request = Request::builder()
-        .uri("/proto/api/v1/flows")
+        .uri("/api/v1/flows")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -244,10 +244,10 @@ async fn store_flow(app: &mut Router, workflow: &Flow) -> String {
     result["flowId"].as_str().unwrap().to_string()
 }
 
-/// Helper: execute a run (wait=true) via proto route and return the run_id.
+/// Helper: execute a run (wait=true) via REST API and return the run_id.
 async fn execute_run(app: &mut Router, flow_id: &str, input: serde_json::Value) -> String {
     let request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -334,7 +334,7 @@ fn determine_event_type(data: &serde_json::Value) -> String {
 }
 
 // =============================================================================
-// REST Tests via proto routes
+// REST Tests via REST APIs
 // =============================================================================
 
 #[tokio::test]
@@ -344,7 +344,7 @@ async fn test_health_endpoint() {
     let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
-        .uri("/proto/api/v1/health")
+        .uri("/api/v1/health")
         .body(Body::empty())
         .unwrap();
 
@@ -372,7 +372,7 @@ async fn test_flow_crud_operations() {
 
     // Store flow
     let store_request = Request::builder()
-        .uri("/proto/api/v1/flows")
+        .uri("/api/v1/flows")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -399,7 +399,7 @@ async fn test_flow_crud_operations() {
 
     // Get flow
     let get_request = Request::builder()
-        .uri(format!("/proto/api/v1/flows/{flow_id}"))
+        .uri(format!("/api/v1/flows/{flow_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -426,7 +426,7 @@ async fn test_create_run_without_overrides() {
 
     // Execute run without overrides (wait=true for synchronous result)
     let create_run_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -477,7 +477,7 @@ async fn test_create_run_async_default() {
 
     // Execute run without wait (default async behavior)
     let create_run_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -514,9 +514,9 @@ async fn test_create_run_async_default() {
     assert_eq!(execute_response["results"], json!([]));
     let run_id = execute_response["summary"]["runId"].as_str().unwrap();
 
-    // Now use GET /proto/api/v1/runs/{run_id}?wait=true to wait for completion
+    // Now use GET /api/v1/runs/{run_id}?wait=true to wait for completion
     let wait_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}?wait=true"))
+        .uri(format!("/api/v1/runs/{run_id}?wait=true"))
         .body(Body::empty())
         .unwrap();
 
@@ -550,7 +550,7 @@ async fn test_create_run_with_overrides() {
 
     // Execute run with overrides (wait=true for synchronous result)
     let create_run_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -615,7 +615,7 @@ async fn test_create_run_with_invalid_overrides() {
 
     // Execute run with overrides that reference a non-existent step
     let create_run_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -667,7 +667,7 @@ async fn test_create_run_empty_overrides() {
 
     // Execute run with empty overrides object (wait=true for synchronous result)
     let create_run_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -713,7 +713,7 @@ async fn test_hash_based_execution() {
 
     // Execute flow using hash (wait=true for synchronous result)
     let execute_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -761,7 +761,7 @@ async fn test_run_details() {
 
     // Get run details
     let details_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}"))
+        .uri(format!("/api/v1/runs/{run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -788,7 +788,7 @@ async fn test_run_details() {
 
     // Get run steps
     let steps_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/steps"))
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
         .body(Body::empty())
         .unwrap();
 
@@ -817,7 +817,7 @@ async fn test_list_runs() {
 
     // List runs (should be empty initially)
     let list_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .body(Body::empty())
         .unwrap();
 
@@ -839,7 +839,7 @@ async fn test_components_endpoint() {
     let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
-        .uri("/proto/api/v1/components")
+        .uri("/api/v1/components")
         .body(Body::empty())
         .unwrap();
 
@@ -868,7 +868,7 @@ async fn test_cors_headers() {
     let (app, _executor) = create_basic_test_server().await;
 
     let request = Request::builder()
-        .uri("/proto/api/v1/health")
+        .uri("/api/v1/health")
         .header("Origin", "http://localhost:3000")
         .body(Body::empty())
         .unwrap();
@@ -891,10 +891,10 @@ async fn test_error_responses() {
     let (app, _executor) = create_basic_test_server().await;
 
     // Test error for non-existent flow.
-    // "nonexistent" is not a valid blob ID format, so the proto route returns
+    // "nonexistent" is not a valid blob ID format, so the route returns
     // 400 (INVALID_ARGUMENT) rather than 404.
     let request = Request::builder()
-        .uri("/proto/api/v1/flows/nonexistent")
+        .uri("/api/v1/flows/nonexistent")
         .body(Body::empty())
         .unwrap();
 
@@ -908,7 +908,7 @@ async fn test_error_responses() {
 
     // Test 404 for non-existent run (valid UUID format but doesn't exist)
     let request = Request::builder()
-        .uri("/proto/api/v1/runs/00000000-0000-0000-0000-000000000000")
+        .uri("/api/v1/runs/00000000-0000-0000-0000-000000000000")
         .body(Body::empty())
         .unwrap();
 
@@ -917,7 +917,7 @@ async fn test_error_responses() {
 
     // Test 400 for invalid request
     let request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from("invalid json"))
@@ -978,7 +978,7 @@ async fn test_status_updates_during_regular_execution() {
     let flow_id = store_flow(&mut app, &workflow).await;
 
     let execute_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -1011,7 +1011,7 @@ async fn test_status_updates_during_regular_execution() {
 
     // Check step statuses after completion
     let steps_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/steps"))
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
         .body(Body::empty())
         .unwrap();
 
@@ -1075,7 +1075,7 @@ async fn test_status_transitions_with_error_handling() {
 
     // Execute workflow (should fail; wait=true for synchronous result)
     let execute_request = Request::builder()
-        .uri("/proto/api/v1/runs")
+        .uri("/api/v1/runs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -1108,7 +1108,7 @@ async fn test_status_transitions_with_error_handling() {
 
     // Check step status shows failure
     let steps_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/steps"))
+        .uri(format!("/api/v1/runs/{run_id}/steps"))
         .body(Body::empty())
         .unwrap();
 
@@ -1139,9 +1139,9 @@ async fn test_blob_json_round_trip() {
 
     let test_data = json!({"message": "Hello, blobs!", "number": 42, "nested": {"key": "value"}});
 
-    // Store a JSON blob via proto route
+    // Store a JSON blob via REST API
     let store_request = Request::builder()
-        .uri("/proto/api/v1/blobs")
+        .uri("/api/v1/blobs")
         .method("POST")
         .header("content-type", "application/json")
         .body(Body::from(
@@ -1163,7 +1163,7 @@ async fn test_blob_json_round_trip() {
 
     // Retrieve the blob as JSON
     let get_request = Request::builder()
-        .uri(format!("/proto/api/v1/blobs/{blob_id}"))
+        .uri(format!("/api/v1/blobs/{blob_id}"))
         .header("accept", "application/json")
         .body(Body::empty())
         .unwrap();
@@ -1187,9 +1187,9 @@ async fn test_blob_binary_round_trip() {
 
     let binary_data: Vec<u8> = vec![0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD, 0x42, 0x43];
 
-    // Store a binary blob via proto route
+    // Store a binary blob via REST API
     let store_request = Request::builder()
-        .uri("/proto/api/v1/blobs")
+        .uri("/api/v1/blobs")
         .method("POST")
         .header("content-type", "application/octet-stream")
         .header("x-blob-filename", "test-file.bin")
@@ -1207,7 +1207,7 @@ async fn test_blob_binary_round_trip() {
 
     // Retrieve the blob as binary
     let get_request = Request::builder()
-        .uri(format!("/proto/api/v1/blobs/{blob_id}"))
+        .uri(format!("/api/v1/blobs/{blob_id}"))
         .header("accept", "application/octet-stream")
         .body(Body::empty())
         .unwrap();
@@ -1259,7 +1259,7 @@ async fn test_sse_stream_basic() {
     // Now stream events for the completed run — should replay all events and close.
     // SSE handler requires runId in query string (no path extraction).
     let sse_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
+        .uri(format!("/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1332,7 +1332,7 @@ async fn test_sse_stream_resume_with_since() {
 
     // Stream all events first
     let sse_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
+        .uri(format!("/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1352,7 +1352,7 @@ async fn test_sse_stream_resume_with_since() {
 
     let sse_request = Request::builder()
         .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}&since={resume_from}"
+            "/api/v1/runs/{run_id}/events?runId={run_id}&since={resume_from}"
         ))
         .body(Body::empty())
         .unwrap();
@@ -1409,7 +1409,7 @@ async fn test_sse_stream_include_results() {
     // Stream with includeResults=true
     let sse_request = Request::builder()
         .uri(format!(
-            "/proto/api/v1/runs/{run_id}/events?runId={run_id}&includeResults=true"
+            "/api/v1/runs/{run_id}/events?runId={run_id}&includeResults=true"
         ))
         .body(Body::empty())
         .unwrap();
@@ -1441,7 +1441,7 @@ async fn test_sse_stream_include_results() {
 
     // Stream without includeResults (default)
     let sse_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
+        .uri(format!("/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 
@@ -1475,7 +1475,7 @@ async fn test_sse_stream_not_found() {
     let fake_run_id = uuid::Uuid::now_v7();
     let sse_request = Request::builder()
         .uri(format!(
-            "/proto/api/v1/runs/{fake_run_id}/events?runId={fake_run_id}"
+            "/api/v1/runs/{fake_run_id}/events?runId={fake_run_id}"
         ))
         .body(Body::empty())
         .unwrap();
@@ -1518,7 +1518,7 @@ async fn test_sse_stream_multi_step_workflow() {
 
     // Stream events
     let sse_request = Request::builder()
-        .uri(format!("/proto/api/v1/runs/{run_id}/events?runId={run_id}"))
+        .uri(format!("/api/v1/runs/{run_id}/events?runId={run_id}"))
         .body(Body::empty())
         .unwrap();
 

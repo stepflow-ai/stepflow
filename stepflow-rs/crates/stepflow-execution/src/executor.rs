@@ -30,7 +30,7 @@ use crate::{ExecutionError, Result, RunState};
 use error_stack::ResultExt as _;
 use stepflow_core::workflow::{Flow, ValueRef, apply_overrides};
 use stepflow_core::{BlobId, GetRunParams, SubmitRunParams, status::ExecutionStatus};
-use stepflow_dtos::RunStatus;
+use stepflow_domain::RunStatus;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutionsExt as _, BlobStoreExt as _, CreateRunParams, ExecutionJournalExt as _,
@@ -224,9 +224,9 @@ pub async fn get_run(
             .get_item_results(run_id, params.result_order)
             .await
             .change_context(ExecutionError::StateStoreError)?;
-        Ok(RunStatus::from_details_with_items(&details, items))
+        Ok(RunStatus::from_summary_with_items(&details, items))
     } else {
-        Ok(RunStatus::from_details(&details))
+        Ok(RunStatus::from_summary(&details))
     }
 }
 

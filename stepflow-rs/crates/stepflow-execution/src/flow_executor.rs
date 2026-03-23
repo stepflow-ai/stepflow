@@ -1357,7 +1357,7 @@ mod tests {
     use stepflow_core::workflow::Flow;
     use stepflow_core::workflow::StepBuilder;
     use stepflow_core::{BlobId, ValueExpr};
-    use stepflow_dtos::ResultOrder;
+    use stepflow_domain::ResultOrder;
     use stepflow_state::MetadataStoreExt as _;
 
     /// Helper to create a RunState for tests with a single input.
@@ -2485,10 +2485,10 @@ mod tests {
             .unwrap()
             .expect("subflow run should exist");
         assert_eq!(
-            run_details.summary.status,
+            run_details.status,
             ExecutionStatus::Completed,
             "Empty subflow should be completed, got: {:?}",
-            run_details.summary.status
+            run_details.status
         );
 
         // The empty subflow completed immediately and was evicted from in-memory state.
@@ -2581,11 +2581,11 @@ mod tests {
             .expect("subflow run should exist");
         assert!(
             matches!(
-                run_details.summary.status,
+                run_details.status,
                 ExecutionStatus::Completed | ExecutionStatus::Failed
             ),
             "Subflow should be complete, got: {:?}",
-            run_details.summary.status
+            run_details.status
         );
     }
 
@@ -2795,11 +2795,11 @@ mod tests {
 
         // Verify the hierarchy is correct
         assert_eq!(
-            run_details.summary.root_run_id, root_run_id,
+            run_details.root_run_id, root_run_id,
             "Subflow should have root_run_id pointing to the top-level run"
         );
         assert_eq!(
-            run_details.summary.parent_run_id,
+            run_details.parent_run_id,
             Some(root_run_id),
             "Subflow should have parent_run_id pointing to the run that submitted it"
         );

@@ -29,7 +29,7 @@ from typing import Literal
 from msgspec import Struct
 
 from stepflow_py.config._generated_config import (
-    HealthCheckConfig,
+    GrpcPluginConfig,
     InputCondition,
     McpPluginConfig,
     MockComponent,
@@ -37,7 +37,6 @@ from stepflow_py.config._generated_config import (
     MockPlugin,
     RouteRule,
     SqliteStateStoreConfig,
-    StepflowPluginConfig,
     StorageConfig,
     StoreConfig,
     SupportedPluginConfig,
@@ -48,12 +47,6 @@ from stepflow_py.config._generated_config import (
 from stepflow_py.config._generated_config import (
     SqliteStore as SqliteStoreConfig,
 )
-from stepflow_py.config._generated_config import (
-    StepflowRemoteConfig as RemoteTransport,
-)
-from stepflow_py.config._generated_config import (
-    StepflowSubprocessConfig as SubprocessTransport,
-)
 
 # ============================================================================
 # Plugin Config Helper Types
@@ -61,26 +54,6 @@ from stepflow_py.config._generated_config import (
 # These types properly combine transport/plugin fields with discriminator tags.
 # The code generator creates empty classes for allOf references, so we define
 # proper types here with all required fields.
-
-
-class StepflowSubprocessPluginConfig(Struct, kw_only=True):
-    """Stepflow plugin using subprocess transport (launches a process).
-
-    The process must print {"port": N} to stdout when ready.
-    """
-
-    type: Literal["stepflow"] = "stepflow"
-    command: str
-    args: list[str] | None = None
-    env: dict[str, str] | None = None
-    healthCheck: HealthCheckConfig | None = None
-
-
-class StepflowRemotePluginConfig(Struct, kw_only=True):
-    """Stepflow plugin using remote transport (connects to existing HTTP server)."""
-
-    type: Literal["stepflow"] = "stepflow"
-    url: str
 
 
 class BuiltinPluginConfig(Struct, kw_only=True):
@@ -107,11 +80,7 @@ class MockPluginConfig(Struct, kw_only=True):
 
 # Type alias for all plugin configs that can be used in StepflowConfig.plugins
 PluginConfig = (
-    StepflowSubprocessPluginConfig
-    | StepflowRemotePluginConfig
-    | BuiltinPluginConfig
-    | McpPluginConfigTagged
-    | MockPluginConfig
+    GrpcPluginConfig | BuiltinPluginConfig | McpPluginConfigTagged | MockPluginConfig
 )
 
 
@@ -127,9 +96,10 @@ class StepflowConfig(Struct, kw_only=True):
         config = StepflowConfig(
             plugins={
                 "builtin": BuiltinPluginConfig(),
-                "python": StepflowSubprocessPluginConfig(
+                "python": GrpcPluginConfig(
                     command="uv",
                     args=["--project", "/path/to/sdk", "run", "stepflow_worker"],
+                    queueName="python",
                 ),
             },
             routes={
@@ -160,17 +130,12 @@ __all__ = [
     "InputCondition",
     # Plugins (helper types with proper fields)
     "PluginConfig",
-    "StepflowSubprocessPluginConfig",
-    "StepflowRemotePluginConfig",
+    "GrpcPluginConfig",
     "BuiltinPluginConfig",
     "McpPluginConfigTagged",
     "MockPluginConfig",
     # Lower-level types (from generated code)
     "SupportedPluginConfig",
-    "StepflowPluginConfig",
-    "SubprocessTransport",
-    "RemoteTransport",
-    "HealthCheckConfig",
     "McpPluginConfig",
     # Mock
     "MockPlugin",

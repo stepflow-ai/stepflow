@@ -32,6 +32,31 @@ COMPOSE_OVERRIDE = os.environ.get("COMPOSE_OVERRIDE")
 ORCH1_URL = "http://localhost:7841"
 ORCH2_URL = "http://localhost:7842"
 
+# Proto ExecutionStatus enum values (i32) used in gRPC/tonic-rest JSON responses.
+STATUS_RUNNING = 1
+STATUS_COMPLETED = 2
+STATUS_FAILED = 3
+STATUS_CANCELLED = 4
+STATUS_RECOVERY_FAILED = 6
+
+TERMINAL_STATUSES = {STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED, STATUS_RECOVERY_FAILED}
+
+# Map integer status to human-readable names for assertions/logging.
+STATUS_NAMES = {
+    0: "unspecified",
+    STATUS_RUNNING: "running",
+    STATUS_COMPLETED: "completed",
+    STATUS_FAILED: "failed",
+    STATUS_CANCELLED: "cancelled",
+    5: "paused",
+    STATUS_RECOVERY_FAILED: "recoveryFailed",
+}
+
+
+def status_name(status_int: int) -> str:
+    """Get human-readable name for a proto ExecutionStatus integer."""
+    return STATUS_NAMES.get(status_int, f"unknown({status_int})")
+
 
 # ---------------------------------------------------------------------------
 # API helpers
@@ -54,7 +79,7 @@ async def store_flow(base_url: str, workflow_path: str) -> str:
 
 
 async def submit_run(base_url: str, flow_id: str, input_data: dict) -> str:
-    """Submit a run with wait=false and return the run_id (202 Accepted)."""
+    """Submit a run with wait=false and return the run_id."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             f"{base_url}/api/v1/runs",
@@ -63,18 +88,26 @@ async def submit_run(base_url: str, flow_id: str, input_data: dict) -> str:
                 "input": [input_data],
             },
         )
-        assert resp.status_code == 202, f"Expected 202, got {resp.status_code}: {resp.text}"
-        return resp.json()["runId"]
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        return resp.json()["summary"]["runId"]
 
 
 async def get_run(base_url: str, run_id: str) -> dict:
-    """Get current run status (non-blocking)."""
+    """Get current run status (non-blocking).
+
+    Returns a dict with summary fields including ``status`` (integer proto
+    enum value), or ``None`` if the run is not found (HTTP 404).
+    """
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(f"{base_url}/api/v1/runs/{run_id}")
         if resp.status_code == 404:
-            return {"status": "not_found"}
+            return None
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        # Flatten summary to top level for convenience.
+        summary = data.get("summary", {})
+        summary["steps"] = data.get("steps", [])
+        return summary
 
 
 async def wait_for_run(
@@ -88,7 +121,6 @@ async def wait_for_run(
     orchestrator restart).
     """
     deadline = time.monotonic() + timeout
-    terminal = {"completed", "failed", "cancelled", "recoveryFailed"}
 
     while time.monotonic() < deadline:
         remaining = max(1, int(deadline - time.monotonic()))
@@ -103,8 +135,11 @@ async def wait_for_run(
                     continue
                 resp.raise_for_status()
                 data = resp.json()
-                if data.get("status") in terminal:
-                    return data
+                summary = data.get("summary", {})
+                status = summary.get("status")
+                if status in TERMINAL_STATUSES:
+                    summary["steps"] = data.get("steps", [])
+                    return summary
         except (httpx.ConnectError, httpx.ReadError, httpx.ReadTimeout, httpx.RemoteProtocolError):
             await asyncio.sleep(2)
             continue
@@ -118,13 +153,12 @@ async def wait_for_run_on_either(
 ) -> dict:
     """Poll both orchestrators until run completes."""
     deadline = time.monotonic() + timeout
-    terminal = {"completed", "failed", "cancelled", "recoveryFailed"}
 
     while time.monotonic() < deadline:
         for url in [ORCH1_URL, ORCH2_URL]:
             try:
                 data = await get_run(url, run_id)
-                if data.get("status") in terminal:
+                if data is not None and data.get("status") in TERMINAL_STATUSES:
                     return data
             except Exception:
                 pass
@@ -395,13 +429,16 @@ def release_all_delays() -> int:
         return 0
 
 
-def query_run_status(run_id: str) -> str | None:
-    """Query run status from either orchestrator (sync, best-effort)."""
+def query_run_status(run_id: str) -> int | None:
+    """Query run status from either orchestrator (sync, best-effort).
+
+    Returns the proto ExecutionStatus integer, or None if unreachable.
+    """
     for url in [ORCH1_URL, ORCH2_URL]:
         try:
             resp = httpx.get(f"{url}/api/v1/runs/{run_id}", timeout=5)
             if resp.status_code == 200:
-                return resp.json().get("status")
+                return resp.json().get("summary", {}).get("status")
         except Exception:
             continue
     return None

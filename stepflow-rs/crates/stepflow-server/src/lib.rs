@@ -15,14 +15,9 @@
 //! This crate provides the core HTTP server functionality for Stepflow.
 //! It contains all the API endpoints, request/response types, and server startup logic.
 
-mod api;
-pub mod error;
 mod orphan_recovery;
 mod shutdown;
 mod startup;
-
-// Explicit exports from api module
-pub use api::{CreateRunRequest, CreateRunResponse, StoreFlowRequest, StoreFlowResponse};
 
 // Startup configuration
 pub use startup::{ServiceOptions, StepflowService};

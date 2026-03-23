@@ -36,6 +36,7 @@ import pytest
 from helpers import (
     ORCH1_URL,
     ORCH2_URL,
+    STATUS_COMPLETED,
     clear_tracker,
     count_step_executions,
     docker_kill,
@@ -46,6 +47,7 @@ from helpers import (
     read_tracker_records,
     release_all_delays,
     release_delay,
+    status_name,
     store_flow,
     submit_run,
     wait_for_health,
@@ -105,7 +107,7 @@ async def test_subflow_restart_recovery(compose_env):
     # Wait for run to complete via recovery
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
 
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 
@@ -174,7 +176,7 @@ async def test_subflow_failover_recovery(compose_env):
     # Wait for run to complete on either orchestrator
     result = await wait_for_run_on_either(run_id, timeout=90)
 
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 
@@ -233,7 +235,7 @@ async def test_completed_subflow_not_restarted(compose_env):
     release_delay("final_step")
 
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     records = read_tracker_records()
 

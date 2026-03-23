@@ -33,6 +33,8 @@ import pytest
 
 from helpers import (
     ORCH1_URL,
+    STATUS_COMPLETED,
+    STATUS_FAILED,
     count_step_executions,
     crash_worker,
     docker_kill,
@@ -41,6 +43,7 @@ from helpers import (
     poll_for_delay,
     read_tracker_records,
     release_delay,
+    status_name,
     store_flow,
     submit_run,
     wait_for_health,
@@ -90,7 +93,7 @@ async def test_worker_crash_single_retry(compose_env):
 
     # 7. Wait for run to complete
     result = await wait_for_run(ORCH1_URL, run_id, timeout=120)
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     # 7. Verify attempt tracking
     records = read_tracker_records()
@@ -144,7 +147,7 @@ async def test_worker_crash_exhausts_retries(compose_env):
     #    With pull transport: heartbeat timeout (5s) + 3 retries *
     #    (queue timeout 3s + fibonacci backoff 2-10s) ≈ 20-35s
     result = await wait_for_run(ORCH1_URL, run_id, timeout=60)
-    assert result["status"] == "failed", f"Expected failed, got {result['status']}"
+    assert result["status"] == STATUS_FAILED, f"Expected failed, got {status_name(result['status'])}"
 
     # 5. Restart worker for cleanup (next test starts fresh via compose_down,
     #    but restart here in case of test ordering changes)
@@ -192,7 +195,7 @@ async def test_worker_and_orchestrator_crash(compose_env):
 
     # 8. Wait for the run to complete
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     # 8. Verify step1 was not re-executed (journaled before crash)
     records = read_tracker_records()
@@ -262,7 +265,7 @@ async def test_orchestrator_crash_worker_delivers_result(compose_env):
 
     # 8. Wait for the run to complete
     result = await wait_for_run(ORCH1_URL, run_id, timeout=90)
-    assert result["status"] == "completed", f"Expected completed, got {result['status']}"
+    assert result["status"] == STATUS_COMPLETED, f"Expected completed, got {status_name(result['status'])}"
 
     # 9. Key assertion: step2 should have exactly 1 tracker record.
     #    If the worker's CompleteTask retry landed successfully, the

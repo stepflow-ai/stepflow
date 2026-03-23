@@ -32,6 +32,7 @@ import pytest
 from helpers import (
     ORCH1_URL,
     ORCH2_URL,
+    STATUS_COMPLETED,
     count_step_executions,
     docker_kill,
     docker_start,
@@ -40,6 +41,7 @@ from helpers import (
     read_tracker_records,
     release_all_delays,
     release_delay,
+    status_name,
     store_flow,
     submit_run,
     wait_for_health,
@@ -101,8 +103,8 @@ async def test_dual_failure_recovery(compose_env):
     result_b = await wait_for_run_on_either(run_b_id, timeout=90)
 
     # 10. Assertions — both runs succeeded
-    assert result_a["status"] == "completed", f"Run A: {result_a['status']}"
-    assert result_b["status"] == "completed", f"Run B: {result_b['status']}"
+    assert result_a["status"] == STATUS_COMPLETED, f"Run A: {status_name(result_a['status'])}"
+    assert result_b["status"] == STATUS_COMPLETED, f"Run B: {status_name(result_b['status'])}"
 
     records = read_tracker_records()
 

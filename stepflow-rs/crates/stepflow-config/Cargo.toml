@@ -27,7 +27,6 @@ stepflow-components-mcp.workspace = true
 stepflow-core.workspace = true
 stepflow-grpc.workspace = true
 stepflow-plugin.workspace = true
-stepflow-protocol.workspace = true
 stepflow-state.workspace = true
 stepflow-state-etcd = { workspace = true, optional = true }
 stepflow-state-sql.workspace = true

@@ -29,71 +29,9 @@ else:
         def __str__(self) -> str:
             return self.value  # type: ignore[no-any-return]
 
-from typing import Annotated, Any, Literal, TypeAlias
+from typing import Annotated, Any, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, convert, field
-
-
-class HealthCheckConfig(Struct, kw_only=True):
-    path: (
-        Annotated[
-            str, Meta(description='Health check endpoint path. Default: "/health"')
-        ]
-        | UnsetType
-    ) = '/health'
-    timeoutMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Total timeout in milliseconds for the health check to pass. Default: 60000 (60s)',
-            ),
-        ]
-        | UnsetType
-    ) = 60000
-    retryDelayMs: (
-        Annotated[
-            int,
-            Meta(
-                description='Delay between health check attempts in milliseconds. Default: 100',
-            ),
-        ]
-        | UnsetType
-    ) = 100
-
-
-class StepflowSubprocessConfig(Struct, kw_only=True):
-    type: Literal['stepflow']
-    command: str
-    args: list[str] | UnsetType = UNSET
-    env: (
-        Annotated[
-            dict[str, Any] | None,
-            Meta(
-                description='Environment variables to pass to the subprocess.\nValues can contain environment variable references like ${HOME} or ${USER:-default}.'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    healthCheck: (
-        Annotated[
-            HealthCheckConfig | None,
-            Meta(description='Health check configuration for the subprocess server.'),
-        ]
-        | UnsetType
-    ) = UNSET
-
-
-class StepflowRemoteConfig(Struct, kw_only=True):
-    type: Literal['stepflow']
-    url: str
-
-
-StepflowPluginConfig: TypeAlias = Annotated[
-    StepflowSubprocessConfig | StepflowRemoteConfig,
-    Meta(
-        description='Configuration for Stepflow plugin transport.\n\nEither `command` or `url` must be provided (but not both):\n- `command`: Launch a subprocess HTTP server\n- `url`: Connect to an existing HTTP server'
-    ),
-]
 
 
 class Schema(Struct, kw_only=True):
@@ -642,8 +580,7 @@ class MockPlugin(Struct, kw_only=True, tag_field='type', tag='mock'):
 
 
 SupportedPluginConfig: TypeAlias = (
-    StepflowPluginConfig
-    | BuiltinPluginConfig
+    BuiltinPluginConfig
     | MockPlugin
     | McpPluginConfig
     | GrpcPluginConfig

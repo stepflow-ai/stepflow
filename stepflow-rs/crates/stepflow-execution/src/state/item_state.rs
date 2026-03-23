@@ -27,7 +27,7 @@ use stepflow_core::{
     values::{Secrets, StepContext, ValueRef},
     workflow::{Flow, VariableSchema},
 };
-use stepflow_dtos::StepStatusInfo;
+use stepflow_domain::StepStatusInfo;
 
 /// Step index mapping for execution tracking.
 ///

@@ -17,7 +17,7 @@ use stepflow_core::workflow::{Flow, ValueRef};
 use stepflow_core::{
     BlobId, BlobType, DEFAULT_WAIT_TIMEOUT_SECS, FlowResult, GetRunParams, SubmitRunParams,
 };
-use stepflow_dtos::RunFilters;
+use stepflow_domain::RunFilters;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
     BlobStoreExt as _, ExecutionJournalExt as _, JournalEvent, MetadataStoreExt as _,
@@ -53,7 +53,7 @@ impl RunsServiceImpl {
     }
 }
 
-fn run_summary_to_proto(s: &stepflow_dtos::RunSummary) -> proto::RunSummary {
+fn run_summary_to_proto(s: &stepflow_domain::RunSummary) -> proto::RunSummary {
     proto::RunSummary {
         run_id: s.run_id.to_string(),
         flow_id: s.flow_id.to_string(),
@@ -70,7 +70,7 @@ fn run_summary_to_proto(s: &stepflow_dtos::RunSummary) -> proto::RunSummary {
     }
 }
 
-fn step_status_to_proto(entry: &stepflow_dtos::StepStatusEntry) -> proto::StepStatus {
+fn step_status_to_proto(entry: &stepflow_domain::StepStatusEntry) -> proto::StepStatus {
     let (output, error_message, error_code) = match &entry.result {
         Some(FlowResult::Success(v)) => {
             let val: Option<prost_wkt_types::Value> = serde_json::to_value(v)
@@ -281,7 +281,7 @@ impl RunsService for RunsServiceImpl {
             .map_err(|e| grpc_err::internal(format!("failed to get step statuses: {e}")))?;
 
         Ok(Response::new(GetRunResponse {
-            summary: Some(run_summary_to_proto(&details.summary)),
+            summary: Some(run_summary_to_proto(&details)),
             steps: step_statuses.iter().map(step_status_to_proto).collect(),
         }))
     }
@@ -303,13 +303,13 @@ impl RunsService for RunsServiceImpl {
 
         // Only allow deletion of non-running executions
         use stepflow_core::status::ExecutionStatus;
-        match details.summary.status {
+        match details.status {
             ExecutionStatus::Running | ExecutionStatus::Paused => {
                 return Err(grpc_err::failed_precondition(
                     "RUN_NOT_DELETABLE",
                     format!(
                         "run '{}' is still {:?} and cannot be deleted",
-                        req.run_id, details.summary.status
+                        req.run_id, details.status
                     ),
                 ));
             }
@@ -360,7 +360,7 @@ impl RunsService for RunsServiceImpl {
             .map_err(|e| grpc_err::internal(format!("failed to get run: {e}")))?
             .ok_or_else(|| grpc_err::not_found("run", run_id.to_string()))?;
 
-        let flow_id = &details.summary.flow_id;
+        let flow_id = &details.flow_id;
         let raw = self
             .env
             .blob_store()
@@ -455,7 +455,7 @@ impl RunsService for RunsServiceImpl {
             .map_err(|e| grpc_err::internal(format!("failed to get run: {e}")))?
             .ok_or_else(|| grpc_err::not_found("run", &req.run_id))?;
 
-        let root_run_id = run_details.summary.root_run_id;
+        let root_run_id = run_details.root_run_id;
         let include_sub_runs = req.include_sub_runs;
         let include_results = req.include_results;
 
@@ -473,7 +473,7 @@ impl RunsService for RunsServiceImpl {
         let flow = self
             .env
             .blob_store()
-            .get_flow(&run_details.summary.flow_id)
+            .get_flow(&run_details.flow_id)
             .await
             .ok()
             .flatten();
@@ -564,7 +564,7 @@ impl RunsService for RunsServiceImpl {
             .ok_or_else(|| grpc_err::not_found("run", run_id.to_string()))?;
 
         Ok(Response::new(CancelRunResponse {
-            summary: Some(run_summary_to_proto(&details.summary)),
+            summary: Some(run_summary_to_proto(&details)),
         }))
     }
 }
@@ -760,7 +760,7 @@ fn proto_event_type_enum(event: &proto::status_event::Event) -> i32 {
     }
 }
 
-fn run_summary_from_run_status(s: &stepflow_dtos::RunStatus) -> proto::RunSummary {
+fn run_summary_from_run_status(s: &stepflow_domain::RunStatus) -> proto::RunSummary {
     proto::RunSummary {
         run_id: s.run_id.to_string(),
         flow_id: s.flow_id.to_string(),
