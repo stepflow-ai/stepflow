@@ -9,17 +9,17 @@
 
 ## Summary
 
-Decompose docling's monolithic document conversion pipeline into independently scalable Stepflow stages with per-page fan-out across distributed workers. Support two pipeline variants behind the same fan-out skeleton: the **standard pipeline** (OCR + layout + table structure — exact parity with docling-serve) and the **VLM pipeline** (GraniteDocling single-pass inference — naturally page-parallel, API-extensible). Both paths produce a `DoclingDocument` that flows through the existing chunking component unchanged.
+This proposal discusses decomposing docling's monolithic document conversion pipeline into independently scalable Stepflow stages with per-page fan-out across distributed workers. We propose supporting two pipeline variants behind the same fan-out skeleton: the **standard pipeline** (OCR + layout + table structure — exact parity with docling-serve) and the **VLM pipeline** (GraniteDocling single-pass inference — naturally page-parallel, API-extensible). Both paths produce a `DoclingDocument` that flows through the existing chunking component unchanged.
 
-**Current state:** Single `convert` component runs the entire `DocumentConverter.convert()` monolithically on one worker. A 50-page document occupies one worker for ~31 seconds.
+**Current state:** In the [docling-proto-step-worker](../../integrations/docling-proto-step-worker/) integration, the single `convert` component runs the entire `DocumentConverter.convert()` monolithically on one worker. A 50-page document occupies one worker for ~31 seconds. Given the distributed, fault tolerant nature of the stepflow runtime, Documents are fanned out to workers via pulling from a task queue over a gRPC/protobuf channel. Enhanced observability of the docling pipeline provides additional telemetry such as Documents and pages per minute, token utilisation and per task resource utilisation. 
 
-**Target state:** `preprocess_pages` extracts per-page data, `MapComponent` fans out N page-level tasks to the worker pool, an assembly component merges results with full cross-page awareness, `chunk` runs on the assembled document. A 50-page document's inference work is distributed across all available workers, with the serial preprocess and assembly steps as bounded overhead.
+**Target state:** This proposal builds on the current state by introducing a framework where the existing `preprocess_pages` extracts per-page data, `MapComponent` fans out N page-level tasks to the worker pool, an assembly component merges results with full cross-page awareness, and `chunk` then runs on the assembled document. With this in place, a single 50-page document's inference work is distributed across all available workers, with the serial preprocess and assembly steps as bounded overhead.
 
 ## What Exists Today
 
 ### Deployed and Running (from #766)
 
-The `stepflow-docling-grpc` namespace is live on the local kind cluster:
+The deployment files available in examples/produciton/k8s/stepflow-docling-grpc deploy a `stepflow-grpc` namespace to a local kind cluster with the following resources:
 
 - **Orchestrator pod** (`docling-orchestrator`): facade (`:5001`, NodePort 30080) + stepflow-server (`:7840` HTTP, `:7837` gRPC). Image: `localhost/stepflow-server:alpine-0.10.0`.
 - **3× worker pods** (`docling-worker`): gRPC pull transport, `STEPFLOW_QUEUE_NAME=docling`, `STEPFLOW_MAX_CONCURRENT=1`. Image: `localhost/stepflow-docling-proto-worker:latest`.
@@ -27,12 +27,55 @@ The `stepflow-docling-grpc` namespace is live on the local kind cluster:
 
 ### Current Flow
 
-```yaml
-# docling-process-document.yaml
-classify → convert → chunk
+```mermaid
+graph TB
+      client["Client<br/><i>localhost:5001</i>"]
+
+      subgraph kind["Kind Cluster: stepflow-docling-grpc"]
+
+          subgraph orch_pod["Pod: docling-orchestrator"]
+              facade["docling-facade<br/><i>FastAPI :5001</i><br/>docling-serve compatible API"]
+
+              subgraph stepflow["stepflow-server (Rust)"]
+                  rest["REST API :7840"]
+                  queue["Task Queue<br/><i>queue: docling</i>"]
+                  grpc["gRPC TasksService :7837"]
+                  blobs["Blob Store"]
+              end
+          end
+
+          subgraph w1["worker pod (× N replicas)"]
+              w1_pull["gRPC PullTasks"]
+              w1_classify["/docling/classify"]
+              w1_convert["/docling/convert"]
+              w1_chunk["/docling/chunk"]
+          end
+
+      end
+
+      %% Submission
+      client -->|"1. POST /v1/convert/source<br/>(sync or async)"| facade
+      facade -->|"2. POST /api/v1/runs"| rest
+      rest -->|"3. Dispatch task"| queue
+
+      %% Task distribution
+      queue -->|"4. TaskAssignment"| w1_pull
+
+      %% Flow execution within worker
+      w1_classify -->|"pipeline config"| w1_convert
+      w1_convert -->|"document"| w1_chunk
+
+      %% Worker completion
+      w1_pull -->|"5. CompleteTask + result"| grpc
+      w1_pull -->|"blob put/get"| blobs
+
+      %% Response
+      grpc -->|"6. Run complete"| rest
+      rest -->|"7. Result"| facade
+      facade -->|"8. ConvertDocumentResponse"| client
 ```
 
-Three components registered by the worker: `/docling/classify`, `/docling/convert`, `/docling/chunk`. The `convert` component calls `DocumentConverter.convert()` which internally runs docling's full `StandardPdfPipeline` (5 threaded stages) within a single worker process.
+A stepflow flow defines three components for use by the worker: `/docling/classify`, `/docling/convert`, `/docling/chunk`. The `convert` component calls `DocumentConverter.convert()` which internally runs docling's full `StandardPdfPipeline` (5 threaded stages) within a single worker process. A lightweight facade application converts the docling-serve API into stepfow-server submissions. These submissions are added to the task queue for the docling workers. The docling worker's gRPC clients connect to orchestrator's TasksService via PullTasks bidirectional stream, pulling tasks as they become available and returning the results of the processing. 
 
 ### Integration Codebase
 
@@ -45,31 +88,84 @@ Three components registered by the worker: `/docling/classify`, `/docling/conver
   - `facade/translate.py` — Pure functions: request→flow_input, flow_output→response
 - `examples/production/k8s/stepflow-docling-grpc/` — K8s manifests, apply/teardown scripts, parity test
 
-> **Note on docling versioning:** All API references in this proposal (class names, import paths, option flags) have been verified against both the research base (commit 684f59f2, Feb 2026) and current docling v2.80.0 (March 2026). Key current-version facts: `StandardPdfPipeline` is the multi-threaded production pipeline; the sequential variant is `LegacyStandardPdfPipeline`; remote services require `enable_remote_services=True` on `PdfPipelineOptions`.
-
 ## Motivation: Why Disaggregate?
+
+The new architecture uses the Preprocessing phase to do the fan out:
+
+```mermaid
+graph TB
+    client["Client<br/><i>localhost:5001</i>"]
+
+    subgraph kind["Kind Cluster: stepflow-docling-grpc"]
+
+        subgraph orch_pod["Pod: docling-orchestrator"]
+            facade["docling-facade<br/><i>FastAPI :5001</i>"]
+
+            subgraph stepflow["stepflow-server (Rust)"]
+                rest["REST API :7840"]
+                map["MapComponent<br/><i>/builtin/map</i><br/>fan-out · await all · fan-in"]
+                queue["Task Queue<br/><i>queue: docling</i>"]
+                grpc["gRPC TasksService :7837"]
+                blobs[("Blob Store")]
+            end
+        end
+
+        subgraph workers["worker pod (× N replicas) — any worker, any task"]
+            w_pull["gRPC PullTasks"]
+            w_classify["/docling/classify"]
+            w_preprocess["/docling/preprocess_pages"]
+            w_infer["/docling/per_page_inference"]
+            w_assemble["/docling/assemble_standard"]
+            w_chunk["/docling/chunk"]
+        end
+
+    end
+
+    client -->|"1. POST /v1/convert/source"| facade
+    facade -->|"2. POST /api/v1/runs"| rest
+    rest -->|"3. Dispatch"| queue
+    queue -->|"4. TaskAssignment"| w_pull
+
+    w_classify -->|"pipeline config"| w_preprocess
+    w_preprocess -.->|"write N page blobs"| blobs
+    w_preprocess -->|"5. page refs × N"| map
+
+    map -->|"6. dispatch N tasks"| queue
+    w_infer -.->|"read page · write result"| blobs
+    w_pull -->|"7. CompleteTask × N"| grpc
+    map -->|"8. all N done · read results"| blobs
+
+    map -->|"9. ordered results"| queue
+    w_assemble -.->|"reads N result blobs"| blobs
+    w_assemble -->|"DoclingDocument"| w_chunk
+
+    w_pull -->|"10. CompleteTask"| grpc
+    grpc -->|"11. Run complete"| rest
+    rest -->|"12. Result"| facade
+    facade -->|"13. ConvertDocumentResponse"| client
+```
 
 ### Performance
 
-The monolithic `convert` component runs all five pipeline stages sequentially on one worker. Layout analysis takes ~633ms/page, table structure ~1.74s/table. A 50-page document with 10 tables: ~31s wall time, all on one pod. With per-page fan-out across 3 workers, the inference time divides by the worker count. The serial bottlenecks (preprocess + assembly) are I/O-bound and measured in seconds, not tens of seconds.
+Currently, the monolithic `convert` component runs all five pipeline stages sequentially on one worker. Layout analysis takes ~633ms/page, table structure ~1.74s/table. A 50-page document with 10 tables: ~31s wall time, all on one pod. With per-page fan-out as pictured above and detailed this document, the three workers would split the inference time by the worker count for page-level fan out. The serial bottlenecks (preprocess + assembly) are I/O-bound and measured in seconds, not tens of seconds.
 
 ### Scalability
 
-Today, adding workers only helps with concurrent documents — each document still occupies one worker. With fan-out, a single large document benefits from the entire worker pool. This matters for the SaaS context: unknown document mixes, large documents arriving unpredictably.
+Today, adding workers only helps with concurrent documents — each document still occupies one worker. Though this in and of itself if valueable for predictive scaling, with fan-out, a single large document benefits from the entire worker pool. This matters for the SaaS context: unknown document mixes, large documents arriving unpredictably, and a generally more random workflow. 
 
 ### Architectural Flexibility
 
-The dual-pipeline approach lets callers choose between the standard pipeline (highest quality, exact parity) and the VLM pipeline (single-pass, API-extensible, different quality profile). Both share the fan-out skeleton, assembly contract, and chunking step. Adding future pipeline variants (hybrid standard+VLM, Rust-native stages) means adding a new per-page component and assembly variant, not rearchitecting the flow.
+In addition to supporting page level fan out of the current pipeline, we also introduce a dual-pipeline approach lets callers choose between the standard pipeline (highest quality, exact parity) and the new VLM pipeline (single-pass, API-extensible, different quality profile). Both share the fan-out skeleton, assembly contract, and chunking step. Supporting encapsulation for multiple pipelines at the outset of this project will allow for better encapsulation and future proofing. 
 
-## Docling Pipeline Internals — Why Naive Fan-Out Breaks
+## Docling Pipeline Internals
 
-> This section summarizes research into docling's `StandardPdfPipeline` source code (commit 684f59f2, Feb 2026) via DeepWiki analysis. All claims have been verified against current docling source (v2.80.0 as of March 2026).
->
-> **Pipeline class naming:** In current docling, `StandardPdfPipeline` (in `docling/pipeline/standard_pdf_pipeline.py`) IS the multi-threaded production pipeline. The old sequential single-threaded variant has been moved to `LegacyStandardPdfPipeline`. Our worker correctly imports and uses `StandardPdfPipeline`.
+This section summarizes research into docling's `StandardPdfPipeline` and changes required for supporting this architecture. 
+
+**Pipeline class naming:** In current docling, `StandardPdfPipeline` (in `docling/pipeline/standard_pdf_pipeline.py`) IS the multi-threaded production pipeline. The old sequential single-threaded variant has been moved to `LegacyStandardPdfPipeline`. Our worker correctly imports and uses `StandardPdfPipeline`.
 
 ### Phase 1: Per-Page Model Inference (parallelizable)
 
-Five stages, each in its own thread with bounded queues (`ThreadedQueue`, max 128 items):
+In this pipeline, we have five stages, each in its own thread with bounded queues (`ThreadedQueue`, max 128 items):
 
 1. **Preprocess** (`PreprocessThreadedStage` / `PagePreprocessingModel`) — Lazy-loads page backend via `backend.load_page(page_no - 1)` (0-indexed — docling page numbers are 1-indexed), extracts page images at multiple scales, populates programmatic text cells (character/word/line level with bounding boxes from configured PDF backend, default `dlparse_v2`).
 2. **OCR** (`BaseOcrModel`) — Tesseract/EasyOCR/RapidOCR on page images. Batch size 64. Only runs where programmatic text is absent unless `force_full_page_ocr=True`.
@@ -77,7 +173,7 @@ Five stages, each in its own thread with bounded queues (`ThreadedQueue`, max 12
 4. **Table Structure** (`TableStructureModel` — TableFormer FAST/ACCURATE, ONNX Runtime) — Row/column structure within table bounding boxes. Batch size 4 (expensive: 2-6s per table on CPU). Gated by `do_table_structure=True` (default True).
 5. **Page Assembly** (`PageAssembleModel`) — Combines OCR + layout + table results into `page.assembled`. Batch size 1. Always runs.
 
-All five stages are per-page. Docling already exploits page-level parallelism within a single process via its threading model.
+All five stages are per-page. Docling already exploits page-level parallelism within a single process via its threading model. By integrating Stepflow deeper into this pipeline, we can make the page the unit of fan-out for better right-sizing of underlying infrastructure. 
 
 ### Phase 2: Document-Level Assembly (needs ALL pages)
 
@@ -89,7 +185,7 @@ After all pages complete Phase 1:
 
 ### The Cross-Page Problem
 
-Running `DocumentConverter.convert(source, page_range="N-N")` independently per page produces INCORRECT results:
+Naively running `DocumentConverter.convert(source, page_range="N-N")` independently per page produces INCORRECT results:
 - Reading order is per-page only — cross-page element ordering is lost
 - Hyphenation merging at page breaks doesn't happen
 - Caption-to-figure association across pages fails
@@ -122,7 +218,7 @@ The facade gains path-based routing — our first intentional API extension beyo
 - `/v1/convert/source` — Standard pipeline (default, docling-serve parity)
 - `/v1/vlm/convert/source` — VLM pipeline
 
-The change in `facade/app.py` is minimal: `_submit_and_respond()` already accepts a flow ID. The route handler selects which registered flow to submit to. `translate.py` is unchanged.
+The change in `facade/app.py` is minimal: `_submit_and_respond()` already accepts a flow ID. The route handler selects which registered flow to submit to. `translate.py` is unchanged. Note: `async` endpoints will be available for both paths. 
 
 ### Flow Definitions
 
@@ -198,7 +294,7 @@ steps:
 
 #### `preprocess_pages` (NEW — shared)
 
-Fetches the source document once, extracts per-page data, stores each page as an individual blob.
+The `preprocess_pages` component fetches the source document once, extracts per-page data, stores each page as an individual blob.
 
 **Input:**
 - `source` — Blob reference, URL, or base64 content
@@ -228,7 +324,7 @@ Fetches the source document once, extracts per-page data, stores each page as an
 }
 ```
 
-**Performance:** Serial, I/O-bound. pypdfium2 renders at ~50-100ms/page, so 500 pages ≈ 25-50s. This is the cost of avoiding 25GB of blob traffic (vs. 500 workers each fetching a 50MB PDF).
+**Performance:** Serial, I/O-bound. pypdfium2 renders at ~50-100ms/page, so 500 pages ≈ 25-50s. 
 
 **Note — backend selection:** Always pass the `pdf_backend` value from `pipeline_config` through to the backend constructor. The docling-serve default is `dlparse_v2`. `dlparse_v4` is a valid enum value but has a known memory accumulation issue on long documents (>20GB for 500-page PDFs, docling issue #2077) — exactly the documents that motivate fan-out. Using it unconditionally would violate parity for default-configured clients and introduce a memory regression.
 
@@ -318,7 +414,7 @@ doc = DoclingDocument.load_from_doctags(doctags_doc, document_name="document")
 
 #### `chunk` (EXISTING — unchanged)
 
-`HybridChunker` on the assembled `DoclingDocument`. Operates on the full document's semantic element tree. Cross-page chunk merging (heading inheritance, undersized chunk combination) works correctly because it receives a fully assembled document with correct reading order.
+`HybridChunker` on the assembled `DoclingDocument` operates on the full document's semantic element tree. Cross-page chunk merging (heading inheritance, undersized chunk combination) works correctly because it receives a fully assembled document with correct reading order.
 
 ### Worker Topology
 
@@ -337,9 +433,7 @@ This is intentionally a separate integration from the docling worker — it's re
 
 ### Page Distribution Design
 
-**Decision: preprocess extracts pages, stores as individual blobs (Option B).**
-
-The alternative — each worker fetches the full PDF and loads its assigned page — was rejected. While pypdfium2 supports lazy page loading (`PdfDocument()` reads only the xref table, `load_page(N)` loads just that page), the full PDF bytes still transit the blob store for each worker. A 500-page × 50MB document means 500 × 50MB = 25GB of blob traffic. Under Option B: one 50MB read + 500 × ~500KB page blob writes + 500 × ~500KB reads ≈ 550MB total — a 45× reduction.
+While pypdfium2 supports lazy page loading (`PdfDocument()` reads only the xref table, `load_page(N)` loads just that page), the full PDF bytes will be required to transit the blob store for each worker. One 50MB read + 500 × ~500KB page blob writes + 500 × ~500KB reads ≈ 550MB total. 
 
 **Cross-page boundaries are not a concern for the fan-out phase.** All cross-page work (reading order, hyphenation merging, caption association) happens in the assembly component AFTER fan-in on the complete ordered result set.
 
