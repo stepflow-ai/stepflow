@@ -49,17 +49,6 @@ data:
         options:
           path: /etc/grafana/provisioning/dashboards/infrastructure
 
-      # Load balancer dashboards
-      - name: 'Load Balancer'
-        orgId: 1
-        folder: 'Infrastructure'
-        type: file
-        disableDeletion: false
-        updateIntervalSeconds: 30
-        allowUiUpdates: true
-        options:
-          path: /etc/grafana/provisioning/dashboards/loadbalancer
-
       # Docling document processing dashboards (langflow integration)
       - name: 'Docling'
         orgId: 1

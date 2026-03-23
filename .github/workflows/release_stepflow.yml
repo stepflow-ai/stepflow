@@ -116,13 +116,7 @@ jobs:
           # Override built crate's git_version so health endpoint reports the release tag
           BUILT_OVERRIDE_STEPFLOW_GRPC_GIT_VERSION: ${{ needs.determine-version.outputs.tag }}
         run: |
-          if [ "${{ matrix.os }}" = "windows-2022" ]; then
-            # Windows: Only build stepflow and stepflow-server (load-balancer is Unix-only)
-            cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server
-          else
-            # Unix: Build all three binaries
-            cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
-          fi
+          cargo build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server
         shell: bash
 
       - name: Build binaries (cross)
@@ -132,8 +126,7 @@ jobs:
           # Override built crate's git_version so health endpoint reports the release tag
           BUILT_OVERRIDE_STEPFLOW_GRPC_GIT_VERSION: ${{ needs.determine-version.outputs.tag }}
         run: |
-          # Cross builds are Unix-only, so always build all three binaries
-          cross build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server --bin stepflow-load-balancer
+          cross build --release --target ${{ matrix.target }} --bin stepflow --bin stepflow-server
 
       - name: Package binaries (Unix)
         if: matrix.os != 'windows-2022'
@@ -141,15 +134,13 @@ jobs:
         run: |
           mkdir -p artifacts
 
-          # Copy all three binaries
+          # Copy binaries
           cp target/${{ matrix.target }}/release/stepflow artifacts/stepflow-${{ matrix.target }}
           cp target/${{ matrix.target }}/release/stepflow-server artifacts/stepflow-server-${{ matrix.target }}
-          cp target/${{ matrix.target }}/release/stepflow-load-balancer artifacts/stepflow-load-balancer-${{ matrix.target }}
 
           # Make executable
           chmod +x artifacts/stepflow-${{ matrix.target }}
           chmod +x artifacts/stepflow-server-${{ matrix.target }}
-          chmod +x artifacts/stepflow-load-balancer-${{ matrix.target }}
 
       - name: Package binaries (Windows)
         if: matrix.os == 'windows-2022'
@@ -335,14 +326,14 @@ jobs:
           mkdir -p ./archives
           cd ./release-artifacts
 
-          # Create tar.gz archives for Unix targets (include all three binaries)
+          # Create tar.gz archives for Unix targets
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-apple-darwin aarch64-apple-darwin; do
             # Create versioned directory name
             dir_name="stepflow-${VERSION}-${target}"
             mkdir -p "../${dir_name}"
             has_binaries=false
 
-            for binary_name in stepflow stepflow-server stepflow-load-balancer; do
+            for binary_name in stepflow stepflow-server; do
               binary="${binary_name}-${target}"
               if [ -f "$binary" ]; then
                 cp "$binary" "../${dir_name}/${binary_name}"
@@ -399,14 +390,9 @@ jobs:
           ```
           Platform-specific wheels are available on [PyPI](https://pypi.org/project/stepflow-orchestrator/).
 
-          **Unix platforms** (Linux, macOS) include three binaries:
+          Each platform includes two binaries:
           - `stepflow` - CLI tool for running workflows
           - `stepflow-server` - HTTP server for workflow execution
-          - `stepflow-load-balancer` - Load balancer for distributed component servers
-
-          **Windows** includes two binaries (load-balancer is Unix-only):
-          - `stepflow.exe` - CLI tool for running workflows
-          - `stepflow-server.exe` - HTTP server for workflow execution
 
           ### 📥 Download Binaries
 
@@ -426,19 +412,13 @@ jobs:
           - [stepflow-${{ needs.determine-version.outputs.version }}-x86_64-pc-windows-msvc.zip](https://github.com/${{ github.repository }}/releases/download/${{ needs.determine-version.outputs.tag }}/stepflow-${{ needs.determine-version.outputs.version }}-x86_64-pc-windows-msvc.zip)
 
           ### 🐳 Docker Images
-          Docker images are available for three different components:
+          Docker images are available for two components:
 
           **Stepflow Server** (HTTP workflow execution server):
           - `ghcr.io/${{ github.repository }}/stepflow-server:debian-${{ needs.determine-version.outputs.version }}`
           - `ghcr.io/${{ github.repository }}/stepflow-server:alpine-${{ needs.determine-version.outputs.version }}`
           - Default port: 7840
           - Entry point: `stepflow-server --port 7840`
-
-          **Stepflow Load Balancer** (Component server load balancer):
-          - `ghcr.io/${{ github.repository }}/stepflow-load-balancer:debian-${{ needs.determine-version.outputs.version }}`
-          - `ghcr.io/${{ github.repository }}/stepflow-load-balancer:alpine-${{ needs.determine-version.outputs.version }}`
-          - Default port: 8080
-          - Configure via `UPSTREAM_SERVICE` environment variable
 
           **Stepflow CLI** (Command-line workflow execution):
           - `ghcr.io/${{ github.repository }}/stepflow:debian-${{ needs.determine-version.outputs.version }}`
@@ -453,7 +433,7 @@ jobs:
           cd stepflow-${{ needs.determine-version.outputs.version }}-*
 
           # Move to PATH (optional)
-          sudo mv stepflow stepflow-server stepflow-load-balancer /usr/local/bin/
+          sudo mv stepflow stepflow-server /usr/local/bin/
           ```
 
           **macOS:**
@@ -463,10 +443,10 @@ jobs:
           cd stepflow-${{ needs.determine-version.outputs.version }}-*
 
           # Remove quarantine attribute (required for unsigned binaries)
-          xattr -d com.apple.quarantine stepflow stepflow-server stepflow-load-balancer
+          xattr -d com.apple.quarantine stepflow stepflow-server
 
           # Move to PATH (optional)
-          sudo mv stepflow stepflow-server stepflow-load-balancer /usr/local/bin/
+          sudo mv stepflow stepflow-server /usr/local/bin/
           ```
 
           **Windows:**
@@ -556,9 +536,8 @@ jobs:
           echo "- **Linux**: x86_64 (glibc + musl), ARM64 (glibc + musl)" >> $GITHUB_STEP_SUMMARY
           echo "- **macOS**: x86_64, ARM64" >> $GITHUB_STEP_SUMMARY
           echo "- **Windows**: x86_64" >> $GITHUB_STEP_SUMMARY
-          echo "- **Docker Images**: 3 components × 2 bases × 2 architectures" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Images**: 2 components × 2 bases × 2 architectures" >> $GITHUB_STEP_SUMMARY
           echo "  - stepflow-server (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
-          echo "  - stepflow-load-balancer (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
           echo "  - stepflow (Debian + Alpine, amd64 + arm64)" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Wheels**: 7 platform-specific wheels" >> $GITHUB_STEP_SUMMARY
 

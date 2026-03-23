@@ -50,32 +50,26 @@ echo "[3/9] Waiting for OTel Collector..."
 kubectl wait --for=condition=available --timeout=120s \
     deployment/otel-collector -n stepflow-o11y 2>/dev/null || echo "    (OTel Collector not ready yet, continuing...)"
 
-# 4. Deploy workers (must be discoverable before LB starts)
-echo "[4/9] Deploying docling workers..."
+# 4. Deploy workers
+echo "[4/7] Deploying docling workers..."
 kubectl apply -f worker/
 
-# 5. Deploy load balancer
-echo "[5/9] Deploying load balancer..."
-kubectl apply -f loadbalancer/
-
-# 6. Wait for workers and LB
-echo "[6/9] Waiting for workers and load balancer..."
+# 5. Wait for workers
+echo "[5/7] Waiting for workers..."
 kubectl wait --for=condition=available --timeout=300s \
     deployment/docling-worker -n stepflow-docling 2>/dev/null || echo "    (docling workers not ready yet)"
-kubectl wait --for=condition=available --timeout=120s \
-    deployment/docling-lb -n stepflow-docling 2>/dev/null || echo "    (load balancer not ready yet)"
 
-# 7. Deploy orchestrator (facade + stepflow-server)
-echo "[7/9] Deploying orchestrator (facade + stepflow-server)..."
+# 6. Deploy orchestrator (facade + stepflow-server)
+echo "[6/7] Deploying orchestrator (facade + stepflow-server)..."
 kubectl apply -f orchestrator/
 
-# 8. Wait for orchestrator
-echo "[8/9] Waiting for orchestrator..."
+# 7. Wait for orchestrator
+echo "[7/7] Waiting for orchestrator..."
 kubectl wait --for=condition=available --timeout=120s \
     deployment/docling-orchestrator -n stepflow-docling 2>/dev/null || echo "    (orchestrator not ready yet)"
 
-# 9. Status and access URLs
-echo "[9/9] Deployment complete. Checking status..."
+# Status and access URLs
+echo "Deployment complete. Checking status..."
 echo ""
 echo "=== stepflow-docling Namespace ==="
 kubectl get pods -n stepflow-docling

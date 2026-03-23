@@ -142,7 +142,7 @@ get_base() {
 }
 
 # Images to build
-images=("stepflow-server" "stepflow-load-balancer" "stepflow")
+images=("stepflow-server" "stepflow")
 targets=("x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu" "x86_64-unknown-linux-musl" "aarch64-unknown-linux-musl")
 
 # Track what we built for manifest creation (using simple string tracking)

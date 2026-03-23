@@ -69,16 +69,14 @@ jobs:
         run: |
           cargo build --release --target ${{ matrix.target }} \
             --bin stepflow \
-            --bin stepflow-server \
-            --bin stepflow-load-balancer
+            --bin stepflow-server
 
       - name: Build binaries (cross)
         if: matrix.cross
         run: |
           cross build --release --target ${{ matrix.target }} \
             --bin stepflow \
-            --bin stepflow-server \
-            --bin stepflow-load-balancer
+            --bin stepflow-server
 
       - name: Get version
         id: version
@@ -103,7 +101,6 @@ jobs:
           # Copy binaries
           cp "target/${TARGET}/release/stepflow" "dist/${ARCHIVE_NAME}/"
           cp "target/${TARGET}/release/stepflow-server" "dist/${ARCHIVE_NAME}/"
-          cp "target/${TARGET}/release/stepflow-load-balancer" "dist/${ARCHIVE_NAME}/"
 
           # Copy license and readme
           cp LICENSE "dist/${ARCHIVE_NAME}/"
@@ -129,7 +126,6 @@ jobs:
           # Copy binaries
           Copy-Item "target\${TARGET}\release\stepflow.exe" "dist\${ARCHIVE_NAME}\"
           Copy-Item "target\${TARGET}\release\stepflow-server.exe" "dist\${ARCHIVE_NAME}\"
-          Copy-Item "target\${TARGET}\release\stepflow-load-balancer.exe" "dist\${ARCHIVE_NAME}\"
 
           # Copy license and readme
           Copy-Item "LICENSE" "dist\${ARCHIVE_NAME}\"
@@ -230,10 +226,9 @@ jobs:
 
             ### What's included
 
-            Each archive contains three binaries:
+            Each archive contains two binaries:
             - `stepflow` - CLI for running workflows locally
             - `stepflow-server` - HTTP server for workflow execution
-            - `stepflow-load-balancer` - Load balancer for distributed component servers
 
             ### Checksums
 
@@ -250,7 +245,6 @@ jobs:
       matrix:
         image:
           - stepflow-server
-          - stepflow-load-balancer
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
