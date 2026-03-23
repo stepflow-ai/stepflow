@@ -390,9 +390,9 @@ test:
 ```yaml
 # test/test-config.yml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
-  - name: mock_external_apis
+  mock_external_apis:
     type: grpc
     queueName: mock
     command: "test/mock-server.py"

@@ -173,11 +173,11 @@ Create `test-config.yml` for test environments:
 ```yaml
 # test-config.yml
 plugins:
-  - name: builtin
+  builtin:
     type: builtin
 
   # Mock external services for testing
-  - name: http_mock
+  http_mock:
     type: grpc
     queueName: mock
     command: "mock-server"
@@ -185,12 +185,6 @@ plugins:
 
 storageConfig:
   type: inMemory  # Use in-memory store for tests
-
-# Test-specific settings
-settings:
-  timeout: 5  # Shorter timeouts for faster tests
-  log_level: debug
-  enable_tracing: true
 ```
 
 ### Environment-Specific Testing

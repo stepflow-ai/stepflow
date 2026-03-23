@@ -27,33 +27,28 @@ This separation allows you to:
 Different workers can be deployed with different resource profiles:
 
 ```yaml
-# Configuration routing to different worker pools
+# Configuration routing to different worker pools using per-route queueName
 plugins:
   builtin:
     type: builtin
-  
-  # CPU-intensive components
-  cpu_components:
-    type: grpc
-    queueName: cpu
 
-  # GPU-accelerated components (ML models)
-  gpu_components:
+  workers:
     type: grpc
-    queueName: gpu
-
-  # Memory-intensive components (large data processing)
-  memory_components:
-    type: grpc
-    queueName: memory
+    queueName: default  # Default queue; overridden per-route below
 
 routes:
   "/ml/{*component}":
-    - plugin: gpu_components
+    - plugin: workers
+      params:
+        queueName: gpu        # GPU worker pool
   "/data/{*component}":
-    - plugin: memory_components
+    - plugin: workers
+      params:
+        queueName: memory     # High-memory worker pool
   "/python/{*component}":
-    - plugin: cpu_components
+    - plugin: workers
+      params:
+        queueName: cpu        # CPU worker pool
   "/{*component}":
     - plugin: builtin
 ```
@@ -64,9 +59,9 @@ routes:
 flowchart TB
     Orch[Stepflow Orchestrator<br/>Manages workflow execution]
     
-    Orch -->|/python/*| CPULB[CPU Queue]
-    Orch -->|/ml/*| GPULB[GPU Queue]
-    Orch -->|/data/*| MemLB[Memory Queue]
+    Orch -->|/python/*| CPQ[CPU Queue]
+    Orch -->|/ml/*| GPQ[GPU Queue]
+    Orch -->|/data/*| MemQ[Memory Queue]
     Orch -->|builtin| Builtin[Built-in Components]
     
     subgraph CPU[CPU Workers]
@@ -89,9 +84,9 @@ flowchart TB
         MEM4[Memory Worker 5]
     end
     
-    CPULB --> CPU
-    GPULB --> GPU
-    MemLB --> MEM
+    CPQ --> CPU
+    GPQ --> GPU
+    MemQ --> MEM
 ```
 
 Each worker pool:
@@ -267,7 +262,6 @@ Design for resilience:
 ## Next Steps
 
 - **[Persistence and Recovery](./persistence-recovery.md)** - Durable execution and crash recovery
-- **[Load Balancer](./load-balancer.md)** - Detailed load balancer documentation
 - **[Configuration](../configuration.md)** - Configure routing and plugins
 - **[Variables](../flows/variables.md)** - Environment-specific workflow parameters
 - **[Batch Execution](../flows/batch-execution.md)** - High-throughput processing patterns

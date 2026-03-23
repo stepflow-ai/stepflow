@@ -2,156 +2,150 @@
 sidebar_position: 1
 ---
 
-# Overview
+# Protocol Overview
 
-The Stepflow Protocol is a gRPC-based communication protocol designed for executing local and remote workflow components.
-It enables bidirectional communication between the Stepflow orchestrator and workers, allowing workers to pull tasks, report results, and access runtime services like blob storage and sub-workflow execution.
+Stepflow uses a **queue-based task protocol** to coordinate work between the orchestrator and workers. The orchestrator dispatches tasks onto named queues; workers pull tasks from those queues, execute them, and report results back. This design decouples the orchestrator from workers, enabling independent scaling, multiple transport backends, and fault-tolerant execution.
 
 ## Architecture
 
-The protocol defines communication between two primary entities:
-
-- **Stepflow Orchestrator**: Orchestrates workflow execution, persistence, and routes components to plugins
-- **Worker**: Hosts one or more workflow components and executes them on behalf of the orchestrator
-
 ```mermaid
-graph TB
-    subgraph "Stepflow Orchestrator"
+graph LR
+    subgraph Orchestrator
         WE[Workflow Engine]
-        PS[Plugin System]
-        BS[Blob Store]
+        QR[Queue Router]
     end
 
-    subgraph "Worker A"
-        CA1[Component A1]
-        CA2[Component A2]
-        CTX[Worker Context]
+    subgraph Queues
+        Q1["queue: python"]
+        Q2["queue: gpu"]
     end
 
-    subgraph "Worker B"
-        CB1[Component B1]
-        CB2[Component B2]
-        CTX2[Worker Context]
+    subgraph Workers
+        W1[Python Worker A]
+        W2[Python Worker B]
+        W3[GPU Worker]
     end
 
-    WE --> PS
-    PS <--> CA1
-    PS <--> CB1
-    PS <--> BS
-    CTX <--> BS
-    CTX2 <--> BS
+    WE --> QR
+    QR --> Q1
+    QR --> Q2
+    Q1 --> W1
+    Q1 --> W2
+    Q2 --> W3
 
-    style WE fill:#e1f5fe
-    style BS fill:#f3e5f5
-    style CA1 fill:#e8f5e8
-    style CB1 fill:#e8f5e8
+    W1 -->|CompleteTask| WE
+    W2 -->|CompleteTask| WE
+    W3 -->|CompleteTask| WE
 ```
 
-## Core Concepts
+1. The **orchestrator** executes a workflow and determines which component to invoke for each step.
+2. It uses [routing rules](../configuration.md#routing-configuration) to map the component path to a plugin, which determines the **queue** to publish the task on.
+3. A **worker** listening on that queue picks up the task, executes the component, and reports the result back to the orchestrator.
 
-### gRPC Pull-Based Protocol
-The protocol uses gRPC for all worker communication:
-- **Task dispatch**: Workers pull tasks from the orchestrator via a streaming RPC (`PullTasks`)
-- **Task completion**: Workers report results back via `CompleteTask`
-- **Heartbeats**: Workers signal liveness during execution via `TaskHeartbeat`
-- **Standardized error handling** with `TaskErrorCode` variants
+## Queue Backends
 
-### Bidirectional Communication
-The protocol supports bidirectional communication:
-- **Orchestrator → Worker**: Task assignments (component execution, component discovery)
-- **Worker → Orchestrator**: Task completion, heartbeats, sub-run submission, run queries
+Stepflow supports multiple queue backends through its plugin system. All backends share the same task lifecycle — the only difference is how tasks are transported between the orchestrator and workers.
 
-### Content-Addressable Storage
-The protocol includes a built-in blob storage system:
-- **Content-based IDs**: SHA-256 hashes ensure data integrity
-- **Automatic deduplication**: Identical data shares the same blob ID
-- **Cross-component sharing**: Blobs can be accessed by any component in a workflow
-- **HTTP API**: Blob operations use a separate HTTP API endpoint
+| Backend | Plugin Type | Transport | Best For |
+|---------|------------|-----------|----------|
+| **gRPC** | `type: grpc` | `PullTasks` streaming RPC | Single-orchestrator deployments, local development |
+| **NATS** | `type: nats` | JetStream consumers | Multi-orchestrator, horizontal scaling, durable queues |
 
-### gRPC Transport
-Workers communicate via gRPC with streaming for task dispatch:
-- **Pull-based**: Workers call `PullTasks` and maintain a long-lived stream
-- **Named queues**: Tasks are routed to workers via configurable queue names
-- **Flexible deployment**: Workers can run locally (spawned by orchestrator) or remotely
+Future backends can be added by implementing the queue plugin interface.
 
-See [Transport](./transport.md) for details.
+### gRPC Queues
 
-## gRPC Services
+Workers connect to the orchestrator's `TasksService` and call `PullTasks` to open a long-lived stream. The orchestrator pushes task assignments through the stream as they become available.
 
-The protocol defines the following gRPC services:
+```yaml
+plugins:
+  python:
+    type: grpc
+    queueName: python
+    command: uv
+    args: ["run", "stepflow_py", "--grpc"]
+```
 
-### TasksService (Orchestrator → Worker)
-- `PullTasks` - Workers pull task assignments via server-side streaming
-- `GetOrchestratorForRun` - Discover which orchestrator owns a run
+### NATS Queues
 
-### OrchestratorService (Worker → Orchestrator)
-- `CompleteTask` - Report task results (success, failure, or component listing)
-- `TaskHeartbeat` - Signal liveness and report progress during execution
-- `SubmitRun` - Submit a sub-workflow for execution
-- `GetRun` - Query run status with optional wait for completion
+Tasks are published to NATS JetStream subjects. Workers run as durable consumers, enabling fan-out across multiple orchestrator instances and surviving restarts without task loss.
 
-### ComponentsService (Public API)
-- `ListRegisteredComponents` - Discover available components across all plugins
+```yaml
+plugins:
+  python:
+    type: nats
+    natsUrl: "nats://localhost:4222"
+    stream: STEPFLOW_TASKS
+```
 
-See [Methods](./methods/) for detailed specifications.
+## Named Queues and Routing
 
-## Communication Patterns
+Each plugin defines a default **queue name** (via `queueName`). Routes can override this per-path, allowing a single plugin to serve multiple worker pools:
 
-### Task Execution
-Component operations follow the pull-execute-complete pattern:
+```yaml
+plugins:
+  workers:
+    type: grpc
+    queueName: default
+
+routes:
+  "/ml/{*component}":
+    - plugin: workers
+      params:
+        queueName: gpu    # Override: route to GPU worker pool
+  "/python/{*component}":
+    - plugin: workers      # Uses default queue name
+  "/{*component}":
+    - plugin: builtin
+```
+
+Workers subscribe to a specific queue name and only receive tasks routed to that queue.
+
+## Worker Configuration
+
+Workers discover the orchestrator and queue configuration through environment variables. When the orchestrator launches a worker as a subprocess, it sets these automatically:
+
+| Variable | Description |
+|----------|-------------|
+| `STEPFLOW_TRANSPORT` | Queue backend: `grpc` or `nats` |
+| `STEPFLOW_QUEUE_NAME` | Queue name to pull tasks from |
+| `STEPFLOW_TASKS_URL` | Orchestrator gRPC address (for gRPC transport) |
+| `STEPFLOW_BLOB_URL` | BlobService gRPC address |
+
+For remote workers (deployed independently, e.g., in Kubernetes), these variables are configured in the worker's deployment manifest.
+
+## Task Lifecycle
+
+Every task follows the same lifecycle regardless of queue backend:
 
 ```mermaid
 sequenceDiagram
-    participant Worker as Worker
-    participant Orchestrator as Orchestrator
+    participant O as Orchestrator
+    participant Q as Queue
+    participant W as Worker
 
-    Worker->>Orchestrator: PullTasks (queue_name)
-    Orchestrator-->>Worker: TaskAssignment (execute)
-    Worker->>Orchestrator: TaskHeartbeat (started)
-    Worker->>Worker: Process input data
-    Worker->>Orchestrator: CompleteTask (result)
+    O->>Q: Publish task
+    Q-->>W: Deliver task
+    W->>O: TaskHeartbeat (started)
+    W->>W: Execute component
+    W->>O: TaskHeartbeat (progress)
+    W->>O: CompleteTask (result)
 ```
 
-### Bidirectional Operations
-Workers can make calls back to the orchestrator during execution:
-
-```mermaid
-sequenceDiagram
-    participant Worker as Worker
-    participant Orchestrator as Orchestrator
-
-    Orchestrator-->>Worker: TaskAssignment (execute)
-    Worker->>Orchestrator: TaskHeartbeat (started)
-    Worker->>Orchestrator: SubmitRun (sub-workflow)
-    Orchestrator-->>Worker: RunStatus (completed)
-    Worker->>Orchestrator: CompleteTask (result)
-```
-
-See the [Bidirectional Communication](./bidirectional.md) document for more details.
-
-## Error Handling
-
-The protocol defines `TaskErrorCode` variants for consistent error handling:
-
-- **Always retried**: `UNREACHABLE`, `TIMEOUT` (transport-level errors)
-- **Retried with policy**: `COMPONENT_FAILED`, `RESOURCE_UNAVAILABLE` (with `onError: retry`)
-- **Never retried**: `INVALID_INPUT`, `CANCELLED`, `COMPONENT_NOT_FOUND`, etc.
-
-All errors include structured data for programmatic handling and user-friendly messages for debugging.
-
-See the [Error Handling](./errors.md) document for a complete list of error codes and their meanings.
+See [Task Lifecycle](./task-lifecycle.md) for the full details on task types, heartbeating, completion, retries, and bidirectional callbacks.
 
 ## Proto Definitions
 
-The protocol is defined in Protocol Buffer files located in `proto/stepflow/v1/`:
-- `tasks.proto` — TaskAssignment, PullTasks, worker task dispatch
-- `orchestrator.proto` — CompleteTask, TaskHeartbeat, worker callbacks
-- `components.proto` — ComponentsService (public component listing API)
-- `common.proto` — Shared types (ObservabilityContext, TaskErrorCode)
+The protocol is defined in Protocol Buffer files in `proto/stepflow/v1/`:
+
+- `tasks.proto` — `TasksService`: PullTasks, GetOrchestratorForRun
+- `orchestrator.proto` — `OrchestratorService`: CompleteTask, TaskHeartbeat, SubmitRun, GetRun
+- `components.proto` — `ComponentsService`: ListRegisteredComponents (public API)
+- `blobs.proto` — `BlobService`: PutBlob, GetBlob
+- `common.proto` — Shared types: TaskErrorCode, ObservabilityContext
 
 ## Next Steps
 
-- **[Transport](./transport.md)**: gRPC transport specification
-- **[Methods](./methods/)**: Detailed method specifications with examples
-- **[Error Handling](./errors.md)**: Complete error code reference
-- **[Implementing Workers](../workers/implementing-workers.md)**: Guide to building workers
+- **[Task Lifecycle](./task-lifecycle.md)** — How tasks are dispatched, executed, and completed
+- **[Error Handling](./errors.md)** — Error codes, retry behavior, and failure handling
+- **[Blob Storage](./blobs.md)** — Content-addressable storage for data sharing

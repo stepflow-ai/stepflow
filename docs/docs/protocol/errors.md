@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 3
 ---
 
 # Error Handling
@@ -67,7 +67,7 @@ The orchestrator uses `TaskErrorCode` variants to make retry decisions:
 - **Never retried**: All other error codes indicate structural problems that won't resolve on retry.
 - **Separate budgets**: Transport retries and component retries have independent counters. Exhausting one does not affect the other.
 
-Transport errors and component errors share a single monotonically increasing `attempt` counter visible to the component. See [Component Execution](./methods/components.md#the-attempt-field) for details.
+Transport errors and component errors share a single monotonically increasing `attempt` counter visible to the component. See [Retries](./task-lifecycle.md#retries) for details.
 
 ### Error handling actions
 
