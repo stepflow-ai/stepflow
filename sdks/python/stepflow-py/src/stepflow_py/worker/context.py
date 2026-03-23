@@ -14,14 +14,15 @@
 
 """Context API for stepflow components to interact with the runtime.
 
-StepflowContext is the base class that defines the interface available
-to components. Concrete implementations (GrpcContext) provide the
-actual transport-specific logic.
+StepflowContext is the abstract base class that defines the interface
+available to components. Concrete implementations (GrpcContext) provide
+the actual transport-specific logic.
 """
 
 from __future__ import annotations
 
 import uuid
+from abc import ABC, abstractmethod
 from typing import Any
 
 import msgspec
@@ -30,7 +31,7 @@ from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA, BLOB_TYPE_FLOW
 from stepflow_py.worker.generated_flow import Flow
 
 
-class StepflowContext:
+class StepflowContext(ABC):
     """Context for stepflow components to make calls back to the runtime.
 
     This allows components to store/retrieve blobs and perform other
@@ -88,6 +89,7 @@ class StepflowContext:
         """
         return self._attempt
 
+    @abstractmethod
     async def put_blob(self, data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
         """Store JSON data as a blob and return its content-based ID.
 
@@ -98,8 +100,8 @@ class StepflowContext:
         Returns:
             The blob ID (SHA-256 hash) for the stored data
         """
-        raise NotImplementedError("Subclasses must implement put_blob")
 
+    @abstractmethod
     async def get_blob(self, blob_id: str) -> Any:
         """Retrieve JSON data by blob ID.
 
@@ -109,7 +111,6 @@ class StepflowContext:
         Returns:
             The JSON data associated with the blob ID
         """
-        raise NotImplementedError("Subclasses must implement get_blob")
 
     def _generate_subflow_key(self) -> str:
         """Generate a deterministic subflow key.
@@ -189,6 +190,7 @@ class StepflowContext:
         # Return the single result
         return results[0]
 
+    @abstractmethod
     async def submit_run(
         self,
         flow: Flow,
@@ -212,8 +214,8 @@ class StepflowContext:
         Returns:
             Run status
         """
-        raise NotImplementedError("Subclasses must implement submit_run")
 
+    @abstractmethod
     async def submit_run_by_id(
         self,
         flow_id: str,
@@ -237,8 +239,8 @@ class StepflowContext:
         Returns:
             Run status
         """
-        raise NotImplementedError("Subclasses must implement submit_run_by_id")
 
+    @abstractmethod
     async def get_run(
         self,
         run_id: str,
@@ -256,7 +258,6 @@ class StepflowContext:
         Returns:
             Run status
         """
-        raise NotImplementedError("Subclasses must implement get_run")
 
     async def evaluate_run(
         self,
@@ -300,6 +301,7 @@ class StepflowContext:
             subflow_key=subflow_key,
         )
 
+    @abstractmethod
     async def evaluate_run_by_id(
         self,
         flow_id: str,
@@ -324,4 +326,3 @@ class StepflowContext:
         Raises:
             StepflowFailed: If any of the runs failed
         """
-        raise NotImplementedError("Subclasses must implement evaluate_run_by_id")

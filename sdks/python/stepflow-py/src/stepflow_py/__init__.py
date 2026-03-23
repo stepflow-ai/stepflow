@@ -22,11 +22,7 @@ This package provides:
 
 # Re-export key classes from submodules for convenience
 from stepflow_py.client import StepflowClient
-from stepflow_py.worker.exceptions import ErrorCode
-
 __all__ = [
     # High-level client
     "StepflowClient",
-    # Error codes
-    "ErrorCode",
 ]
