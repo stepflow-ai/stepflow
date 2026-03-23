@@ -32,7 +32,8 @@ uv run docling-step-worker-server
 ```yaml
 plugins:
   docling:
-    type: stepflow
+    type: grpc
+    queueName: docling
     command: uv
     args: ["--project", "integrations/docling-step-worker", "run", "docling-step-worker-server"]
 

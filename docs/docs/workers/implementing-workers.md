@@ -4,52 +4,49 @@ sidebar_position: 4
 
 # Implementing Workers
 
-This guide describes how to implement a Stepflow worker in any programming language. Workers are standalone processes that provide components for workflow execution, communicating with the Stepflow runtime using a JSON-RPC 2.0 based protocol.
+This guide describes how to implement a Stepflow worker in any programming language. Workers are standalone processes that provide components for workflow execution, communicating with the Stepflow orchestrator using a gRPC pull-based protocol.
 
 While the [Python SDK](./custom-components.md) provides a high-level API that handles protocol details automatically, you can implement workers in any language by following this specification.
 
 ## What is a Worker?
 
-A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow runtime. Workers are registered with the runtime through [routing configuration](../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific worker processes. Workers:
+A **worker** is a process that hosts one or more workflow components and executes them on behalf of the Stepflow orchestrator. Workers are registered with the orchestrator through [routing configuration](../configuration.md), which maps component paths (like `/my_worker/process_data`) to specific named queues. Workers:
 
-- Provide a list of supported component paths
-- Receive component execution requests when workflows invoke those paths
-- Execute components and return results
-- Can make calls back to the runtime (e.g., for blob storage)
+- Connect to the orchestrator's `TasksService` and pull task assignments
+- Execute components and report results via `CompleteTask`
+- Send heartbeats to signal liveness during execution
+- Can make calls back to the orchestrator (e.g., for sub-run submission)
 - Run as independent processes, enabling language flexibility and fault isolation
 
 ```mermaid
 sequenceDiagram
-    participant Runtime as Stepflow Runtime
     participant Worker as Worker Process
+    participant Orchestrator as Stepflow Orchestrator
 
-    Note over Runtime,Worker: Initialization
-    Runtime->>Worker: initialize request
-    Worker-->>Runtime: version response
-    Runtime->>Worker: initialized notification
+    Note over Worker,Orchestrator: Connection
+    Worker->>Orchestrator: PullTasks(queue_name, worker_id)
+    Note over Orchestrator: Stream stays open
 
-    Note over Runtime,Worker: Component Discovery
-    Runtime->>Worker: components/list
-    Worker-->>Runtime: available components
+    Note over Worker,Orchestrator: Component Discovery
+    Orchestrator-->>Worker: TaskAssignment (list_components)
+    Worker->>Orchestrator: CompleteTask (ListComponentsResult)
 
-    Note over Runtime,Worker: Direct Execution
-    Runtime->>Worker: POST / (components/execute)
+    Note over Worker,Orchestrator: Component Execution
+    Orchestrator-->>Worker: TaskAssignment (execute)
+    Worker->>Orchestrator: TaskHeartbeat (started)
     activate Worker
-    Worker-->>Runtime: execution result (Content-Type: application/json)
+    Note over Worker: Execute component
+    Worker->>Orchestrator: CompleteTask (result)
     deactivate Worker
 
-    Note over Runtime,Worker: Bidirectional Execution
-    Runtime->>Worker: POST / (components/execute)
+    Note over Worker,Orchestrator: Bidirectional Execution
+    Orchestrator-->>Worker: TaskAssignment (execute)
+    Worker->>Orchestrator: TaskHeartbeat (started)
     activate Worker
-    Worker-->>Runtime: 200 OK (Content-Type: text/event-stream)
-    Note right of Worker: SSE channel open
-    Worker->>Runtime: SSE event: blobs/put request
-    Runtime->>Worker: POST / (blobs/put response)
-    Worker->>Runtime: SSE event: runs/submit request
-    Runtime->>Worker: POST / (runs/submit response)
-    Worker->>Runtime: SSE event: execution result
+    Worker->>Orchestrator: SubmitRun (sub-workflow)
+    Orchestrator-->>Worker: RunStatus (completed)
+    Worker->>Orchestrator: CompleteTask (result)
     deactivate Worker
-    Note right of Worker: SSE channel closed
 ```
 
 ## Requirements Overview
@@ -63,15 +60,14 @@ This section uses RFC 2119 terminology:
 
 | Requirement | Description |
 |------------|-------------|
-| **Streamable HTTP Transport** | Workers MUST support HTTP transport; MUST support SSE if bidirectional communication is used |
-| **JSON-RPC 2.0 Messages** | All messages MUST follow JSON-RPC 2.0 format |
-| **Immediate Response** | Workers SHOULD return `application/json` when possible |
-| **Initialization Handshake** | Workers MUST implement the `initialize`/`initialized` handshake |
-| **Component Methods** | Workers MUST implement `components/list`, `components/info`, and `components/execute` |
-| **Error Handling** | Workers MUST return proper JSON-RPC errors with standardized codes |
-| **Bidirectional Requests** | Workers MAY make bidirectional requests (blob storage, subflow execution) during component execution |
-| **SSE Streaming** | Workers MUST use `text/event-stream` response format if bidirectional requests may be made during execution |
-| **Bidirectional Responses** | Workers MUST handle runtime responses if they use SSE streaming |
+| **gRPC Transport** | Workers MUST connect to the orchestrator's `TasksService` via gRPC |
+| **PullTasks Stream** | Workers MUST call `PullTasks` and maintain the stream for their lifetime |
+| **Task Completion** | Workers MUST report results via `CompleteTask` on `OrchestratorService` |
+| **Heartbeats** | Workers MUST send `TaskHeartbeat` before and during execution |
+| **Component Listing** | Workers MUST handle `list_components` task assignments |
+| **Component Execution** | Workers MUST handle `execute` task assignments |
+| **Error Reporting** | Workers MUST report failures via `CompleteTask` with appropriate `TaskErrorCode` |
+| **Bidirectional Calls** | Workers MAY call `SubmitRun` and `GetRun` during execution |
 
 ### Observability Requirements
 
@@ -87,110 +83,84 @@ This section uses RFC 2119 terminology:
 
 | Requirement | Description |
 |------------|-------------|
-| **Health Endpoint** | Workers SHOULD provide a `/health` endpoint for health checks |
-| **JSON Schemas** | Workers SHOULD provide input/output JSON schemas for components |
-| **Schema Inference** | Workers SHOULD implement `components/infer_schema` for static type checking |
 | **Graceful Shutdown** | Workers SHOULD handle shutdown signals gracefully |
 | **Structured Logging** | Workers SHOULD use structured JSON logging format |
+| **Progress Reporting** | Workers SHOULD include progress in heartbeats for long-running tasks |
 
-## Transport: Streamable HTTP
+## Transport: gRPC
 
-Workers communicate over HTTP using the Streamable HTTP transport, which supports bidirectional communication through Server-Sent Events (SSE).
+Workers communicate with the orchestrator using gRPC. The protocol is defined in Protocol Buffer files in `proto/stepflow/v1/`.
 
-For complete transport details including request/response formats, headers, SSE streaming, and port announcement, see the [Transport documentation](../protocol/transport.md).
+For complete transport details, see the [Transport documentation](../protocol/transport.md).
 
 **Key requirements:**
-- Workers MUST expose a POST `/` endpoint for JSON-RPC messages (MAY expose additional endpoints)
-- Workers SHOULD expose a GET `/health` endpoint for health checks
-- Workers MUST support `application/json` response format
-- Workers MUST use `text/event-stream` (SSE) response format for any execution where bidirectional requests may be made
-- When starting as a subprocess, workers MUST print `{"port": N}` to stdout
+- Workers MUST connect to the orchestrator's `TasksService` gRPC endpoint
+- Workers MUST call `PullTasks` with their `queue_name` and a unique `worker_id`
+- Workers MUST keep the `PullTasks` stream open for their entire lifetime
+- Workers MUST use the `orchestrator_service_url` from `TaskContext` for callbacks
 
-**Response format selection:**
-- Use `application/json` for simple request-response (initialization, component listing, executions without bidirectional calls)
-- Use `text/event-stream` when the component execution may make bidirectional requests (e.g., blob storage, subflow execution)
-- The decision is based on whether bidirectional calls are *possible*, not whether they will actually occur (e.g., the Python SDK uses SSE if the handler accepts a context parameter)
+**Environment variables (subprocess mode):**
+- `STEPFLOW_TASKS_URL`: gRPC server address for `TasksService`
+- `STEPFLOW_QUEUE_NAME`: Queue name to pull tasks from
+- `STEPFLOW_BLOB_URL`: HTTP API URL for blob operations
+- `STEPFLOW_ORCHESTRATOR_URL`: Override for orchestrator callback URL
 
 ## Protocol Methods
 
-Workers must implement the following JSON-RPC methods. See the [Protocol Methods Reference](../protocol/methods/index.md) for detailed request/response schemas and examples.
+Workers handle task assignments received via the `PullTasks` stream. See the [Protocol Methods Reference](../protocol/methods/index.md) for detailed specifications.
 
-### Initialization (MUST)
+### Component Listing (MUST)
 
-Workers MUST complete the initialization handshake before accepting other requests:
+When the worker receives a `list_components` task assignment, it MUST:
+1. Enumerate all registered components
+2. Report the list via `CompleteTask` with a `ListComponentsResult`
 
-1. Runtime sends `initialize` with `runtime_protocol_version`
-2. Worker responds with `server_protocol_version` (current version: `1`)
-3. Runtime sends `initialized` notification
+### Component Execution (MUST)
 
-See [Initialization Methods](../protocol/methods/initialization.md) for details.
-
-### Component Methods (MUST)
-
-| Method | Description |
-|--------|-------------|
-| `components/list` | Return all available components with optional schemas |
-| `components/info` | Return metadata for a specific component |
-| `components/execute` | Execute a component with input data and observability context |
+When the worker receives an `execute` task assignment, it MUST:
+1. Send a `TaskHeartbeat` immediately (transitions task to EXECUTING)
+2. Execute the component with the provided input
+3. Send periodic heartbeats during execution (resets crash-detection timer)
+4. Report the result via `CompleteTask` (success or failure)
 
 See [Component Methods](../protocol/methods/components.md) for details.
 
 ### Bidirectional Methods (MAY)
 
-During `components/execute`, workers MAY call back to the runtime for blob storage and subflow execution. Using any bidirectional method requires SSE streaming (see [Transport](#transport-streamable-http)).
+During component execution, workers MAY call back to the orchestrator via `OrchestratorService`:
+
+#### Sub-Run Execution
+
+| RPC | Description |
+|-----|-------------|
+| `SubmitRun` | Submit a workflow for execution, optionally waiting for completion |
+| `GetRun` | Get the status and results of a workflow run |
+
+See [Run Methods](../protocol/methods/runs.md) for details.
 
 #### Blob Storage
 
-| Method | Description |
-|--------|-------------|
-| `blobs/put` | Store JSON data, receive content-addressed ID (`sha256:...`) |
-| `blobs/get` | Retrieve JSON data by blob ID |
-
-See [Blob Storage Methods](../protocol/methods/blobs.md) for details.
-
-#### Subflow Execution
-
-| Method | Description |
-|--------|-------------|
-| `runs/submit` | Submit a workflow for execution, optionally waiting for completion |
-| `runs/get` | Get the status and results of a workflow run |
-
-**`runs/submit` parameters:**
-- `flow_id`: Blob ID of the workflow to execute (store the flow definition with `blobs/put` first)
-- `inputs`: Array of input values (one per run item for batch execution)
-- `wait`: If `true`, block until the run completes and return results
-- `max_concurrency`: Limit concurrent item execution (optional)
-- `overrides`: Step overrides for the subflow (optional)
-
-**`runs/get` parameters:**
-- `run_id`: UUID of the run to query
-- `wait`: If `true`, block until the run completes
-- `include_results`: If `true`, include individual item results
-- `result_order`: `"byIndex"` (original order) or `"byCompletion"` (completion order)
-
-Both methods return a `RunStatus` with `run_id`, `status`, item statistics, and optionally results.
+Blob storage uses a separate HTTP API (not gRPC). See [Blob Storage](../protocol/methods/blobs.md) for details.
 
 ## Error Handling
 
-Workers MUST return JSON-RPC error responses for failures. Use standard error codes (e.g., `-32004` for component execution failures) with descriptive messages and optional `data` for debugging context.
+Workers MUST report failures via `CompleteTask` with an appropriate `TaskErrorCode`:
 
-See [Error Handling](../protocol/errors.md) for the complete error codes reference.
+| Code | When to Use |
+|------|------------|
+| `COMPONENT_FAILED` | Component executed but returned a business-logic failure |
+| `INVALID_INPUT` | Input validation failure |
+| `COMPONENT_NOT_FOUND` | Requested component doesn't exist on this worker |
+| `RESOURCE_UNAVAILABLE` | External resource unavailable |
+| `WORKER_ERROR` | Unexpected worker/SDK error |
+
+See [Error Handling](../protocol/errors.md) for the complete error codes reference and retry behavior.
 
 ## Observability
 
 ### ObservabilityContext
 
-The `observability` object is passed with protocol requests to enable distributed tracing and structured logging:
-
-```json
-{
-  "trace_id": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
-  "span_id": "1234567890abcdef",
-  "run_id": "run-12345",
-  "flow_id": "sha256:abc123...",
-  "step_id": "process_step"
-}
-```
+The `observability` field in `ComponentExecuteRequest` enables distributed tracing and structured logging:
 
 | Field | Format | Description |
 |-------|--------|-------------|
@@ -199,11 +169,6 @@ The `observability` object is passed with protocol requests to enable distribute
 | `run_id` | string | Workflow run identifier |
 | `flow_id` | blob ID | Flow definition blob ID |
 | `step_id` | string | Step identifier within the flow |
-
-**Field Presence:**
-- `trace_id`, `span_id`: Present when tracing is enabled
-- `run_id`, `flow_id`: Present for workflow execution (not during init/discovery)
-- `step_id`: Present for step-level execution
 
 ### Implementing Tracing (SHOULD)
 
@@ -235,29 +200,6 @@ def execute_component(request):
         return result
 ```
 
-### Implementing Logging (SHOULD)
-
-Workers SHOULD use structured JSON logging with diagnostic context:
-
-```json
-{
-  "timestamp": "2025-01-15T10:30:00.000Z",
-  "level": "INFO",
-  "message": "Processing records",
-  "logger": "my_worker.components",
-  "flow_id": "sha256:abc123...",
-  "run_id": "run-12345",
-  "step_id": "process_step",
-  "trace_id": "a1b2c3d4e5f67890a1b2c3d4e5f67890",
-  "span_id": "1234567890abcdef"
-}
-```
-
-**Recommended approach:**
-1. Set diagnostic context when handling `components/execute`
-2. Use a logging filter to inject context fields automatically
-3. Export logs via OTLP or write to stderr as structured JSON
-
 ### Environment Variables
 
 Workers SHOULD support these environment variables for observability configuration:
@@ -276,35 +218,22 @@ Use this checklist when implementing a worker:
 
 ### Required (MUST)
 
-- [ ] HTTP server listening on configurable port
-- [ ] POST `/` endpoint for JSON-RPC messages
-- [ ] Content-Type header validation (`application/json`)
-- [ ] Handle `initialize` request and respond with protocol version
-- [ ] Wait for `initialized` notification before accepting other requests
-- [ ] Implement `components/list` returning available components
-- [ ] Implement `components/info` returning component metadata
-- [ ] Implement `components/execute` with input validation
-- [ ] Return proper JSON-RPC error responses
-- [ ] Print `{"port": N}` to stdout on startup (subprocess mode)
-
-### Required IF Using Bidirectional Communication (Conditional MUST)
-
-If any component may make bidirectional requests (blob storage, subflow execution), the worker MUST:
-
-- [ ] Return `text/event-stream` response format for executions where bidirectional calls may occur
-- [ ] Implement SSE streaming with proper event formatting
-- [ ] Handle runtime responses and route them to the waiting request
-- [ ] Track pending requests by JSON-RPC message ID
+- [ ] gRPC client connecting to `TasksService`
+- [ ] Call `PullTasks` with `queue_name` and `worker_id`
+- [ ] Handle `list_components` task assignments
+- [ ] Handle `execute` task assignments
+- [ ] Send `TaskHeartbeat` before execution starts
+- [ ] Send periodic heartbeats during execution
+- [ ] Report results via `CompleteTask` with appropriate result type
+- [ ] Report failures via `CompleteTask` with `TaskError` and `TaskErrorCode`
 
 ### Recommended (SHOULD)
 
-- [ ] GET `/health` endpoint
-- [ ] JSON schemas for component inputs/outputs
-- [ ] `components/infer_schema` implementation
 - [ ] OpenTelemetry tracing with parent context extraction
 - [ ] Structured JSON logging with diagnostic context
 - [ ] OTLP export for traces and logs
 - [ ] Graceful shutdown handling
+- [ ] Progress reporting in heartbeats
 - [ ] Observability context propagation in bidirectional calls
 
 ## Example: Minimal Worker
@@ -312,41 +241,41 @@ If any component may make bidirectional requests (blob storage, subflow executio
 Here's a minimal worker implementation outline:
 
 ```
-1. Start HTTP server
-2. Print {"port": N} to stdout
+1. Read environment variables (STEPFLOW_TASKS_URL, STEPFLOW_QUEUE_NAME)
+2. Connect to TasksService gRPC endpoint
 
-3. On POST /:
-   a. Parse JSON-RPC message
-   b. If "initialize":
-      - Store runtime protocol version
-      - Respond with server_protocol_version: 1
-   c. If "initialized" (notification):
-      - Mark server as ready
-   d. If "components/list":
-      - Return list of components
-   e. If "components/info":
-      - Return component metadata
-   f. If "components/execute":
-      - Validate input
-      - Execute component (may include bidirectional calls)
-      - Return result via SSE or JSON response
-   g. If response to pending bidirectional call:
-      - Route to waiting request
+3. Call PullTasks(queue_name, worker_id):
+   - Stream stays open for worker lifetime
 
-4. On shutdown signal:
-   - Complete pending requests
-   - Close connections
+4. For each TaskAssignment received:
+   a. If list_components:
+      - Enumerate registered components
+      - Call CompleteTask with ListComponentsResult
+   b. If execute:
+      - Send TaskHeartbeat (task started)
+      - Execute component with input data
+      - Send periodic heartbeats during execution
+      - On success: Call CompleteTask with ComponentExecuteResponse
+      - On failure: Call CompleteTask with TaskError
+
+5. For bidirectional calls during execution:
+   - Call SubmitRun/GetRun on OrchestratorService
+   - Use orchestrator_service_url from TaskContext
+
+6. On shutdown signal:
+   - Complete pending tasks
+   - Close gRPC stream
    - Exit
 ```
 
 ## Reference Implementations
 
-- **Python SDK**: See [sdks/python/stepflow-py](https://github.com/datastax/stepflow/tree/main/sdks/python/stepflow-py) for a complete implementation
-- **Protocol Definition**: See [proto/stepflow/v1/](https://github.com/datastax/stepflow/tree/main/proto/stepflow/v1) for gRPC service and message definitions
+- **Python SDK**: See [sdks/python/stepflow-py](https://github.com/stepflow-ai/stepflow/tree/main/sdks/python/stepflow-py) for a complete implementation
+- **Proto definitions**: See [proto/stepflow/v1/](https://github.com/stepflow-ai/stepflow/tree/main/proto/stepflow/v1) for the gRPC service definitions
 
 ## See Also
 
 - [Protocol Overview](../protocol/index.md) - Complete protocol specification
-- [Transport](../protocol/transport.md) - HTTP transport details
+- [Transport](../protocol/transport.md) - gRPC transport details
 - [Error Handling](../protocol/errors.md) - Error codes reference
 - [Custom Components](./custom-components.md) - Python SDK guide

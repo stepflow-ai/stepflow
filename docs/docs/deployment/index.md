@@ -11,7 +11,8 @@ Stepflow's architecture enables flexible production deployments that scale compo
 In production, Stepflow separates concerns between:
 
 - **Workflow Orchestrator**: Manages workflow execution, data flow, and state persistence
-- **Workers**: Provide business logic and can be scaled independently via gRPC pull-based transport
+- **Workers**: Provide business logic and can be scaled independently
+- **Task Queues**: Route tasks to workers via named gRPC queues
 
 This separation allows you to:
 - Scale different types of components independently based on resource requirements
@@ -30,21 +31,21 @@ Different workers can be deployed with different resource profiles:
 plugins:
   builtin:
     type: builtin
-
-  # CPU-intensive components (gRPC pull-based workers)
+  
+  # CPU-intensive components
   cpu_components:
     type: grpc
-    url: "grpc://cpu-components.stepflow.svc.cluster.local:7837"
+    queueName: cpu
 
   # GPU-accelerated components (ML models)
   gpu_components:
     type: grpc
-    url: "grpc://gpu-components.stepflow.svc.cluster.local:7837"
+    queueName: gpu
 
   # Memory-intensive components (large data processing)
   memory_components:
     type: grpc
-    url: "grpc://memory-components.stepflow.svc.cluster.local:7837"
+    queueName: memory
 
 routes:
   "/ml/{*component}":
@@ -61,44 +62,60 @@ routes:
 
 ```mermaid
 flowchart TB
-    Orch[Stepflow Orchestrator<br/>Manages workflow execution<br/>gRPC TasksService]
-
+    Orch[Stepflow Orchestrator<br/>Manages workflow execution]
+    
+    Orch -->|/python/*| CPULB[CPU Queue]
+    Orch -->|/ml/*| GPULB[GPU Queue]
+    Orch -->|/data/*| MemLB[Memory Queue]
     Orch -->|builtin| Builtin[Built-in Components]
-
-    subgraph CPU[CPU Workers - pull tasks via gRPC]
+    
+    subgraph CPU[CPU Workers]
         CPU1[CPU Worker 1]
         CPU2[CPU Worker 2]
         CPU3[CPU Worker ...]
         CPU4[CPU Worker 10]
     end
 
-    subgraph GPU[GPU Workers - pull tasks via gRPC]
+    subgraph GPU[GPU Workers]
         GPU1[GPU Worker 1]
         GPU2[GPU Worker 2]
         GPU3[GPU Worker 3]
     end
 
-    subgraph MEM[Memory Workers - pull tasks via gRPC]
+    subgraph MEM[Memory Workers]
         MEM1[Memory Worker 1]
         MEM2[Memory Worker 2]
         MEM3[Memory Worker ...]
         MEM4[Memory Worker 5]
     end
-
-    CPU -->|PullTasks /python/*| Orch
-    GPU -->|PullTasks /ml/*| Orch
-    MEM -->|PullTasks /data/*| Orch
+    
+    CPULB --> CPU
+    GPULB --> GPU
+    MemLB --> MEM
 ```
 
 Each worker pool:
-- Pulls tasks from the orchestrator via gRPC (no load balancer needed)
+- Pulls tasks from a dedicated named queue
 - Scales independently based on workload
 - Runs on appropriate hardware (CPU, GPU, high-memory nodes)
-- The orchestrator manages task distribution across connected workers
+- Communicates with the orchestrator via gRPC
 
 ## Key Components
 
-### 1. Worker Pools
+### 1. Task Routing
+
+Workers connect to the orchestrator's `TasksService` and pull tasks from named queues. The gRPC pull-based protocol provides:
+- Named queue-based task routing
+- Heartbeat-based crash detection
+- Automatic retry on transport failures
+- Horizontal scaling across multiple worker instances
+
+**Use cases:**
+- Distributing tasks across multiple worker pods
+- Scaling worker pools independently
+- Enabling horizontal scaling of workers
+
+### 2. Worker Pools
 
 Deploy different workers for different workloads:
 
@@ -120,7 +137,7 @@ Deploy different workers for different workloads:
 - Data aggregation
 - Deployment: High-memory nodes, moderate replica count
 
-### 2. Configuration Management
+### 3. Configuration Management
 
 Use [Configuration](../configuration.md) and [Variables](../flows/variables.md) to manage environment-specific settings:
 
@@ -142,14 +159,15 @@ This separation allows the same workflow definition to run across environments b
 The [Kubernetes Batch Demo](https://github.com/stepflow-ai/stepflow/tree/main/examples/kubernetes-batch-demo) provides a complete working example of:
 
 - Stepflow orchestrator deployed in Kubernetes
-- Multiple worker replicas with gRPC pull-based task distribution
+- Multiple worker replicas pulling from named queues
+- gRPC-based task dispatch and completion
 - Batch execution with distributed compute
-- Health checking and automatic failover
+- Heartbeat-based health monitoring and automatic failover
 
 **Key features demonstrated:**
 - Workers scale from 3 to 20+ replicas
-- Orchestrator distributes tasks to connected workers
-- Bidirectional communication (blob storage) works correctly
+- Tasks distributed across worker pool via named queues
+- Bidirectional communication (sub-run submission) works correctly
 - Batch workflows process 1000+ items efficiently
 
 ## Scaling Strategies
@@ -222,7 +240,15 @@ Group components by resource requirements:
 - **Medium**: Data processing, batch operations → Memory workers
 - **Heavy**: ML inference, GPU workloads → GPU workers
 
-### 2. Monitor and Scale
+### 2. Use Named Queues
+
+Configure separate named queues for each component class:
+- Enables horizontal scaling per worker pool
+- Provides heartbeat-based health monitoring
+- Automatic crash detection and retry
+- Simplifies configuration
+
+### 3. Monitor and Scale
 
 Track key metrics:
 - Worker CPU/memory usage
@@ -230,9 +256,10 @@ Track key metrics:
 - Error rates and health status
 - Queue depths and backpressure
 
-### 3. Plan for Failures
+### 4. Plan for Failures
 
 Design for resilience:
+- Multiple load balancer replicas
 - Health checks with automatic failover
 - Retry logic in workflows
 - Persistent state storage
@@ -240,6 +267,7 @@ Design for resilience:
 ## Next Steps
 
 - **[Persistence and Recovery](./persistence-recovery.md)** - Durable execution and crash recovery
+- **[Load Balancer](./load-balancer.md)** - Detailed load balancer documentation
 - **[Configuration](../configuration.md)** - Configure routing and plugins
 - **[Variables](../flows/variables.md)** - Environment-specific workflow parameters
 - **[Batch Execution](../flows/batch-execution.md)** - High-throughput processing patterns

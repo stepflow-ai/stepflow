@@ -335,9 +335,8 @@ This routes the request to the `langflow_k8s` load balancer configured in the sa
 ```yaml
 # also stepflow-config.yml
   langflow_k8s:
-    type: stepflow
-    transport: http
-    url: "http://stepflow-load-balancer.stepflow.svc.cluster.local:8080"
+    type: grpc
+    queueName: langflow
 ```
 
 As the load balancer is a k8s primitive, the number and type of workers is not our concern. It can be one, 100, or 10,000. The orchestrator just forwards the requests and the Stepflow Load Balander will maintain affinity. For reference, you can see the full [stepflow configuration](https://github.com/stepflow-ai/stepflow/blob/main/examples/production/k8s/stepflow-config.yml) for this production architecture in the repository.

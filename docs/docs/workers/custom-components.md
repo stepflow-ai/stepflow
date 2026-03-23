@@ -20,16 +20,6 @@ uv add stepflow-py
 pip install stepflow-py
 ```
 
-For HTTP transport support:
-
-```bash
-# Using uv
-uv add stepflow-py[http]
-
-# Using pip
-pip install stepflow-py[http]
-```
-
 ### Basic Worker
 
 Create a simple worker:
@@ -74,7 +64,8 @@ Configure the worker in `stepflow-config.yml`:
 ```yaml
 plugins:
   my_components:
-    type: stepflow
+    type: grpc
+    queueName: my_components
     command: python
     args: ["my_server.py"]
 

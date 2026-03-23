@@ -4,13 +4,14 @@ sidebar_position: 5
 
 # Bidirectional Communication
 
-The Stepflow Protocol supports bidirectional communication, enabling workers to make requests back to the runtime during component execution. This capability enables powerful patterns like run submission and runtime introspection while maintaining the JSON-RPC request-response model.
+The Stepflow Protocol supports bidirectional communication, enabling workers to make requests back to the orchestrator during component execution. Workers call `OrchestratorService` RPCs using the `orchestrator_service_url` provided in each task's `TaskContext`.
 
 ## Overview
 
-While the primary communication flow is Runtime → Worker, the protocol enables Worker → Runtime requests for:
+While the primary communication flow is Orchestrator → Worker (via task assignments), the protocol enables Worker → Orchestrator requests for:
 
 - **Run Submission**: Submit and monitor sub-workflow executions
+- **Run Status**: Query run status with optional wait for completion
 - **Resource Access**: Request additional resources or capabilities (future)
 
 :::note Blob Storage
@@ -24,36 +25,47 @@ Blob storage uses a separate HTTP API rather than the bidirectional protocol. Se
 **Traditional Model (Unidirectional):**
 ```mermaid
 sequenceDiagram
-    participant R as Runtime
-    participant S as Worker
+    participant O as Orchestrator
+    participant W as Worker
 
-    R->>+S: component_execute request
-    S->>S: Process input data
-    S-->>-R: component_execute response
+    O-->>W: TaskAssignment (execute)
+    W->>W: Process input data
+    W->>O: CompleteTask (result)
 ```
 
 **Stepflow Model (Bidirectional):**
 ```mermaid
 sequenceDiagram
-    participant R as Runtime
-    participant S as Worker
+    participant O as Orchestrator
+    participant W as Worker
 
-    R->>+S: component_execute request
+    O-->>W: TaskAssignment (execute)
 
-    Note over S: Component can make requests during execution
+    Note over W: Component can make requests during execution
 
-    S->>+R: runs/submit request
-    R-->>-S: run status response
+    W->>+O: SubmitRun (sub-workflow)
+    O-->>-W: RunStatus (completed)
 
-    S-->>-R: component_execute response
+    W->>O: CompleteTask (result)
 ```
 
 ## Available Methods
 
-Workers can call these methods during execution:
+Workers can call these `OrchestratorService` methods during execution:
 
 ### Run Methods
-- **`runs/submit`**: Submit a workflow run for execution
-- **`runs/get`**: Retrieve run status and results
+- **`SubmitRun`**: Submit a workflow run for execution
+- **`GetRun`**: Retrieve run status and results
 
 See [Run Methods](./methods/runs.md) for detailed specifications.
+
+### Heartbeat
+- **`TaskHeartbeat`**: Signal liveness and report progress
+
+See [Transport](./transport.md#heartbeats) for heartbeat details.
+
+## Orchestrator Routing
+
+Each `TaskAssignment` includes a `TaskContext` with the `orchestrator_service_url` that the worker must use for callbacks. This ensures requests reach the orchestrator instance that owns the run, which is important in multi-orchestrator deployments.
+
+If the orchestrator returns `NOT_FOUND` or `UNAVAILABLE`, the worker can call `TasksService.GetOrchestratorForRun` on any orchestrator to discover the current owner. See [Error Handling](./errors.md#orchestrator-service-errors) for details.

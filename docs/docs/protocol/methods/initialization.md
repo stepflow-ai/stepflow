@@ -4,117 +4,57 @@ sidebar_position: 2
 
 # Initialization
 
-Initialization methods establish the protocol connection and negotiate capabilities between the Stepflow runtime and workers.
+With the gRPC pull-based protocol, worker initialization is handled implicitly through the `PullTasks` streaming RPC. There is no separate initialization handshake.
 
-## Overview
+## Connection Sequence
 
-## Initialization Sequence
-
-The initialization sequence establishes the protocol connection in two steps:
-
-1. **`initialize`** - Runtime requests the `initialize` method and client responds.
-2. **`initialized`** - Runtime sends `initialized` notification to indicate initialization is complete.
-
-Both steps are required for proper protocol establishment.
+When a worker starts, it establishes a connection to the orchestrator's `TasksService`:
 
 ```mermaid
 sequenceDiagram
-    participant R as Runtime
-    participant S as Worker
+    participant W as Worker
+    participant O as Orchestrator
 
-    Note over R,S: Transport connection established
-
-    R->>+S: initialize request
-    Note over S: Validate protocol version
-    Note over S: Initialize server state
-    S-->>-R: initialize response
-
-    alt Version compatible
-        R->>S: initialized notification
-        Note over R,S: Worker ready for component requests
-    else Version incompatible
-        R->>R: Log error and close connection
-    end
+    Note over W: Worker process starts
+    W->>O: PullTasks(queue_name, worker_id)
+    Note over O: Worker registered on queue
+    Note over W,O: Worker ready for task assignments
+    O-->>W: TaskAssignment (when available)
 ```
 
-## initialize Method
+## PullTasks Request
 
-The `initialize` method negotiates protocol version and establishes basic capabilities.
+The `PullTasks` request serves as the worker's registration with the orchestrator:
 
-**Method Name:** `initialize`
-**Direction:** Runtime → Worker
-**Type:** Request (expects response)
+| Field | Type | Description |
+|-------|------|-------------|
+| `queue_name` | string | Queue to pull tasks from (must match plugin config `queueName`) |
+| `worker_id` | string | UUID identifying this worker instance (for logging and diagnostics) |
 
-### Request Example
+## Subprocess Mode
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "b4d0c7e1-8f2a-4d3b-9c5a-1e7f8a9b2c3d",
-  "method": "initialize",
-  "params": {
-    "runtime_protocol_version": 1
-  }
-}
+When the orchestrator launches a worker as a subprocess (via `command` in plugin config), it:
+
+1. Sets environment variables (`STEPFLOW_TASKS_URL`, `STEPFLOW_QUEUE_NAME`, etc.)
+2. Launches the worker process
+3. The worker reads its configuration from environment variables
+4. The worker connects to the orchestrator's `TasksService` and calls `PullTasks`
+
+## Remote Mode
+
+For remote workers (no `command` in plugin config):
+
+1. The worker is deployed independently (e.g., in Kubernetes)
+2. The worker reads the orchestrator URL from its environment
+3. The worker connects and calls `PullTasks` with the configured queue name
+4. The orchestrator dispatches tasks to any worker on that queue
+
+## Orchestrator Discovery
+
+If a worker needs to discover which orchestrator owns a particular run (e.g., after a `NOT_FOUND` error), it can call:
+
+```
+TasksService.GetOrchestratorForRun(run_id) → orchestrator_service_url
 ```
 
-### Successful Response Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "b4d0c7e1-8f2a-4d3b-9c5a-1e7f8a9b2c3d",
-  "result": {
-    "server_protocol_version": 1
-  }
-}
-```
-
-### Error Response Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "b4d0c7e1-8f2a-4d3b-9c5a-1e7f8a9b2c3d",
-  "error": {
-    "code": -32002,
-    "message": "Server not initialized - protocol version mismatch",
-    "data": {
-      "runtime_version": 1,
-      "server_version": 2,
-      "supported_versions": [2],
-      "message": "Server only supports protocol version 2, but runtime requested version 1"
-    }
-  }
-}
-```
-
-## initialized Notification
-
-The `initialized` notification is sent by the runtime to confirm the server is ready for component requests.
-
-**Method Name:** `initialized`
-**Direction:** Runtime → Worker
-**Type:** Notification (no response expected)
-
-### Notification Format
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "initialized",
-  "params": {}
-}
-```
-
-## Protocol Version Negotiation
-
-Current version negotiation requires exact version matching:
-
-| Runtime Version | Server Version | Compatible | Result |
-|----------------|----------------|------------|---------|
-| 1 | 1 | ✅ Yes | Proceed with protocol |
-| 1 | 2 | ❌ No | Connection terminated |
-| 2 | 1 | ❌ No | Connection terminated |
-
-Future protocol versions may support version ranges.
+This is a stateless lookup that can be called on any orchestrator instance.

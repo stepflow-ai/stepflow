@@ -131,9 +131,10 @@ plugins:
   builtin:
     type: builtin
   python:  # Only needed for math-eval example
-    type: stepflow
+    type: grpc
+    queueName: python
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../../sdks/python", "run", "stepflow_py", "--grpc"]
 
 routes:
   "/python/{*component}":

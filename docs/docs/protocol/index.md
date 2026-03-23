@@ -4,19 +4,19 @@ sidebar_position: 1
 
 # Overview
 
-The Stepflow Protocol is a JSON-RPC 2.0 based communication protocol designed for executing local and remote workflow components.
-It enables bidirectional communication between the Stepflow runtime and workers over HTTP, allowing workers to access runtime services like blob storage while ensuring durable execution.
+The Stepflow Protocol is a gRPC-based communication protocol designed for executing local and remote workflow components.
+It enables bidirectional communication between the Stepflow orchestrator and workers, allowing workers to pull tasks, report results, and access runtime services like blob storage and sub-workflow execution.
 
 ## Architecture
 
 The protocol defines communication between two primary entities:
 
-- **Stepflow Runtime**: Orchestrates workflow execution, persistence, and routes components to plugins
-- **Worker**: Hosts one or more workflow components and executes them on behalf of the runtime
+- **Stepflow Orchestrator**: Orchestrates workflow execution, persistence, and routes components to plugins
+- **Worker**: Hosts one or more workflow components and executes them on behalf of the orchestrator
 
 ```mermaid
 graph TB
-    subgraph "Stepflow Runtime"
+    subgraph "Stepflow Orchestrator"
         WE[Workflow Engine]
         PS[Plugin System]
         BS[Blob Store]
@@ -49,110 +49,109 @@ graph TB
 
 ## Core Concepts
 
-### JSON-RPC Foundation
-The protocol builds on JSON-RPC 2.0, providing:
-- **Request/Response patterns** for method calls
-- **Notification patterns** for one-way messages
-- **Standardized error handling** with custom error codes
-- **Message correlation** through request/response IDs
+### gRPC Pull-Based Protocol
+The protocol uses gRPC for all worker communication:
+- **Task dispatch**: Workers pull tasks from the orchestrator via a streaming RPC (`PullTasks`)
+- **Task completion**: Workers report results back via `CompleteTask`
+- **Heartbeats**: Workers signal liveness during execution via `TaskHeartbeat`
+- **Standardized error handling** with `TaskErrorCode` variants
 
 ### Bidirectional Communication
-Unlike traditional client-server models, the protocol supports bidirectional communication:
-- **Runtime → Worker**: Component execution, discovery, information requests
-- **Worker → Runtime**: Blob storage operations, workflow introspection, resource access
+The protocol supports bidirectional communication:
+- **Orchestrator → Worker**: Task assignments (component execution, component discovery)
+- **Worker → Orchestrator**: Task completion, heartbeats, sub-run submission, run queries
 
 ### Content-Addressable Storage
 The protocol includes a built-in blob storage system:
 - **Content-based IDs**: SHA-256 hashes ensure data integrity
 - **Automatic deduplication**: Identical data shares the same blob ID
 - **Cross-component sharing**: Blobs can be accessed by any component in a workflow
-- **Type-aware storage**: Support for different blob types (JSON, binary, etc.)
+- **HTTP API**: Blob operations use a separate HTTP API endpoint
 
-### HTTP Transport
-Workers communicate via HTTP with Server-Sent Events (SSE) for bidirectional communication:
-- **Streamable HTTP**: JSON-RPC over HTTP with SSE streaming
-- **Bidirectional calls**: Workers can call back to the runtime during execution
-- **Flexible deployment**: Workers can run locally (spawned by runtime) or remotely
+### gRPC Transport
+Workers communicate via gRPC with streaming for task dispatch:
+- **Pull-based**: Workers call `PullTasks` and maintain a long-lived stream
+- **Named queues**: Tasks are routed to workers via configurable queue names
+- **Flexible deployment**: Workers can run locally (spawned by orchestrator) or remotely
 
 See [Transport](./transport.md) for details.
 
-## Method Categories
+## gRPC Services
 
-The protocol organizes methods into logical categories:
+The protocol defines the following gRPC services:
 
-### Initialization Methods
-- `initialize` - Establish protocol version and capabilities
-- `initialized` - Confirm initialization completion
+### TasksService (Orchestrator → Worker)
+- `PullTasks` - Workers pull task assignments via server-side streaming
+- `GetOrchestratorForRun` - Discover which orchestrator owns a run
 
-### Component Methods
-- `components/list` - Discover available components
-- `components/info` - Get component metadata and schemas
-- `components/execute` - Execute a component with input data
+### OrchestratorService (Worker → Orchestrator)
+- `CompleteTask` - Report task results (success, failure, or component listing)
+- `TaskHeartbeat` - Signal liveness and report progress during execution
+- `SubmitRun` - Submit a sub-workflow for execution
+- `GetRun` - Query run status with optional wait for completion
 
-See [Component Methods](./methods/components.md) for details.
+### ComponentsService (Public API)
+- `ListRegisteredComponents` - Discover available components across all plugins
 
-### Blob Storage Methods
-- `blobs/put` - Store data and receive content-addressable ID
-- `blobs/get` - Retrieve data by blob ID
-
-See [Blob Methods](./methods/blobs.md) for details.
-
-### Run Methods
-- `runs/submit` - Submit a workflow run for execution
-- `runs/get` - Retrieve run status and results
-
-See [Run Methods](./methods/runs.md) for details.
+See [Methods](./methods/) for detailed specifications.
 
 ## Communication Patterns
 
-### Synchronous Execution
-Simple component operations follow a request-response pattern:
+### Task Execution
+Component operations follow the pull-execute-complete pattern:
 
 ```mermaid
 sequenceDiagram
-    participant Runtime as Stepflow Runtime
     participant Worker as Worker
+    participant Orchestrator as Orchestrator
 
-    Runtime->>+Worker: components/execute request
+    Worker->>Orchestrator: PullTasks (queue_name)
+    Orchestrator-->>Worker: TaskAssignment (execute)
+    Worker->>Orchestrator: TaskHeartbeat (started)
     Worker->>Worker: Process input data
-    Worker-->>-Runtime: execution response
+    Worker->>Orchestrator: CompleteTask (result)
 ```
 
 ### Bidirectional Operations
-Workers can make requests back to the runtime during execution via SSE streaming:
+Workers can make calls back to the orchestrator during execution:
 
 ```mermaid
 sequenceDiagram
-    participant Runtime as Stepflow Runtime
     participant Worker as Worker
+    participant Orchestrator as Orchestrator
 
-    Runtime->>+Worker: components/execute request
-    Note over Worker: Start SSE stream
-    Worker-->>Runtime: SSE: blobs/put request
-    Runtime->>Worker: blobs/put response
-    Worker-->>-Runtime: SSE: execution result
+    Orchestrator-->>Worker: TaskAssignment (execute)
+    Worker->>Orchestrator: TaskHeartbeat (started)
+    Worker->>Orchestrator: SubmitRun (sub-workflow)
+    Orchestrator-->>Worker: RunStatus (completed)
+    Worker->>Orchestrator: CompleteTask (result)
 ```
 
 See the [Bidirectional Communication](./bidirectional.md) document for more details.
 
 ## Error Handling
 
-The protocol defines standard error codes for consistent error handling:
+The protocol defines `TaskErrorCode` variants for consistent error handling:
 
-- **-32xxx**: JSON-RPC standard errors (parse, invalid request, method not found)
-- **-32000 to -32099**: Stepflow-specific errors (component not found, execution failed, etc.)
+- **Always retried**: `UNREACHABLE`, `TIMEOUT` (transport-level errors)
+- **Retried with policy**: `COMPONENT_FAILED`, `RESOURCE_UNAVAILABLE` (with `onError: retry`)
+- **Never retried**: `INVALID_INPUT`, `CANCELLED`, `COMPONENT_NOT_FOUND`, etc.
 
 All errors include structured data for programmatic handling and user-friendly messages for debugging.
 
 See the [Error Handling](./errors.md) document for a complete list of error codes and their meanings.
 
-## Schema Integration
+## Proto Definitions
 
-All protocol messages are defined with Protocol Buffers (`.proto` files) in [`proto/stepflow/v1/`](https://github.com/datastax/stepflow/tree/main/proto/stepflow/v1).
+The protocol is defined in Protocol Buffer files located in `proto/stepflow/v1/`:
+- `tasks.proto` — TaskAssignment, PullTasks, worker task dispatch
+- `orchestrator.proto` — CompleteTask, TaskHeartbeat, worker callbacks
+- `components.proto` — ComponentsService (public component listing API)
+- `common.proto` — Shared types (ObservabilityContext, TaskErrorCode)
 
 ## Next Steps
 
-- **[Message Format](./message-format.md)**: Message structure and correlation
+- **[Transport](./transport.md)**: gRPC transport specification
 - **[Methods](./methods/)**: Detailed method specifications with examples
 - **[Error Handling](./errors.md)**: Complete error code reference
 - **[Implementing Workers](../workers/implementing-workers.md)**: Guide to building workers

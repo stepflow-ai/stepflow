@@ -393,8 +393,8 @@ plugins:
   - name: builtin
     type: builtin
   - name: mock_external_apis
-    type: stepflow
-    transport: stdio
+    type: grpc
+    queueName: mock
     command: "test/mock-server.py"
 
 storageConfig:

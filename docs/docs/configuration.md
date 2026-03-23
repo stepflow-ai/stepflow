@@ -9,7 +9,7 @@ Stepflow configuration controls which plugins and components are available to wo
 Stepflow's flexible configuration supports a truly distributed architecture, allowing workers to run across multiple machines or containers for scalable batch execution and high-throughput workflows. See [Batch Execution](./flows/batch-execution.md) for details.
 
 Key concepts:
-- **Plugins** provide components (built-in, external processes, HTTP services)
+- **Plugins** provide components (built-in, gRPC workers, MCP servers)
 - **Routes** map component paths to specific plugins
 - **State Stores** allow persisting workflow state for durable execution
 
@@ -22,9 +22,10 @@ plugins:
   builtin:
     type: builtin
   python:
-    type: stepflow
+    type: grpc
+    queueName: python
     command: uv
-    args: ["--project", "../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../sdks/python", "run", "stepflow_py", "--grpc"]
     env:
       LOG_LEVEL: "${LOG_LEVEL:-info}"
 
@@ -93,9 +94,9 @@ plugins:
 - `get_blob` - Retrieve blob data
 - `load_file` - Load and parse files
 
-### Stepflow Plugins
+### gRPC Plugins
 
-External workers that implement the Stepflow protocol.
+External workers that communicate via the gRPC pull-based protocol (PullTasks/CompleteTask).
 
 #### Subprocess Mode
 
@@ -104,9 +105,10 @@ For local development and subprocess-based workers:
 ```yaml
 plugins:
   python:
-    type: stepflow
+    type: grpc
+    queueName: python
     command: uv
-    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py"]
+    args: ["--project", "${PROJECT_DIR:-../sdks/python}", "run", "stepflow_py", "--grpc"]
     env:
       PYTHONPATH: "${HOME}/custom/path"
       DEBUG: "true"
@@ -114,28 +116,30 @@ plugins:
 ```
 
 **Parameters:**
+- **`queueName`** (required): Queue name workers use to receive tasks. Must match `STEPFLOW_QUEUE_NAME` in worker environment. Can be overridden per-route.
 - **`command`**: Executable to run
 - **`args`**: Command-line arguments (supports environment variable substitution)
 - **`env`** (optional): Environment variables to set (supports substitution)
+- **`queueTimeoutSecs`** (optional): Maximum time a task waits in queue for worker's first heartbeat [default: 30]
+- **`executionTimeoutSecs`** (optional): Maximum time from first heartbeat to task completion [default: null, relies on heartbeat crash detection]
 
 #### Remote Mode
 
-For distributed architectures and remote workers:
+For distributed architectures and remote workers that connect to the orchestrator's gRPC endpoint:
 
 ```yaml
 plugins:
-  remote_server:
-    type: stepflow
-    url: "http://localhost:8080"
+  remote_workers:
+    type: grpc
+    queueName: remote
 ```
 
-**Parameters:**
-- **`url`**: Base URL of the HTTP worker
-- **`timeout`** (optional): Request timeout in seconds [default: 30]
+In remote mode, omit the `command` field. Workers connect to the orchestrator's `TasksService` independently and pull tasks from the named queue. This is suitable for production deployments where workers are deployed and scaled separately (e.g., in Kubernetes).
 
 **Features:**
-- Optional MCP-style session negotiation for connection isolation
-- Automatic fallback for servers that don't support session negotiation
+- Pull-based task dispatch with named queues
+- Heartbeat-based crash detection
+- Horizontal scaling across multiple worker instances
 - Scalable architecture suitable for production deployments
 
 ### MCP Plugins
@@ -257,14 +261,16 @@ plugins:
     type: builtin
 
   python_sdk:
-    type: stepflow
+    type: grpc
+    queueName: python
     command: uv
-    args: ["--project", "../../sdks/python", "run", "stepflow_py"]
+    args: ["--project", "../../sdks/python", "run", "stepflow_py", "--grpc"]
     env:
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
 
   text_models:
-    type: stepflow
+    type: grpc
+    queueName: text_models
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "text_models_server.py"]
     env:
@@ -273,7 +279,8 @@ plugins:
       TRANSFORMERS_OFFLINE: "${TRANSFORMERS_OFFLINE:-0}"
 
   vision_models:
-    type: stepflow
+    type: grpc
+    queueName: vision_models
     command: uv
     args: ["--project", "../../sdks/python", "run", "python", "vision_models_server.py"]
     env:
@@ -298,18 +305,18 @@ storageConfig:
 <TabItem value="production" label="Production">
 
 ```yaml
-# Production Configuration - HTTP-based distributed servers
+# Production Configuration - Remote gRPC workers
 plugins:
   builtin:
     type: builtin
 
   text_models_cluster:
-    type: stepflow
-    url: "http://text-models:8080"
+    type: grpc
+    queueName: text_models
 
   vision_models_cluster:
-    type: stepflow
-    url: "http://vision-models:8081"
+    type: grpc
+    queueName: vision_models
 
 routes:
   "/models/text/{*component}":
@@ -334,8 +341,8 @@ storageConfig:
 Specifically, note that both configurations provide the same paths, but use different plugin implementations and state stores.
 This specifically allows local development to use the same workflow definitions as production deployments without modification.
 
-Locally, workers are started to execute the workflow.
-In production, the Stepflow runtime connects to remote workers over HTTP, allowing the workers to be separately deployed and scaled.
+Locally, workers are launched as subprocesses and connect to the orchestrator via gRPC.
+In production, workers connect to the orchestrator's gRPC endpoint independently, allowing the workers to be separately deployed and scaled.
 
 ## Runtime Environment Variables
 
@@ -349,7 +356,7 @@ Stepflow behavior can be configured through environment variables. These are sep
 
 #### Stderr Handling
 
-When using stdio transport, workers write logs and errors to stderr. By default, Stepflow uses **quiet mode** to reduce log noise:
+When running workers as subprocesses, workers write logs and errors to stderr. By default, Stepflow uses **quiet mode** to reduce log noise:
 
 - **Quiet mode** (default): Buffers stderr output and only displays it if the worker crashes. During initialization, all stderr is preserved (unbounded). After initialization, only the last 100 lines are kept.
 - **Verbose mode**: Logs all stderr immediately with the prefix `Component stderr:`. Useful for debugging component issues.

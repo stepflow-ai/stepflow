@@ -4,178 +4,84 @@ sidebar_position: 3
 
 # Components
 
-Component methods enable the discovery, introspection, and execution of workflow components. These methods form the core of the Stepflow Protocol and are used extensively during workflow execution.
+Component methods enable the discovery, introspection, and execution of workflow components. These operations are dispatched as task assignments via the `PullTasks` stream and results are reported via `CompleteTask`.
 
 ## Overview
 
-The component methods provide a complete lifecycle for working with components:
+The component lifecycle involves three operations:
 
-1. **`components/list`** - Discover all available components
-2. **`components/info`** - Get detailed information about a specific component
-3. **`components/execute`** - Execute a component with input data
+1. **Component listing** — Discover all available components on a worker
+2. **Component execution** — Execute a component with input data
+3. **Task completion** — Report the result back to the orchestrator
 
-## components/list Method
+## Component Listing
 
-**Method Name:** `components/list`
-**Direction:** Runtime → Worker
-**Type:** Request (expects response)
+The orchestrator discovers components by sending a `list_components` task assignment.
 
-### Request Example
+**Task type:** `ListComponentsRequest`
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "list-components-001",
-  "method": "components/list",
-  "params": {}
-}
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant W as Worker
+
+    O-->>W: TaskAssignment (list_components)
+    W->>W: Enumerate registered components
+    W->>O: CompleteTask (ListComponentsResult)
 ```
 
-### Response Example
+### Response
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "list-components-001",
-  "result": {
-    "components": [
-      {
-        "name": "data_processor",
-        "description": "Process and transform data records according to configurable rules"
-      },
-      {
-        "name": "http_client",
-        "description": "Make HTTP requests with automatic retry logic and response parsing"
-      }
-    ]
-  }
-}
+The worker returns a `ListComponentsResult` containing an array of components, each with:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Component name |
+| `description` | string | Human-readable description |
+
+## Component Execution
+
+The orchestrator dispatches component execution as an `execute` task assignment.
+
+**Task type:** `ComponentExecuteRequest`
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant W as Worker
+
+    O-->>W: TaskAssignment (execute)
+    W->>O: TaskHeartbeat (started)
+    W->>W: Execute component logic
+    W->>O: CompleteTask (ComponentExecuteResponse)
 ```
 
-## components/info Method
+### Request Fields
 
-**Method Name:** `components/info`
-**Direction:** Runtime → Worker
-**Type:** Request (expects response)
+| Field | Type | Description |
+|-------|------|-------------|
+| `component` | string | Component path to execute (e.g., `data_processor`) |
+| `input` | google.protobuf.Value | Input data as a structured value |
+| `attempt` | uint32 | 1-based attempt counter (see below) |
+| `observability` | ObservabilityContext | Trace/span IDs for distributed tracing |
 
-### Request Example
+### Response Fields
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "component-info-001",
-  "method": "components/info",
-  "params": {
-    "component": {
-      "name": "data_processor",
-      "path": "/python/data_processor"
-    }
-  }
-}
-```
+The worker returns a `ComponentExecuteResponse` via `CompleteTask`:
 
-### Response Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "component-info-001",
-  "result": {
-    "info": {
-      "name": "data_processor",
-      "description": "Process and transform data records according to configurable rules",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "records": {
-            "type": "array",
-            "items": {"type": "object"}
-          },
-          "rules": {
-            "type": "object",
-            "properties": {
-              "transformation": {
-                "type": "string",
-                "enum": ["uppercase", "lowercase", "title_case"]
-              }
-            }
-          }
-        },
-        "required": ["records", "rules"]
-      },
-      "output_schema": {
-        "type": "object",
-        "properties": {
-          "processed_records": {"type": "array"},
-          "summary": {"type": "object"}
-        },
-        "required": ["processed_records", "summary"]
-      }
-    }
-  }
-}
-```
-
-## components/execute Method
-
-**Method Name:** `components/execute`
-**Direction:** Runtime → Worker
-**Type:** Request (expects response)
-
-### Request Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "execute-data-processor-001",
-  "method": "components/execute",
-  "params": {
-    "component": {
-      "name": "data_processor",
-      "path": "/python/data_processor"
-    },
-    "input": {
-      "records": [
-        {"id": "record_1", "data": {"name": "John", "status": "active"}}
-      ],
-      "rules": {
-        "transformation": "uppercase"
-      }
-    }
-  }
-}
-```
-
-### Response Example
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": "execute-data-processor-001",
-  "result": {
-    "output": {
-      "processed_records": [
-        {
-          "id": "record_1",
-          "data": {"name": "JOHN", "status": "ACTIVE"},
-          "processed": true
-        }
-      ],
-      "summary": {
-        "total": 1,
-        "processed": 1,
-        "errors": 0
-      }
-    }
-  }
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `output` | google.protobuf.Value | Component output data |
 
 ### The `attempt` Field
 
-The `components/execute` request includes an `attempt` field -- a **1-based, monotonically increasing counter** that tracks how many times a step has been executed. On the first execution, `attempt` is `1`. Each subsequent re-execution increments the counter by one.
+The `attempt` field is a **1-based, monotonically increasing counter** that tracks how many times a step has been executed. On the first execution, `attempt` is `1`. Each subsequent re-execution increments the counter by one.
 
-The `attempt` counter is shared across all retry reasons. A step may be re-executed for any of the following reasons:
+The `attempt` counter is shared across all retry reasons:
 
 | Reason | Trigger | Limit | Configured Via |
 |--------|---------|-------|----------------|
@@ -183,52 +89,66 @@ The `attempt` counter is shared across all retry reasons. A step may be re-execu
 | **Component error** | Component ran and returned an error; step has `onError: { action: retry }` | `maxRetries` (default: 3) | Step-level `onError` |
 | **Orchestrator recovery** | Orchestrator crashed; task was started but no completion journaled | Unlimited | N/A |
 
-Transport errors and component errors have **separate budgets** -- exhausting transport retries does not consume component retry budget, and vice versa. The `attempt` counter increments regardless of which retry reason triggered the re-execution.
-
-```json title="First execution"
-{
-  "jsonrpc": "2.0",
-  "id": "execute-001",
-  "method": "components/execute",
-  "params": {
-    "component": { "name": "data_processor", "path": "/python/data_processor" },
-    "input": { "records": [] },
-    "attempt": 1
-  }
-}
-```
-
-```json title="Third execution (after two retries)"
-{
-  "jsonrpc": "2.0",
-  "id": "execute-003",
-  "method": "components/execute",
-  "params": {
-    "component": { "name": "data_processor", "path": "/python/data_processor" },
-    "input": { "records": [] },
-    "attempt": 3
-  }
-}
-```
+Transport errors and component errors have **separate budgets** — exhausting transport retries does not consume component retry budget, and vice versa. The `attempt` counter increments regardless of which retry reason triggered the re-execution.
 
 Components can use the `attempt` field for observability (logging, metrics) or to adjust their behavior on retries (e.g., using a longer timeout or a different strategy).
 
-### Bidirectional Execution
+## Task Completion
 
-Components that need to interact with the runtime during execution can make requests back to the runtime:
+Workers report results via `CompleteTask` on the `OrchestratorService`:
+
+### Success
+
+```
+CompleteTaskRequest {
+    task_id: "abc-123",
+    result: ComponentExecuteResponse {
+        output: { "processed": true, "count": 42 }
+    }
+}
+```
+
+### Failure
+
+```
+CompleteTaskRequest {
+    task_id: "abc-123",
+    result: TaskError {
+        code: COMPONENT_FAILED,
+        message: "API call returned 503"
+    }
+}
+```
+
+See [Error Handling](../errors.md) for the complete `TaskErrorCode` taxonomy.
+
+## Heartbeats
+
+Workers signal liveness via `TaskHeartbeat` on the `OrchestratorService`:
+
+1. **Before execution**: Worker sends an initial heartbeat to transition the task to EXECUTING state
+2. **During execution**: Periodic heartbeats reset the crash-detection timer
+3. **With progress**: Heartbeats can include a progress indicator (0.0–1.0) and status message
+
+If the orchestrator does not receive a heartbeat within the timeout window (5 seconds), the task is assumed to have crashed.
+
+## Bidirectional Execution
+
+Components that need to interact with the orchestrator during execution can make calls back via `OrchestratorService`:
 
 ```mermaid
 sequenceDiagram
-    participant R as Runtime
-    participant S as Worker
+    participant O as Orchestrator
+    participant W as Worker
 
-    R->>+S: components/execute request
-    Note over S: Component execution in progress
+    O-->>W: TaskAssignment (execute)
+    W->>O: TaskHeartbeat (started)
+    Note over W: Component execution in progress
 
-    S->>+R: blobs/put (store data)
-    R-->>-S: blob_id response
+    W->>+O: SubmitRun (sub-workflow)
+    O-->>-W: RunStatus (completed)
 
-    Note over S: Continue processing
+    Note over W: Continue processing
 
-    S-->>-R: execution result
+    W->>O: CompleteTask (result)
 ```

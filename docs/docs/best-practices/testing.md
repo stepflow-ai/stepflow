@@ -178,7 +178,8 @@ plugins:
 
   # Mock external services for testing
   - name: http_mock
-    type: stepflow
+    type: grpc
+    queueName: mock
     command: "mock-server"
     args: ["--config", "test/http-mocks.json"]
 

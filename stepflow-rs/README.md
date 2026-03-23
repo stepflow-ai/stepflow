@@ -106,8 +106,8 @@ Stepflow supports flexible plugin configuration with environment variable substi
 # stepflow-config.yml
 plugins:
   python:
-    type: stepflow
-    transport: stdio
+    type: grpc
+    queueName: python
     command: python
     args: ["--project", "${PROJECT_DIR:-../sdk}"]
     env:
@@ -237,7 +237,7 @@ This is a Rust workspace containing multiple crates:
 - **`stepflow-core`** - Core types and workflow definitions
 - **`stepflow-execution`** - Workflow execution engine
 - **`stepflow-plugin`** - Plugin system and interfaces
-- **`stepflow-protocol`** - JSON-RPC communication protocol
+- **`stepflow-grpc`** - gRPC communication protocol
 - **`stepflow-builtins`** - Built-in component implementations
 - **`stepflow-components-mcp`** - MCP (Model Context Protocol) integration
 - **`stepflow-main`** - CLI and service binaries

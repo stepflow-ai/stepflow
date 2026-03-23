@@ -8,7 +8,7 @@ Blob storage provides content-addressable storage for JSON data, enabling effici
 
 ## Overview
 
-Stepflow provides a Blob HTTP API for storing and retrieving JSON data. Unlike other component-runtime communication which uses the bidirectional SSE protocol, blob operations use direct HTTP requests for better scalability.
+Stepflow provides a Blob HTTP API for storing and retrieving JSON data. Unlike other component-orchestrator communication which uses gRPC, blob operations use direct HTTP requests.
 
 Blobs are identified by SHA-256 hashes of their content, enabling:
 

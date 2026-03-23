@@ -78,14 +78,12 @@ The langflow-worker uses the component path to instantiate and execute the Langf
 ```yaml
 plugins:
   langflow_k8s:
-    type: stepflow
-    transport: http
-    url: "http://langflow-load-balancer.stepflow.svc.cluster.local:8080"
-    
+    type: grpc
+    queueName: langflow
+
   docling_k8s:
-    type: stepflow
-    transport: http
-    url: "http://docling-load-balancer.stepflow.svc.cluster.local:8080"
+    type: grpc
+    queueName: docling
 
 routes:
   # Specific route for docling components (higher priority)
