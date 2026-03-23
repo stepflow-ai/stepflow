@@ -10,7 +10,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-async-nats = "0.40"
+async-nats = "0.46"
 dashmap.workspace = true
 error-stack.workspace = true
 futures.workspace = true
@@ -29,7 +29,7 @@ tonic = { version = "0.14", features = ["transport"] }
 nix.workspace = true
 
 [dev-dependencies]
-async-nats = "0.40"
+async-nats = "0.46"
 futures.workspace = true
 prost = "0.14"
 serde_json.workspace = true
