@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 ## <a id="0.12.0"></a> [Stepflow 0.12.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.12.0) - 2026-03-23
+
+This release replaces the old JSON-RPC over HTTP protocol with queues (gRPC and NATS initially supported) and gRPC callbacks.
+This allows workers to choose how many tasks to pull and eliminates the load balancer.
+
 ### Bug Fixes
 
 - Update and add build scripts to cover docling-step-worker ([#730](https://github.com/stepflow-ai/stepflow/pull/730))
