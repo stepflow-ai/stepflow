@@ -97,7 +97,6 @@ class StepflowLangflowServer:
         import os
 
         import nest_asyncio  # type: ignore
-
         from stepflow_py.worker.grpc_worker import run_grpc_worker
 
         # Initialize observability (tracing, logging) before anything else

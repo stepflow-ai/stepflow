@@ -212,8 +212,7 @@ def serve(
         server.run_grpc(
             tasks_url=tasks_url
             or os.environ.get("STEPFLOW_TASKS_URL", "localhost:7837"),
-            queue_name=queue_name
-            or os.environ.get("STEPFLOW_QUEUE_NAME", "langflow"),
+            queue_name=queue_name or os.environ.get("STEPFLOW_QUEUE_NAME", "langflow"),
         )
 
     except KeyboardInterrupt:
