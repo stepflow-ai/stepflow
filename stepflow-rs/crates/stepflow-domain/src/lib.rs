@@ -17,12 +17,8 @@
 //! These types are pure data structures with no storage or execution logic.
 
 use stepflow_core::status::ExecutionStatus;
-use stepflow_core::workflow::Component;
 use stepflow_core::{BlobId, FlowResult};
 use uuid::Uuid;
-
-// Re-export StepId for convenience
-pub use stepflow_core::workflow::StepId;
 
 /// Detailed step status entry with result and journal tracking.
 ///
@@ -244,72 +240,6 @@ impl RunStatus {
     }
 }
 
-/// The step result.
-#[derive(PartialEq, Debug, Clone)]
-pub struct StepResult {
-    step_id: StepId,
-    result: FlowResult,
-}
-
-impl StepResult {
-    /// Create a new step result with a StepId.
-    ///
-    /// This is the primary constructor. The StepId can be created via:
-    /// - `StepId::for_step(flow, index)` when you have the flow (preferred, no allocation)
-    /// - `StepId::new(name, index)` when you only have the name and index
-    pub fn new(step_id: StepId, result: FlowResult) -> Self {
-        Self { step_id, result }
-    }
-
-    /// Get the step index.
-    pub fn step_index(&self) -> usize {
-        self.step_id.index()
-    }
-
-    /// Get the step name.
-    pub fn step_name(&self) -> &str {
-        self.step_id.name()
-    }
-
-    /// Get the StepId.
-    pub fn step_id(&self) -> &StepId {
-        &self.step_id
-    }
-
-    /// Get the step result.
-    pub fn result(&self) -> &FlowResult {
-        &self.result
-    }
-
-    /// Consume self and return the step result.
-    pub fn into_result(self) -> FlowResult {
-        self.result
-    }
-}
-
-impl PartialOrd for StepResult {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.step_id.partial_cmp(&other.step_id)
-    }
-}
-
-/// Step information for a flow run.
-#[derive(Debug, Clone, PartialEq)]
-pub struct StepInfo {
-    /// Run ID this step belongs to
-    pub run_id: Uuid,
-    /// Step identifier (index + name)
-    pub step_id: StepId,
-    /// Component name/URL
-    pub component: Component,
-    /// Current status of the step
-    pub status: stepflow_core::status::StepStatus,
-    /// When the step was created
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    /// When the step was last updated
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
 /// Simple step status pair used when recording item results.
 ///
 /// This is a lightweight summary of step status, used to persist
@@ -321,14 +251,3 @@ pub struct StepStatusInfo {
     pub status: stepflow_core::status::StepStatus,
 }
 
-impl StepInfo {
-    /// Get the step index.
-    pub fn step_index(&self) -> usize {
-        self.step_id.index()
-    }
-
-    /// Get the step name.
-    pub fn step_name(&self) -> &str {
-        self.step_id.name()
-    }
-}

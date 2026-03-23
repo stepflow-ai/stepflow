@@ -185,7 +185,7 @@ uv run python -m stepflow_langflow_integration.executor.standalone_server
 ```yaml
 plugins:
   langflow:
-    type: stepflow
+    type: grpc
     command: uv
     args: ["--project", "integrations/langflow", "run", "stepflow-langflow", "serve"]
 
@@ -210,7 +210,7 @@ uv run stepflow-langflow-server --host localhost --port 9000 --workers 4
 ```yaml
 plugins:
   langflow_http:
-    type: stepflow
+    type: grpc
     url: "http://localhost:8080"
 
 routes:
