@@ -182,8 +182,8 @@ The Stepflow plugin config remains unchanged — the Rust binary is a drop-in re
 ```yaml
 plugins:
   docling_k8s:
-    type: stepflow
-    url: "http://docling-load-balancer.stepflow.svc.cluster.local:8080"
+    type: grpc
+    queueName: docling
 
 routes:
   "/langflow/core/lfx/components/docling/{*component}":

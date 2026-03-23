@@ -239,8 +239,8 @@ plugins:
   builtin:
     type: builtin
   k8s_components:
-    type: stepflow
-    url: "http://stepflow-load-balancer.stepflow-demo.svc.cluster.local:8080"
+    type: grpc
+    queueName: k8s
 
 routes:
   "/python/{*component}":

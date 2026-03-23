@@ -93,7 +93,7 @@ output:
 ### 3. Create `hello_formatter.py` (Python Component)
 
 ```python
-from stepflow_py import StepflowStdioServer
+from stepflow_py import StepflowServer
 import msgspec
 
 class Input(msgspec.Struct):
@@ -102,7 +102,7 @@ class Input(msgspec.Struct):
 class Output(msgspec.Struct):
     greeting: str
 
-server = StepflowStdioServer()
+server = StepflowServer()
 
 @server.component
 def hello_formatter(input: Input) -> Output:
@@ -121,7 +121,8 @@ plugins:
   builtin:
     type: builtin
   python:
-    type: stepflow
+    type: grpc
+    queueName: python
     command: uv
     args: ["run", "python", "hello_formatter.py"]
 

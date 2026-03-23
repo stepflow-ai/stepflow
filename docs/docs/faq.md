@@ -95,7 +95,7 @@ Yes. Stepflow is designed to integrate with existing tools rather than replace t
 
 Stepflow workflows are DAGs — steps with dependencies run in order, steps without dependencies run in parallel. But many real-world patterns require loops, iteration, or conditional branching that goes beyond a static DAG.
 
-Stepflow solves this through **nested flow execution**: a component can submit sub-runs back to the orchestrator via the [bidirectional protocol](./protocol/bidirectional.md), executing a flow definition as many times as needed. This works like higher-order functions — the component provides the looping or branching logic in native code (e.g., a Python `for` loop), while Stepflow defines the "body" of each iteration as a declarative flow.
+Stepflow solves this through **nested flow execution**: a component can submit sub-runs back to the orchestrator via [bidirectional callbacks](./protocol/task-lifecycle.md#bidirectional-callbacks), executing a flow definition as many times as needed. This works like higher-order functions — the component provides the looping or branching logic in native code (e.g., a Python `for` loop), while Stepflow defines the "body" of each iteration as a declarative flow.
 
 **Built-in higher-order components:**
 

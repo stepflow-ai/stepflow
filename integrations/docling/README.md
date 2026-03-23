@@ -78,14 +78,15 @@ Add the Docling integration as a plugin in your `stepflow-config.yml`:
 ```yaml
 plugins:
   docling:
-    type: stepflow
+    type: grpc
+    queueName: docling
     command: uv
     args: ["--project", "integrations/docling", "run", "stepflow-docling", "serve"]
 
-  # Or connect to a remote docling worker
+  # Or connect to remote docling workers
   docling_k8s:
-    type: stepflow
-    url: "http://docling-load-balancer.stepflow.svc.cluster.local:8080"
+    type: grpc
+    queueName: docling
 
 routes:
   # Route Docling components to the docling plugin
@@ -106,8 +107,8 @@ For production K8s deployments, we recommend the sidecar pattern:
 ```
 docling-worker pod
 ├── docling-worker (StepflowDoclingServer)
-│   └── listens on :8080
-│   └── receives Stepflow JSON-RPC requests
+│   └── connects to orchestrator gRPC
+│   └── pulls tasks from named queue
 │   └── calls docling-serve sidecar
 └── docling-serve (sidecar)
     └── listens on :5001

@@ -103,9 +103,8 @@ The Stepflow orchestrator config is minimal with only one plugin and one route:
 ```yaml
 plugins:
   docling:
-    type: stepflow
-    transport: http
-    url: "http://docling-lb.stepflow-docling.svc.cluster.local:8080"
+    type: grpc
+    queueName: docling
 
 routes:
   "/docling/{*component}":

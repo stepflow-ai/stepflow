@@ -215,7 +215,7 @@ The repository contains:
 - **`stepflow-core`** - Core types and workflow definitions
 - **`stepflow-execution`** - Workflow execution engine
 - **`stepflow-plugin`** - Plugin system and trait definitions
-- **`stepflow-protocol`** - JSON-RPC communication protocol
+- **`stepflow-grpc`** - gRPC communication protocol
 - **`stepflow-builtins`** - Built-in component implementations
 - **`stepflow-components-mcp`** - MCP integration
 

@@ -14,7 +14,7 @@ A worker is a process that:
 - **Executes requests**: Receives execution requests from the Stepflow runtime and returns results
 - **Communicates bidirectionally**: Can make calls back to the runtime (e.g., for blob storage)
 
-Workers communicate with the Stepflow runtime using JSON-RPC 2.0 over HTTP. This architecture provides several key benefits:
+Workers communicate with the Stepflow orchestrator using a gRPC pull-based protocol. This architecture provides several key benefits:
 
 - **Process Isolation**: Each worker runs in its own process, providing security and fault isolation
 - **Language Flexibility**: Workers can be written in any language that implements the Stepflow Protocol
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
 ### 2. Implementing the Protocol Directly
 
-For other languages, you can implement the [Stepflow Protocol](./implementing-workers.md) directly. The protocol is based on JSON-RPC 2.0 with Streamable HTTP transport.
+For other languages, you can implement the [Stepflow Protocol](./implementing-workers.md) directly. The protocol is based on gRPC with Protocol Buffers.
 
 ## Next Steps
 

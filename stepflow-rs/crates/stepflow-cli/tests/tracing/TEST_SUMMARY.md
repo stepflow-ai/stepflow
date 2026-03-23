@@ -94,7 +94,8 @@ flow_execution (ROOT, trace_id == run_id)
 - Environment variables are passed through `stepflow-config.yml`:
   ```yaml
   python:
-    type: stepflow
+    type: grpc
+    queueName: python
     env:
       STEPFLOW_TRACE_ENABLED: "${STEPFLOW_TRACE_ENABLED:-false}"
       STEPFLOW_OTLP_ENDPOINT: "${STEPFLOW_OTLP_ENDPOINT}"
