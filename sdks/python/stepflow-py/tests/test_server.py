@@ -25,7 +25,6 @@ import inspect
 import msgspec
 import pytest
 
-from stepflow_py.worker import StepflowContext
 from stepflow_py.worker.server import ComponentEntry, StepflowServer
 
 
@@ -133,55 +132,6 @@ def test_list_components(server):
     assert component2.name == "/component2"
     assert component2.input_type == ValidInput
     assert component2.output_type == ValidOutput
-
-
-def test_initialization_state(server):
-    """Test server initialization state management."""
-    # Initially not initialized
-    assert not server.is_initialized()
-
-    # Set initialized state
-    server.set_initialized(True)
-    assert server.is_initialized()
-
-    # Reset initialization state
-    server.set_initialized(False)
-    assert not server.is_initialized()
-
-
-def test_component_context_detection():
-    """Test that components are correctly identified as needing context or not."""
-    server = StepflowServer()
-
-    class TestInput(msgspec.Struct):
-        value: str
-
-    class TestOutput(msgspec.Struct):
-        result: str
-
-    # Register a component without context
-    @server.component(name="no_context")
-    def no_context_component(input: TestInput) -> TestOutput:
-        return TestOutput(result=f"No context: {input.value}")
-
-    # Register a component with context
-    @server.component(name="with_context")
-    def with_context_component(
-        input: TestInput, context: StepflowContext
-    ) -> TestOutput:
-        return TestOutput(result=f"With context: {input.value}")
-
-    # Test component registration
-    components = server.get_components()
-    assert "/no_context" in components
-    assert "/with_context" in components
-
-    # Test context detection via function attributes
-    no_context_func = components["/no_context"].function
-    with_context_func = components["/with_context"].function
-
-    assert not getattr(no_context_func, "_expects_context", False)
-    assert getattr(with_context_func, "_expects_context", False)
 
 
 @pytest.mark.asyncio

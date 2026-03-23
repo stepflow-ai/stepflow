@@ -13,10 +13,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Standalone Stepflow component server for Docling step worker.
+"""Standalone Stepflow gRPC worker for Docling step worker.
 
 This script can be run directly and provides a simple entry point.
 """
+
+import asyncio
+import os
 
 from docling_step_worker.server import DoclingStepWorkerServer
 
@@ -25,17 +28,29 @@ def main() -> None:
     """Main entry point for the Docling step worker server.
 
     Configure via environment variables:
+    - STEPFLOW_TASKS_URL: TasksService gRPC address (default: localhost:7837)
+    - STEPFLOW_BLOB_URL: Blob service gRPC address
+    - STEPFLOW_QUEUE_NAME: Queue name for gRPC transport (default: python)
+    - STEPFLOW_MAX_CONCURRENT: Max concurrent task executions (default: 4)
     - STEPFLOW_LOG_LEVEL: Log level (DEBUG, INFO, WARNING, ERROR, default: INFO)
     - STEPFLOW_LOG_DESTINATION: Log destination (stderr, file, otlp)
     - STEPFLOW_OTLP_ENDPOINT: OTLP endpoint for tracing/logging
     - STEPFLOW_SERVICE_NAME: Service name (default: docling-step-worker)
     """
+    from stepflow_py.worker.grpc_worker import run_grpc_worker
     from stepflow_py.worker.observability import setup_observability
 
     setup_observability()
 
     server = DoclingStepWorkerServer()
-    server.run()
+    asyncio.run(
+        run_grpc_worker(
+            server=server.server,
+            tasks_url=os.environ.get("STEPFLOW_TASKS_URL", "localhost:7837"),
+            queue_name=os.environ.get("STEPFLOW_QUEUE_NAME", "python"),
+            max_concurrent=int(os.environ.get("STEPFLOW_MAX_CONCURRENT", "4")),
+        )
+    )
 
 
 if __name__ == "__main__":

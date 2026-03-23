@@ -72,9 +72,6 @@ class StepflowServer:
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
-        self._initialized = False
-        self._blob_api_url: str | None = None
-        self._blob_threshold: int = 0
 
         # Add LangChain registry functionality if available
         if _HAS_LANGCHAIN:
@@ -83,19 +80,6 @@ class StepflowServer:
         if include_builtins:
             # Register the UDF component
             self.component(udf)
-
-    @property
-    def blob_api_url(self) -> str | None:
-        """Get the blob API URL if provided during initialization."""
-        return self._blob_api_url
-
-    def is_initialized(self) -> bool:
-        """Check if the server is initialized."""
-        return self._initialized
-
-    def set_initialized(self, initialized: bool):
-        """Set the initialization state."""
-        self._initialized = initialized
 
     def component(
         self,
@@ -135,15 +119,8 @@ class StepflowServer:
             sig = inspect.signature(f)
             params = list(sig.parameters.items())
 
-            # Check if function expects context as second parameter
-            expects_context = False
-            if len(params) >= 2 and params[1][1].name == "context":
-                expects_context = True
-                input_type = params[0][1].annotation
-            else:
-                # TODO: Verify input signature.
-                input_type = params[0][1].annotation
-
+            # First parameter is always the input type
+            input_type = params[0][1].annotation
             return_type = sig.return_annotation
 
             # Extract description from parameter or docstring
@@ -165,12 +142,7 @@ class StepflowServer:
             else:
                 self._components[component_name] = entry
 
-            # Store whether function expects context
-            f._expects_context = expects_context  # type: ignore[attr-defined]
-
             if inspect.iscoroutinefunction(f):
-                # If function is async, wrap it to ensure it can be called
-                # with or without context
                 @wraps(f)
                 async def wrapper(*args, **kwargs):
                     return await f(*args, **kwargs)
