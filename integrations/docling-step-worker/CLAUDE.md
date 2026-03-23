@@ -20,7 +20,7 @@ uv sync --group dev
 uv run docling-step-worker-server
 
 # Via CLI
-uv run docling-step-worker serve --host localhost --port 0
+uv run docling-step-worker serve
 ```
 
 ### Testing
@@ -52,7 +52,7 @@ The `tests/e2e/` directory contains flow-level tests that run the full classify 
 
 **Note:** E2e tests are intentionally excluded from `poe check` due to startup time (~2 min for model loading). Run them explicitly with `uv run poe test-e2e`.
 
-**Note:** The `docling-step-worker-server` entry point runs an HTTP server and requires the `stepflow-py[http]` extra (fastapi, uvicorn, sse-starlette). This is included automatically via the package dependency — no separate install step needed.
+**Note:** The `docling-step-worker-server` entry point runs a gRPC pull-based worker that connects to the orchestrator's TasksService.
 
 ### Linting & Formatting
 

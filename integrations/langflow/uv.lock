@@ -11435,7 +11435,6 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", marker = "extra == 'http'", specifier = ">=0.104.1" },
     { name = "grpcio", specifier = ">=1.67.0" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "jsonschema", specifier = ">=4.17.0" },
@@ -11444,22 +11443,18 @@ requires-dist = [
     { name = "nats-py", marker = "extra == 'nats'", specifier = ">=2.9.0" },
     { name = "opentelemetry-api", specifier = ">=1.20.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20.0" },
-    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'http'", specifier = ">=0.44b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20.0" },
     { name = "protobuf", specifier = ">=5.26.0,<6" },
-    { name = "sse-starlette", marker = "extra == 'http'", specifier = ">=1.6.5" },
     { name = "stepflow-orchestrator", marker = "extra == 'local'", editable = "../../sdks/python/stepflow-orchestrator" },
     { name = "types-jsonschema", specifier = ">=4.17.0" },
     { name = "typing-extensions", specifier = ">=4.7.1" },
-    { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.24.0" },
 ]
-provides-extras = ["http", "nats", "langchain", "local"]
+provides-extras = ["nats", "langchain", "local"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "datamodel-code-generator", extras = ["http", "ruff"], specifier = ">=0.31.2" },
     { name = "deptry", specifier = ">=0.22.0" },
-    { name = "fastapi", specifier = ">=0.104.1" },
     { name = "grpcio-tools", specifier = ">=1.67.0,<1.75.0" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "langchain-core", specifier = ">=0.3.72" },
@@ -11472,9 +11467,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
     { name = "ruff", specifier = ">=0.9.4" },
-    { name = "sse-starlette", specifier = ">=1.6.5" },
     { name = "types-grpcio", specifier = ">=1.0.0" },
-    { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 
 [[package]]

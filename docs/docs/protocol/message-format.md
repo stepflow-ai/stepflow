@@ -2,8 +2,6 @@
 sidebar_position: 3
 ---
 
-import SchemaDisplay from "@site/src/components/SchemaDisplay";
-
 # Message Format
 
 The Stepflow Protocol uses JSON-RPC 2.0 for all communication between the runtime and workers. This page describes the four types of messages and how they work together to enable method calls, responses, and notifications.

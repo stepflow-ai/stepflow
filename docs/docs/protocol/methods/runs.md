@@ -2,8 +2,6 @@
 sidebar_position: 5
 ---
 
-import SchemaDisplay from "@site/src/components/SchemaDisplay";
-
 # Runs
 
 Run methods enable workers to submit and retrieve workflow runs during execution. These methods provide bidirectional communication capabilities for components that need to orchestrate sub-workflows or check run status.

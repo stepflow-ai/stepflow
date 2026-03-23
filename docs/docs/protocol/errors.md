@@ -98,7 +98,6 @@ The Python SDK maps exceptions to `TaskErrorCode` variants for gRPC reporting:
 | `StepflowRuntimeError` | `RESOURCE_UNAVAILABLE` |
 | `StepflowValidationError` | `INVALID_INPUT` |
 | `StepflowComponentError` | `COMPONENT_NOT_FOUND` |
-| `StepflowProtocolError` | `WORKER_ERROR` |
 | `StepflowError` (base) | `WORKER_ERROR` |
 
 ### Raising errors in components
@@ -130,10 +129,3 @@ When a worker receives `NOT_FOUND` or `UNAVAILABLE` from any `OrchestratorServic
 
 The worker's `OrchestratorTracker` handles this automatically for all RPCs — heartbeat, task completion, subflow submission, and run queries all share the same tracker per task and benefit from discovery performed by any one of them.
 
-## Legacy JSON-RPC Error Codes
-
-:::note
-The JSON-RPC integer error codes are a legacy system used by the stdio transport. New code should use `TaskErrorCode` variants. The orchestrator maps legacy codes to `TaskErrorCode` at the transport boundary.
-:::
-
-The `ErrorCode` constants in `stepflow-core` and the Python SDK's `ErrorCode(IntEnum)` define the legacy integer codes for JSON-RPC compatibility. These are organized in ranges (-32000 to -32399) and are automatically mapped to the appropriate `TaskErrorCode` when received.

@@ -9,7 +9,6 @@ const versionedDestDir = path.join(__dirname, '../static/schemas/v1');
 
 // Schema files to copy (keeping original names)
 const schemaFiles = [
-  'protocol.json',
   'flow.json',
 ];
 

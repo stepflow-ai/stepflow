@@ -21,32 +21,15 @@ from stepflow_py.proto.common_pb2 import (
     TASK_ERROR_CODE_RESOURCE_UNAVAILABLE,
     TASK_ERROR_CODE_WORKER_ERROR,
 )
-from stepflow_py.worker.generated_protocol import ErrorCode
-
-
-def is_transport_error(code: int) -> bool:
-    """Returns True if the given code represents a transport/infrastructure error."""
-    return -32399 <= code <= -32300
-
-
-def is_component_execution_error(code: int) -> bool:
-    """Returns True if the code is a component execution error (retryable)."""
-    return -32199 <= code <= -32100
 
 
 class StepflowError(Exception):
     """Base exception for all Stepflow SDK errors."""
 
-    def __init__(self, message: str, code: ErrorCode = None, data: dict = None):
+    def __init__(self, message: str, data: dict | None = None):
         super().__init__(message)
         self.message = message
-        self.code = code or self.default_code
         self.data = data or {}
-
-    @property
-    def default_code(self) -> ErrorCode:
-        """Default error code for this exception type."""
-        return ErrorCode.WORKER_ERROR
 
     @property
     def task_error_code(self) -> int:
@@ -60,29 +43,9 @@ class StepflowError(Exception):
             result["details"] = self.data
         return result
 
-    def to_json_rpc_error(self) -> dict:
-        """Convert to JSON-RPC error format."""
-        return {"code": self.code.value, "message": self.message, "data": self.data}
-
-
-class StepflowProtocolError(StepflowError):
-    """Errors related to JSON-RPC protocol violations."""
-
-    @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.JSON_RPC_INVALID_REQUEST
-
-    @property
-    def task_error_code(self) -> int:
-        return TASK_ERROR_CODE_WORKER_ERROR
-
 
 class StepflowComponentError(StepflowError):
     """Errors related to component operations."""
-
-    @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.COMPONENT_NOT_FOUND
 
     @property
     def task_error_code(self) -> int:
@@ -93,20 +56,12 @@ class StepflowValidationError(StepflowError):
     """Errors related to input/output validation."""
 
     @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.INVALID_INPUT_SCHEMA
-
-    @property
     def task_error_code(self) -> int:
         return TASK_ERROR_CODE_INVALID_INPUT
 
 
 class StepflowValueError(StepflowError):
     """Errors related to invalid values."""
-
-    @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.COMPONENT_VALUE_ERROR
 
     @property
     def task_error_code(self) -> int:
@@ -117,20 +72,12 @@ class StepflowExecutionError(StepflowError):
     """Errors during component execution."""
 
     @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.COMPONENT_EXECUTION_FAILED
-
-    @property
     def task_error_code(self) -> int:
         return TASK_ERROR_CODE_COMPONENT_FAILED
 
 
 class StepflowRuntimeError(StepflowError):
     """Errors from the Stepflow runtime."""
-
-    @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.COMPONENT_RESOURCE_UNAVAILABLE
 
     @property
     def task_error_code(self) -> int:
@@ -144,17 +91,6 @@ class ComponentNotFoundError(StepflowComponentError):
         super().__init__(f"Component '{component_name}' not found")
         self.component_name = component_name
         self.data = {"component": component_name}
-
-
-class ServerNotInitializedError(StepflowProtocolError):
-    """Server hasn't been initialized yet."""
-
-    def __init__(self):
-        super().__init__("Server not initialized")
-
-    @property
-    def default_code(self) -> ErrorCode:
-        return ErrorCode.WORKER_NOT_INITIALIZED
 
 
 class InputValidationError(StepflowValidationError):

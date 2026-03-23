@@ -23,37 +23,10 @@ from functools import wraps
 from typing import Any
 
 import msgspec
-from msgspec import UnsetType
-from typing_extensions import assert_never
 
 from stepflow_py.worker.context import StepflowContext
 from stepflow_py.worker.exceptions import (
-    ComponentNotFoundError,
-    StepflowError,
     StepflowExecutionError,
-    StepflowProtocolError,
-)
-from stepflow_py.worker.generated_protocol import (
-    ComponentExecuteParams,
-    ComponentExecuteResult,
-    ComponentInferSchemaParams,
-    ComponentInferSchemaResult,
-    ComponentInfo,
-    ComponentInfoParams,
-    ComponentInfoResult,
-    ComponentListParams,
-    Error,
-    InitializeParams,
-    InitializeResult,
-    ListComponentsResult,
-    Message,
-    Method,
-    MethodError,
-    MethodRequest,
-    MethodResponse,
-    MethodSuccess,
-    Notification,
-    RequestId,
 )
 from stepflow_py.worker.path_trie import PathTrie
 from stepflow_py.worker.udf import udf
@@ -67,11 +40,6 @@ except ImportError:
     _HAS_LANGCHAIN = False
 
 logger = logging.getLogger(__name__)
-
-
-def _unset_as_none(value: Any) -> Any:
-    """Convert msgspec UNSET sentinel to None."""
-    return None if isinstance(value, UnsetType) else value
 
 
 @dataclass
@@ -94,30 +62,16 @@ def _has_path_params(name: str) -> bool:
     return "{" in name and "}" in name
 
 
-def _handle_exception(e: Exception, id: RequestId) -> MethodError:
-    """Convert any exception to a proper JSON-RPC error response."""
-    if not isinstance(e, StepflowError):
-        e = StepflowExecutionError(f"Unexpected error: {str(e)}")
-
-    error_dict = e.to_json_rpc_error()
-    error_obj = Error(
-        code=error_dict["code"],
-        message=error_dict["message"],
-        data=error_dict.get("data"),
-    )
-
-    return MethodError(id=id, error=error_obj)
-
-
 class StepflowServer:
-    """Unified Stepflow server with component registry and transport methods."""
+    """Stepflow server with component registry.
+
+    Components are registered via the @server.component decorator and
+    executed by transport workers (gRPC, NATS) via task_handler.
+    """
 
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
         self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
-        self._initialized = False
-        self._blob_api_url: str | None = None
-        self._blob_threshold: int = 0
 
         # Add LangChain registry functionality if available
         if _HAS_LANGCHAIN:
@@ -126,19 +80,6 @@ class StepflowServer:
         if include_builtins:
             # Register the UDF component
             self.component(udf)
-
-    @property
-    def blob_api_url(self) -> str | None:
-        """Get the blob API URL if provided during initialization."""
-        return self._blob_api_url
-
-    def is_initialized(self) -> bool:
-        """Check if the server is initialized."""
-        return self._initialized
-
-    def set_initialized(self, initialized: bool):
-        """Set the initialization state."""
-        self._initialized = initialized
 
     def component(
         self,
@@ -178,15 +119,8 @@ class StepflowServer:
             sig = inspect.signature(f)
             params = list(sig.parameters.items())
 
-            # Check if function expects context as second parameter
-            expects_context = False
-            if len(params) >= 2 and params[1][1].name == "context":
-                expects_context = True
-                input_type = params[0][1].annotation
-            else:
-                # TODO: Verify input signature.
-                input_type = params[0][1].annotation
-
+            # First parameter is always the input type
+            input_type = params[0][1].annotation
             return_type = sig.return_annotation
 
             # Extract description from parameter or docstring
@@ -208,12 +142,8 @@ class StepflowServer:
             else:
                 self._components[component_name] = entry
 
-            # Store whether function expects context
-            f._expects_context = expects_context  # type: ignore[attr-defined]
-
             if inspect.iscoroutinefunction(f):
-                # If function is async, wrap it to ensure it can be called
-                # with or without context
+
                 @wraps(f)
                 async def wrapper(*args, **kwargs):
                     return await f(*args, **kwargs)
@@ -260,368 +190,6 @@ class StepflowServer:
     def get_components(self) -> dict[str, ComponentEntry]:
         """Get all registered components (both exact and pattern-based)."""
         return {**self._components, **self._wildcard_trie.get_patterns()}
-
-    def requires_context(self, message: Message) -> bool:
-        """Check if a message requires bidirectional communication context.
-
-        Args:
-            message: Parsed JSON-RPC message
-
-        Returns:
-            True if message requires StepflowContext for bidirectional communication
-        """
-        if isinstance(message, MethodRequest):
-            # Only component execution may require context
-            if message.method == Method.components_execute:
-                try:
-                    # Parse the component name from the request
-                    assert isinstance(message.params, ComponentExecuteParams)
-                    result = self.get_component(message.params.component)
-                    if result is None:
-                        # Component not found - doesn't require context (errors later)
-                        return False
-
-                    component, _ = result
-                    # Check if component function expects context parameter
-                    return (
-                        hasattr(component.function, "_expects_context")
-                        and component.function._expects_context
-                    )
-                except Exception:
-                    # If we can't parse the request, assume no context needed
-                    return False
-
-            # All other methods don't require context
-            return False
-
-        # Notifications and responses don't require context
-        return False
-
-    async def handle_message(
-        self,
-        message: MethodRequest | Notification,
-        context: StepflowContext | None = None,
-    ) -> MethodResponse | None:
-        """Central message handler for all JSON-RPC protocol methods.
-
-        This method handles the core Stepflow protocol logic and should be called
-        by transport servers (HTTP, STDIO) after they parse incoming messages.
-
-        Args:
-            message: Parsed JSON-RPC message
-            context: Context for bidirectional communication. MUST be provided if
-                    requires_context(message) returns True.
-
-        Returns:
-            MethodResponse (either MethodSuccess or MethodError)
-        """
-        # Validate context requirement
-        if self.requires_context(message) and context is None:
-            raise StepflowProtocolError("Message requires context but none provided")
-
-        if isinstance(message, MethodRequest):
-            return await self._handle_request(message, context)
-        elif isinstance(message, Notification):
-            await self._handle_notification(message, context)
-            return None
-        else:
-            assert_never("Unexpected message type in handle_message")
-
-    async def _handle_request(
-        self, request: MethodRequest, context: StepflowContext | None = None
-    ) -> MethodResponse:
-        """Handle a JSON-RPC method request."""
-        try:
-            # Route known methods
-            if request.method == Method.initialize:
-                return await self._handle_initialize(request)
-            elif request.method == Method.components_list:
-                return await self._handle_component_list(request)
-            elif request.method == Method.components_info:
-                return await self._handle_component_info(request)
-            elif request.method == Method.components_infer_schema:
-                return await self._handle_component_infer_schema(request)
-            elif request.method == Method.components_execute:
-                return await self._handle_component_execute(request, context)
-            else:
-                return MethodError(
-                    jsonrpc="2.0",
-                    id=request.id,
-                    error=Error(
-                        code=-32601,  # Method not found
-                        message=f"Method not found: {request.method}",
-                        data=None,
-                    ),
-                )
-        except Exception as e:
-            return _handle_exception(e, request.id)
-
-    async def _handle_notification(
-        self, notification: Notification, context: StepflowContext | None = None
-    ):
-        """Handle a JSON-RPC notification."""
-        # For now, don't process notifications, could handle 'initialized' here
-        # Return a success response (though notifications don't expect responses)
-        # Create a dummy InitializeResult for notification response
-        # (notifications don't typically expect responses)
-        assert notification.method == Method.initialized, (
-            "Only '{Method.initialized.value}' is expected as a notification"
-        )
-
-        self.set_initialized(True)
-
-    async def _handle_initialize(self, request: MethodRequest) -> MethodResponse:
-        """Handle the initialize method."""
-        # Extract blob API URL and threshold from capabilities if provided
-        if isinstance(request.params, InitializeParams):
-            caps = request.params.capabilities
-            if caps is not None and not isinstance(caps, UnsetType):
-                blob_url = (
-                    None if isinstance(caps.blobApiUrl, UnsetType) else caps.blobApiUrl
-                )
-                if blob_url is not None:
-                    # Validate the URL has a valid scheme and netloc
-                    from urllib.parse import urlparse
-
-                    parsed = urlparse(blob_url)
-                    if parsed.scheme in ("http", "https") and parsed.netloc:
-                        self._blob_api_url = blob_url
-
-                        # One-time configuration (no reset needed)
-                        from stepflow_py.worker import blob_store
-
-                        blob_store.configure(blob_api_url=blob_url)
-                    else:
-                        logger.warning(
-                            "Invalid blob API URL received: %s (must be http/https)",
-                            blob_url,
-                        )
-
-                # Extract blob threshold (only if blob API is reachable)
-                raw_threshold = caps.blobThreshold
-                blob_threshold = (
-                    None if isinstance(raw_threshold, UnsetType) else raw_threshold
-                )
-                if (
-                    blob_threshold is not None
-                    and blob_threshold > 0
-                    and self._blob_api_url is not None
-                ):
-                    self._blob_threshold = blob_threshold
-
-        # Report that we support blob refs (resolve in input, blobify in output)
-        result = InitializeResult(
-            serverProtocolVersion=1,
-            supportsBlobRefs=True,
-        )
-
-        return MethodSuccess(id=request.id, result=result)
-
-    async def _handle_component_list(self, request: MethodRequest) -> MethodResponse:
-        """Handle the components/list method."""
-        # Parse parameters - handle empty params case
-        assert isinstance(request.params, ComponentListParams)
-
-        # Build component list
-        component_infos = []
-        for name, component in self._components.items():
-            component_infos.append(
-                ComponentInfo(
-                    component=name,
-                    input_schema=component.input_schema(),
-                    output_schema=component.output_schema(),
-                    description=component.description,
-                )
-            )
-
-        result = ListComponentsResult(components=component_infos)
-        return MethodSuccess(id=request.id, result=result)
-
-    async def _handle_component_info(self, request: MethodRequest) -> MethodResponse:
-        """Handle the components/info method."""
-        assert isinstance(request.params, ComponentInfoParams)
-        params: ComponentInfoParams = request.params
-
-        result = self.get_component(params.component)
-        if result is None:
-            raise ComponentNotFoundError(f"Component '{params.component}' not found")
-
-        component, _ = result
-        info = ComponentInfo(
-            component=params.component,
-            input_schema=component.input_schema(),
-            output_schema=component.output_schema(),
-            description=component.description,
-        )
-
-        result_info = ComponentInfoResult(info=info)
-        return MethodSuccess(id=request.id, result=result_info)
-
-    async def _handle_component_infer_schema(
-        self, request: MethodRequest
-    ) -> MethodResponse:
-        """Handle the components/infer_schema method.
-
-        Infers the output schema for a component given an input schema.
-        For now, this returns the static output schema from the component's
-        type annotations. In the future, this could be extended to support
-        dynamic schema inference based on the input schema.
-        """
-        assert isinstance(request.params, ComponentInferSchemaParams)
-        params: ComponentInferSchemaParams = request.params
-
-        result = self.get_component(params.component)
-        if result is None:
-            raise ComponentNotFoundError(f"Component '{params.component}' not found")
-
-        component, _ = result
-        # Return the static output schema from the component's type annotations
-        # In the future, components could implement dynamic schema inference
-        schema_result = ComponentInferSchemaResult(
-            output_schema=component.output_schema()
-        )
-        return MethodSuccess(id=request.id, result=schema_result)
-
-    async def _handle_component_execute(
-        self, request: MethodRequest, context: StepflowContext | None = None
-    ) -> MethodResponse:
-        """Handle the components/execute method."""
-        assert isinstance(request.params, ComponentExecuteParams)
-        params: ComponentExecuteParams = request.params
-
-        lookup_result = self.get_component(params.component)
-        if lookup_result is None:
-            raise ComponentNotFoundError(f"Component '{params.component}' not found")
-
-        component, path_params = lookup_result
-
-        try:
-            import logging
-
-            from opentelemetry import trace as otel_trace
-
-            from stepflow_py.worker.observability import (
-                extract_trace_context,
-                get_tracer,
-                set_diagnostic_context,
-            )
-
-            # Normalize observability fields (UNSET -> None)
-            obs = params.observability
-            obs_flow_id: str | None = _unset_as_none(obs.flow_id)
-            obs_run_id: str | None = _unset_as_none(obs.run_id)
-            obs_step_id: str | None = _unset_as_none(obs.step_id)
-            obs_trace_id: str | None = _unset_as_none(obs.trace_id)
-            obs_span_id: str | None = _unset_as_none(obs.span_id)
-
-            # Set diagnostic context for logging
-            set_diagnostic_context(
-                flow_id=obs_flow_id,
-                run_id=obs_run_id,
-                step_id=obs_step_id,
-            )
-
-            # Set execution context for this component invocation
-            from stepflow_py.worker import execution_context
-
-            exec_token = execution_context.set_context(
-                run_id=obs_run_id,
-                step_id=obs_step_id,
-                flow_id=obs_flow_id,
-                attempt=params.attempt,
-            )
-
-            try:
-                logger = logging.getLogger(__name__)
-
-                # Create a child span if trace context is available
-                tracer = get_tracer(__name__)
-                span_context = None
-                if obs_trace_id and obs_span_id:
-                    span_context = extract_trace_context(obs_trace_id, obs_span_id)
-
-                # Create OpenTelemetry context from span context
-                otel_context = None
-                if span_context:
-                    otel_context = otel_trace.set_span_in_context(
-                        otel_trace.NonRecordingSpan(span_context)
-                    )
-
-                # Create span for component execution
-                with tracer.start_as_current_span(
-                    f"component:{params.component}",
-                    context=otel_context,
-                    attributes={
-                        "component": params.component,
-                        "attempt": params.attempt,
-                        **({"run_id": obs_run_id} if obs_run_id else {}),
-                        **({"flow_id": obs_flow_id} if obs_flow_id else {}),
-                        **({"step_id": obs_step_id} if obs_step_id else {}),
-                    },
-                ):
-                    # Resolve blob refs in input before parsing
-                    raw_input = params.input
-                    if self._blob_threshold > 0:
-                        from stepflow_py.worker.blob_ref import resolve_blob_refs
-
-                        raw_input = await resolve_blob_refs(raw_input)
-
-                    # Parse input using component's input type
-                    # Handle types that msgspec doesn't support (dict, Any, object)
-                    # by passing through the input as-is
-                    try:
-                        input_value: Any = msgspec.convert(
-                            raw_input, type=component.input_type
-                        )
-                    except TypeError as type_err:
-                        if "is not supported" in str(type_err):
-                            # Type not supported by msgspec, pass through as-is
-                            input_value = raw_input
-                        else:
-                            raise
-
-                    logger.info(
-                        f"Executing component {params.component} "
-                        f"(attempt {params.attempt})"
-                    )
-                    logger.debug(f"Component input: {input_value}")
-
-                    # Execute component with or without context, plus path params
-                    args = [input_value]
-                    if context is not None:
-                        args.append(context)
-
-                    if inspect.iscoroutinefunction(component.function):
-                        output = await component.function(*args, **path_params)
-                    else:
-                        output = component.function(*args, **path_params)
-
-                    # Blobify large output fields
-                    if self._blob_threshold > 0:
-                        from stepflow_py.worker.blob_ref import blobify_inputs
-
-                        # Convert Structs/dataclasses to dicts for blobification
-                        if not isinstance(
-                            output, dict | list | str | int | float | bool | type(None)
-                        ):
-                            output = msgspec.to_builtins(output)
-                        output, _created_ids = await blobify_inputs(
-                            output, self._blob_threshold
-                        )
-
-                    result = ComponentExecuteResult(output=output)
-                    logger.info(f"Component {params.component} executed successfully")
-                    logger.debug(f"Component output: {output}")
-                    return MethodSuccess(id=request.id, result=result)
-            finally:
-                execution_context.reset_context(exec_token)
-
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"Error executing component {params.component}: {e}", exc_info=True
-            )
-            raise StepflowExecutionError(f"Component execution failed: {str(e)}") from e
 
     def langchain_component(
         self,
@@ -787,43 +355,3 @@ class StepflowServer:
         if func is None:
             return decorator
         return decorator(func)
-
-    async def run(
-        self,
-        host: str = "127.0.0.1",
-        port: int = 0,
-        workers: int = 3,
-        backlog: int = 128,
-        timeout_keep_alive: int = 5,
-        instance_id: str | None = None,
-        max_concurrent_components: int | None = None,
-    ) -> None:
-        """Start the server using HTTP transport.
-
-        When port is 0, the server binds to an available port and announces
-        the actual port via stdout in JSON format: {"port": N}
-
-        Args:
-            host: Server host (default: 127.0.0.1)
-            port: Server port (0 for auto-assign, default: 0)
-            workers: Number of worker processes (default: 3)
-            backlog: Maximum number of pending connections (default: 128)
-            timeout_keep_alive: Keep-alive timeout in seconds (default: 5)
-            instance_id: Optional instance ID for load balancer routing
-                (auto-generated if not provided)
-            max_concurrent_components: Max concurrent component executions.
-                Resolved from STEPFLOW_MAX_CONCURRENT_COMPONENTS env var if None.
-                0 means unlimited.
-        """
-        from .http_server import run_http_server
-
-        await run_http_server(
-            server=self,
-            host=host,
-            port=port,
-            workers=workers,
-            backlog=backlog,
-            timeout_keep_alive=timeout_keep_alive,
-            instance_id=instance_id,
-            max_concurrent_components=max_concurrent_components,
-        )

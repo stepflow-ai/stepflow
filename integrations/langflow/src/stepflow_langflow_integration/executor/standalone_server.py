@@ -80,10 +80,7 @@ async def component_tool_component(
 def main():
     """Main entry point for the Langflow component server.
 
-    Supports gRPC (default) and HTTP transports, matching the SDK worker pattern.
-
     Configure via environment variables:
-    - STEPFLOW_TRANSPORT: Transport mode: grpc, http (default: grpc)
     - STEPFLOW_TASKS_URL: TasksService gRPC address (default: localhost:7837)
     - STEPFLOW_QUEUE_NAME: Queue name for gRPC transport (default: langflow)
     - STEPFLOW_MAX_CONCURRENT: Max concurrent tasks (default: 4)
@@ -117,15 +114,6 @@ def main():
         asyncio.run(initialize_services())
 
     parser = argparse.ArgumentParser(description="Langflow Stepflow Component Server")
-    transport_group = parser.add_mutually_exclusive_group()
-    transport_group.add_argument(
-        "--grpc", action="store_true", help="Use gRPC pull-based transport (default)"
-    )
-    transport_group.add_argument(
-        "--http", action="store_true", help="Use HTTP transport"
-    )
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="HTTP host")
-    parser.add_argument("--port", type=int, default=0, help="HTTP port")
     parser.add_argument(
         "--tasks-url",
         type=str,
@@ -146,29 +134,16 @@ def main():
     )
     args = parser.parse_args()
 
-    # Transport precedence: CLI flags > STEPFLOW_TRANSPORT env > default (grpc)
-    transport_env = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower()
-    if args.http:
-        transport = "http"
-    elif args.grpc:
-        transport = "grpc"
-    else:
-        transport = transport_env
+    from stepflow_py.worker.grpc_worker import run_grpc_worker
 
-    if transport == "http":
-        asyncio.run(server.run(host=args.host, port=args.port))
-    else:
-        # Default: gRPC pull-based worker
-        from stepflow_py.worker.grpc_worker import run_grpc_worker
-
-        asyncio.run(
-            run_grpc_worker(
-                server=server,
-                tasks_url=args.tasks_url,
-                queue_name=args.queue_name,
-                max_concurrent=args.max_concurrent,
-            )
+    asyncio.run(
+        run_grpc_worker(
+            server=server,
+            tasks_url=args.tasks_url,
+            queue_name=args.queue_name,
+            max_concurrent=args.max_concurrent,
         )
+    )
 
 
 if __name__ == "__main__":

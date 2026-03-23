@@ -5,7 +5,6 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 const references = {
-    "https://stepflow.org/schemas/v1/protocol.json": require("@site/static/schemas/v1/protocol.json"),
     "https://stepflow.org/schemas/v1/flow.json": require("@site/static/schemas/v1/flow.json"),
     "https://json-schema.org/draft/2020-12/schema": require("@site/static/schemas/jsonSchema.json")
 }

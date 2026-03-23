@@ -12,171 +12,48 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+"""Context API for stepflow components to interact with the runtime.
+
+StepflowContext is the abstract base class that defines the interface
+available to components. Concrete implementations (GrpcContext) provide
+the actual transport-specific logic.
+"""
+
 from __future__ import annotations
 
-import asyncio
 import uuid
-from typing import Any, TypeVar
-from uuid import uuid4
+from abc import ABC, abstractmethod
+from typing import Any
 
 import msgspec
 
 from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA, BLOB_TYPE_FLOW
 from stepflow_py.worker.generated_flow import Flow
-from stepflow_py.worker.generated_protocol import (
-    FlowResultFailed,
-    FlowResultSuccess,
-    GetRunProtocolParams,
-    Message,
-    Method,
-    MethodError,
-    MethodSuccess,
-    ObservabilityContext,
-    ResultOrder,
-    RunStatusProtocol,
-    SubmitRunProtocolParams,
-)
-from stepflow_py.worker.message_decoder import MessageDecoder
-
-"""
-Context API for stepflow components to interact with the runtime.
-"""
-
-T = TypeVar("T")
 
 
-class StepflowContext:
+class StepflowContext(ABC):
     """Context for stepflow components to make calls back to the runtime.
 
     This allows components to store/retrieve blobs and perform other
-    runtime operations through bidirectional communication.
+    runtime operations. Concrete subclasses (GrpcContext) provide the
+    actual transport implementation.
     """
 
     def __init__(
         self,
-        outgoing_queue: asyncio.Queue,
-        message_decoder: MessageDecoder[asyncio.Future[Message]],
-        http_client: Any,
-        session_id: str | None = None,
+        *,
         step_id: str | None = None,
         run_id: str | None = None,
         flow_id: str | None = None,
         attempt: int = 1,
-        observability: ObservabilityContext | None = None,
         blob_api_url: str | None = None,
     ):
-        self._outgoing_queue = outgoing_queue
-        self._message_decoder = message_decoder
-        self._http_client = http_client
-        self._session_id = session_id
         self._step_id = step_id
         self._run_id = run_id
         self._flow_id = flow_id
         self._attempt = attempt
-        self._observability = observability
         self._blob_api_url = blob_api_url
         self._next_subflow_key: int = 0
-
-    def current_observability_context(self) -> ObservabilityContext | None:
-        """Get the current observability context for bidirectional requests.
-
-        This captures the current OpenTelemetry span context and combines it
-        with the execution context (run_id, flow_id, step_id) to create proper
-        trace propagation for bidirectional calls.
-
-        Returns:
-            ObservabilityContext with current span as parent, or None if
-            no span is active.
-        """
-        from stepflow_py.worker.observability import get_current_observability_context
-
-        return get_current_observability_context(
-            run_id=self._run_id,
-            flow_id=self._flow_id,
-            step_id=self._step_id,
-        )
-
-    async def _send_request(
-        self, method: Method, params: Any, result_type: type[T]
-    ) -> T:
-        """Send a request to the stepflow runtime and wait for response."""
-        request_id = str(uuid4())
-        request = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": method.value,
-            "params": params,
-        }
-
-        # Create future for response
-        future: asyncio.Future[Message] = asyncio.Future()
-
-        # Register pending request with message decoder using method registration
-        self._message_decoder.register_request_for_method(request_id, method, future)
-
-        # Send request via queue
-        await self._outgoing_queue.put(request)
-
-        # Wait for response - the MessageDecoder will resolve this future
-        # when the response is received
-        response_message = await future
-
-        # Extract the result from the response message
-        if isinstance(response_message, MethodSuccess):
-            result = response_message.result
-            assert isinstance(result, result_type), (
-                f"Expected {result_type}, got {type(result)}"
-            )
-            return result
-        elif isinstance(response_message, MethodError):
-            # Handle error case
-            raise Exception(f"Request failed: {response_message.error}")
-        else:
-            raise Exception(
-                f"Unexpected response type: {type(response_message)} {response_message}"
-            )
-
-    async def put_blob(self, data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
-        """Store JSON data as a blob and return its content-based ID.
-
-        Delegates to the module-level blob_store API backed by contextvars.
-
-        Args:
-            data: The JSON-serializable data to store
-            blob_type: The type of blob to store (flow or data)
-
-        Returns:
-            The blob ID (SHA-256 hash) for the stored data
-
-        Raises:
-            RuntimeError: If blob API URL was not provided during initialization
-        """
-        from stepflow_py.worker import blob_store
-
-        return await blob_store.put_blob(data, blob_type)
-
-    async def get_blob(self, blob_id: str) -> Any:
-        """Retrieve JSON data by blob ID.
-
-        Delegates to the module-level blob_store API backed by contextvars.
-
-        Args:
-            blob_id: The blob ID to retrieve
-
-        Returns:
-            The JSON data associated with the blob ID
-
-        Raises:
-            RuntimeError: If blob API URL was not provided during initialization
-        """
-        from stepflow_py.worker import blob_store
-
-        return await blob_store.get_blob(blob_id)
-
-    @property
-    def session_id(self) -> str | None:
-        """Get the session ID for HTTP mode, or None for STDIO mode."""
-        return self._session_id
 
     @property
     def step_id(self) -> str | None:
@@ -212,6 +89,29 @@ class StepflowContext:
         """
         return self._attempt
 
+    @abstractmethod
+    async def put_blob(self, data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
+        """Store JSON data as a blob and return its content-based ID.
+
+        Args:
+            data: The JSON-serializable data to store
+            blob_type: The type of blob to store (flow or data)
+
+        Returns:
+            The blob ID (SHA-256 hash) for the stored data
+        """
+
+    @abstractmethod
+    async def get_blob(self, blob_id: str) -> Any:
+        """Retrieve JSON data by blob ID.
+
+        Args:
+            blob_id: The blob ID to retrieve
+
+        Returns:
+            The JSON data associated with the blob ID
+        """
+
     def _generate_subflow_key(self) -> str:
         """Generate a deterministic subflow key.
 
@@ -220,9 +120,6 @@ class StepflowContext:
         after recovery, the same sequence of calls produces the same
         keys, allowing the executor to match submissions to their
         pre-crash counterparts.
-
-        The generated UUIDs don't need to match Rust's output — they
-        only need to be self-consistent within the Python runtime.
         """
         counter = self._next_subflow_key
         self._next_subflow_key += 1
@@ -286,17 +183,14 @@ class StepflowContext:
             StepflowFailed: If the flow execution failed with a business logic error
             Exception: For system/runtime errors
         """
-        # Use the new unified runs API with a single input
+        # Use the unified runs API with a single input
         results = await self.evaluate_run_by_id(
             flow_id, [input], overrides=overrides, subflow_key=subflow_key
         )
         # Return the single result
         return results[0]
 
-    # =========================================================================
-    # Unified Runs API
-    # =========================================================================
-
+    @abstractmethod
     async def submit_run(
         self,
         flow: Flow,
@@ -305,7 +199,7 @@ class StepflowContext:
         max_concurrency: int | None = None,
         overrides: Any = None,
         subflow_key: uuid.UUID | str | None = None,
-    ) -> RunStatusProtocol:
+    ) -> Any:
         """Submit a run (1 or N items) for execution.
 
         Args:
@@ -318,24 +212,10 @@ class StepflowContext:
                 If not provided, a deterministic key is auto-generated.
 
         Returns:
-            RunStatusProtocol with run status and optionally results if wait=True
+            Run status
         """
-        # Convert Flow object to dict for blob storage
-        flow_dict = msgspec.to_builtins(flow)
 
-        # Store flow as a blob first
-        flow_id = await self.put_blob(flow_dict, BLOB_TYPE_FLOW)
-
-        # Delegate to submit_run_by_id
-        return await self.submit_run_by_id(
-            flow_id,
-            inputs,
-            wait,
-            max_concurrency,
-            overrides=overrides,
-            subflow_key=subflow_key,
-        )
-
+    @abstractmethod
     async def submit_run_by_id(
         self,
         flow_id: str,
@@ -344,7 +224,7 @@ class StepflowContext:
         max_concurrency: int | None = None,
         overrides: Any = None,
         subflow_key: uuid.UUID | str | None = None,
-    ) -> RunStatusProtocol:
+    ) -> Any:
         """Submit a run by flow ID.
 
         Args:
@@ -357,81 +237,27 @@ class StepflowContext:
                 If not provided, a deterministic key is auto-generated.
 
         Returns:
-            RunStatusProtocol with run status and optionally results if wait=True
+            Run status
         """
-        from stepflow_py.worker.observability import get_tracer
 
-        tracer = get_tracer(__name__)
-        attributes: dict[str, str | int | bool] = {
-            "flow_id": flow_id,
-            "item_count": len(inputs),
-            "wait": wait,
-        }
-        if max_concurrency is not None:
-            attributes["max_concurrency"] = max_concurrency
-
-        # Auto-generate a deterministic subflow key if not provided
-        if subflow_key is None:
-            subflow_key = self._generate_subflow_key()
-
-        # Convert to string for the protocol wire format
-        subflow_key_str = str(subflow_key)
-
-        with tracer.start_as_current_span("submit_run", attributes=attributes):
-            params = SubmitRunProtocolParams(
-                flowId=flow_id,
-                inputs=inputs,
-                wait=wait,
-                maxConcurrency=max_concurrency,
-                overrides=overrides,
-                observability=self.current_observability_context(),
-                subflowKey=subflow_key_str,
-            )
-            response = await self._send_request(
-                Method.runs_submit, params, RunStatusProtocol
-            )
-            return response
-
+    @abstractmethod
     async def get_run(
         self,
         run_id: str,
         wait: bool = False,
         include_results: bool = False,
-        result_order: ResultOrder = ResultOrder.by_index,
-    ) -> RunStatusProtocol:
+        **kwargs: Any,
+    ) -> Any:
         """Get run status and optionally wait for completion and retrieve results.
 
         Args:
             run_id: The ID of the run to retrieve
             wait: If True, wait for run completion before returning
             include_results: If True, include the item results in the response
-            result_order: Order of results (byIndex or byCompletion)
 
         Returns:
-            RunStatusProtocol with run status and optionally results
+            Run status
         """
-        from stepflow_py.worker.observability import get_tracer
-
-        tracer = get_tracer(__name__)
-        with tracer.start_as_current_span(
-            "get_run",
-            attributes={
-                "run_id": run_id,
-                "wait": wait,
-                "include_results": include_results,
-            },
-        ):
-            params = GetRunProtocolParams(
-                runId=run_id,
-                wait=wait,
-                includeResults=include_results,
-                resultOrder=result_order,
-                observability=self.current_observability_context(),
-            )
-            response = await self._send_request(
-                Method.runs_get, params, RunStatusProtocol
-            )
-            return response
 
     async def evaluate_run(
         self,
@@ -475,6 +301,7 @@ class StepflowContext:
             subflow_key=subflow_key,
         )
 
+    @abstractmethod
     async def evaluate_run_by_id(
         self,
         flow_id: str,
@@ -484,9 +311,6 @@ class StepflowContext:
         subflow_key: uuid.UUID | str | None = None,
     ) -> list[Any]:
         """Submit a run by flow ID, wait for completion, and return all results.
-
-        This is a convenience method that combines submit_run_by_id and get_run
-        with wait=True and include_results=True.
 
         Args:
             flow_id: The blob ID of the flow to execute
@@ -502,48 +326,3 @@ class StepflowContext:
         Raises:
             StepflowFailed: If any of the runs failed
         """
-        from stepflow_py.worker.exceptions import StepflowFailed
-
-        # Submit and wait for completion with results
-        run_status = await self.submit_run_by_id(
-            flow_id,
-            inputs,
-            wait=True,
-            max_concurrency=max_concurrency,
-            overrides=overrides,
-            subflow_key=subflow_key,
-        )
-
-        # Extract results
-        from msgspec import UnsetType
-
-        results_val = run_status.results
-        if results_val is None or isinstance(results_val, UnsetType):
-            raise Exception("Expected results in response when wait=True")
-
-        results = []
-        for item_result in results_val:
-            if item_result.result is None:
-                raise Exception(
-                    f"Item at index {item_result.itemIndex} has no "
-                    f"result (status: {item_result.status})"
-                )
-
-            flow_result = item_result.result
-
-            # Check the outcome and either append the result or raise exception
-            if isinstance(flow_result, FlowResultSuccess):
-                results.append(flow_result.result)
-            elif isinstance(flow_result, FlowResultFailed):
-                error = flow_result.error
-                raise StepflowFailed(
-                    error_code=error.code,
-                    message=(
-                        f"Item at index {item_result.itemIndex} failed: {error.message}"
-                    ),
-                    data=error.data,
-                )
-            else:
-                raise Exception(f"Unexpected flow result type: {type(flow_result)}")
-
-        return results

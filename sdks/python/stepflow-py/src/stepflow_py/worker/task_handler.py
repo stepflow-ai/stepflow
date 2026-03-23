@@ -419,8 +419,8 @@ async def execute_component(
         else:
             raise
 
-    # Resolve blob refs if threshold is set (from env var or server config)
-    if _BLOB_THRESHOLD_BYTES > 0 or server._blob_threshold > 0:  # noqa: SLF001
+    # Resolve blob refs if threshold is set
+    if _BLOB_THRESHOLD_BYTES > 0:
         from stepflow_py.worker.blob_ref import resolve_blob_refs
 
         input_value = await resolve_blob_refs(input_value)
@@ -747,7 +747,7 @@ def proto_value_to_python(value: struct_pb2.Value) -> Any:
 
     Preserves integer types: protobuf number_value is always f64, so
     whole-number floats (e.g. 30.0) are converted back to int (30) to
-    maintain parity with JSON-RPC transport.
+    match Python's native JSON parsing behavior.
     """
     kind = value.WhichOneof("kind")
     if kind == "null_value":

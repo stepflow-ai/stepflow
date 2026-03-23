@@ -16,7 +16,6 @@
 """Type generation script for Stepflow Python SDK.
 
 Generates msgspec Struct types from JSON schemas for:
-- Protocol types (component server communication)
 - Config types (orchestrator configuration)
 - Flow types (workflow definitions: Flow, Step, ErrorAction, etc.)
 """
@@ -66,8 +65,7 @@ def _generate_types_content(schema_name: str, verbose: bool = True) -> str:
             "3.10",
         ]
 
-        # Use --use-title-as-name for both schemas since both now have valid class name titles
-        # protocol.json: "JsonRpcVersion", "InitializeParams", "ComponentExecuteResult", etc.
+        # Use --use-title-as-name for schemas with valid class name titles
         cmd.append("--use-title-as-name")
 
         # Generate integer enums as (int, Enum) subclasses (e.g. ErrorCode)
@@ -260,13 +258,6 @@ def main():
     )
 
     args = parser.parse_args()
-
-    # Generate protocol types (msgspec-based, for component server communication)
-    result = generate_types_from_schema(
-        "protocol", "generated_protocol.py", check_only=args.check
-    )
-    if result != 0:
-        return result
 
     # Generate config types (msgspec-based, for configuration)
     result = generate_types_from_schema(

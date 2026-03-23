@@ -12,11 +12,12 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-"""Module-level blob store API backed by contextvars.
+"""Module-level blob store API using gRPC BlobService.
 
-This module provides the canonical blob API functions that can be used by any
-code without requiring a StepflowContext parameter. The blob API URL and HTTP
-client are configured via contextvars during server initialization.
+This module provides blob API functions that can be used by any code
+without requiring a StepflowContext parameter.  The blob service URL
+is read from the ``STEPFLOW_BLOB_URL`` environment variable at module
+import time.
 
 Usage::
 
@@ -30,95 +31,29 @@ Usage::
 from __future__ import annotations
 
 import logging
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
+import os
 from typing import Any
+
+import grpc
+import grpc.aio
 
 from stepflow_py.worker.blob_ref import BLOB_TYPE_DATA
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Contextvars – private; callers use configure() / reset()
-# ---------------------------------------------------------------------------
-
-_blob_api_url: ContextVar[str | None] = ContextVar(
-    "stepflow_blob_api_url", default=None
-)
-_blob_http_client: ContextVar[Any] = ContextVar(
-    "stepflow_blob_http_client", default=None
-)
+# Static configuration from environment variable.
+# Read once at module import; does not change during worker lifetime.
+_BLOB_URL: str = os.environ.get("STEPFLOW_BLOB_URL", "")
 
 
-# ---------------------------------------------------------------------------
-# Configuration API
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class BlobStoreTokens:
-    """Opaque tokens returned by :func:`configure` for later :func:`reset`."""
-
-    url_token: Token[str | None] | None = None
-    client_token: Token[Any] | None = None
-
-
-def configure(
-    *,
-    blob_api_url: str | None = None,
-    http_client: Any = None,
-) -> BlobStoreTokens:
-    """Configure the blob store for the current async scope.
-
-    Only non-``None`` arguments are applied; the rest are left unchanged.
-    Call :func:`reset` with the returned tokens to restore the previous values.
-    """
-    url_token = _blob_api_url.set(blob_api_url) if blob_api_url is not None else None
-    client_token = (
-        _blob_http_client.set(http_client) if http_client is not None else None
-    )
-    return BlobStoreTokens(url_token=url_token, client_token=client_token)
-
-
-def reset(tokens: BlobStoreTokens) -> None:
-    """Restore previous blob store configuration."""
-    if tokens.url_token is not None:
-        _blob_api_url.reset(tokens.url_token)
-    if tokens.client_token is not None:
-        _blob_http_client.reset(tokens.client_token)
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-
-def is_configured() -> bool:
-    """Return True if the blob store has been configured with a URL and client."""
-    return _blob_api_url.get() is not None and _blob_http_client.get() is not None
-
-
-def _get_blob_api_url(blob_id: str | None = None) -> str:
-    """Get the blob API URL, optionally with a blob ID path appended."""
-    url = _blob_api_url.get()
-    if url is None:
+def _get_blob_url() -> str:
+    """Return the blob service URL or raise if not configured."""
+    if not _BLOB_URL:
         raise RuntimeError(
-            "Blob API URL not configured. "
-            "Ensure the orchestrator is configured with blobApi.url"
+            "Blob service URL not configured. "
+            "Set the STEPFLOW_BLOB_URL environment variable."
         )
-    if blob_id is not None:
-        return f"{url}/{blob_id}"
-    return url
-
-
-def _get_client() -> Any:
-    client = _blob_http_client.get()
-    if client is None:
-        raise RuntimeError(
-            "HTTP client not configured. "
-            "Blob store must be used within a running Stepflow server."
-        )
-    return client
+    return _BLOB_URL
 
 
 async def put_blob(data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
@@ -132,25 +67,31 @@ async def put_blob(data: Any, blob_type: str = BLOB_TYPE_DATA) -> str:
         The blob ID (SHA-256 hash) for the stored data.
 
     Raises:
-        RuntimeError: If blob store is not configured.
+        RuntimeError: If blob service URL is not configured.
     """
+    from stepflow_py.proto import PutBlobRequest
+    from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
     from stepflow_py.worker.observability import get_tracer
+    from stepflow_py.worker.task_handler import python_to_proto_value
 
-    url = _get_blob_api_url()
-    client = _get_client()
-
+    url = _get_blob_url()
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
         "put_blob",
         attributes={"blob_type": blob_type},
     ):
+        json_data = python_to_proto_value(data)
+        request = PutBlobRequest(
+            json_data=json_data,
+            blob_type=blob_type,
+        )
+        channel = grpc.aio.insecure_channel(url)
         try:
-            resp = await client.post(url, json={"data": data, "blobType": blob_type})
-            resp.raise_for_status()
-            blob_id: str = resp.json()["blobId"]
-            return blob_id
-        except Exception as e:
-            raise RuntimeError(f"Failed to store blob (type={blob_type}): {e}") from e
+            stub = BlobServiceStub(channel)
+            response = await stub.PutBlob(request)
+            return response.blob_id
+        finally:
+            await channel.close()
 
 
 async def get_blob(blob_id: str) -> Any:
@@ -163,24 +104,32 @@ async def get_blob(blob_id: str) -> Any:
         The JSON data associated with the blob ID.
 
     Raises:
-        RuntimeError: If blob store is not configured.
+        RuntimeError: If blob service URL is not configured.
     """
+    from stepflow_py.proto import GetBlobRequest
+    from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
     from stepflow_py.worker.observability import get_tracer
+    from stepflow_py.worker.task_handler import proto_value_to_python
 
-    url = _get_blob_api_url(blob_id)
-    client = _get_client()
-
+    url = _get_blob_url()
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
         "get_blob",
         attributes={"blob_id": blob_id},
     ):
+        request = GetBlobRequest(blob_id=blob_id)
+        channel = grpc.aio.insecure_channel(url)
         try:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.json()["data"]
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch blob {blob_id}: {e}") from e
+            stub = BlobServiceStub(channel)
+            response = await stub.GetBlob(request)
+            if response.HasField("json_data"):
+                return proto_value_to_python(response.json_data)
+            elif response.HasField("raw_data"):
+                return response.raw_data
+            else:
+                return None
+        finally:
+            await channel.close()
 
 
 async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
@@ -195,7 +144,7 @@ async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
         A mapping from blob ID to its JSON data.
 
     Raises:
-        RuntimeError: If blob store is not configured.
+        RuntimeError: If blob service URL is not configured.
     """
     import asyncio
 
@@ -210,49 +159,41 @@ async def get_blobs(blob_ids: set[str]) -> dict[str, Any]:
 async def put_blob_binary(data: bytes, *, filename: str | None = None) -> str:
     """Store raw binary data as a blob and return its content-based ID.
 
-    Sends the raw bytes directly via ``application/octet-stream`` — no base64
-    encoding overhead. The blob ID is the SHA-256 hash of the raw bytes.
-
     Args:
         data: The raw bytes to store.
-        filename: Optional filename to associate with the blob.
+        filename: Optional filename metadata (currently unused by gRPC API).
 
     Returns:
         The blob ID (SHA-256 hash) for the stored data.
 
     Raises:
-        RuntimeError: If blob store is not configured.
+        RuntimeError: If blob service URL is not configured.
     """
+    from stepflow_py.proto import PutBlobRequest
+    from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
     from stepflow_py.worker.observability import get_tracer
 
-    url = _get_blob_api_url()
-    client = _get_client()
-
-    headers = {"content-type": "application/octet-stream"}
-    if filename is not None:
-        headers["x-blob-filename"] = filename
-
+    url = _get_blob_url()
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
         "put_blob_binary",
         attributes={"size": len(data)},
     ):
+        request = PutBlobRequest(
+            raw_data=bytes(data),
+            blob_type="binary",
+        )
+        channel = grpc.aio.insecure_channel(url)
         try:
-            resp = await client.post(url, content=data, headers=headers)
-            resp.raise_for_status()
-            blob_id: str = resp.json()["blobId"]
-            return blob_id
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to store binary blob ({len(data)} bytes): {e}"
-            ) from e
+            stub = BlobServiceStub(channel)
+            response = await stub.PutBlob(request)
+            return response.blob_id
+        finally:
+            await channel.close()
 
 
 async def get_blob_binary(blob_id: str) -> bytes:
     """Retrieve raw binary data by blob ID.
-
-    Uses ``Accept: application/octet-stream`` to receive raw bytes directly
-    from the server — no base64 decoding overhead.
 
     Args:
         blob_id: The blob ID to retrieve.
@@ -261,22 +202,34 @@ async def get_blob_binary(blob_id: str) -> bytes:
         The raw bytes associated with the blob ID.
 
     Raises:
-        RuntimeError: If blob store is not configured.
+        RuntimeError: If blob service URL is not configured.
     """
+    from stepflow_py.proto import GetBlobRequest
+    from stepflow_py.proto.blobs_pb2_grpc import BlobServiceStub
     from stepflow_py.worker.observability import get_tracer
 
-    url = _get_blob_api_url(blob_id)
-    client = _get_client()
-
+    url = _get_blob_url()
     tracer = get_tracer(__name__)
     with tracer.start_as_current_span(
         "get_blob_binary",
         attributes={"blob_id": blob_id},
     ):
+        request = GetBlobRequest(blob_id=blob_id)
+        channel = grpc.aio.insecure_channel(url)
         try:
-            resp = await client.get(url, headers={"accept": "application/octet-stream"})
-            resp.raise_for_status()
-            result: bytes = resp.content
-            return result
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch binary blob {blob_id}: {e}") from e
+            stub = BlobServiceStub(channel)
+            response = await stub.GetBlob(request)
+            if response.HasField("raw_data"):
+                return response.raw_data
+            elif response.HasField("json_data"):
+                # Fallback: try to return as bytes if stored as JSON
+                import json
+
+                from stepflow_py.worker.task_handler import proto_value_to_python
+
+                data = proto_value_to_python(response.json_data)
+                return json.dumps(data).encode("utf-8")
+            else:
+                return b""
+        finally:
+            await channel.close()

@@ -20,9 +20,6 @@ dev = [
     "ruff>=0.9.4",
     "mypy>=1.8.0",
     "deptry>=0.22.0",
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
-    "sse-starlette>=1.6.5",
     "openai>=1.97.1",
     "httpx>=0.25.0",
     "pytest-mock>=3.14.1",
@@ -146,10 +143,6 @@ strict_equality = false
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "stepflow_py.worker.generated_protocol"
 ignore_errors = true
 
 [[tool.mypy.overrides]]

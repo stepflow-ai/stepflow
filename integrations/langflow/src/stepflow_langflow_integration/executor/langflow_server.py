@@ -87,29 +87,30 @@ class StepflowLangflowServer:
         # self.server.component(name="openai_chat", func=self._openai_chat)
         # self.server.component(name="chat_input", func=self._chat_input)
 
-    def run(self, *args, **kwargs) -> None:
-        """Run the component server."""
+    def run_grpc(
+        self,
+        tasks_url: str = "localhost:7837",
+        queue_name: str = "langflow",
+        max_concurrent: int = 4,
+    ) -> None:
+        """Run the component server as a gRPC pull-based worker."""
         import os
 
+        import nest_asyncio  # type: ignore
+        from stepflow_py.worker.grpc_worker import run_grpc_worker
+
         # Initialize observability (tracing, logging) before anything else
-        # This is done here rather than at import time to ensure it's always
-        # initialized regardless of how the server is started
         setup_observability()
 
-        logger.info("Langflow component server starting")
+        logger.info("Langflow component server starting (gRPC)")
 
         # Apply nest_asyncio to allow nested event loops
         # This is needed because Langflow components may call asyncio.run()
         # from within an already-running event loop
-        import nest_asyncio  # type: ignore
-
         nest_asyncio.apply()
 
         # Ensure Langflow services (especially DatabaseService) are properly
-        # initialized when a database URL is configured. Without this, the lfx
-        # service manager may not register langflow's DatabaseServiceFactory due
-        # to platform-dependent import ordering, causing memory/message queries
-        # to silently fall back to NoopDatabaseService.
+        # initialized when a database URL is configured.
         if os.environ.get("LANGFLOW_DATABASE_URL"):
             from langflow.services.utils import (
                 initialize_services,
@@ -119,10 +120,11 @@ class StepflowLangflowServer:
             asyncio.run(teardown_services())
             asyncio.run(initialize_services())
 
-        asyncio.run(self.server.run(*args, **kwargs))
-
-
-if __name__ == "__main__":
-    """Run the Langflow component server."""
-    server = StepflowLangflowServer()
-    server.run()
+        asyncio.run(
+            run_grpc_worker(
+                server=self.server,
+                tasks_url=tasks_url,
+                queue_name=queue_name,
+                max_concurrent=max_concurrent,
+            )
+        )

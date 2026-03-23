@@ -58,13 +58,9 @@ test:
       builtin:
         type: builtin
       docling:
-        type: stepflow
+        type: grpc
         command: uv
         args: ["run", "--project", "../..", "docling-step-worker-server"]
-        healthCheck:
-          path: /health
-          timeoutMs: 120000
-          retryDelayMs: 2000
 
     routes:
       "/builtin/{component}":

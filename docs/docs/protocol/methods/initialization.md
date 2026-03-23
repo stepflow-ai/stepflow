@@ -2,8 +2,6 @@
 sidebar_position: 2
 ---
 
-import SchemaDisplay from "@site/src/components/SchemaDisplay";
-
 # Initialization
 
 Initialization methods establish the protocol connection and negotiate capabilities between the Stepflow runtime and workers.
@@ -46,14 +44,6 @@ The `initialize` method negotiates protocol version and establishes basic capabi
 **Method Name:** `initialize`
 **Direction:** Runtime → Worker
 **Type:** Request (expects response)
-
-### Request Schema
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/InitializeParams"/>
-
-### Response Schema
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/InitializeResult"/>
 
 ### Request Example
 

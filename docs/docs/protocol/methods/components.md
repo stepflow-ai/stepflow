@@ -2,8 +2,6 @@
 sidebar_position: 3
 ---
 
-import SchemaDisplay from "@site/src/components/SchemaDisplay";
-
 # Components
 
 Component methods enable the discovery, introspection, and execution of workflow components. These methods form the core of the Stepflow Protocol and are used extensively during workflow execution.
@@ -21,10 +19,6 @@ The component methods provide a complete lifecycle for working with components:
 **Method Name:** `components/list`
 **Direction:** Runtime → Worker
 **Type:** Request (expects response)
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentListParams"/>
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ListComponentsResult"/>
 
 ### Request Example
 
@@ -63,10 +57,6 @@ The component methods provide a complete lifecycle for working with components:
 **Method Name:** `components/info`
 **Direction:** Runtime → Worker
 **Type:** Request (expects response)
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentInfoParams"/>
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentInfoResult"/>
 
 ### Request Example
 
@@ -131,10 +121,6 @@ The component methods provide a complete lifecycle for working with components:
 **Method Name:** `components/execute`
 **Direction:** Runtime → Worker
 **Type:** Request (expects response)
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentExecuteParams"/>
-
-<SchemaDisplay schema="https://stepflow.org/schemas/v1/protocol.json" path="$defs/ComponentExecuteResult"/>
 
 ### Request Example
 

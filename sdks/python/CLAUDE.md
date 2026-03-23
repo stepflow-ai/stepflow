@@ -30,20 +30,17 @@ uv run poe test
 ### Running the SDK
 
 ```bash
-# Run in stdio mode (default)
+# Run in gRPC mode (default)
 uv run --project sdks/python/stepflow-py stepflow_py
 
-# Run in HTTP mode
-uv run --project sdks/python/stepflow-py --extra http stepflow_py --http --port 8080
-
-# Run with custom host and port
-uv run --project sdks/python/stepflow-py --extra http stepflow_py --http --host 0.0.0.0 --port 8080
+# Run in NATS mode
+uv run --project sdks/python/stepflow-py stepflow_py --nats
 ```
 
 ### Type Generation
 
 ```bash
-# Regenerate Python protocol types from updated schemas
+# Regenerate Python config/flow types from updated schemas
 cd sdks/python
 uv run python generate.py
 
@@ -51,7 +48,7 @@ uv run python generate.py
 uv run python generate.py --check
 ```
 
-**Note**: Only protocol types (msgspec-based) are generated from schemas. Flow types are provided by Pydantic API models generated from the OpenAPI spec.
+**Note**: Config and flow types (msgspec-based) are generated from JSON schemas. Protocol types are defined by `.proto` files and generated via `generate-python-proto.sh`.
 
 **Important**: Run type generation after Rust schema updates (see `stepflow-rs/CLAUDE.md` for schema generation commands).
 
@@ -82,7 +79,7 @@ uv python install 3.10  # or 3.11, 3.12, 3.13
 uv python pin 3.10
 
 # Install dependencies and run tests
-uv sync --extra http --project stepflow-py
+uv sync --project stepflow-py
 uv run poe test
 uv run poe typecheck
 ```
@@ -91,115 +88,44 @@ uv run poe typecheck
 
 The Python SDK supports two transport methods for communication with the Stepflow runtime.
 
-### Stdio Transport (Default)
+### gRPC Transport (Default)
 
-JSON-RPC over stdio communication with the parent process.
+Pull-based gRPC transport where workers pull tasks from the orchestrator's TasksService.
 
 **Usage**:
 ```bash
-# Run in stdio mode
+# Run in gRPC mode (default)
 uv run --project sdks/python/stepflow-py stepflow_py
 
-# No additional dependencies required
+# With custom tasks URL
+uv run --project sdks/python/stepflow-py stepflow_py --tasks-url localhost:7837
 ```
 
 **Configuration** (in stepflow-config.yml):
 ```yaml
 plugins:
-  python_stdio:
+  python:
     type: grpc
     command: uv
     args: ["--project", "../sdks/python/stepflow-py", "run", "stepflow_py"]
 
 routes:
   "/python/{*component}":
-    - plugin: python_stdio
+    - plugin: python
 ```
 
-**Characteristics**:
-- Process-based communication
-- Launched by Rust runtime via process spawning
-- Simple deployment (no separate server)
-- Ideal for local development and single-machine deployments
+### NATS Transport
 
-### HTTP Transport
-
-JSON-RPC over HTTP with Server-Sent Events (SSE) for bidirectional communication.
-
-**Installation**:
-```bash
-# Install with HTTP support
-pip install stepflow-py[http]
-
-# Or with uv
-uv add stepflow-py[http]
-```
+NATS JetStream-based transport for distributed deployments.
 
 **Usage**:
 ```bash
-# Basic HTTP mode
-stepflow_py --http
+# Run in NATS mode
+uv run --project sdks/python/stepflow-py stepflow_py --nats
 
-# Custom host and port
-stepflow_py --http --host 0.0.0.0 --port 8080
+# With custom NATS URL
+uv run --project sdks/python/stepflow-py stepflow_py --nats --nats-url nats://localhost:4222
 ```
-
-**Configuration** (in stepflow-config.yml):
-```yaml
-plugins:
-  python_http:
-    type: grpc
-    url: "http://localhost:8080"
-
-routes:
-  "/python_http/{*component}":
-    - plugin: python_http
-```
-
-**Features**:
-- FastAPI-based HTTP server
-- JSON-RPC over HTTP with MCP-style session negotiation
-- Server-Sent Events (SSE) for bidirectional communication
-- Per-session isolation and context management
-- Compatible with existing component registration
-- Automatic discovery and component info endpoints
-- Backward compatibility with non-MCP clients
-
-**HTTP Server Features**:
-1. **Health Endpoint**: `/health` - Returns server status for integration tests
-2. **Streamable Transport**: Supports both direct JSON and SSE streaming responses
-3. **Accept Header Support**: Requires `Accept: application/json` or `Accept: text/event-stream`
-4. **Bidirectional Communication**: Components with `StepflowContext` parameter trigger streaming mode
-5. **Session Management**: Automatic context management for bidirectional requests
-
-**Characteristics**:
-- Remote component servers
-- HTTP-based JSON-RPC communication
-- Scalable for distributed deployments
-- No process management required by runtime
-- Ideal for production and multi-machine deployments
-
-### Session Negotiation (HTTP Transport)
-
-The HTTP transport implements MCP-style session negotiation for proper connection isolation:
-
-**Connection Flow**:
-1. Client connects to `/runtime/events` SSE endpoint
-2. Server sends an `endpoint` event with session-specific URL: `{"endpoint": "/?sessionId=<uuid>"}`
-3. Client uses sessionId URL for all subsequent JSON-RPC requests
-4. Each session has isolated context and request handling
-5. Sessions automatically cleaned up when SSE connections close
-
-**Fallback Behavior**:
-- If no `endpoint` event received within 5 seconds, falls back to direct HTTP communication
-- Ensures compatibility with older or non-MCP servers
-- Fallback mode uses base URL without session isolation
-
-**Session Benefits**:
-- **Isolation**: Each client gets own session context and message handling
-- **Reliability**: Request/response matching scoped to individual sessions
-- **Scalability**: Multiple clients can connect simultaneously without interference
-- **Cleanup**: Resources automatically freed when clients disconnect
 
 ## Component Development
 
@@ -223,8 +149,6 @@ def my_component(input: MyInput) -> MyOutput:
     result = input.message * input.count
     return MyOutput(result=result)
 
-import asyncio
-asyncio.run(server.run())
 ```
 
 ### Using StepflowContext for Bidirectional Communication
@@ -253,47 +177,11 @@ async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
 
     return MyOutput(blob_id=blob_id)
 
-import asyncio
-asyncio.run(server.run())
 ```
 
 **Available Context Methods**:
 - `put_blob(data: dict) -> str`: Store JSON data as blob, returns content-based ID
 - `get_blob(blob_id: str) -> dict`: Retrieve JSON data by blob ID
-
-### HTTP Server Components
-
-The Python SDK uses HTTP transport by default:
-
-```python
-from stepflow_py import StepflowServer, StepflowContext
-import msgspec
-
-class MyInput(msgspec.Struct):
-    data: dict
-
-class MyOutput(msgspec.Struct):
-    blob_id: str
-
-server = StepflowServer()
-
-@server.component
-async def my_component(input: MyInput, context: StepflowContext) -> MyOutput:
-    # Store data as a blob
-    blob_id = await context.put_blob(input.data)
-    return MyOutput(blob_id=blob_id)
-
-if __name__ == "__main__":
-    import argparse
-    import asyncio
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=0)
-    args = parser.parse_args()
-
-    asyncio.run(server.run(host=args.host, port=args.port))
-```
 
 ## Using the FlowBuilder
 
@@ -321,20 +209,14 @@ flow = builder.build()
 
 ## Architecture Notes
 
-The Python SDK has undergone significant architectural improvements:
-
-1. **Unified Core Server**: Both HTTP and STDIO servers delegate to `StepflowServer`
-2. **Context Inheritance**: `StepflowStreamingContext` inherits from `StepflowContext`
-3. **MessageDecoder Consolidation**: Single request/response correlation system
-4. **Clean Test Separation**: Core functionality vs transport layer testing
-5. **msgspec Flow Types**: Flow types use msgspec Structs generated from `schemas/flow.json`
-6. **Unified Package**: gRPC client and worker functionality in single `stepflow-py` package
-
-This architecture ensures consistent behavior across transport modes while maintaining clean separation of concerns.
+1. **Component Registry**: `StepflowServer` manages component registration and lookup
+2. **Context Hierarchy**: `StepflowContext` is the base class; `GrpcContext` provides gRPC transport
+3. **Task Handler**: Shared task execution logic used by both gRPC and NATS workers
+4. **msgspec Flow Types**: Flow types use msgspec Structs generated from `schemas/flow.json`
+5. **Unified Package**: gRPC client and worker functionality in single `stepflow-py` package
 
 ## Testing Best Practices
 
-- Test components in both stdio and HTTP modes when applicable
 - Use type checking with `poe typecheck` to catch type errors early
 - Run tests across all supported Python versions before submitting changes
 - Mock `StepflowContext` for unit testing components without runtime dependencies
