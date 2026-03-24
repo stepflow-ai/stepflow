@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.4.0"></a> [stepflow-langflow-integration 0.4.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.4.0) - 2026-03-24
+### Bug Fixes
+
+- Update release scripts for gRPC-first architecture ([#823](https://github.com/stepflow-ai/stepflow/pull/823))
+
+### Features
+
+- Add StepsNeeded event to journal and SSE stream ([#729](https://github.com/stepflow-ai/stepflow/pull/729))
+- Add Protocol Buffers + gRPC pull-based transport (Phase 3-5b) ([#734](https://github.com/stepflow-ai/stepflow/pull/734))
+- Convert Python API client from REST to gRPC with HTTP/gRPC multiplexing ([#759](https://github.com/stepflow-ai/stepflow/pull/759))
+- Journal task IDs for crash recovery ([#746](https://github.com/stepflow-ai/stepflow/pull/746)) ([#776](https://github.com/stepflow-ai/stepflow/pull/776))
+- NATS JetStream task transport ([#740](https://github.com/stepflow-ai/stepflow/pull/740)) ([#792](https://github.com/stepflow-ai/stepflow/pull/792))
+
+### Refactoring
+
+- Remove OpenAPI REST client, replace flow types with msgspec ([#761](https://github.com/stepflow-ai/stepflow/pull/761))
+- Remove aide routes, JSON-RPC protocol, and prune DTOs ([#808](https://github.com/stepflow-ai/stepflow/pull/808))
+- Remove protocol.json, HTTP transport, and JSON-RPC protocol types ([#815](https://github.com/stepflow-ai/stepflow/pull/815))
+
 ## <a id="0.3.2"></a> [stepflow-langflow-integration 0.3.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-langflow-0.3.2) - 2026-03-04
 ### Features
 
