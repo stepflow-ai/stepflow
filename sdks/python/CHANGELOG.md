@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.12.0"></a> [stepflow-py 0.12.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.12.0) - 2026-03-24
+### Bug Fixes
+
+- Update release scripts for gRPC-first architecture ([#823](https://github.com/stepflow-ai/stepflow/pull/823))
+
+### Features
+
+- Docling facade parity with stock docling-serve ([#714](https://github.com/stepflow-ai/stepflow/pull/714))
+- Add custom docling processing metrics with Grafana panels ([#722](https://github.com/stepflow-ai/stepflow/pull/722))
+- Add SSE streaming endpoint for run status events ([#723](https://github.com/stepflow-ai/stepflow/pull/723))
+- Add StepsNeeded event to journal and SSE stream ([#729](https://github.com/stepflow-ai/stepflow/pull/729))
+- 732 simple backpressure ([#733](https://github.com/stepflow-ai/stepflow/pull/733))
+- Add Protocol Buffers + gRPC pull-based transport (Phase 3-5b) ([#734](https://github.com/stepflow-ai/stepflow/pull/734))
+- Convert Python API client from REST to gRPC with HTTP/gRPC multiplexing ([#759](https://github.com/stepflow-ai/stepflow/pull/759))
+- Add Python 3.10 support for stepflow-py and stepflow-orchestrator ([#764](https://github.com/stepflow-ai/stepflow/pull/764))
+- Migrate Python integration tests to gRPC pull transport ([#770](https://github.com/stepflow-ai/stepflow/pull/770))
+- Replace FlowError integer code with TaskErrorCode enum ([#773](https://github.com/stepflow-ai/stepflow/pull/773))
+- Add observability for gRPC pull transport ([#757](https://github.com/stepflow-ai/stepflow/pull/757)) ([#774](https://github.com/stepflow-ai/stepflow/pull/774))
+- GRPC pull transport recovery + unified heartbeat ([#746](https://github.com/stepflow-ai/stepflow/pull/746)) ([#778](https://github.com/stepflow-ai/stepflow/pull/778))
+- Randomize worker heartbeat interval to avoid thundering herd ([#780](https://github.com/stepflow-ai/stepflow/pull/780))
+- Worker graceful shutdown with explicit failure reporting ([#781](https://github.com/stepflow-ai/stepflow/pull/781))
+- Worker orchestrator discovery and ownership validation ([#784](https://github.com/stepflow-ai/stepflow/pull/784))
+- Update examples and tests to use pull-based gRPC transport ([#783](https://github.com/stepflow-ai/stepflow/pull/783))
+- NATS JetStream task transport ([#740](https://github.com/stepflow-ai/stepflow/pull/740)) ([#792](https://github.com/stepflow-ai/stepflow/pull/792))
+
+### Miscellaneous Tasks
+
+- Package Python gRPC stubs with type stubs and CI freshness check ([#756](https://github.com/stepflow-ai/stepflow/pull/756))
+
+### Refactoring
+
+- Remove null-stripping workarounds from Python SDK ([#721](https://github.com/stepflow-ai/stepflow/pull/721))
+- Remove OpenAPI REST client, replace flow types with msgspec ([#761](https://github.com/stepflow-ai/stepflow/pull/761))
+- Redesign component discovery protocol ([#801](https://github.com/stepflow-ai/stepflow/pull/801))
+- Simplify TaskAssignment and PullTasksRequest fields ([#806](https://github.com/stepflow-ai/stepflow/pull/806))
+- Bring gRPC API to parity with REST routes ([#807](https://github.com/stepflow-ai/stepflow/pull/807))
+- Remove aide routes, JSON-RPC protocol, and prune DTOs ([#808](https://github.com/stepflow-ai/stepflow/pull/808))
+- Remove protocol.json, HTTP transport, and JSON-RPC protocol types ([#815](https://github.com/stepflow-ai/stepflow/pull/815))
+
 ## <a id="0.11.2"></a> [stepflow-py 0.11.2](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.11.2) - 2026-03-04
 ### Features
 
