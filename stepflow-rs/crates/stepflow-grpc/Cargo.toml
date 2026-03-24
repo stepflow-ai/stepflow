@@ -49,6 +49,7 @@ tokio-stream.workspace = true
 tonic = { version = "0.14", features = ["transport"] }
 
 [build-dependencies]
+dunce = "1"
 tonic-rest-build = "0.1.5"
 built = { version = "0.7", features = ["git2"] }
 

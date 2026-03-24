@@ -18,6 +18,7 @@ tonic = { version = "0.14", features = ["transport"] }
 tonic-prost = "0.14"
 
 [build-dependencies]
+dunce = "1"
 prost-build = "0.14"
 tonic-prost-build = "0.14"
 tonic-rest-build = "0.1.5"
