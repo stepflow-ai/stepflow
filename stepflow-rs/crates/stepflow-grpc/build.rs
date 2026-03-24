@@ -18,9 +18,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let proto_root = manifest_dir.join("../../proto");
-    let proto_root = proto_root
-        .canonicalize()
-        .expect("proto directory should exist");
+    // Use dunce::canonicalize to avoid \\?\ UNC prefix on Windows,
+    // which protoc cannot handle as an include path.
+    let proto_root = dunce::canonicalize(&proto_root).expect("proto directory should exist");
 
     let proto_files: Vec<String> = [
         "stepflow/v1/common.proto",
