@@ -16,10 +16,11 @@
 # CI check script for Protocol Buffer definitions.
 #
 # Checks:
-#   1. buf lint — validate proto style and conventions
-#   2. buf breaking — detect backwards-incompatible changes (against main branch)
-#   3. OpenAPI spec freshness — verify generated spec matches committed version
-#   4. OpenAPI lint — validate OpenAPI spec with Redocly CLI
+#   1. buf build — verify proto files compile successfully
+#   2. buf lint — validate proto style and conventions
+#   3. buf breaking — detect backwards-incompatible changes (against main branch)
+#   4. OpenAPI spec freshness — verify generated spec matches committed version
+#   5. OpenAPI lint — validate OpenAPI spec with Redocly CLI
 #
 # Usage: ./scripts/check-proto.sh [-v|--verbose]
 #   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
@@ -46,6 +47,8 @@ cd "$PROJECT_ROOT/stepflow-rs/proto"
 # =============================================================================
 # PROTO CHECKS
 # =============================================================================
+
+run_check "Build (compile)" buf build || true
 
 run_check "Lint" buf lint || true
 
