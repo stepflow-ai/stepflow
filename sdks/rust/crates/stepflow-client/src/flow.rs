@@ -34,7 +34,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::error::BuilderError;
 
@@ -233,75 +233,6 @@ impl Serialize for ValueExpr {
     }
 }
 
-impl<'de> Deserialize<'de> for ValueExpr {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        parse_value_expr(value).map_err(serde::de::Error::custom)
-    }
-}
-
-fn parse_value_expr(value: serde_json::Value) -> Result<ValueExpr, String> {
-    match value {
-        serde_json::Value::Null => Ok(ValueExpr::Null),
-        serde_json::Value::Bool(b) => Ok(ValueExpr::Bool(b)),
-        serde_json::Value::Number(n) => Ok(ValueExpr::Number(n)),
-        serde_json::Value::String(s) => Ok(ValueExpr::String(s)),
-        serde_json::Value::Array(arr) => arr
-            .into_iter()
-            .map(parse_value_expr)
-            .collect::<Result<Vec<_>, _>>()
-            .map(ValueExpr::Array),
-        serde_json::Value::Object(mut obj) => {
-            // `$literal` — extract the value by key, not by iteration order, to
-            // avoid returning the wrong field when other keys are present alongside it.
-            if let Some(lit) = obj.remove("$literal") {
-                return Ok(ValueExpr::Literal(lit));
-            }
-            if let Some(step_val) = obj.get("$step") {
-                let step = step_val
-                    .as_str()
-                    .ok_or("$step must be a string")?
-                    .to_string();
-                let path = obj.get("path").and_then(|p| p.as_str()).map(str::to_string);
-                return Ok(ValueExpr::StepRef { step, path });
-            }
-            if let Some(input_val) = obj.get("$input") {
-                // Validate that $input is a string; a non-string value is malformed.
-                let path_str = input_val
-                    .as_str()
-                    .ok_or("$input must be a string")?;
-                // Normalise "$" and "" both to None (meaning "entire input").
-                let path = match path_str {
-                    "$" | "" => None,
-                    p => Some(p.to_string()),
-                };
-                return Ok(ValueExpr::InputRef { path });
-            }
-            if let Some(var_val) = obj.get("$variable") {
-                let name = var_val
-                    .as_str()
-                    .ok_or("$variable must be a string")?
-                    .to_string();
-                let default = obj
-                    .get("default")
-                    .cloned()
-                    .map(parse_value_expr)
-                    .transpose()?
-                    .map(Box::new);
-                return Ok(ValueExpr::VariableRef { name, default });
-            }
-            // Regular object — recurse
-            obj.into_iter()
-                .map(|(k, v)| parse_value_expr(v).map(|e| (k, e)))
-                .collect::<Result<IndexMap<_, _>, _>>()
-                .map(ValueExpr::Object)
-        }
-    }
-}
-
 // Handy From impls for ergonomic builder usage
 impl From<bool> for ValueExpr {
     fn from(v: bool) -> Self {
@@ -424,7 +355,7 @@ impl InputRef {
 ///
 /// Serializes to the Stepflow JSON wire format (camelCase keys) accepted by the
 /// `StoreFlow` and `CreateRun` APIs.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Flow {
     /// Human-readable name for the flow.
@@ -460,7 +391,7 @@ impl Flow {
 }
 
 /// A single step within a [`Flow`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
     /// Unique identifier for this step within the flow.
@@ -479,7 +410,7 @@ pub struct Step {
 }
 
 /// Error handling action for a step.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "action", rename_all = "camelCase")]
 pub enum ErrorAction {
     /// Fail the flow if this step fails (default).
@@ -769,28 +700,7 @@ mod tests {
         assert_eq!(json["output"]["$step"], "greet");
     }
 
-    #[test]
-    fn test_round_trip() {
-        let mut builder = FlowBuilder::new();
-        builder.add_step(
-            "step1",
-            "/python/process",
-            ValueExpr::object([
-                ("data", InputRef::new().field("payload").into()),
-                ("version", 1i64.into()),
-            ]),
-        );
-        let flow = builder
-            .output(StepRef::new("step1").field("result"))
-            .build()
-            .unwrap();
-
-        let json = flow.to_json().unwrap();
-        let reconstructed: Flow = serde_json::from_value(json).unwrap();
-        assert_eq!(reconstructed.steps.len(), 1);
-    }
-
-    // --- Bug-fix regression tests ---
+    // --- Serialization regression tests ---
 
     #[test]
     fn test_step_ref_empty_path_omits_path_field() {
@@ -814,59 +724,4 @@ mod tests {
         assert_eq!(json, json!({"$step": "my_step"}));
     }
 
-    #[test]
-    fn test_literal_extraction_by_key_not_iteration_order() {
-        // The bug: if $literal was not the first key in the map, the old code
-        // would return the wrong value. After the fix, $literal is extracted
-        // by name regardless of map order.
-        let raw = json!({"other_key": "ignored", "$literal": {"real": "value"}});
-        let expr: ValueExpr = serde_json::from_value(raw).unwrap();
-        match expr {
-            ValueExpr::Literal(v) => assert_eq!(v, json!({"real": "value"})),
-            other => panic!("expected Literal, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_literal_with_only_literal_key() {
-        let raw = json!({"$literal": [1, 2, 3]});
-        let expr: ValueExpr = serde_json::from_value(raw).unwrap();
-        assert!(matches!(expr, ValueExpr::Literal(serde_json::Value::Array(_))));
-    }
-
-    #[test]
-    fn test_input_ref_non_string_is_error() {
-        // $input must be a string; a non-string should be a parse error.
-        let raw = json!({"$input": 42});
-        let result: Result<ValueExpr, _> = serde_json::from_value(raw);
-        assert!(result.is_err(), "$input with integer value should fail");
-    }
-
-    #[test]
-    fn test_input_ref_dollar_normalises_to_none() {
-        // "$" means "entire input" — should deserialise to InputRef { path: None }.
-        let raw = json!({"$input": "$"});
-        let expr: ValueExpr = serde_json::from_value(raw).unwrap();
-        assert!(
-            matches!(expr, ValueExpr::InputRef { path: None }),
-            "expected InputRef {{ path: None }}, got {expr:?}"
-        );
-    }
-
-    #[test]
-    fn test_input_ref_empty_string_normalises_to_none() {
-        let raw = json!({"$input": ""});
-        let expr: ValueExpr = serde_json::from_value(raw).unwrap();
-        assert!(matches!(expr, ValueExpr::InputRef { path: None }));
-    }
-
-    #[test]
-    fn test_input_ref_field_path() {
-        let raw = json!({"$input": "$.name"});
-        let expr: ValueExpr = serde_json::from_value(raw).unwrap();
-        match expr {
-            ValueExpr::InputRef { path: Some(p) } => assert_eq!(p, "$.name"),
-            other => panic!("unexpected: {other:?}"),
-        }
-    }
 }
