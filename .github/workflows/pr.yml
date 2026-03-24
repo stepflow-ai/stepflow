@@ -23,6 +23,7 @@ jobs:
         with:
           scopes: |
             core
+            rs
             py
             docs
             ui
@@ -38,10 +39,10 @@ jobs:
               - 'stepflow-rs/**'
             py:
               - 'sdks/python/**'
+            rs:
+              - 'sdks/rust/**'
             docs:
               - 'docs/**'
-            rust-sdk:
-              - 'sdks/rust/**'
 
       - name: Determine labels
         id: determine_labels
@@ -49,22 +50,26 @@ jobs:
           labels=""
           scope="${{ steps.lint_pr_title.outputs.scope }}"
 
-          # Add scope as label if set
-          if [[ -n "$scope" ]]; then
-            labels="$scope"
-          fi
+          # Map Conventional Commits scope → GitHub label
+          case "$scope" in
+            py) labels="sdk:py" ;;
+            rs) labels="sdk:rs" ;;
+            *) [[ -n "$scope" ]] && labels="$scope" ;;
+          esac
 
           # Add labels for changed areas
-          for area in core py docs rust-sdk; do
+          declare -A area_label=(["core"]="core" ["py"]="sdk:py" ["rs"]="sdk:rs" ["docs"]="docs")
+          for area in core py rs docs; do
             case $area in
               core) changed="${{ steps.changes.outputs.core }}" ;;
-              py) changed="${{ steps.changes.outputs.py }}" ;;
+              py)   changed="${{ steps.changes.outputs.py }}" ;;
+              rs)   changed="${{ steps.changes.outputs.rs }}" ;;
               docs) changed="${{ steps.changes.outputs.docs }}" ;;
-              rust-sdk) changed="${{ steps.changes.outputs.rust-sdk }}" ;;
             esac
+            label="${area_label[$area]}"
 
-            if [[ "$changed" == "true" ]] && [[ "$labels" != *"$area"* ]]; then
-              [[ -n "$labels" ]] && labels="$labels,$area" || labels="$area"
+            if [[ "$changed" == "true" ]] && [[ "$labels" != *"$label"* ]]; then
+              [[ -n "$labels" ]] && labels="$labels,$label" || labels="$label"
             fi
           done
 
