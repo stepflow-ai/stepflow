@@ -17,11 +17,11 @@ FROM quay.io/docling-project/docling-serve-cpu:v1.14.3
 
 USER 0
 
-# Install local stepflow-py SDK with http extras (needed for blob_store HTTP client)
+# Install local stepflow-py SDK (gRPC-only, HTTP transport removed in v0.12.0)
 # plus gRPC and protobuf deps for pull-based transport
 COPY sdks/python/stepflow-py/ /tmp/stepflow-py/
 RUN pip install --no-cache-dir \
-    "/tmp/stepflow-py[http]" \
+    "/tmp/stepflow-py" \
     "grpcio>=1.67.0" \
     "protobuf>=5.26.0,<6" \
     "python-dotenv>=1.0.0" && \

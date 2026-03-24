@@ -40,7 +40,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "stepflow-py[http]>=0.8.0",
+    "stepflow-py>=0.11.2",
     "docling>=2.77.0",
     "docling-core>=2.67.1",
     "grpcio>=1.67.0",
