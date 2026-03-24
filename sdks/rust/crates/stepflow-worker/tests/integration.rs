@@ -23,10 +23,10 @@
 //!
 //! ```bash
 //! # Build the orchestrator binary first (from repo root / stepflow-rs/)
-//! cd stepflow-rs && cargo build -p stepflow-cli --no-default-features
+//! cd stepflow-rs && cargo build -p stepflow-server --no-default-features
 //!
 //! # Run integration tests from sdks/rust/
-//! STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow \
+//! STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow-server \
 //!   cargo test --test integration -- --include-ignored
 //! ```
 
@@ -103,9 +103,10 @@ async fn test_double_component() {
         .await
         .expect("Failed to start local orchestrator");
 
-    // Start in-process worker with /test/double component
+    // Register as "/double" — the orchestrator strips the "/test/" route prefix
+    // before dispatching, so the worker sees the component path without the prefix.
     let mut registry = ComponentRegistry::new();
-    registry.register_fn("/test/double", |input: DoubleInput, _ctx| async move {
+    registry.register_fn("/double", |input: DoubleInput, _ctx| async move {
         Ok(DoubleOutput {
             result: input.value * 2,
         })
@@ -201,13 +202,14 @@ async fn test_chained_steps() {
 
     let mut registry = ComponentRegistry::new();
 
-    registry.register_fn("/test/greet", |input: GreetInput, _ctx| async move {
+    // Register without the "/test/" route prefix — the orchestrator strips it before dispatching.
+    registry.register_fn("/greet", |input: GreetInput, _ctx| async move {
         Ok(GreetOutput {
             message: format!("Hello, {}!", input.name),
         })
     });
 
-    registry.register_fn("/test/shout", |input: ShoutInput, _ctx| async move {
+    registry.register_fn("/shout", |input: ShoutInput, _ctx| async move {
         Ok(ShoutOutput {
             loud: input.message.to_uppercase(),
         })
