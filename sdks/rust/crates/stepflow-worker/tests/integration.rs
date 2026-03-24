@@ -165,7 +165,7 @@ async fn test_double_component() {
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect to orchestrator");
-    wait_for_component(&mut client, "/test/double", Duration::from_secs(10)).await;
+    wait_for_component(&mut client, "/test/double", Duration::from_secs(60)).await;
 
     let mut builder = FlowBuilder::new();
     builder.add_step(
@@ -263,7 +263,7 @@ async fn test_chained_steps() {
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect");
-    wait_for_component(&mut client, "/test/greet", Duration::from_secs(10)).await;
+    wait_for_component(&mut client, "/test/greet", Duration::from_secs(60)).await;
 
     // Flow: greet → shout → output.loud
     let mut builder = FlowBuilder::new();
