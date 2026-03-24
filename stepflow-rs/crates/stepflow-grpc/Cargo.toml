@@ -58,5 +58,5 @@ workspace = true
 
 [package.metadata.cargo-machete]
 # tonic-rest: used in generated REST route code loaded via include!().
-# built/tonic-rest-build: build-time deps used in build.rs.
-ignored = ["tonic-rest", "built", "tonic-rest-build"]
+# built, tonic-rest-build, dunce: build-time deps used in build.rs.
+ignored = ["tonic-rest", "built", "tonic-rest-build", "dunce"]
