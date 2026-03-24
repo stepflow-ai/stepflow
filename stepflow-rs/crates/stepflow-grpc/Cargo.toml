@@ -49,6 +49,7 @@ tokio-stream.workspace = true
 tonic = { version = "0.14", features = ["transport"] }
 
 [build-dependencies]
+dunce = "1"
 tonic-rest-build = "0.1.5"
 built = { version = "0.7", features = ["git2"] }
 
@@ -57,5 +58,5 @@ workspace = true
 
 [package.metadata.cargo-machete]
 # tonic-rest: used in generated REST route code loaded via include!().
-# built/tonic-rest-build: build-time deps used in build.rs.
-ignored = ["tonic-rest", "built", "tonic-rest-build"]
+# built, tonic-rest-build, dunce: build-time deps used in build.rs.
+ignored = ["tonic-rest", "built", "tonic-rest-build", "dunce"]
