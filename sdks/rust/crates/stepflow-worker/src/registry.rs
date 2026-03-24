@@ -160,10 +160,10 @@ where
 /// });
 /// ```
 pub struct ComponentRegistry {
-    // Use matchit for O(1) path matching with named parameters
+    // O(1) path matching with named parameters
     router: matchit::Router<Arc<dyn Component>>,
-    // Keep names in order for listing
-    names: Vec<String>,
+    // Insertion-ordered list for deterministic ListComponents responses
+    components: Vec<Arc<dyn Component>>,
 }
 
 impl ComponentRegistry {
@@ -171,7 +171,7 @@ impl ComponentRegistry {
     pub fn new() -> Self {
         Self {
             router: matchit::Router::new(),
-            names: Vec::new(),
+            components: Vec::new(),
         }
     }
 
@@ -189,17 +189,28 @@ impl ComponentRegistry {
 
     /// Register a component, returning an error instead of panicking on failure.
     ///
-    /// Fails if the component path is already registered or is an invalid
-    /// [`matchit`] pattern.
+    /// Returns [`WorkerError::DuplicateComponent`] if a component with the same path
+    /// is already registered, or [`WorkerError::InvalidComponentRoute`] if the path
+    /// is not a valid [`matchit`] pattern.
     pub fn try_register(
         &mut self,
         component: impl Component,
     ) -> Result<&mut Self, crate::error::WorkerError> {
         let name = component.name().to_string();
+        let arc: Arc<dyn Component> = Arc::new(component);
         self.router
-            .insert(name.clone(), Arc::new(component))
-            .map_err(|e| crate::error::WorkerError::DuplicateComponent(format!("{name}: {e}")))?;
-        self.names.push(name);
+            .insert(name.clone(), Arc::clone(&arc))
+            .map_err(|e| {
+                let msg = e.to_string();
+                // matchit reports path conflicts as "conflict" errors; anything else is a
+                // pattern syntax error (e.g. unclosed `{`, ambiguous wildcard placement).
+                if msg.to_lowercase().contains("conflict") {
+                    crate::error::WorkerError::DuplicateComponent(format!("{name}: {msg}"))
+                } else {
+                    crate::error::WorkerError::InvalidComponentRoute(format!("{name}: {msg}"))
+                }
+            })?;
+        self.components.push(arc);
         Ok(self)
     }
 
@@ -247,24 +258,24 @@ impl ComponentRegistry {
         self.try_register(component)
     }
 
-    /// Look up a component by path, supporting wildcards.
+    /// Look up a component by path, supporting wildcard patterns.
     ///
-    /// Returns the matched component and a map of extracted path parameters.
+    /// Returns the matched component for the given path, if any.
     pub(crate) fn lookup(&self, path: &str) -> Option<Arc<dyn Component>> {
         self.router.at(path).ok().map(|m| Arc::clone(m.value))
     }
 
-    /// Return metadata for all registered components (used for `ListComponents` responses).
+    /// Return metadata for all registered components in insertion order.
+    ///
+    /// Used for `ListComponents` responses sent to the orchestrator.
     pub(crate) fn list_components(&self) -> Vec<ComponentInfo> {
-        self.names
+        self.components
             .iter()
-            .filter_map(|name| {
-                self.router.at(name).ok().map(|m| ComponentInfo {
-                    name: name.clone(),
-                    description: m.value.description().map(str::to_string),
-                    input_schema: m.value.input_schema(),
-                    output_schema: m.value.output_schema(),
-                })
+            .map(|c| ComponentInfo {
+                name: c.name().to_string(),
+                description: c.description().map(str::to_string),
+                input_schema: c.input_schema(),
+                output_schema: c.output_schema(),
             })
             .collect()
     }
@@ -313,7 +324,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_components() {
+    fn test_list_components_insertion_order() {
         let mut registry = ComponentRegistry::new();
         registry.register_fn("/a", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
@@ -321,10 +332,59 @@ mod tests {
         registry.register_fn("/b", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
         });
+        registry.register_fn("/c", |_: serde_json::Value, _ctx| async move {
+            Ok(serde_json::Value::Null)
+        });
 
         let list = registry.list_components();
-        assert_eq!(list.len(), 2);
+        assert_eq!(list.len(), 3);
         assert_eq!(list[0].name, "/a");
         assert_eq!(list[1].name, "/b");
+        assert_eq!(list[2].name, "/c");
+    }
+
+    #[test]
+    fn test_list_components_uses_arc_directly() {
+        // Verify list_components works for wildcard patterns (which can't be re-looked-up
+        // by exact name through the router).
+        let mut registry = ComponentRegistry::new();
+        registry.register_fn("/math/{op}", |_: serde_json::Value, _ctx| async move {
+            Ok(serde_json::Value::Null)
+        });
+
+        let list = registry.list_components();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "/math/{op}");
+    }
+
+    #[test]
+    fn test_duplicate_registration_returns_error() {
+        let mut registry = ComponentRegistry::new();
+        registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
+            Ok(input)
+        });
+
+        let result = registry.try_register_fn("/echo", |input: serde_json::Value, _ctx| async move {
+            Ok(input)
+        });
+
+        assert!(
+            matches!(result, Err(crate::error::WorkerError::DuplicateComponent(_))),
+            "expected DuplicateComponent error"
+        );
+    }
+
+    #[test]
+    fn test_register_panics_on_duplicate() {
+        let result = std::panic::catch_unwind(|| {
+            let mut registry = ComponentRegistry::new();
+            registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
+                Ok(input)
+            });
+            registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
+                Ok(input)
+            });
+        });
+        assert!(result.is_err(), "register should panic on duplicate");
     }
 }

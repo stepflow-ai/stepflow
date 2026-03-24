@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
-      rust-sdk: ${{ steps.filter.outputs.rust-sdk }}
+      rust-sdk: ${{ steps.filter.outputs['rust-sdk'] }}
       python: ${{ steps.filter.outputs.python }}
       docs: ${{ steps.filter.outputs.docs }}
       langflow: ${{ steps.filter.outputs.langflow }}
@@ -133,7 +133,7 @@ jobs:
   rust-sdk-checks:
     name: Rust SDK Checks
     needs: changes
-    if: needs.changes.outputs.rust-sdk == 'true'
+    if: needs.changes.outputs['rust-sdk'] == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -327,7 +327,7 @@ jobs:
             echo "::error::Rust changes detected but rust-checks was skipped"
             exit 1
           fi
-          if [[ "${{ needs.changes.outputs.rust-sdk }}" == "true" && "${{ needs.rust-sdk-checks.result }}" == "skipped" ]]; then
+          if [[ "${{ needs.changes.outputs['rust-sdk'] }}" == "true" && "${{ needs.rust-sdk-checks.result }}" == "skipped" ]]; then
             echo "::error::Rust SDK changes detected but rust-sdk-checks was skipped"
             exit 1
           fi

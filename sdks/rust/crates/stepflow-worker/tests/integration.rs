@@ -42,6 +42,31 @@ use stepflow_client::{FlowBuilder, StepflowClient};
 use stepflow_worker::{ComponentRegistry, Worker, WorkerConfig};
 
 // ---------------------------------------------------------------------------
+// Helper: wait until an expected component path appears in the orchestrator
+// ---------------------------------------------------------------------------
+
+/// Poll `list_components` until `component_path` appears, or panic on timeout.
+///
+/// This replaces arbitrary `sleep` calls and makes tests deterministic under CI load.
+async fn wait_for_component(client: &mut StepflowClient, component_path: &str, timeout: Duration) {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            panic!(
+                "Timed out after {timeout:?} waiting for component '{component_path}' to appear"
+            );
+        }
+        match client.list_components(true).await {
+            Ok(result) if result.components.iter().any(|c| c.component == component_path) => {
+                return;
+            }
+            _ => {}
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: build a standard orchestrator config with builtin + rust-worker
 // ---------------------------------------------------------------------------
 
@@ -131,13 +156,11 @@ async fn test_double_component() {
             .await
     });
 
-    // Give the worker a moment to connect
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    // Build and submit a flow: /test/double(input) → output
+    // Wait until the worker has connected and registered its components.
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect to orchestrator");
+    wait_for_component(&mut client, "/test/double", Duration::from_secs(10)).await;
 
     let mut builder = FlowBuilder::new();
     builder.add_step(
@@ -232,11 +255,10 @@ async fn test_chained_steps() {
             .await
     });
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect");
+    wait_for_component(&mut client, "/test/greet", Duration::from_secs(10)).await;
 
     // Flow: greet → shout → output.loud
     let mut builder = FlowBuilder::new();

@@ -78,4 +78,6 @@ pub enum WorkerError {
     Config(String),
     #[error("Duplicate component path: {0}")]
     DuplicateComponent(String),
+    #[error("Invalid component route pattern: {0}")]
+    InvalidComponentRoute(String),
 }

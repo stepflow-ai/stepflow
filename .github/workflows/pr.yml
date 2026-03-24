@@ -65,7 +65,7 @@ jobs:
             case $area in
               core)   changed="${{ steps.changes.outputs.core }}" ;;
               py)     changed="${{ steps.changes.outputs.py }}" ;;
-              sdk-rs) changed="${{ steps.changes.outputs.sdk-rs }}" ;;
+              sdk-rs) changed="${{ steps.changes.outputs['sdk-rs'] }}" ;;
               docs)   changed="${{ steps.changes.outputs.docs }}" ;;
             esac
             label="${area_label[$area]}"

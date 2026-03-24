@@ -58,14 +58,23 @@ impl ComponentContext {
     ) -> Self {
         // Build a dedicated blob channel when a separate blob URL is configured.
         // Using connect_lazy() so the connection is established on first use (sync).
-        let blob_channel = blob_url
-            .as_deref()
-            .and_then(|url| {
-                tonic::transport::Endpoint::from_shared(url.to_string())
-                    .ok()
-                    .map(|e| e.connect_lazy())
-            })
-            .unwrap_or_else(|| orch_channel.clone());
+        let blob_channel = if let Some(url) = blob_url.as_deref() {
+            match tonic::transport::Endpoint::from_shared(url.to_string()) {
+                Ok(endpoint) => endpoint.connect_lazy(),
+                Err(err) => {
+                    tracing::warn!(
+                        blob_url = url,
+                        "Invalid STEPFLOW_BLOB_URL '{}': {}. \
+                         Falling back to orchestrator channel for blob traffic.",
+                        url,
+                        err
+                    );
+                    orch_channel.clone()
+                }
+            }
+        } else {
+            orch_channel.clone()
+        };
 
         Self {
             run_id,

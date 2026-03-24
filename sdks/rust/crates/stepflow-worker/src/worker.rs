@@ -19,7 +19,10 @@ use futures::StreamExt as _;
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-use stepflow_proto::{PullTasksRequest, tasks_service_client::TasksServiceClient};
+use stepflow_proto::{
+    PullTasksRequest, TaskAssignment,
+    tasks_service_client::TasksServiceClient,
+};
 
 use crate::task_handler::handle_task;
 use crate::{ComponentRegistry, WorkerError};
@@ -35,7 +38,7 @@ use crate::{ComponentRegistry, WorkerError};
 /// |---|---|---|
 /// | `STEPFLOW_TASKS_URL` | `http://127.0.0.1:7837` | URL of the Stepflow tasks gRPC service |
 /// | `STEPFLOW_QUEUE_NAME` | `default` | Worker queue name for task routing |
-/// | `STEPFLOW_MAX_CONCURRENT` | `10` | Maximum number of tasks executed concurrently |
+/// | `STEPFLOW_MAX_CONCURRENT` | `10` | Maximum number of tasks executed concurrently (≥ 1) |
 /// | `STEPFLOW_MAX_RETRIES` | `10` | Maximum consecutive connection failures before exiting |
 /// | `STEPFLOW_SHUTDOWN_GRACE_SECS` | `30` | Seconds to wait for in-flight tasks during shutdown |
 /// | `STEPFLOW_BLOB_URL` | *(none)* | Override URL for blob storage API |
@@ -54,8 +57,13 @@ pub struct WorkerConfig {
     #[arg(long, env = "STEPFLOW_QUEUE_NAME", default_value = "default")]
     pub queue_name: String,
 
-    /// Maximum number of tasks to execute concurrently.
-    #[arg(long, env = "STEPFLOW_MAX_CONCURRENT", default_value_t = 10)]
+    /// Maximum number of tasks to execute concurrently (must be ≥ 1).
+    #[arg(
+        long,
+        env = "STEPFLOW_MAX_CONCURRENT",
+        default_value_t = 10,
+        value_parser = parse_max_concurrent
+    )]
     pub max_concurrent: usize,
 
     /// Maximum consecutive connection failures before the worker exits.
@@ -131,14 +139,34 @@ impl Worker {
 
     /// Run the worker until `SIGTERM` or `SIGINT` is received.
     ///
+    /// On Unix, both `SIGTERM` (graceful stop by process managers) and `SIGINT`
+    /// (Ctrl-C) trigger shutdown. On non-Unix platforms only `SIGINT` is handled.
+    ///
     /// Waits up to `WorkerConfig::shutdown_grace_secs` for in-flight tasks to complete
     /// before returning.
     pub async fn run(self) -> Result<(), WorkerError> {
+        #[cfg(unix)]
+        let shutdown = {
+            use tokio::signal::unix::{SignalKind, signal};
+            async {
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("Failed to install SIGTERM handler");
+                tokio::select! {
+                    res = tokio::signal::ctrl_c() => {
+                        res.expect("Failed to listen for Ctrl-C");
+                    }
+                    _ = sigterm.recv() => {}
+                }
+            }
+        };
+
+        #[cfg(not(unix))]
         let shutdown = async {
             tokio::signal::ctrl_c()
                 .await
                 .expect("Failed to listen for Ctrl-C");
         };
+
         self.run_until(shutdown).await
     }
 
@@ -174,36 +202,24 @@ impl Worker {
         let mut in_flight: JoinSet<()> = JoinSet::new();
 
         'outer: loop {
-            // --- Connect to the tasks service ---
-            let endpoint = match tonic::transport::Channel::from_shared(config.tasks_url.clone()) {
-                Ok(ep) => ep,
-                Err(e) => {
-                    return Err(WorkerError::Config(format!(
-                        "Invalid tasks URL '{}': {e}",
-                        config.tasks_url
-                    )));
-                }
-            };
-
-            let channel = match endpoint.connect().await {
-                Ok(ch) => {
+            // --- Open a stream (connect + pull_tasks) ---
+            let (channel, stream) = match open_stream(&config, &worker_id).await {
+                Ok(pair) => {
                     consecutive_failures = 0;
-                    ch
+                    pair
                 }
-                Err(e) => {
+                Err(open_err) => {
                     consecutive_failures += 1;
                     warn!(
                         consecutive_failures,
                         max_retries = config.max_retries,
-                        "Failed to connect to tasks service: {e}"
+                        "Failed to open task stream: {open_err}"
                     );
                     if consecutive_failures >= config.max_retries {
-                        return Err(WorkerError::MaxRetriesExceeded {
-                            attempts: consecutive_failures,
-                        });
+                        return Err(open_err);
                     }
                     let backoff =
-                        Duration::from_secs((2u64.pow(consecutive_failures.min(6))).min(60));
+                        Duration::from_secs(2u64.pow(consecutive_failures.min(6)).min(60));
                     tokio::select! {
                         _ = &mut shutdown => break 'outer,
                         _ = tokio::time::sleep(backoff) => continue 'outer,
@@ -211,32 +227,9 @@ impl Worker {
                 }
             };
 
-            let mut tasks_client = TasksServiceClient::new(channel.clone());
-
-            // --- Open the PullTasks stream ---
-            let stream = match tasks_client
-                .pull_tasks(PullTasksRequest {
-                    queue_name: config.queue_name.clone(),
-                    worker_id: worker_id.clone(),
-                })
-                .await
-            {
-                Ok(r) => r.into_inner(),
-                Err(e) => {
-                    consecutive_failures += 1;
-                    warn!(consecutive_failures, "pull_tasks failed: {e}");
-                    if consecutive_failures >= config.max_retries {
-                        return Err(WorkerError::MaxRetriesExceeded {
-                            attempts: consecutive_failures,
-                        });
-                    }
-                    continue 'outer;
-                }
-            };
-
             tokio::pin!(stream);
 
-            // --- Process assignments ---
+            // --- Process assignments until the stream ends or shutdown fires ---
             loop {
                 // Throttle: wait for a slot if at max concurrency
                 while in_flight.len() >= config.max_concurrent {
@@ -275,23 +268,15 @@ impl Worker {
                             }
                             Some(Ok(assignment)) => {
                                 consecutive_failures = 0;
-                                let registry = Arc::clone(&registry);
-                                let worker_id = worker_id.clone();
-                                let orchestrator_url = orchestrator_url.clone();
-                                let blob_url = config.blob_url.clone();
-                                let channel = channel.clone();
-
-                                in_flight.spawn(async move {
-                                    handle_task(
-                                        assignment,
-                                        registry,
-                                        &worker_id,
-                                        &orchestrator_url,
-                                        blob_url.as_deref(),
-                                        channel,
-                                    )
-                                    .await;
-                                });
+                                spawn_task(
+                                    assignment,
+                                    Arc::clone(&registry),
+                                    worker_id.clone(),
+                                    orchestrator_url.clone(),
+                                    config.blob_url.clone(),
+                                    channel.clone(),
+                                    &mut in_flight,
+                                );
                             }
                         }
                     }
@@ -314,5 +299,97 @@ impl Worker {
 
         info!("Worker shut down cleanly");
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Validate that `--max-concurrent` is at least 1 (0 would deadlock the pull loop).
+fn parse_max_concurrent(s: &str) -> Result<usize, String> {
+    let v: usize = s.parse().map_err(|e| format!("invalid number: {e}"))?;
+    if v == 0 {
+        Err("max_concurrent must be at least 1".to_string())
+    } else {
+        Ok(v)
+    }
+}
+
+/// Connect to the tasks service and open a `PullTasks` stream.
+///
+/// Returns `(channel, stream)` on success so the channel can be reused for
+/// `OrchestratorService` callbacks on the same connection.
+async fn open_stream(
+    config: &WorkerConfig,
+    worker_id: &str,
+) -> Result<
+    (
+        tonic::transport::Channel,
+        tonic::codec::Streaming<TaskAssignment>,
+    ),
+    WorkerError,
+> {
+    let endpoint =
+        tonic::transport::Channel::from_shared(config.tasks_url.clone()).map_err(|e| {
+            WorkerError::Config(format!("Invalid tasks URL '{}': {e}", config.tasks_url))
+        })?;
+
+    let channel = endpoint.connect().await.map_err(|e| WorkerError::Config(format!(
+        "Failed to connect to tasks service at '{}': {e}",
+        config.tasks_url
+    )))?;
+
+    let mut tasks_client = TasksServiceClient::new(channel.clone());
+    let stream = tasks_client
+        .pull_tasks(PullTasksRequest {
+            queue_name: config.queue_name.clone(),
+            worker_id: worker_id.to_string(),
+        })
+        .await
+        .map_err(|e| WorkerError::Stream(e))?
+        .into_inner();
+
+    Ok((channel, stream))
+}
+
+/// Spawn a task handler into the in-flight set.
+fn spawn_task(
+    assignment: TaskAssignment,
+    registry: Arc<ComponentRegistry>,
+    worker_id: String,
+    orchestrator_url: String,
+    blob_url: Option<String>,
+    channel: tonic::transport::Channel,
+    in_flight: &mut JoinSet<()>,
+) {
+    in_flight.spawn(async move {
+        handle_task(
+            assignment,
+            registry,
+            &worker_id,
+            &orchestrator_url,
+            blob_url.as_deref(),
+            channel,
+        )
+        .await;
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = WorkerConfig::default();
+        assert_eq!(config.tasks_url, "http://127.0.0.1:7837");
+        assert_eq!(config.queue_name, "default");
+        assert_eq!(config.max_concurrent, 10);
+        assert!(config.max_concurrent >= 1, "max_concurrent must be >= 1");
+        assert_eq!(config.max_retries, 10);
+        assert_eq!(config.shutdown_grace_secs, 30);
+        assert!(config.blob_url.is_none());
+        assert!(config.orchestrator_url.is_none());
     }
 }
