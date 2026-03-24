@@ -27,6 +27,8 @@ from docling_proto_step_worker.facade.translate import (
     flow_output_to_response,
     normalize_v1alpha_request,
     request_to_flow_input,
+    run_result_to_convert_response,
+    run_status_to_poll_response,
 )
 
 # ---------------------------------------------------------------------------
@@ -200,3 +202,118 @@ class TestFlowOutputToResponse:
         assert result["status"] == "failure"
         assert len(result["errors"]) == 1
         assert result["errors"][0]["error_message"] == "Conversion failed"
+
+
+# ---------------------------------------------------------------------------
+# run_status_to_poll_response
+# ---------------------------------------------------------------------------
+
+
+class TestRunStatusToPollResponse:
+    def test_completed_status(self):
+        run_data = {"summary": {"runId": "run-1", "status": 2}}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_id"] == "run-1"
+        assert result["task_status"] == "success"
+        assert result["task_type"] == "convert"
+
+    def test_running_status(self):
+        run_data = {"summary": {"runId": "run-2", "status": 1}}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_status"] == "started"
+
+    def test_failed_status(self):
+        run_data = {
+            "summary": {"runId": "run-3", "status": 3},
+            "results": [
+                {"error": {"message": "Component crashed"}},
+            ],
+        }
+        result = run_status_to_poll_response(run_data)
+        assert result["task_status"] == "failure"
+        assert result["error_message"] == "Component crashed"
+
+    def test_failed_without_results_uses_default_message(self):
+        run_data = {"summary": {"runId": "run-4", "status": 3}, "results": [{}]}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_status"] == "failure"
+        assert result["error_message"] == "Flow execution failed"
+
+    def test_cancelled_maps_to_failure(self):
+        run_data = {"summary": {"runId": "run-5", "status": 4}}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_status"] == "failure"
+
+    def test_unknown_status_maps_to_pending(self):
+        run_data = {"summary": {"runId": "run-6", "status": 0}}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_status"] == "pending"
+
+    def test_custom_task_type(self):
+        run_data = {"summary": {"runId": "run-7", "status": 2}}
+        result = run_status_to_poll_response(run_data, task_type="chunk")
+        assert result["task_type"] == "chunk"
+
+    def test_all_response_fields_present(self):
+        run_data = {"summary": {"runId": "run-8", "status": 2}}
+        result = run_status_to_poll_response(run_data)
+        expected_fields = {
+            "task_id",
+            "task_type",
+            "task_status",
+            "task_position",
+            "task_meta",
+            "error_message",
+        }
+        assert set(result.keys()) == expected_fields
+
+    def test_fallback_when_no_summary_wrapper(self):
+        """Handles flat run_data (no summary wrapper) for backward compat."""
+        run_data = {"runId": "run-flat", "status": 2}
+        result = run_status_to_poll_response(run_data)
+        assert result["task_id"] == "run-flat"
+        assert result["task_status"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# run_result_to_convert_response
+# ---------------------------------------------------------------------------
+
+
+class TestRunResultToConvertResponse:
+    def test_extracts_from_output(self):
+        run_data = {
+            "results": [
+                {
+                    "output": {
+                        "document": {"md_content": "# Hello", "filename": "doc.pdf"},
+                        "status": "success",
+                        "errors": [],
+                        "processing_time": 2.0,
+                        "timings": {"convert": 1.5},
+                        "chunks": [{"text": "c1"}],
+                        "classification": {"format": "pdf"},
+                    }
+                }
+            ]
+        }
+        result = run_result_to_convert_response(run_data)
+        assert result is not None
+        assert result["document"]["md_content"] == "# Hello"
+        assert result["status"] == "success"
+        assert result["processing_time"] == 2.0
+        assert "chunks" not in result
+        assert "classification" not in result
+
+    def test_returns_none_for_empty_results(self):
+        assert run_result_to_convert_response({"results": []}) is None
+
+    def test_returns_none_for_missing_results(self):
+        assert run_result_to_convert_response({}) is None
+
+    def test_empty_output(self):
+        run_data = {"results": [{"output": {}}]}
+        result = run_result_to_convert_response(run_data)
+        assert result is not None
+        assert result["document"] == {}
+        assert result["status"] == "success"
