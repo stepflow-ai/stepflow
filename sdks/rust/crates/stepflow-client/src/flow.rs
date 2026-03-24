@@ -711,7 +711,10 @@ mod tests {
         };
         let json = serde_json::to_value(&expr).unwrap();
         assert_eq!(json, json!({"$step": "my_step"}));
-        assert!(json.get("path").is_none(), "empty path should not emit 'path' field");
+        assert!(
+            json.get("path").is_none(),
+            "empty path should not emit 'path' field"
+        );
     }
 
     #[test]
@@ -723,5 +726,4 @@ mod tests {
         let json = serde_json::to_value(&expr).unwrap();
         assert_eq!(json, json!({"$step": "my_step"}));
     }
-
 }

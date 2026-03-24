@@ -57,7 +57,12 @@ async fn wait_for_component(client: &mut StepflowClient, component_path: &str, t
             );
         }
         match client.list_components(true).await {
-            Ok(result) if result.components.iter().any(|c| c.component == component_path) => {
+            Ok(result)
+                if result
+                    .components
+                    .iter()
+                    .any(|c| c.component == component_path) =>
+            {
                 return;
             }
             _ => {}

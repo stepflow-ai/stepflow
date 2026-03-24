@@ -78,8 +78,12 @@ pub(crate) async fn handle_task(
     };
 
     // --- Step 1: Claim the task ---
-    if !claim_task(&task_id, worker_id, &mut OrchestratorServiceClient::new(orch_ch.clone()))
-        .await
+    if !claim_task(
+        &task_id,
+        worker_id,
+        &mut OrchestratorServiceClient::new(orch_ch.clone()),
+    )
+    .await
     {
         return false;
     }
@@ -237,7 +241,15 @@ async fn dispatch_task(
 ) -> Result<TaskResult, ComponentError> {
     match task {
         Some(Task::Execute(req)) => {
-            execute_component(*req, task_id, registry, blob_url, task_context, orch_channel).await
+            execute_component(
+                *req,
+                task_id,
+                registry,
+                blob_url,
+                task_context,
+                orch_channel,
+            )
+            .await
         }
         Some(Task::ListComponents(req)) => list_components_response(&registry, req),
         None => {
@@ -357,10 +369,7 @@ mod tests {
     #[test]
     fn test_list_components_response_empty() {
         let registry = make_registry(&[]);
-        let result = list_components_response(
-            &registry,
-            stepflow_proto::ListComponentsRequest {},
-        );
+        let result = list_components_response(&registry, stepflow_proto::ListComponentsRequest {});
         match result.unwrap() {
             TaskResult::ListComponents(r) => assert!(r.components.is_empty()),
             other => panic!("unexpected result: {other:?}"),
@@ -370,10 +379,7 @@ mod tests {
     #[test]
     fn test_list_components_response_names() {
         let registry = make_registry(&["/alpha", "/beta", "/gamma"]);
-        let result = list_components_response(
-            &registry,
-            stepflow_proto::ListComponentsRequest {},
-        );
+        let result = list_components_response(&registry, stepflow_proto::ListComponentsRequest {});
         match result.unwrap() {
             TaskResult::ListComponents(r) => {
                 let names: Vec<_> = r.components.iter().map(|c| c.name.as_str()).collect();
@@ -398,7 +404,8 @@ mod tests {
         let channel = tonic::transport::Channel::from_shared("http://127.0.0.1:7837")
             .unwrap()
             .connect_lazy();
-        let result = resolve_orch_channel("task-1", "not a url !!!", "http://127.0.0.1:7837", channel);
+        let result =
+            resolve_orch_channel("task-1", "not a url !!!", "http://127.0.0.1:7837", channel);
         assert!(result.is_none());
     }
 }

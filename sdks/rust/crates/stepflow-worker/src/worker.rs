@@ -19,10 +19,7 @@ use futures::StreamExt as _;
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-use stepflow_proto::{
-    PullTasksRequest, TaskAssignment,
-    tasks_service_client::TasksServiceClient,
-};
+use stepflow_proto::{PullTasksRequest, TaskAssignment, tasks_service_client::TasksServiceClient};
 
 use crate::task_handler::handle_task;
 use crate::{ComponentRegistry, WorkerError};
@@ -335,10 +332,12 @@ async fn open_stream(
             WorkerError::Config(format!("Invalid tasks URL '{}': {e}", config.tasks_url))
         })?;
 
-    let channel = endpoint.connect().await.map_err(|e| WorkerError::Config(format!(
-        "Failed to connect to tasks service at '{}': {e}",
-        config.tasks_url
-    )))?;
+    let channel = endpoint.connect().await.map_err(|e| {
+        WorkerError::Config(format!(
+            "Failed to connect to tasks service at '{}': {e}",
+            config.tasks_url
+        ))
+    })?;
 
     let mut tasks_client = TasksServiceClient::new(channel.clone());
     let stream = tasks_client
@@ -347,7 +346,7 @@ async fn open_stream(
             worker_id: worker_id.to_string(),
         })
         .await
-        .map_err(|e| WorkerError::Stream(e))?
+        .map_err(WorkerError::Stream)?
         .into_inner();
 
     Ok((channel, stream))

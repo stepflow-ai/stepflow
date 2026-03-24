@@ -189,8 +189,8 @@ impl ComponentRegistry {
 
     /// Register a component, returning an error instead of panicking on failure.
     ///
-    /// Returns [`WorkerError::DuplicateComponent`] if a component with the same path
-    /// is already registered, or [`WorkerError::InvalidComponentRoute`] if the path
+    /// Returns [`crate::error::WorkerError::DuplicateComponent`] if a component with the same path
+    /// is already registered, or [`crate::error::WorkerError::InvalidComponentRoute`] if the path
     /// is not a valid [`matchit`] pattern.
     pub fn try_register(
         &mut self,
@@ -364,12 +364,16 @@ mod tests {
             Ok(input)
         });
 
-        let result = registry.try_register_fn("/echo", |input: serde_json::Value, _ctx| async move {
-            Ok(input)
-        });
+        let result = registry
+            .try_register_fn("/echo", |input: serde_json::Value, _ctx| async move {
+                Ok(input)
+            });
 
         assert!(
-            matches!(result, Err(crate::error::WorkerError::DuplicateComponent(_))),
+            matches!(
+                result,
+                Err(crate::error::WorkerError::DuplicateComponent(_))
+            ),
             "expected DuplicateComponent error"
         );
     }
