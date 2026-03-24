@@ -84,11 +84,11 @@ is no silent pass.
 ```bash
 # Build the orchestrator binary first (from the repo root or stepflow-rs/)
 cd ../../stepflow-rs
-cargo build -p stepflow-cli --no-default-features
+cargo build -p stepflow-server --no-default-features
 
 # Run integration tests from sdks/rust/
 cd ../sdks/rust
-STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow \
+STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow-server \
   cargo test --test integration -- --include-ignored
 ```
 

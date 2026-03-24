@@ -18,10 +18,10 @@
 //! # Requirements
 //!
 //! Set the `STEPFLOW_DEV_BINARY` environment variable to the path of the
-//! `stepflow` binary before running tests:
+//! `stepflow-server` binary before running tests:
 //!
 //! ```bash
-//! STEPFLOW_DEV_BINARY=./stepflow-rs/target/debug/stepflow cargo test --features local-server
+//! STEPFLOW_DEV_BINARY=./stepflow-rs/target/debug/stepflow-server cargo test --features local-server
 //! ```
 //!
 //! # Example
@@ -180,7 +180,7 @@ impl LocalOrchestrator {
         })?;
 
         let mut child = Command::new(&binary)
-            .args(["serve", "--port", "0", "--config-stdin"])
+            .args(["--port", "0", "--config-stdin"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit()) // show orchestrator logs in test output

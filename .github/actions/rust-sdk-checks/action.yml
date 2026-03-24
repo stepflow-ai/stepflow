@@ -53,12 +53,12 @@ runs:
       with:
         repo-token: ${{ github.token }}
 
-    - name: Build stepflow binary (for integration tests)
+    - name: Build stepflow-server binary (for integration tests)
       shell: bash
       run: |
         cd stepflow-rs
-        cargo build -p stepflow-cli --no-default-features
-        echo "STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow" >> "$GITHUB_ENV"
+        cargo build -p stepflow-server --no-default-features
+        echo "STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow-server" >> "$GITHUB_ENV"
 
     - name: Run Rust SDK checks
       shell: bash
