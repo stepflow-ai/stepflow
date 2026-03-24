@@ -12,9 +12,9 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Orchestrator service — exposes facade (5001), HTTP API (7840), and gRPC (7837).
+# Orchestrator service — exposes facade (5001) and HTTP+gRPC (7840).
+# In v0.12.0+, HTTP and gRPC share port 7840 (tonic serves both HTTP/1.1 and HTTP/2).
 # NodePort 30501 maps to facade port for kind cluster access (matches kind-config.yaml).
-# gRPC port 7837 exposed as ClusterIP for worker pods to connect.
 
 apiVersion: v1
 kind: Service
@@ -34,12 +34,8 @@ spec:
     targetPort: facade
     protocol: TCP
     nodePort: 30501
-  - name: http
+  - name: http-grpc
     port: 7840
     targetPort: http
-    protocol: TCP
-  - name: grpc
-    port: 7837
-    targetPort: grpc
     protocol: TCP
   sessionAffinity: None

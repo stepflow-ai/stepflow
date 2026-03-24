@@ -150,12 +150,15 @@ def flow_output_to_response(flow_output: dict[str, Any]) -> dict[str, Any]:
 # Stepflow run status -> async poll response
 # ---------------------------------------------------------------------------
 
-# Map stepflow run statuses to docling-serve TaskStatus values.
-_STATUS_MAP: dict[str, str] = {
-    "running": "started",
-    "pending": "pending",
-    "completed": "success",
-    "failed": "failure",
+# Map stepflow protobuf ExecutionStatus enum values to docling-serve TaskStatus.
+# Proto: 0=unspecified, 1=running, 2=completed, 3=failed, 4=cancelled, 5=paused, 6=recovery_failed
+_STATUS_MAP: dict[int, str] = {
+    1: "started",
+    2: "success",
+    3: "failure",
+    4: "failure",
+    5: "started",
+    6: "failure",
 }
 
 
@@ -172,12 +175,16 @@ def run_status_to_poll_response(
     - ``task_position``: optional int (queue position)
     - ``task_meta``: optional processing progress
     - ``error_message``: optional str on failure
+
+    v0.12.0+: GET /api/v1/runs/{id} returns ``{summary: {...}, steps: [...]}``.
+    Status is a protobuf enum int in ``summary.status``.
     """
-    stepflow_status = run_data.get("status", "pending")
+    summary = run_data.get("summary", run_data)
+    stepflow_status = summary.get("status", 0)
     task_status = _STATUS_MAP.get(stepflow_status, "pending")
 
     response: dict[str, Any] = {
-        "task_id": run_data.get("runId", ""),
+        "task_id": summary.get("runId", ""),
         "task_type": task_type,
         "task_status": task_status,
         "task_position": None,
@@ -189,8 +196,7 @@ def run_status_to_poll_response(
         results = run_data.get("results") or []
         if results:
             item = results[0]
-            flow_result = item.get("result", {})
-            error = flow_result.get("error", {})
+            error = item.get("error", {})
             response["error_message"] = error.get(
                 "message", "Flow execution failed"
             )
@@ -202,11 +208,12 @@ def run_result_to_convert_response(run_data: dict[str, Any]) -> dict[str, Any] |
     """Extract the ``ConvertDocumentResponse`` from a completed run.
 
     Returns ``None`` if the run has no results yet.
+
+    v0.12.0+: results[i].output holds flow output directly.
     """
     results = run_data.get("results") or []
     if not results:
         return None
     item = results[0]
-    flow_result = item.get("result", {})
-    flow_output = flow_result.get("result", {})
+    flow_output = item.get("output", {})
     return flow_output_to_response(flow_output)

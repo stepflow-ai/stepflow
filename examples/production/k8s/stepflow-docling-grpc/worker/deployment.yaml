@@ -49,9 +49,9 @@ spec:
         # Transport selection
         - name: STEPFLOW_TRANSPORT
           value: "grpc"
-        # gRPC TasksService address (orchestrator's pull-plugin gRPC server)
+        # gRPC TasksService address (v0.12.0+: HTTP+gRPC share port 7840)
         - name: STEPFLOW_TASKS_URL
-          value: "docling-orchestrator:7837"
+          value: "docling-orchestrator:7840"
         # Queue name matching orchestrator plugin config
         - name: STEPFLOW_QUEUE_NAME
           value: "docling"

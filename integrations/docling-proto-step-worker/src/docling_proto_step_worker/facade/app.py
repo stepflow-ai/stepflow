@@ -304,7 +304,9 @@ async def _submit_and_respond(flow_input: dict[str, Any]) -> JSONResponse:
 
     run_data = resp.json()
 
-    # Extract the flow result from the run response
+    # Extract the flow result from the run response.
+    # v0.12.0+: results[i].output holds the flow output directly,
+    # results[i].status is a protobuf enum int (1=running, 2=completed, 3=failed).
     results = run_data.get("results") or []
     if not results:
         return JSONResponse(
@@ -313,11 +315,9 @@ async def _submit_and_respond(flow_input: dict[str, Any]) -> JSONResponse:
         )
 
     item = results[0]
-    flow_result = item.get("result", {})
-    outcome = flow_result.get("outcome")
 
-    if outcome == "failed":
-        error = flow_result.get("error", {})
+    if item.get("status") == 3:  # EXECUTION_STATUS_FAILED
+        error = item.get("error", {})
         return JSONResponse(
             status_code=500,
             content={
@@ -326,7 +326,7 @@ async def _submit_and_respond(flow_input: dict[str, Any]) -> JSONResponse:
             },
         )
 
-    flow_output = flow_result.get("result", {})
+    flow_output = item.get("output", {})
     response_body = flow_output_to_response(flow_output)
     return JSONResponse(content=response_body)
 
@@ -409,7 +409,7 @@ async def _get_result(task_id: str) -> JSONResponse:
         )
 
     items_data = resp.json()
-    items = items_data.get("items") or []
+    items = items_data.get("results") or []
     if not items:
         raise HTTPException(
             status_code=409,
@@ -417,11 +417,9 @@ async def _get_result(task_id: str) -> JSONResponse:
         )
 
     item = items[0]
-    flow_result = item.get("result", {})
-    outcome = flow_result.get("outcome")
 
-    if outcome == "failed":
-        error = flow_result.get("error", {})
+    if item.get("status") == 3:  # EXECUTION_STATUS_FAILED
+        error = item.get("error", {})
         return JSONResponse(
             status_code=500,
             content={
@@ -430,7 +428,7 @@ async def _get_result(task_id: str) -> JSONResponse:
             },
         )
 
-    flow_output = flow_result.get("result", {})
+    flow_output = item.get("output", {})
     response_body = flow_output_to_response(flow_output)
     return JSONResponse(content=response_body)
 

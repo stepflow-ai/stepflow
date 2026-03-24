@@ -114,7 +114,7 @@ spec:
 
       # Container 2: stepflow-server — Rust orchestrator with gRPC TasksService
       - name: stepflow-server
-        image: localhost/stepflow-server:alpine-0.10.0
+        image: localhost/stepflow-server:alpine-0.12.0
         imagePullPolicy: Never
         securityContext:
           allowPrivilegeEscalation: false
@@ -125,13 +125,7 @@ spec:
         - name: http
           containerPort: 7840
           protocol: TCP
-        - name: grpc
-          containerPort: 7837
-          protocol: TCP
         env:
-        # Pull plugin gRPC bind address — must be 0.0.0.0 for external worker pods
-        - name: STEPFLOW_BIND_ADDRESS
-          value: "0.0.0.0:7837"
         # Pod metadata (defined first so later env vars can reference them)
         - name: POD_NAME
           valueFrom:
@@ -148,7 +142,7 @@ spec:
         # Advertised URL for workers to call back (pod IP, not service DNS,
         # so callbacks reach the specific pod that dispatched the task)
         - name: STEPFLOW_ORCHESTRATOR_URL
-          value: "$(POD_IP):7837"
+          value: "$(POD_IP):7840"
         # Stepflow logging
         - name: STEPFLOW_LOG_LEVEL
           value: "debug"
