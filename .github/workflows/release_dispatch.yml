@@ -137,3 +137,44 @@ jobs:
           echo "3. Build and push Docker image" >> $GITHUB_STEP_SUMMARY
           echo "4. Publish to PyPI using Trusted Publishing" >> $GITHUB_STEP_SUMMARY
           echo "5. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
+
+  dispatch-docling-release:
+    name: Dispatch Docling Proto Step Worker Release
+    runs-on: ubuntu-22.04
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:docling')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Extract version from pyproject.toml
+        id: version
+        working-directory: integrations/docling-proto-step-worker
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=stepflow-docling-$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Dispatch Docling release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "Release - Docling Proto Step Worker" \
+            --field version="${{ steps.version.outputs.version }}" \
+            --field skip_tag_creation=false
+
+      - name: Summary
+        run: |
+          echo "## Docling Proto Step Worker Release Build Dispatched" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Dispatched release build for **docling-proto-step-worker v${{ steps.version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Docling release workflow will:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Run linting and unit tests" >> $GITHUB_STEP_SUMMARY
+          echo "2. Build and push Docker images to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "3. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
