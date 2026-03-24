@@ -40,6 +40,8 @@ jobs:
               - 'sdks/python/**'
             docs:
               - 'docs/**'
+            rust-sdk:
+              - 'sdks/rust/**'
 
       - name: Determine labels
         id: determine_labels
@@ -53,11 +55,12 @@ jobs:
           fi
 
           # Add labels for changed areas
-          for area in core py docs; do
+          for area in core py docs rust-sdk; do
             case $area in
               core) changed="${{ steps.changes.outputs.core }}" ;;
               py) changed="${{ steps.changes.outputs.py }}" ;;
               docs) changed="${{ steps.changes.outputs.docs }}" ;;
+              rust-sdk) changed="${{ steps.changes.outputs.rust-sdk }}" ;;
             esac
 
             if [[ "$changed" == "true" ]] && [[ "$labels" != *"$area"* ]]; then

@@ -1,0 +1,26 @@
+[package]
+name = "stepflow-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Rust client SDK for the Stepflow orchestrator — flow authoring and run management"
+
+[features]
+# Enable LocalOrchestrator for launching a local stepflow binary in tests.
+# Requires STEPFLOW_DEV_BINARY env var to be set to the binary path.
+local-server = []
+
+[dependencies]
+stepflow-proto = { path = "../../../../stepflow-rs/crates/stepflow-proto" }
+tokio = { version = "1", features = ["full"] }
+tonic = { version = "0.14", features = ["transport"] }
+prost-wkt-types = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+indexmap = { version = "2", features = ["serde"] }
+thiserror = "2"
+futures = "0.3"
+tracing = "0.1"

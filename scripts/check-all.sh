@@ -63,6 +63,7 @@ run_category() {
 
 # Run each category - continue even if one fails
 run_category "rust" "check-rust.sh" || true
+run_category "rust-sdk" "check-rust-sdk.sh" || true
 run_category "python" "check-python.sh" || true
 run_category "docs" "check-docs.sh" || true
 run_category "licenses" "check-licenses.sh" || true
@@ -91,6 +92,9 @@ else
         case "$category" in
             "rust")
                 echo "  ./scripts/check-rust.sh -v"
+                ;;
+            "rust-sdk")
+                echo "  ./scripts/check-rust-sdk.sh -v"
                 ;;
             "python")
                 echo "  ./scripts/check-python.sh -v"

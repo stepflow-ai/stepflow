@@ -1,0 +1,67 @@
+name: 'Rust SDK Build & Test'
+description: 'Compilation, testing, and lint analysis for the Rust SDK crates'
+
+# =============================================================================
+# RUST SDK BUILD & TEST CHECKS
+# =============================================================================
+# This action performs checks for the sdks/rust/ workspace:
+# - Full test suite (cargo test), including integration tests when possible
+# - Linting (cargo clippy)
+# - Compilation verification (cargo check)
+# - Documentation build (cargo doc)
+#
+# NOTES:
+# - Requires protoc because stepflow-proto is a path dependency that compiles
+#   .proto files during cargo build.
+# - Uses a separate Rust cache workspace (./sdks/rust) from the main Rust cache.
+# - Builds the stepflow binary from stepflow-rs/ so integration tests can run.
+#   The binary path is passed via STEPFLOW_DEV_BINARY.  Integration tests
+#   skip gracefully if STEPFLOW_DEV_BINARY is unset.
+# =============================================================================
+
+inputs:
+  rust-toolchain:
+    description: 'Rust toolchain version'
+    required: false
+    default: 'stable'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+        components: clippy
+
+    - name: Configure Rust cache (SDK workspace)
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          ./sdks/rust
+
+    - name: Configure Rust cache (main workspace — for stepflow binary)
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          ./stepflow-rs
+        # Use a separate cache key so SDK and main caches don't collide
+        prefix-key: "stepflow-rs-for-sdk"
+
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ github.token }}
+
+    - name: Build stepflow binary (for integration tests)
+      shell: bash
+      run: |
+        cd stepflow-rs
+        cargo build -p stepflow-cli --no-default-features
+        echo "STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow" >> "$GITHUB_ENV"
+
+    - name: Run Rust SDK checks
+      shell: bash
+      run: ./scripts/check-rust-sdk.sh -v
+      env:
+        RUSTFLAGS: -D warnings
