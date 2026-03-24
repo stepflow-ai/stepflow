@@ -57,9 +57,6 @@ integrations/langflow/
 # Install dependencies (development mode)
 cd integrations/langflow
 uv sync --dev
-
-# Install with HTTP server support
-uv sync --dev --extra http
 ```
 
 ### Testing

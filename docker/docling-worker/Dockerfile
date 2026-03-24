@@ -56,7 +56,7 @@ RUN mkdir -p sdks/python/stepflow-py/src/stepflow_py && \
 
 # Install dependencies only (cached unless pyproject.toml/uv.lock change)
 # Use --frozen to ensure lock file is used exactly as-is
-RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http
+RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev
 RUN cd integrations/docling && uv sync --frozen --no-install-project --no-dev
 
 
@@ -68,7 +68,7 @@ COPY sdks/python ./sdks/python/
 COPY integrations/docling ./integrations/docling/
 
 # Install the actual packages (deps already installed)
-RUN cd sdks/python && uv sync --frozen --no-dev --extra http
+RUN cd sdks/python && uv sync --frozen --no-dev
 RUN cd integrations/docling && uv sync --frozen --no-dev
 
 
