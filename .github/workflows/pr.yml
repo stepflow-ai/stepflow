@@ -36,11 +36,11 @@ jobs:
         with:
           filters: |
             core:
-              - 'stepflow-rs/**'
+              - 'stepflow-rs/**'   # orchestrator — NOT the Rust SDK
             py:
               - 'sdks/python/**'
-            rs:
-              - 'sdks/rust/**'
+            sdk-rs:
+              - 'sdks/rust/**'     # Rust SDK — distinct from stepflow-rs core
             docs:
               - 'docs/**'
 
@@ -51,6 +51,7 @@ jobs:
           scope="${{ steps.lint_pr_title.outputs.scope }}"
 
           # Map Conventional Commits scope → GitHub label
+          # Note: 'core' covers stepflow-rs (orchestrator); 'rs' scopes the Rust SDK
           case "$scope" in
             py) labels="sdk:py" ;;
             rs) labels="sdk:rs" ;;
@@ -58,13 +59,14 @@ jobs:
           esac
 
           # Add labels for changed areas
-          declare -A area_label=(["core"]="core" ["py"]="sdk:py" ["rs"]="sdk:rs" ["docs"]="docs")
-          for area in core py rs docs; do
+          # 'core' (stepflow-rs orchestrator) and 'sdk-rs' (sdks/rust SDK) are kept separate
+          declare -A area_label=(["core"]="core" ["py"]="sdk:py" ["sdk-rs"]="sdk:rs" ["docs"]="docs")
+          for area in core py sdk-rs docs; do
             case $area in
-              core) changed="${{ steps.changes.outputs.core }}" ;;
-              py)   changed="${{ steps.changes.outputs.py }}" ;;
-              rs)   changed="${{ steps.changes.outputs.rs }}" ;;
-              docs) changed="${{ steps.changes.outputs.docs }}" ;;
+              core)   changed="${{ steps.changes.outputs.core }}" ;;
+              py)     changed="${{ steps.changes.outputs.py }}" ;;
+              sdk-rs) changed="${{ steps.changes.outputs.sdk-rs }}" ;;
+              docs)   changed="${{ steps.changes.outputs.docs }}" ;;
             esac
             label="${area_label[$area]}"
 
