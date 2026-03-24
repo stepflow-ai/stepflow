@@ -11,6 +11,7 @@ on:
           - stepflow
           - stepflow-py
           - stepflow-langflow
+          - docling
         default: 'stepflow'
       bump_type:
         description: 'Type of version bump'
@@ -83,6 +84,13 @@ jobs:
                 ./scripts/prepare-release-langflow.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
               else
                 ./scripts/prepare-release-langflow.sh ${{ inputs.bump_type }} --pr
+              fi
+              ;;
+            docling)
+              if [[ -n "${{ inputs.message }}" ]]; then
+                ./scripts/prepare-release-docling.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+              else
+                ./scripts/prepare-release-docling.sh ${{ inputs.bump_type }} --pr
               fi
               ;;
             *)
