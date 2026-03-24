@@ -59,7 +59,7 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 # from the base image. Without this, uv may install Python 3.13+ into a location
 # that is inaccessible when running as non-root user 1000.
 ENV UV_PYTHON_PREFERENCE=only-system
-RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev --extra http
+RUN cd sdks/python && uv sync --frozen --no-install-workspace --no-dev
 RUN cd integrations/langflow && uv sync --frozen --no-install-project --no-dev
 
 
@@ -77,7 +77,7 @@ COPY --chown=1000:0 integrations/langflow ./integrations/langflow/
 # Remove .python-version which pins Python 3.13 for development - the base image
 # only has Python 3.12.3 and we must use it.
 RUN rm -f sdks/python/.python-version integrations/langflow/.python-version && \
-    cd sdks/python && uv sync --frozen --no-dev --extra http && \
+    cd sdks/python && uv sync --frozen --no-dev && \
     cd /app/integrations/langflow && uv sync --frozen --no-dev && \
     uv pip install --python /app/.venv/bin/python "lfx==0.2.1" && \
     chown -R 1000:0 /app/.venv
