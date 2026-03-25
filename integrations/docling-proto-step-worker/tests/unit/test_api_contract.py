@@ -15,7 +15,8 @@
 """Contract tests validating facade behavior against Stepflow API response shapes.
 
 These fixtures represent the actual response structures from Stepflow v0.12.0+.
-Field names, nesting, and types are derived from stepflow-rs/proto/stepflow/v1/runs.proto
+Field names, nesting, and types are derived from
+stepflow-rs/proto/stepflow/v1/runs.proto
 and verified against live API output.
 
 When the Stepflow API changes its response shape, these fixtures must be updated
@@ -28,8 +29,6 @@ If a test fails, it means either:
 from __future__ import annotations
 
 import copy
-
-import pytest
 
 from docling_proto_step_worker.facade.translate import (
     flow_output_to_response,

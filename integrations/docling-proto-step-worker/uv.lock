@@ -541,6 +541,7 @@ ocr = [
 [package.dev-dependencies]
 dev = [
     { name = "deptry" },
+    { name = "docling-proto-step-worker", extra = ["facade"] },
     { name = "fpdf2" },
     { name = "mypy" },
     { name = "poethepoet" },
@@ -571,6 +572,7 @@ provides-extras = ["ocr", "facade"]
 [package.metadata.requires-dev]
 dev = [
     { name = "deptry", specifier = ">=0.22.0" },
+    { name = "docling-proto-step-worker", extras = ["facade"] },
     { name = "fpdf2", specifier = ">=2.8.0" },
     { name = "mypy", specifier = "==1.19.1" },
     { name = "poethepoet", specifier = ">=0.24.0" },

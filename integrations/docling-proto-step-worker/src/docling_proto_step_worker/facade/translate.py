@@ -151,7 +151,8 @@ def flow_output_to_response(flow_output: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 # Map stepflow protobuf ExecutionStatus enum values to docling-serve TaskStatus.
-# Proto: 0=unspecified, 1=running, 2=completed, 3=failed, 4=cancelled, 5=paused, 6=recovery_failed
+# Proto enum: 0=unspecified, 1=running, 2=completed,
+# 3=failed, 4=cancelled, 5=paused, 6=recovery_failed
 _STATUS_MAP: dict[int, str] = {
     1: "started",
     2: "success",
