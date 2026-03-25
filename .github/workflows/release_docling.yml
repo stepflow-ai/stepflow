@@ -1,0 +1,247 @@
+name: Release - Docling Proto Step Worker
+
+on:
+  repository_dispatch:
+    types: [build-docling-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.3)'
+        required: true
+        type: string
+      skip_tag_creation:
+        description: 'Skip creating git tag (for testing)'
+        required: false
+        type: boolean
+        default: false
+
+# Limit concurrency to a single run per branch (ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+
+jobs:
+  determine-version:
+    name: Determine Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      skip_tag: ${{ steps.version.outputs.skip_tag }}
+
+    steps:
+      - name: Set version info
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "tag=${{ github.event.client_payload.tag }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=false" >> $GITHUB_OUTPUT
+            echo "Source: repository dispatch"
+            echo "Version: ${{ github.event.client_payload.version }}"
+            echo "Tag: ${{ github.event.client_payload.tag }}"
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "tag=stepflow-docling-${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "skip_tag=${{ inputs.skip_tag_creation }}" >> $GITHUB_OUTPUT
+            echo "Source: manual workflow dispatch"
+            echo "Version: ${{ inputs.version }}"
+            echo "Tag: stepflow-docling-${{ inputs.version }}"
+            echo "Skip tag: ${{ inputs.skip_tag_creation }}"
+          fi
+
+  build-and-test:
+    name: Build and Test Docling Worker
+    runs-on: ubuntu-22.04
+    needs: determine-version
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        working-directory: integrations/docling-proto-step-worker
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -U pip
+
+      - name: Install dependencies
+        working-directory: integrations/docling-proto-step-worker
+        run: |
+          uv sync --all-extras --group dev
+
+      - name: Run linting
+        working-directory: integrations/docling-proto-step-worker
+        run: |
+          uv run poe fmt-check
+          uv run poe lint-check
+
+      - name: Run type checking
+        working-directory: integrations/docling-proto-step-worker
+        run: uv run poe type-check
+
+      - name: Run dependency checking
+        working-directory: integrations/docling-proto-step-worker
+        run: uv run poe dep-check
+
+      - name: Run tests
+        working-directory: integrations/docling-proto-step-worker
+        run: uv run poe test
+
+  build-docker:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push docling-facade
+        uses: docker/build-push-action@v5
+        with:
+          context: integrations/docling-proto-step-worker
+          file: integrations/docling-proto-step-worker/docker/Dockerfile.facade
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/docling-facade:v${{ needs.determine-version.outputs.version }}
+          cache-from: type=gha,scope=docling-facade
+          cache-to: type=gha,mode=max,scope=docling-facade
+
+      - name: Build and push stepflow-docling-proto-worker
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: integrations/docling-proto-step-worker/docker/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/stepflow-docling-proto-worker:v${{ needs.determine-version.outputs.version }}
+          cache-from: type=gha,scope=docling-worker
+          cache-to: type=gha,mode=max,scope=docling-worker
+
+  create-tag-and-release:
+    name: Create Tag and Release
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-docker]
+    if: needs.determine-version.outputs.skip_tag == 'false'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'NOTES'
+          ## Docling Proto Step Worker v${{ needs.determine-version.outputs.version }}
+
+          Container-only release for the Docling document processing worker and facade.
+
+          ### Docker Images
+
+          **Facade** (lightweight FastAPI proxy):
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ github.repository }}/docling-facade:v${{ needs.determine-version.outputs.version }}
+          ```
+
+          **Worker** (gRPC document processing):
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ github.repository }}/stepflow-docling-proto-worker:v${{ needs.determine-version.outputs.version }}
+          ```
+
+          ### Platform Support
+          - **docling-facade**: linux/amd64, linux/arm64
+          - **stepflow-docling-proto-worker**: linux/amd64, linux/arm64
+
+          ### Links
+          - **Documentation**: https://github.com/${{ github.repository }}/tree/main/integrations/docling-proto-step-worker
+          - **Facade Image**: https://github.com/${{ github.repository }}/pkgs/container/stepflow%2Fdocling-facade
+          - **Worker Image**: https://github.com/${{ github.repository }}/pkgs/container/stepflow%2Fstepflow-docling-proto-worker
+          NOTES
+
+      - name: Create GitHub release with tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ needs.determine-version.outputs.tag }}" \
+            --title "Docling Proto Step Worker v${{ needs.determine-version.outputs.version }}" \
+            --notes-file release-notes.md
+
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-22.04
+    needs: [determine-version, build-and-test, build-docker, create-tag-and-release]
+    if: always()
+
+    steps:
+      - name: Check job results
+        run: |
+          echo "## Docling Proto Step Worker Release Summary v${{ needs.determine-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.build-and-test.result }}" = "success" ]; then
+            echo "| Build & Test | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Build & Test | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ]; then
+            if [ "${{ needs.build-docker.result }}" = "success" ]; then
+              echo "| Docker Images | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.build-docker.result }}" = "skipped" ]; then
+              echo "| Docker Images | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Docker Images | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+              echo "| GitHub Release | ✅ Success |" >> $GITHUB_STEP_SUMMARY
+            elif [ "${{ needs.create-tag-and-release.result }}" = "skipped" ]; then
+              echo "| GitHub Release | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| GitHub Release | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| Docker Images | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+            echo "| GitHub Release | ⏭️ Skipped (testing mode) |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Images" >> $GITHUB_STEP_SUMMARY
+          echo "- **docling-facade**: \`${{ env.REGISTRY }}/${{ github.repository }}/docling-facade:v${{ needs.determine-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **stepflow-docling-proto-worker**: \`${{ env.REGISTRY }}/${{ github.repository }}/stepflow-docling-proto-worker:v${{ needs.determine-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.determine-version.outputs.skip_tag }}" = "false" ] && [ "${{ needs.create-tag-and-release.result }}" = "success" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Release Complete" >> $GITHUB_STEP_SUMMARY
+            echo "**Tag:** ${{ needs.determine-version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "**GitHub Release:** [Docling Proto Step Worker v${{ needs.determine-version.outputs.version }}](https://github.com/${{ github.repository }}/releases/tag/${{ needs.determine-version.outputs.tag }})" >> $GITHUB_STEP_SUMMARY
+          fi
