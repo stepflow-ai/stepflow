@@ -278,7 +278,10 @@ impl RunsService for RunsServiceImpl {
             .metadata_store()
             .get_step_statuses(run_id, None, None)
             .await
-            .map_err(|e| grpc_err::internal(format!("failed to get step statuses: {e}")))?;
+            .map_err(|e| {
+                log::error!("get_step_statuses failed for run {run_id}: {e:?}");
+                grpc_err::internal(format!("failed to get step statuses: {e}"))
+            })?;
 
         Ok(Response::new(GetRunResponse {
             summary: Some(run_summary_to_proto(&details)),
@@ -395,7 +398,10 @@ impl RunsService for RunsServiceImpl {
             .metadata_store()
             .get_step_statuses(run_id, item_index, None)
             .await
-            .map_err(|e| grpc_err::internal(format!("failed to get step statuses: {e}")))?;
+            .map_err(|e| {
+                log::error!("get_step_statuses failed for run {run_id}: {e:?}");
+                grpc_err::internal(format!("failed to get step statuses: {e}"))
+            })?;
 
         Ok(Response::new(GetRunStepsResponse {
             steps: steps.iter().map(step_status_to_proto).collect(),

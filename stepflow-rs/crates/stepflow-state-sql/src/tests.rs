@@ -669,3 +669,379 @@ async fn test_incremental_migrations() {
     assert!(table_exists(&pool, "step_results").await);
     assert!(table_exists(&pool, "run_items").await);
 }
+
+// =========================================================================
+// Step status round-trip tests (issue #849)
+// =========================================================================
+
+/// Helper: create a store with a run so we can write step statuses.
+async fn create_store_with_run() -> (SqliteStateStore, Uuid) {
+    use std::sync::Arc;
+    use stepflow_core::ValueExpr;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+    use stepflow_state::{BlobStore as _, CreateRunParams, MetadataStore as _};
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("classify")
+                    .component("/mock/classify")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+                StepBuilder::new("convert")
+                    .component("/mock/convert")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+                StepBuilder::new("chunk")
+                    .component("/mock/chunk")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "chunk".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = store.store_flow(flow).await.unwrap();
+    let run_id = Uuid::now_v7();
+    let input = stepflow_core::workflow::ValueRef::new(json!({"file": "test.pdf"}));
+
+    store
+        .create_run(CreateRunParams::new(
+            run_id,
+            flow_id,
+            vec![input],
+            SequenceNumber::new(0),
+        ))
+        .await
+        .unwrap();
+
+    (store, run_id)
+}
+
+#[tokio::test]
+async fn test_step_status_round_trip() {
+    use stepflow_core::status::StepStatus;
+    use stepflow_state::MetadataStore as _;
+
+    let (store, run_id) = create_store_with_run().await;
+
+    // Write step statuses for 3 steps
+    let small_result = FlowResult::from(json!({"doc_type": "scientific_paper"}));
+    let medium_result = FlowResult::from(json!({"chunks": ["chunk1", "chunk2", "chunk3"]}));
+
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "classify",
+            0,
+            StepStatus::Completed,
+            Some("/mock/classify"),
+            Some(small_result.clone()),
+            SequenceNumber::new(1),
+        )
+        .await
+        .unwrap();
+
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "convert",
+            1,
+            StepStatus::Completed,
+            Some("/mock/convert"),
+            Some(medium_result.clone()),
+            SequenceNumber::new(2),
+        )
+        .await
+        .unwrap();
+
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "chunk",
+            2,
+            StepStatus::Completed,
+            Some("/mock/chunk"),
+            Some(medium_result.clone()),
+            SequenceNumber::new(3),
+        )
+        .await
+        .unwrap();
+
+    // Read them back
+    let statuses = store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("get_step_statuses should succeed");
+
+    assert_eq!(statuses.len(), 3, "Should have 3 step statuses");
+    assert_eq!(statuses[0].step_id, "classify");
+    assert_eq!(statuses[0].status, StepStatus::Completed);
+    assert_eq!(statuses[0].result, Some(small_result));
+    assert_eq!(statuses[1].step_id, "convert");
+    assert_eq!(statuses[2].step_id, "chunk");
+}
+
+#[tokio::test]
+async fn test_step_status_large_result_json() {
+    use stepflow_core::status::StepStatus;
+    use stepflow_state::MetadataStore as _;
+
+    let (store, run_id) = create_store_with_run().await;
+
+    // Build a ~2MB JSON payload similar to what the convert step produces
+    let large_text = "x".repeat(2_000_000);
+    let large_result = FlowResult::from(json!({
+        "pages": [
+            {"page_num": 1, "text": large_text},
+        ],
+        "metadata": {"format": "pdf", "page_count": 1}
+    }));
+
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "convert",
+            1,
+            StepStatus::Completed,
+            Some("/mock/convert"),
+            Some(large_result.clone()),
+            SequenceNumber::new(1),
+        )
+        .await
+        .expect("writing large result_json should succeed");
+
+    // Read it back — this is the exact code path that fails in issue #849
+    let statuses = store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("get_step_statuses with large result_json should succeed");
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].step_id, "convert");
+    assert_eq!(statuses[0].result, Some(large_result));
+}
+
+#[tokio::test]
+async fn test_step_status_with_none_result() {
+    use stepflow_core::status::StepStatus;
+    use stepflow_state::MetadataStore as _;
+
+    let (store, run_id) = create_store_with_run().await;
+
+    // Write a step status without a result (e.g., step is Running)
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "classify",
+            0,
+            StepStatus::Running,
+            Some("/mock/classify"),
+            None,
+            SequenceNumber::new(1),
+        )
+        .await
+        .unwrap();
+
+    let statuses = store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("get_step_statuses with null result should succeed");
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].status, StepStatus::Running);
+    assert!(statuses[0].result.is_none());
+}
+
+#[tokio::test]
+async fn test_step_status_update_then_read() {
+    use stepflow_core::status::StepStatus;
+    use stepflow_state::MetadataStore as _;
+
+    let (store, run_id) = create_store_with_run().await;
+
+    // First write: Running, no result
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "classify",
+            0,
+            StepStatus::Running,
+            Some("/mock/classify"),
+            None,
+            SequenceNumber::new(1),
+        )
+        .await
+        .unwrap();
+
+    // Second write: Completed, with result (triggers ON CONFLICT UPDATE)
+    let result = FlowResult::from(json!({"doc_type": "invoice"}));
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "classify",
+            0,
+            StepStatus::Completed,
+            Some("/mock/classify"),
+            Some(result.clone()),
+            SequenceNumber::new(2),
+        )
+        .await
+        .unwrap();
+
+    let statuses = store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("get_step_statuses after update should succeed");
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].status, StepStatus::Completed);
+    assert_eq!(statuses[0].result, Some(result));
+    assert_eq!(statuses[0].journal_seqno, 2);
+}
+
+#[tokio::test]
+async fn test_step_status_failed_result_round_trip() {
+    use stepflow_core::TaskErrorCode;
+    use stepflow_core::status::StepStatus;
+    use stepflow_state::MetadataStore as _;
+
+    let (store, run_id) = create_store_with_run().await;
+
+    let error = stepflow_core::FlowError::new(TaskErrorCode::ComponentFailed, "conversion failed");
+    let failed_result = FlowResult::Failed(error);
+
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "convert",
+            1,
+            StepStatus::Failed,
+            Some("/mock/convert"),
+            Some(failed_result.clone()),
+            SequenceNumber::new(1),
+        )
+        .await
+        .unwrap();
+
+    let statuses = store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("get_step_statuses with failed result should succeed");
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].status, StepStatus::Failed);
+    assert_eq!(statuses[0].result, Some(failed_result));
+}
+
+#[tokio::test]
+async fn test_step_status_concurrent_read_write_file_backed() {
+    use crate::SqliteStateStoreConfig;
+    use std::sync::Arc;
+    use stepflow_core::ValueExpr;
+    use stepflow_core::status::StepStatus;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+    use stepflow_state::{BlobStore as _, CreateRunParams, MetadataStore as _};
+
+    // Use a file-backed SQLite database to exercise the same code path as production.
+    // This specifically tests that PRAGMAs (journal_mode=WAL, busy_timeout) are set
+    // on ALL pool connections, not just the first one.
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+
+    let store = SqliteStateStore::new(SqliteStateStoreConfig {
+        database_url: db_url,
+        max_connections: 10,
+        auto_migrate: true,
+    })
+    .await
+    .unwrap();
+
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("step1")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+    let flow_id = store.store_flow(flow).await.unwrap();
+
+    let store = Arc::new(store);
+
+    // Spawn concurrent writes and reads to exercise pool connection contention.
+    let mut handles = Vec::new();
+    for i in 0..10u32 {
+        let store = store.clone();
+        let flow_id = flow_id.clone();
+        handles.push(tokio::spawn(async move {
+            let run_id = Uuid::now_v7();
+            let input = ValueRef::new(json!({"idx": i}));
+            store
+                .create_run(CreateRunParams::new(
+                    run_id,
+                    flow_id,
+                    vec![input],
+                    SequenceNumber::new(0),
+                ))
+                .await
+                .unwrap();
+
+            // Write step status
+            let result = FlowResult::from(json!({"value": i}));
+            store
+                .update_step_status(
+                    run_id,
+                    0,
+                    "step1",
+                    0,
+                    StepStatus::Completed,
+                    Some("/mock/test"),
+                    Some(result.clone()),
+                    SequenceNumber::new(1),
+                )
+                .await
+                .unwrap();
+
+            // Read it back immediately (while other tasks are writing)
+            let statuses = store
+                .get_step_statuses(run_id, None, None)
+                .await
+                .expect("concurrent read should succeed");
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].result, Some(result));
+        }));
+    }
+
+    for h in handles {
+        h.await.unwrap();
+    }
+}
