@@ -41,6 +41,21 @@ use stepflow_client::local_server::{
 use stepflow_client::{FlowBuilder, StepflowClient};
 use stepflow_worker::{ComponentRegistry, Worker, WorkerConfig};
 
+/// Initialize tracing once for the test process.
+///
+/// Calling `try_init` is idempotent — subsequent calls from other tests
+/// are silently ignored.  Set `RUST_LOG=debug` (or any valid filter) to
+/// control verbosity.
+fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("stepflow_worker=debug".parse().unwrap()),
+        )
+        .with_test_writer()
+        .try_init();
+}
+
 // ---------------------------------------------------------------------------
 // Helper: wait until an expected component path appears in the orchestrator
 // ---------------------------------------------------------------------------
@@ -123,9 +138,10 @@ struct DoubleOutput {
     result: i64,
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires STEPFLOW_DEV_BINARY — run with --include-ignored"]
 async fn test_double_component() {
+    init_tracing();
     const QUEUE: &str = "test-double";
 
     // Start local orchestrator — fails with a clear message if STEPFLOW_DEV_BINARY is unset.
@@ -162,10 +178,12 @@ async fn test_double_component() {
     });
 
     // Wait until the worker has connected and registered its components.
+    // list_registered_components returns raw component names (without route prefix),
+    // so we poll for "/double" (what the worker registered), not "/test/double".
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect to orchestrator");
-    wait_for_component(&mut client, "/test/double", Duration::from_secs(60)).await;
+    wait_for_component(&mut client, "/double", Duration::from_secs(60)).await;
 
     let mut builder = FlowBuilder::new();
     builder.add_step(
@@ -219,9 +237,10 @@ struct ShoutOutput {
     loud: String,
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires STEPFLOW_DEV_BINARY — run with --include-ignored"]
 async fn test_chained_steps() {
+    init_tracing();
     const QUEUE: &str = "test-chained";
 
     let orch = LocalOrchestrator::start(make_config(QUEUE))
@@ -263,7 +282,8 @@ async fn test_chained_steps() {
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect");
-    wait_for_component(&mut client, "/test/greet", Duration::from_secs(60)).await;
+    // list_registered_components returns raw component names (without route prefix).
+    wait_for_component(&mut client, "/greet", Duration::from_secs(60)).await;
 
     // Flow: greet → shout → output.loud
     let mut builder = FlowBuilder::new();

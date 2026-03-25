@@ -142,23 +142,35 @@ pub(crate) async fn handle_task(
 
 /// Resolve the orchestrator gRPC channel to use for this task.
 ///
-/// Reuses `default_channel` when `url == default_url` to avoid opening a new connection.
-/// Returns `None` (and logs a warning) if `url` is not a valid gRPC endpoint.
+/// Reuses `default_channel` when the normalized `url` matches `default_url` to avoid opening
+/// a new connection. Returns `None` (and logs a warning) if `url` is not a valid gRPC endpoint.
+///
+/// The orchestrator may advertise its address without an `http://` scheme (e.g.
+/// `"127.0.0.1:7837"` in `run`/`test` mode).  We normalise such URLs by prepending
+/// `"http://"` before comparing and before creating the tonic channel.
 pub(crate) fn resolve_orch_channel(
     task_id: &str,
     url: &str,
     default_url: &str,
     default_channel: Channel,
 ) -> Option<Channel> {
-    if url == default_url {
+    // Normalise: add http:// scheme if the URL has no scheme.
+    let normalised = if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("http://{url}")
+    };
+
+    if normalised == default_url {
         return Some(default_channel);
     }
-    match tonic::transport::Channel::from_shared(url.to_string()) {
+
+    match tonic::transport::Channel::from_shared(normalised.clone()) {
         Ok(endpoint) => Some(endpoint.connect_lazy()),
         Err(e) => {
             warn!(
                 task_id,
-                orchestrator_url = %url,
+                orchestrator_url = %normalised,
                 "Invalid orchestrator URL from task context, skipping task: {e}"
             );
             None
@@ -396,6 +408,19 @@ mod tests {
         let endpoint = tonic::transport::Channel::from_shared(url).unwrap();
         let channel = endpoint.connect_lazy();
         let result = resolve_orch_channel("task-1", url, url, channel);
+        assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_orch_channel_normalises_scheme() {
+        // The orchestrator may advertise "127.0.0.1:port" without http://.
+        // resolve_orch_channel should prepend http:// so the channel is valid.
+        let default_url = "http://127.0.0.1:7837";
+        let channel = tonic::transport::Channel::from_shared(default_url)
+            .unwrap()
+            .connect_lazy();
+        // Scheme-less variant — normalises to "http://127.0.0.1:7837", which equals default_url.
+        let result = resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel);
         assert!(result.is_some());
     }
 
