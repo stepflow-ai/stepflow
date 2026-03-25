@@ -46,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      rust-sdk: ${{ steps.filter.outputs['rust-sdk'] }}
       python: ${{ steps.filter.outputs.python }}
       docs: ${{ steps.filter.outputs.docs }}
       langflow: ${{ steps.filter.outputs.langflow }}
@@ -64,6 +65,12 @@ jobs:
               - 'scripts/_lib.sh'
               - 'stepflow-rs/**'
               - 'schemas/**'
+            rust-sdk:
+              - '.github/actions/rust-sdk-checks/**'
+              - 'scripts/check-rust-sdk.sh'
+              - 'scripts/_lib.sh'
+              - 'sdks/rust/**'
+              - 'stepflow-rs/crates/stepflow-proto/**'
             python:
               - '.github/actions/python-checks/**'
               - 'scripts/check-python.sh'
@@ -121,6 +128,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/rust-checks
+
+  # Rust SDK checks
+  rust-sdk-checks:
+    name: Rust SDK Checks
+    needs: changes
+    if: needs.changes.outputs['rust-sdk'] == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/rust-sdk-checks
 
   # Python SDK checks
   python-checks:
@@ -257,7 +274,7 @@ jobs:
   check-success:
     name: All Checks Passed
     runs-on: ubuntu-latest
-    needs: [changes, rust-checks, python-checks, docs-checks, proto-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
+    needs: [changes, rust-checks, rust-sdk-checks, python-checks, docs-checks, proto-checks, langflow-checks, docling-checks, licensure, integration-checks, recovery-tests]
     # Always run this job, but fail if any required checks failed
     if: always()
     steps:
@@ -266,6 +283,10 @@ jobs:
           # Check if any required job failed or was cancelled
           if [[ "${{ needs.rust-checks.result }}" == "failure" || "${{ needs.rust-checks.result }}" == "cancelled" ]]; then
             echo "::error::Rust checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.rust-sdk-checks.result }}" == "failure" || "${{ needs.rust-sdk-checks.result }}" == "cancelled" ]]; then
+            echo "::error::Rust SDK checks failed"
             exit 1
           fi
           if [[ "${{ needs.python-checks.result }}" == "failure" || "${{ needs.python-checks.result }}" == "cancelled" ]]; then
@@ -304,6 +325,10 @@ jobs:
           # Check if required jobs were skipped when they should have run
           if [[ "${{ needs.changes.outputs.rust }}" == "true" && "${{ needs.rust-checks.result }}" == "skipped" ]]; then
             echo "::error::Rust changes detected but rust-checks was skipped"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs['rust-sdk'] }}" == "true" && "${{ needs.rust-sdk-checks.result }}" == "skipped" ]]; then
+            echo "::error::Rust SDK changes detected but rust-sdk-checks was skipped"
             exit 1
           fi
           if [[ ("${{ needs.changes.outputs.python }}" == "true" || "${{ needs.changes.outputs.proto }}" == "true") && "${{ needs.python-checks.result }}" == "skipped" ]]; then

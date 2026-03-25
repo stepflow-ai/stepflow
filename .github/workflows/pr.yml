@@ -23,6 +23,7 @@ jobs:
         with:
           scopes: |
             core
+            rs
             py
             docs
             ui
@@ -35,9 +36,11 @@ jobs:
         with:
           filters: |
             core:
-              - 'stepflow-rs/**'
+              - 'stepflow-rs/**'   # orchestrator — NOT the Rust SDK
             py:
               - 'sdks/python/**'
+            sdk-rs:
+              - 'sdks/rust/**'     # Rust SDK — distinct from stepflow-rs core
             docs:
               - 'docs/**'
 
@@ -47,21 +50,28 @@ jobs:
           labels=""
           scope="${{ steps.lint_pr_title.outputs.scope }}"
 
-          # Add scope as label if set
-          if [[ -n "$scope" ]]; then
-            labels="$scope"
-          fi
+          # Map Conventional Commits scope → GitHub label
+          # Note: 'core' covers stepflow-rs (orchestrator); 'rs' scopes the Rust SDK
+          case "$scope" in
+            py) labels="sdk:py" ;;
+            rs) labels="sdk:rs" ;;
+            *) [[ -n "$scope" ]] && labels="$scope" ;;
+          esac
 
           # Add labels for changed areas
-          for area in core py docs; do
+          # 'core' (stepflow-rs orchestrator) and 'sdk-rs' (sdks/rust SDK) are kept separate
+          declare -A area_label=(["core"]="core" ["py"]="sdk:py" ["sdk-rs"]="sdk:rs" ["docs"]="docs")
+          for area in core py sdk-rs docs; do
             case $area in
-              core) changed="${{ steps.changes.outputs.core }}" ;;
-              py) changed="${{ steps.changes.outputs.py }}" ;;
-              docs) changed="${{ steps.changes.outputs.docs }}" ;;
+              core)   changed="${{ steps.changes.outputs.core }}" ;;
+              py)     changed="${{ steps.changes.outputs.py }}" ;;
+              sdk-rs) changed="${{ steps.changes.outputs['sdk-rs'] }}" ;;
+              docs)   changed="${{ steps.changes.outputs.docs }}" ;;
             esac
+            label="${area_label[$area]}"
 
-            if [[ "$changed" == "true" ]] && [[ "$labels" != *"$area"* ]]; then
-              [[ -n "$labels" ]] && labels="$labels,$area" || labels="$area"
+            if [[ "$changed" == "true" ]] && [[ "$labels" != *"$label"* ]]; then
+              [[ -n "$labels" ]] && labels="$labels,$label" || labels="$label"
             fi
           done
 

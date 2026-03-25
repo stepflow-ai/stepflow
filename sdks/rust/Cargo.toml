@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+authors = ["Ben Chambers"]
+repository = "https://github.com/stepflow-ai/stepflow"
+homepage = "https://stepflow.org"
