@@ -71,6 +71,7 @@ dev = [
     "mypy==1.19.1",
     "deptry>=0.22.0",
     "fpdf2>=2.8.0",
+    "docling-proto-step-worker[facade]",
 ]
 
 [project.urls]

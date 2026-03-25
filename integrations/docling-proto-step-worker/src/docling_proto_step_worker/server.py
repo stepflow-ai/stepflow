@@ -60,15 +60,11 @@ async def chunk(input_data: Any, context: StepflowContext) -> Any:
 
 
 def _configure_blob_store() -> None:
-    """Configure the blob store contextvars via HTTP for the current context.
+    """Validate that the blob store environment variable is set.
 
-    The gRPC worker's ``GrpcContext`` has its own blob ops, but the domain
-    modules (``blob_utils.py``) call the module-level ``blob_store`` API
-    which is backed by HTTP contextvars. We configure those here before
-    ``asyncio.run()`` so all tasks inherit the configuration.
-
-    Falls back to setting ``server._blob_api_url`` which the SDK reads
-    during per-task setup.
+    The gRPC worker reads STEPFLOW_BLOB_API_URL directly from the
+    environment at task execution time. This function validates the
+    variable is present at startup and logs a warning if missing.
     """
     blob_url = os.environ.get("STEPFLOW_BLOB_API_URL")
     if not blob_url:
@@ -80,11 +76,7 @@ def _configure_blob_store() -> None:
         )
         return
 
-    # Set the URL on the StepflowServer instance. The SDK's grpc_worker
-    # reads server._blob_api_url and passes it to the GrpcContext, plus
-    # configures blob_store contextvars within each task's async scope.
-    server._blob_api_url = blob_url
-    logger.info("Blob store URL configured on server instance: %s", blob_url)
+    logger.info("Blob store URL configured: %s", blob_url)
 
 
 READY_SENTINEL = Path("/tmp/worker-ready")
