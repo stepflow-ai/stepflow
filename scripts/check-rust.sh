@@ -55,6 +55,18 @@ run_optional_check "Unused deps" "cargo-machete" --fix "cargo machete --fix --wi
 
 run_check "Tests" cargo test --all-features || true
 
+# Integration tests for the isolation proxy need the stepflow-server binary
+# and a Python environment with stepflow_py installed. Build the binary and
+# set STEPFLOW_DEV_BINARY so the #[ignore]d tests can run.
+if [ -z "${STEPFLOW_DEV_BINARY:-}" ]; then
+    echo "  Building stepflow-server for integration tests..."
+    cargo build -p stepflow-server --no-default-features 2>/dev/null
+    export STEPFLOW_DEV_BINARY="$(pwd)/target/debug/stepflow-server"
+fi
+
+run_check "Isolation proxy integration tests" \
+    cargo test -p stepflow-isolation-proxy --test integration -- --include-ignored || true
+
 run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings || true
 
 # =============================================================================

@@ -69,6 +69,9 @@ from .components_pb2 import (
     ListRegisteredComponentsRequest,
     ListRegisteredComponentsResponse,
 )
+from .vsock_pb2 import (
+    VsockTaskEnvelope,
+)
 
 # gRPC service stubs
 from .runs_pb2_grpc import RunsServiceStub
@@ -133,4 +136,5 @@ __all__ = [
     "HealthServiceStub",
     "BlobServiceStub",
     "ComponentsServiceStub",
+    "VsockTaskEnvelope",
 ]

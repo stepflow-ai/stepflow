@@ -315,8 +315,66 @@ fn parse_max_concurrent(s: &str) -> Result<usize, String> {
 
 /// Connect to the tasks service and open a `PullTasks` stream.
 ///
-/// Returns `(channel, stream)` on success so the channel can be reused for
+/// Returns `(channel, stream)` — the channel can be reused for
 /// `OrchestratorService` callbacks on the same connection.
+///
+/// This is the low-level building block for custom dispatch loops (e.g.,
+/// the Firecracker proxy) that need raw access to the task stream without
+/// the full [`Worker`] lifecycle (heartbeat, execute, complete).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use stepflow_worker::open_task_stream;
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let (channel, mut stream) = open_task_stream(
+///     "http://127.0.0.1:7837",
+///     "my-queue",
+///     "proxy-worker-1",
+/// ).await?;
+///
+/// while let Some(assignment) = stream.message().await? {
+///     // Forward assignment to a VM, subprocess, etc.
+///     println!("Got task: {}", assignment.task_id);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn open_task_stream(
+    tasks_url: &str,
+    queue_name: &str,
+    worker_id: &str,
+) -> Result<
+    (
+        tonic::transport::Channel,
+        tonic::codec::Streaming<TaskAssignment>,
+    ),
+    WorkerError,
+> {
+    let endpoint = tonic::transport::Channel::from_shared(tasks_url.to_string())
+        .map_err(|e| WorkerError::Config(format!("Invalid tasks URL '{tasks_url}': {e}")))?;
+
+    let channel = endpoint.connect().await.map_err(|e| {
+        WorkerError::Config(format!(
+            "Failed to connect to tasks service at '{tasks_url}': {e}"
+        ))
+    })?;
+
+    let mut tasks_client = TasksServiceClient::new(channel.clone());
+    let stream = tasks_client
+        .pull_tasks(PullTasksRequest {
+            queue_name: queue_name.to_string(),
+            worker_id: worker_id.to_string(),
+        })
+        .await
+        .map_err(WorkerError::Stream)?
+        .into_inner();
+
+    Ok((channel, stream))
+}
+
+/// Connect to the tasks service and open a `PullTasks` stream using a [`WorkerConfig`].
 async fn open_stream(
     config: &WorkerConfig,
     worker_id: &str,
@@ -327,29 +385,7 @@ async fn open_stream(
     ),
     WorkerError,
 > {
-    let endpoint =
-        tonic::transport::Channel::from_shared(config.tasks_url.clone()).map_err(|e| {
-            WorkerError::Config(format!("Invalid tasks URL '{}': {e}", config.tasks_url))
-        })?;
-
-    let channel = endpoint.connect().await.map_err(|e| {
-        WorkerError::Config(format!(
-            "Failed to connect to tasks service at '{}': {e}",
-            config.tasks_url
-        ))
-    })?;
-
-    let mut tasks_client = TasksServiceClient::new(channel.clone());
-    let stream = tasks_client
-        .pull_tasks(PullTasksRequest {
-            queue_name: config.queue_name.clone(),
-            worker_id: worker_id.to_string(),
-        })
-        .await
-        .map_err(WorkerError::Stream)?
-        .into_inner();
-
-    Ok((channel, stream))
+    open_task_stream(&config.tasks_url, &config.queue_name, worker_id).await
 }
 
 /// Spawn a task handler into the in-flight set.

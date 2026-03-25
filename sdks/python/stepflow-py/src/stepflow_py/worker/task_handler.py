@@ -128,6 +128,7 @@ async def handle_task(
     worker_id: str,
     queue_name: str,
     tracer_name: str = "stepflow-worker",
+    tasks_url: str = "",
 ) -> None:
     """Handle a single task: claim, execute, complete.
 
@@ -307,7 +308,12 @@ async def handle_task(
             # Execute the component
             try:
                 output = await execute_component(
-                    server, component, input_data, task, path_params
+                    server,
+                    component,
+                    input_data,
+                    task,
+                    path_params,
+                    tasks_url=tasks_url,
                 )
                 # Convert output to proto Value
                 proto_output = python_to_proto_value(output)
@@ -404,6 +410,7 @@ async def execute_component(
     input_data: Any,
     task: TaskAssignment,
     path_params: dict[str, str],
+    tasks_url: str = "",
 ) -> Any:
     """Execute a component function and return its output."""
     import msgspec
@@ -457,7 +464,7 @@ async def execute_component(
             url=orch_url,
             run_id=obs_run_id,
             root_run_id=root_run_id,
-            tasks_url="",
+            tasks_url=tasks_url,
         )
         context = GrpcContext(
             orchestrator_tracker=tracker,

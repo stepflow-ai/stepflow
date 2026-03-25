@@ -68,6 +68,16 @@ Environment variables:
         action="store_true",
         help="Use NATS JetStream transport",
     )
+    transport_group.add_argument(
+        "--vsock-port",
+        type=int,
+        help="Use vsock transport on specified port (for Firecracker VMs)",
+    )
+    transport_group.add_argument(
+        "--socket",
+        type=str,
+        help="Use Unix socket transport at specified path (dev mode)",
+    )
     parser.add_argument(
         "--tasks-url",
         type=str,
@@ -109,14 +119,28 @@ Environment variables:
 
     # Transport precedence: CLI flags > STEPFLOW_TRANSPORT env > default (grpc)
     transport_env = os.environ.get("STEPFLOW_TRANSPORT", "grpc").lower()
-    if args.nats:
+    if args.vsock_port is not None or args.socket is not None:
+        transport = "vsock"
+    elif args.nats:
         transport = "nats"
     elif args.grpc:
         transport = "grpc"
     else:
         transport = transport_env
 
-    if transport == "nats":
+    if transport == "vsock":
+        # Start vsock/socket worker
+        from stepflow_py.worker.vsock_worker import run_vsock_worker
+
+        asyncio.run(
+            run_vsock_worker(
+                server=server,
+                vsock_port=args.vsock_port,
+                socket_path=args.socket,
+                max_concurrent=args.max_concurrent,
+            )
+        )
+    elif transport == "nats":
         # Start NATS JetStream worker
         from stepflow_py.worker.nats_worker import run_nats_worker
 
