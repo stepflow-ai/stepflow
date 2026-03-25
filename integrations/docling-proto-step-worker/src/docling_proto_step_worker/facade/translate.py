@@ -197,9 +197,7 @@ def run_status_to_poll_response(
         if results:
             item = results[0]
             error = item.get("error", {})
-            response["error_message"] = error.get(
-                "message", "Flow execution failed"
-            )
+            response["error_message"] = error.get("message", "Flow execution failed")
 
     return response
 
