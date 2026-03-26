@@ -45,9 +45,9 @@ use std::future::Future;
 use std::sync::Arc;
 
 use serde_json::json;
-use stepflow_core::status::ExecutionStatus;
+use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
-use stepflow_core::{FlowResult, ValueExpr};
+use stepflow_core::{FlowError, FlowResult, TaskErrorCode, ValueExpr};
 use stepflow_domain::ResultOrder;
 use uuid::Uuid;
 
@@ -85,6 +85,13 @@ impl MetadataComplianceTests {
         Self::test_item_results_single_item(store).await;
         Self::test_item_results_multiple_items(store).await;
         Self::test_item_results_ordering_by_index(store).await;
+
+        // Step status tests
+        Self::test_step_status_round_trip(store).await;
+        Self::test_step_status_large_result(store).await;
+        Self::test_step_status_none_result(store).await;
+        Self::test_step_status_update(store).await;
+        Self::test_step_status_failed_result(store).await;
     }
 
     /// Run all compliance tests with a fresh store for each test.
@@ -126,6 +133,13 @@ impl MetadataComplianceTests {
         Self::test_item_results_single_item(&factory().await).await;
         Self::test_item_results_multiple_items(&factory().await).await;
         Self::test_item_results_ordering_by_index(&factory().await).await;
+
+        // Step status tests
+        Self::test_step_status_round_trip(&factory().await).await;
+        Self::test_step_status_large_result(&factory().await).await;
+        Self::test_step_status_none_result(&factory().await).await;
+        Self::test_step_status_update(&factory().await).await;
+        Self::test_step_status_failed_result(&factory().await).await;
     }
 
     // =========================================================================
@@ -953,6 +967,280 @@ impl MetadataComplianceTests {
         assert_eq!(results[1].item_index, 1);
         assert_eq!(results[2].item_index, 2);
     }
+
+    // =========================================================================
+    // Step Status Tests
+    // =========================================================================
+
+    /// Test that step statuses can be written and read back.
+    ///
+    /// Contract: update_step_status followed by get_step_statuses returns the
+    /// correct entries ordered by step_index.
+    pub async fn test_step_status_round_trip<M: MetadataStore + BlobStore>(store: &M) {
+        let (run_id, _) = create_run_with_steps(store, &["classify", "convert", "chunk"]).await;
+
+        let result_a = FlowResult::from(json!({"doc_type": "paper"}));
+        let result_b = FlowResult::from(json!({"chunks": ["c1", "c2"]}));
+        let result_c = FlowResult::from(json!({"summary": "ok"}));
+
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "classify",
+                0,
+                StepStatus::Completed,
+                Some("/mock/classify"),
+                Some(result_a.clone()),
+                SequenceNumber::new(1),
+            )
+            .await
+            .expect("update_step_status should succeed");
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "convert",
+                1,
+                StepStatus::Completed,
+                Some("/mock/convert"),
+                Some(result_b.clone()),
+                SequenceNumber::new(2),
+            )
+            .await
+            .expect("update_step_status should succeed");
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "chunk",
+                2,
+                StepStatus::Completed,
+                Some("/mock/chunk"),
+                Some(result_c.clone()),
+                SequenceNumber::new(3),
+            )
+            .await
+            .expect("update_step_status should succeed");
+
+        let mut statuses = store
+            .get_step_statuses(run_id, None, None)
+            .await
+            .expect("get_step_statuses should succeed");
+        statuses.sort_by_key(|s| s.step_index);
+
+        assert_eq!(statuses.len(), 3, "Should have 3 step statuses");
+        assert_eq!(statuses[0].step_id, "classify");
+        assert_eq!(statuses[0].status, StepStatus::Completed);
+        assert_eq!(statuses[0].result, Some(result_a));
+        assert_eq!(statuses[1].step_id, "convert");
+        assert_eq!(statuses[1].result, Some(result_b));
+        assert_eq!(statuses[2].step_id, "chunk");
+        assert_eq!(statuses[2].result, Some(result_c));
+    }
+
+    /// Test that large result payloads round-trip correctly.
+    ///
+    /// Contract: result_json values up to at least 2MB are stored and
+    /// retrieved without truncation or corruption.
+    pub async fn test_step_status_large_result<M: MetadataStore + BlobStore>(store: &M) {
+        let (run_id, _) = create_run_with_steps(store, &["convert"]).await;
+
+        let large_text = "x".repeat(2_000_000);
+        let large_result = FlowResult::from(json!({
+            "pages": [{"page_num": 1, "text": large_text}],
+            "metadata": {"format": "pdf", "page_count": 1}
+        }));
+
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "convert",
+                0,
+                StepStatus::Completed,
+                Some("/mock/convert"),
+                Some(large_result.clone()),
+                SequenceNumber::new(1),
+            )
+            .await
+            .expect("writing large result should succeed");
+
+        let statuses = store
+            .get_step_statuses(run_id, None, None)
+            .await
+            .expect("reading large result should succeed");
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].result, Some(large_result));
+    }
+
+    /// Test that step statuses with no result are handled correctly.
+    ///
+    /// Contract: A step in Running status with result=None stores and
+    /// retrieves a None result.
+    pub async fn test_step_status_none_result<M: MetadataStore + BlobStore>(store: &M) {
+        let (run_id, _) = create_run_with_steps(store, &["classify"]).await;
+
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "classify",
+                0,
+                StepStatus::Running,
+                Some("/mock/classify"),
+                None,
+                SequenceNumber::new(1),
+            )
+            .await
+            .expect("update_step_status with None result should succeed");
+
+        let statuses = store
+            .get_step_statuses(run_id, None, None)
+            .await
+            .expect("get_step_statuses should succeed");
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, StepStatus::Running);
+        assert!(statuses[0].result.is_none(), "result should be None");
+    }
+
+    /// Test that step statuses can be updated (upsert behavior).
+    ///
+    /// Contract: A second update_step_status for the same (run_id, item_index,
+    /// step_id) replaces the previous status and result.
+    pub async fn test_step_status_update<M: MetadataStore + BlobStore>(store: &M) {
+        let (run_id, _) = create_run_with_steps(store, &["classify"]).await;
+
+        // First write: Running, no result
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "classify",
+                0,
+                StepStatus::Running,
+                Some("/mock/classify"),
+                None,
+                SequenceNumber::new(1),
+            )
+            .await
+            .unwrap();
+
+        // Second write: Completed, with result
+        let result = FlowResult::from(json!({"doc_type": "invoice"}));
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "classify",
+                0,
+                StepStatus::Completed,
+                Some("/mock/classify"),
+                Some(result.clone()),
+                SequenceNumber::new(2),
+            )
+            .await
+            .unwrap();
+
+        let statuses = store
+            .get_step_statuses(run_id, None, None)
+            .await
+            .expect("get_step_statuses after update should succeed");
+
+        assert_eq!(statuses.len(), 1, "Should still be 1 entry after upsert");
+        assert_eq!(statuses[0].status, StepStatus::Completed);
+        assert_eq!(statuses[0].result, Some(result));
+        assert_eq!(
+            statuses[0].journal_seqno, 2,
+            "seqno should reflect the update"
+        );
+    }
+
+    /// Test that FlowResult::Failed round-trips correctly.
+    ///
+    /// Contract: A failed step result preserves the error code and message.
+    pub async fn test_step_status_failed_result<M: MetadataStore + BlobStore>(store: &M) {
+        let (run_id, _) = create_run_with_steps(store, &["convert"]).await;
+
+        let error = FlowError::new(TaskErrorCode::ComponentFailed, "conversion failed");
+        let failed_result = FlowResult::Failed(error);
+
+        store
+            .update_step_status(
+                run_id,
+                0,
+                "convert",
+                0,
+                StepStatus::Failed,
+                Some("/mock/convert"),
+                Some(failed_result.clone()),
+                SequenceNumber::new(1),
+            )
+            .await
+            .unwrap();
+
+        let statuses = store
+            .get_step_statuses(run_id, None, None)
+            .await
+            .expect("get_step_statuses with failed result should succeed");
+
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].status, StepStatus::Failed);
+        assert_eq!(statuses[0].result, Some(failed_result));
+    }
+}
+
+/// Create a run backed by a flow with the given step names.
+///
+/// Returns (run_id, flow_id).
+async fn create_run_with_steps<M: MetadataStore + BlobStore>(
+    store: &M,
+    step_names: &[&str],
+) -> (Uuid, String) {
+    let steps: Vec<_> = step_names
+        .iter()
+        .map(|name| {
+            StepBuilder::new(*name)
+                .component(format!("/mock/{name}"))
+                .input(ValueExpr::Input {
+                    input: Default::default(),
+                })
+                .build()
+        })
+        .collect();
+
+    let output_step = step_names.last().expect("at least one step");
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(steps)
+            .output(ValueExpr::Step {
+                step: output_step.to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    let flow_id = store
+        .store_flow(flow)
+        .await
+        .expect("store_flow should succeed");
+
+    let run_id = Uuid::now_v7();
+    let input = ValueRef::new(json!({"test": true}));
+
+    store
+        .create_run(CreateRunParams::new(
+            run_id,
+            flow_id.clone(),
+            vec![input],
+            SequenceNumber::new(0),
+        ))
+        .await
+        .expect("create_run should succeed");
+
+    (run_id, flow_id.to_string())
 }
 
 /// Create a simple test flow with one step.
