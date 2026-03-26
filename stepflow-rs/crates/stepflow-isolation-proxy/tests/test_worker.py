@@ -31,12 +31,29 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+import time as _time
+
 import msgspec
 
 from stepflow_py.worker.server import StepflowServer
 from stepflow_py.worker.vsock_worker import run_vsock_worker
 
 logger = logging.getLogger(__name__)
+
+# Simulate a heavy dependency load (like Langflow, ML models, etc.)
+# In a subprocess worker, this cost is paid on EVERY task invocation.
+# In Firecracker with snapshots, this is paid once at snapshot creation time.
+import hashlib
+
+_heavy_load_start = _time.monotonic()
+_lookup_table = {}
+for _i in range(500_000):
+    _key = hashlib.md5(str(_i).encode()).hexdigest()[:12]
+    _lookup_table[_key] = _i * 42
+_heavy_load_ms = (_time.monotonic() - _heavy_load_start) * 1000
+logger.info(
+    "TIMING: heavy_dependency_load=%.0fms (%d entries)", _heavy_load_ms, len(_lookup_table)
+)
 
 
 class DoubleInput(msgspec.Struct):
@@ -52,7 +69,16 @@ server = StepflowServer()
 
 @server.component
 def double(input: DoubleInput) -> DoubleOutput:
-    logger.info("double called with value=%d", input.value)
+    # Use the pre-loaded lookup table to prove data is accessible
+    key = hashlib.md5(str(input.value).encode()).hexdigest()[:12]
+    looked_up = _lookup_table.get(key)
+    expected = input.value * 42
+    logger.info(
+        "double(%d): lookup_table has %d entries, verified=%s",
+        input.value,
+        len(_lookup_table),
+        looked_up == expected,
+    )
     return DoubleOutput(result=input.value * 2)
 
 

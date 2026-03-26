@@ -1,0 +1,13 @@
+{
+  "flow": {
+    "name": "firecracker-test",
+    "steps": [
+      {
+        "id": "double",
+        "component": "/fc/double",
+        "input": { "$input": "" }
+      }
+    ],
+    "output": { "$step": "double" }
+  }
+}

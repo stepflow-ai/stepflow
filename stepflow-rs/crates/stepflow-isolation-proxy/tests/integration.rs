@@ -113,12 +113,12 @@ async fn test_dev_mode_double() {
 
     let tasks_url = orch.tasks_url().to_string();
 
-    // 2. Start the Python test worker FIRST so it's ready when we send the task.
-    //    This avoids the orchestrator timing out the task while uv resolves deps.
+    // 2. Start the Python test worker and measure startup time (dep loading).
     let socket_path = format!("/tmp/stepflow-test-{}.sock", uuid::Uuid::new_v4());
     let py_project = stepflow_py_project_dir();
     let worker_script = test_worker_script();
 
+    let env_start = std::time::Instant::now();
     let child = tokio::process::Command::new("uv")
         .args([
             "run",
@@ -149,6 +149,9 @@ async fn test_dev_mode_double() {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    let env_ready = env_start.elapsed();
+    eprintln!("TIMING: subprocess env_create={env_ready:?} (spawn + dep load + listen)");
+
     // 3. Connect to the worker socket (but don't send anything yet)
     let mut conn = tokio::net::UnixStream::connect(&socket_path)
         .await
@@ -177,6 +180,7 @@ async fn test_dev_mode_double() {
         .await
         .expect("Failed to store flow");
 
+    let submit_time = std::time::Instant::now();
     let run_id = client
         .submit(&flow_id, serde_json::json!({"value": 21}))
         .await
@@ -231,11 +235,22 @@ async fn test_dev_mode_double() {
         .await
         .expect("Failed to get run status");
 
+    let complete_time = submit_time.elapsed();
+
     // Status 2 = Completed
     assert_eq!(
         run_status.status, 2,
         "Expected run to be completed (2), got {}",
         run_status.status
+    );
+
+    eprintln!("TIMING: subprocess env_create={env_ready:?} (NOT pre-warmed, paid per task)");
+    eprintln!(
+        "TIMING: subprocess execute_and_complete={complete_time:?} (submit → orchestrator reports done)"
+    );
+    eprintln!(
+        "TIMING: subprocess total_per_task={:?} (env_create + execute)",
+        env_ready + complete_time
     );
 
     // Fetch outputs separately (get_run doesn't include them)
