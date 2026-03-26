@@ -32,6 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "stepflow/v1/blobs.proto",
         "stepflow/v1/flows.proto",
         "stepflow/v1/runs.proto",
+        "stepflow/v1/vsock.proto",
     ]
     .iter()
     .map(|p| proto_root.join(p).to_str().unwrap().to_string())

@@ -1,0 +1,40 @@
+[package]
+name = "stepflow-isolation-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Stepflow isolation proxy — dispatches tasks to sandboxed workers via vsock"
+
+[[bin]]
+name = "stepflow-isolation-proxy"
+path = "src/main.rs"
+
+[dependencies]
+# Stepflow
+stepflow-worker = { path = "../../../sdks/rust/crates/stepflow-worker" }
+stepflow-proto = { path = "../stepflow-proto" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+stepflow-client = { path = "../../../sdks/rust/crates/stepflow-client", features = ["local-server"] }
+serde_json = "1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

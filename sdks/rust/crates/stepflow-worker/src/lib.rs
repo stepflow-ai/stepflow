@@ -67,9 +67,10 @@ pub mod context;
 pub mod error;
 pub mod registry;
 pub mod task_handler;
+pub mod vsock;
 pub mod worker;
 
 pub use context::{ComponentContext, RunStatus};
 pub use error::{ComponentError, ContextError, WorkerError};
 pub use registry::{Component, ComponentRegistry};
-pub use worker::{Worker, WorkerConfig};
+pub use worker::{Worker, WorkerConfig, open_task_stream};

@@ -60,6 +60,7 @@ uv run --project stepflow-py python -m grpc_tools.protoc \
     stepflow/v1/flows.proto \
     stepflow/v1/health.proto \
     stepflow/v1/components.proto \
+    stepflow/v1/vsock.proto \
     google/api/annotations.proto \
     google/api/http.proto \
     gnostic/openapi/v3/annotations.proto \
@@ -221,6 +222,9 @@ from .components_pb2 import (
     ListRegisteredComponentsRequest,
     ListRegisteredComponentsResponse,
 )
+from .vsock_pb2 import (
+    VsockTaskEnvelope,
+)
 
 # gRPC service stubs
 from .runs_pb2_grpc import RunsServiceStub
@@ -285,6 +289,7 @@ __all__ = [
     "HealthServiceStub",
     "BlobServiceStub",
     "ComponentsServiceStub",
+    "VsockTaskEnvelope",
 ]
 EOF
 
