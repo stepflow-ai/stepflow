@@ -53,7 +53,8 @@ data:
       url: "http://docling-orchestrator:7840/api/v1/blobs"
 
     storageConfig:
-      type: inMemory
+      type: sqlite
+      databaseUrl: "sqlite:/data/stepflow.db?mode=rwc"
 
     retry:
       transportMaxRetries: 60

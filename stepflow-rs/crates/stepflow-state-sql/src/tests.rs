@@ -669,3 +669,106 @@ async fn test_incremental_migrations() {
     assert!(table_exists(&pool, "step_results").await);
     assert!(table_exists(&pool, "run_items").await);
 }
+
+// =========================================================================
+// SQLite-specific step status tests (issue #849)
+//
+// Contract-level step status tests are in metadata_compliance.rs and run
+// against all state store backends. The test below exercises SQLite-specific
+// behavior: file-backed storage with concurrent pool connections, validating
+// that PRAGMAs (journal_mode=WAL, busy_timeout) are applied to ALL pool
+// connections.
+// =========================================================================
+
+#[tokio::test]
+async fn test_step_status_concurrent_read_write_file_backed() {
+    use crate::SqliteStateStoreConfig;
+    use std::sync::Arc;
+    use stepflow_core::ValueExpr;
+    use stepflow_core::status::StepStatus;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder};
+    use stepflow_state::{BlobStore as _, CreateRunParams, MetadataStore as _};
+
+    // Use a file-backed SQLite database to exercise the same code path as production.
+    // This specifically tests that PRAGMAs (journal_mode=WAL, busy_timeout) are set
+    // on ALL pool connections, not just the first one.
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("test.db");
+    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
+
+    let store = SqliteStateStore::new(SqliteStateStoreConfig {
+        database_url: db_url,
+        max_connections: 10,
+        auto_migrate: true,
+    })
+    .await
+    .unwrap();
+
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("step1")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "step1".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+    let flow_id = store.store_flow(flow).await.unwrap();
+
+    let store = Arc::new(store);
+
+    // Spawn concurrent writes and reads to exercise pool connection contention.
+    let mut handles = Vec::new();
+    for i in 0..10u32 {
+        let store = store.clone();
+        let flow_id = flow_id.clone();
+        handles.push(tokio::spawn(async move {
+            let run_id = Uuid::now_v7();
+            let input = ValueRef::new(json!({"idx": i}));
+            store
+                .create_run(CreateRunParams::new(
+                    run_id,
+                    flow_id,
+                    vec![input],
+                    SequenceNumber::new(0),
+                ))
+                .await
+                .unwrap();
+
+            // Write step status
+            let result = FlowResult::from(json!({"value": i}));
+            store
+                .update_step_status(
+                    run_id,
+                    0,
+                    "step1",
+                    0,
+                    StepStatus::Completed,
+                    Some("/mock/test"),
+                    Some(result.clone()),
+                    SequenceNumber::new(1),
+                )
+                .await
+                .unwrap();
+
+            // Read it back immediately (while other tasks are writing)
+            let statuses = store
+                .get_step_statuses(run_id, None, None)
+                .await
+                .expect("concurrent read should succeed");
+            assert_eq!(statuses.len(), 1);
+            assert_eq!(statuses[0].result, Some(result));
+        }));
+    }
+
+    for h in handles {
+        h.await.unwrap();
+    }
+}

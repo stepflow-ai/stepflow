@@ -51,6 +51,8 @@ spec:
               name: docling-orchestrator-config
           - configMap:
               name: docling-flow-config
+      - name: stepflow-data
+        emptyDir: {}
       # No init container — workers connect to orchestrator, not the other way around
       containers:
       # Container 1: docling-facade — docling-serve compatible HTTP API
@@ -166,6 +168,8 @@ spec:
         - name: config
           mountPath: /app/config
           readOnly: true
+        - name: stepflow-data
+          mountPath: /data
         resources:
           requests:
             cpu: 200m

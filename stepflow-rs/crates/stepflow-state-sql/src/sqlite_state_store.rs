@@ -14,7 +14,10 @@ use std::collections::HashSet;
 
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
-use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool, sqlite::SqlitePoolOptions};
+use sqlx::{
+    QueryBuilder, Row as _, Sqlite, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult};
 use stepflow_domain::{
@@ -55,24 +58,57 @@ fn parse_step_status(s: &str) -> StepStatus {
 fn row_to_step_status_entry(
     row: &sqlx::sqlite::SqliteRow,
 ) -> error_stack::Result<StepStatusEntry, StateError> {
-    let step_id: String = row.get("step_id");
-    let step_index: i64 = row.get("step_index");
-    let item_index: i64 = row.get("item_index");
-    let status_str: String = row.get("status");
-    let component: Option<String> = row.get("component");
-    let result_json: Option<String> = row.get("result_json");
-    let journal_seqno: i64 = row.get("journal_seqno");
-    let updated_at_str: String = row.get("updated_at");
+    let step_id: String = row
+        .try_get("step_id")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode step_id column")?;
+    let step_index: i64 = row
+        .try_get("step_index")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode step_index column")?;
+    let item_index: i64 = row
+        .try_get("item_index")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode item_index column")?;
+    let status_str: String = row
+        .try_get("status")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode status column")?;
+    let component: Option<String> = row
+        .try_get("component")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode component column")?;
+    let result_json: Option<String> = row
+        .try_get("result_json")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode result_json column")?;
+    let journal_seqno: i64 = row
+        .try_get("journal_seqno")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode journal_seqno column")?;
+    let updated_at_str: Option<String> = row
+        .try_get("updated_at")
+        .change_context(StateError::Internal)
+        .attach_printable("failed to decode updated_at column")?;
 
     let result = result_json
         .map(|json| serde_json::from_str::<FlowResult>(&json))
         .transpose()
-        .change_context(StateError::Serialization)?;
+        .change_context(StateError::Serialization)
+        .attach_printable_lazy(|| {
+            format!("failed to deserialize result_json for step '{step_id}'")
+        })?;
 
-    let updated_at = parse_sqlite_datetime(&updated_at_str).unwrap_or_else(|| {
-        log::warn!("Failed to parse updated_at timestamp: {updated_at_str}");
-        chrono::Utc::now()
-    });
+    let updated_at = updated_at_str
+        .as_deref()
+        .and_then(parse_sqlite_datetime)
+        .unwrap_or_else(|| {
+            log::warn!(
+                "Missing or unparseable updated_at for step '{step_id}': {:?}",
+                updated_at_str
+            );
+            chrono::Utc::now()
+        });
 
     Ok(StepStatusEntry {
         step_id,
@@ -139,25 +175,31 @@ impl SqliteStateStore {
     /// For selective initialization, set `auto_migrate` to false and call the
     /// trait-level `initialize_*` methods instead.
     pub async fn new(config: SqliteStateStoreConfig) -> Result<Self, StateError> {
+        // Parse connection options and set PRAGMAs that apply to EVERY connection
+        // in the pool. This is critical because PRAGMA busy_timeout is per-connection
+        // in SQLite — setting it on just one connection (via sqlx::query) leaves other
+        // pool connections with busy_timeout=0, causing immediate SQLITE_BUSY failures
+        // under any write contention.
+        let connect_options = config
+            .database_url
+            .parse::<SqliteConnectOptions>()
+            .map_err(|e| {
+                error_stack::report!(StateError::Connection).attach_printable(format!(
+                    "Invalid database URL '{}': {e}",
+                    config.database_url
+                ))
+            })?;
+
+        let connect_options = connect_options
+            .pragma("journal_mode", "WAL")
+            .pragma("busy_timeout", "5000");
+
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)
-            .connect(&config.database_url)
+            .connect_with(connect_options)
             .await
             .change_context(StateError::Connection)
             .attach_printable_lazy(|| format!("Database URL: {}", config.database_url))?;
-
-        // Enable WAL mode for safe concurrent access from multiple processes
-        // and set a busy timeout so writers wait rather than fail immediately.
-        sqlx::query("PRAGMA journal_mode=WAL")
-            .execute(&pool)
-            .await
-            .change_context(StateError::Connection)
-            .attach_printable("Failed to set WAL journal mode")?;
-        sqlx::query("PRAGMA busy_timeout=5000")
-            .execute(&pool)
-            .await
-            .change_context(StateError::Connection)
-            .attach_printable("Failed to set busy timeout")?;
 
         if config.auto_migrate {
             migrations::run_all_migrations(&pool).await?;
@@ -1011,11 +1053,19 @@ impl MetadataStore for SqliteStateStore {
                 .build()
                 .fetch_all(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("SQL fetch_all failed for step_statuses (run_id={run_id})")
+                })?;
 
-            let mut entries = Vec::new();
+            let mut entries = Vec::with_capacity(rows.len());
             for row in &rows {
-                entries.push(row_to_step_status_entry(row)?);
+                entries.push(row_to_step_status_entry(row).attach_printable_lazy(|| {
+                    format!(
+                        "failed to convert row for run_id={run_id}, row_count={}",
+                        rows.len()
+                    )
+                })?);
             }
 
             Ok(entries)
