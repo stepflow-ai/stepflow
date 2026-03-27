@@ -382,11 +382,6 @@ impl SqliteStateStore {
     /// For selective initialization, set `auto_migrate` to false and call the
     /// trait-level `initialize_*` methods instead.
     pub async fn new(config: SqliteStateStoreConfig) -> Result<Self, StateError> {
-        // Parse connection options and set PRAGMAs that apply to EVERY connection
-        // in the pool. This is critical because PRAGMA busy_timeout is per-connection
-        // in SQLite — setting it on just one connection (via sqlx::query) leaves other
-        // pool connections with busy_timeout=0, causing immediate SQLITE_BUSY failures
-        // under any write contention.
         let connect_options = config
             .database_url
             .parse::<SqliteConnectOptions>()
@@ -398,8 +393,16 @@ impl SqliteStateStore {
             })?;
 
         let connect_options = connect_options
+            // WAL mode allows concurrent readers during writes — the facade
+            // polls for status while the execution engine writes step results.
             .pragma("journal_mode", "WAL")
-            .pragma("busy_timeout", "5000");
+            // Writers wait up to 5s instead of failing immediately on contention.
+            .pragma("busy_timeout", "5000")
+            // Store temporary tables and indices in memory. Without this,
+            // SQLite tries to create temp files in /tmp which fails with
+            // SQLITE_IOERR_GETTEMPPATH (6410) when the container has
+            // readOnlyRootFilesystem: true.
+            .pragma("temp_store", "MEMORY");
 
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)

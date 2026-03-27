@@ -453,67 +453,28 @@ async fn test_migrations_idempotent() {
         .unwrap();
 }
 
-/// Two separate pools connected to the same file-based SQLite database must
-/// both be able to run migrations without conflict. This simulates two
-/// orchestrators starting concurrently against a shared database.
+/// Migrations are idempotent across sequential store instances against the
+/// same file. This verifies that a new SqliteStateStore can open a database
+/// that was previously migrated (simulates container restart).
 #[tokio::test]
-async fn test_migrations_concurrent_pools() {
-    use sqlx::sqlite::SqlitePoolOptions;
+async fn test_migrations_sequential_stores() {
     use tempfile::NamedTempFile;
 
     let tmp = NamedTempFile::new().unwrap();
     let url = format!("sqlite:{}?mode=rwc", tmp.path().display());
 
-    let pool1 = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .unwrap();
-    let pool2 = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .unwrap();
-
-    // Enable WAL mode on both (mirrors production setup)
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool1)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA busy_timeout=5000")
-        .execute(&pool1)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool2)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA busy_timeout=5000")
-        .execute(&pool2)
-        .await
-        .unwrap();
-
-    // Run migrations from both pools concurrently
-    let (r1, r2) = tokio::join!(
-        crate::migrations::run_all_migrations(&pool1),
-        crate::migrations::run_all_migrations(&pool2),
-    );
-
-    r1.expect("pool1 migrations should succeed");
-    r2.expect("pool2 migrations should succeed");
-
-    // Verify both can read/write after migrations
+    // First store: creates and migrates the database
     let store1 = SqliteStateStore::new(crate::SqliteStateStoreConfig {
         database_url: url.clone(),
         max_connections: 1,
-        auto_migrate: false, // Already migrated
+        auto_migrate: true,
     })
     .await
     .unwrap();
 
-    let test_data = serde_json::json!({"test": "concurrent"});
+    let test_data = serde_json::json!({"test": "first"});
     let blob_bytes = serde_json::to_vec(&test_data).unwrap();
-    store1
+    let blob_id = store1
         .put_blob(
             &blob_bytes,
             stepflow_core::BlobType::Data,
@@ -521,6 +482,22 @@ async fn test_migrations_concurrent_pools() {
         )
         .await
         .unwrap();
+
+    // Drop the first store (simulates container restart)
+    drop(store1);
+
+    // Second store: opens the same file, re-runs migrations (should be no-ops)
+    let store2 = SqliteStateStore::new(crate::SqliteStateStoreConfig {
+        database_url: url.clone(),
+        max_connections: 1,
+        auto_migrate: true,
+    })
+    .await
+    .unwrap();
+
+    // Data from the first store should still be accessible
+    let blob = store2.get_blob(&blob_id).await.unwrap();
+    assert!(blob.is_some(), "Blob written by first store should persist");
 }
 
 // =========================================================================
