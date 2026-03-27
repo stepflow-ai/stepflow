@@ -95,6 +95,7 @@ sqlx = { version = "0.8", features = [
     "runtime-tokio-rustls",
     "uuid",
     "sqlite",
+    "derive",
 ] }
 static_assertions = "1.1.0"
 stepflow-analysis = { path = "./crates/stepflow-analysis" }
