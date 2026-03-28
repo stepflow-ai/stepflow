@@ -141,6 +141,11 @@ which = { version = "7.0.3", features = ["tracing"] }
 strum = { version = "0.26", features = ["derive"] }
 tonic = { version = "0.14", features = ["transport"] }
 prost-wkt-types = "0.7"
+env_logger = "0.11"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 
 # Enable max optimizations for dependencies, but not for our code
 [profile.dev.package."*"]

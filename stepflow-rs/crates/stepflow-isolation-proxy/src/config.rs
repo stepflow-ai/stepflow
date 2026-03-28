@@ -103,5 +103,21 @@ pub enum Backend {
         /// Disable snapshot-based restore (boot each VM from scratch).
         #[arg(long, env = "STEPFLOW_FC_NO_SNAPSHOT")]
         no_snapshot: bool,
+
+        /// Path to the jailer binary.
+        #[arg(
+            long,
+            env = "STEPFLOW_FC_JAILER",
+            default_value = "/usr/local/bin/jailer"
+        )]
+        jailer: String,
+
+        /// UID for Firecracker inside the jail.
+        #[arg(long, env = "STEPFLOW_FC_UID", default_value = "1000")]
+        uid: u32,
+
+        /// GID for Firecracker inside the jail.
+        #[arg(long, env = "STEPFLOW_FC_GID", default_value = "1000")]
+        gid: u32,
     },
 }

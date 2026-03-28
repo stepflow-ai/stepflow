@@ -214,9 +214,19 @@ async def handle_task(
 
         # Open a shared channel to the run-owning orchestrator for
         # heartbeats and CompleteTask
+        import time as _time
+
+        _t0 = _time.monotonic()
+
         if orchestrator_url:
             orch_channel = grpc.aio.insecure_channel(orchestrator_url)
             stub = OrchestratorServiceStub(orch_channel)
+            _t_channel = _time.monotonic()
+            logger.info(
+                "TIMING: channel_open=%.1fms url=%s",
+                (_t_channel - _t0) * 1000,
+                orchestrator_url,
+            )
 
             # Send initial heartbeat to claim the task. Retries on UNAVAILABLE
             # (run is being recovered — task_id may be re-registered shortly).
@@ -257,6 +267,12 @@ async def handle_task(
                         e.code(),
                     )
                     return
+            _t_claimed = _time.monotonic()
+            logger.info(
+                "TIMING: heartbeat_claim=%.1fms (attempts=%d)",
+                (_t_claimed - _t_channel) * 1000,
+                claim_attempt + 1 if claimed else 5,
+            )
             if not claimed:
                 logger.warning(
                     "Task %s not ready after 5 attempts, skipping", task.task_id
@@ -307,6 +323,7 @@ async def handle_task(
 
             # Execute the component
             try:
+                _t_exec_start = _time.monotonic()
                 output = await execute_component(
                     server,
                     component,
@@ -315,12 +332,20 @@ async def handle_task(
                     path_params,
                     tasks_url=tasks_url,
                 )
+                _t_exec_done = _time.monotonic()
                 # Convert output to proto Value
                 proto_output = python_to_proto_value(output)
                 await _complete_task_success(
                     task,
                     proto_output,
                     queue_name=queue_name,
+                )
+                _t_complete = _time.monotonic()
+                logger.info(
+                    "TIMING: execute=%.1fms complete_task=%.1fms total=%.1fms",
+                    (_t_exec_done - _t_exec_start) * 1000,
+                    (_t_complete - _t_exec_done) * 1000,
+                    (_t_complete - _t0) * 1000,
                 )
             except Exception as e:
                 logger.error("Component %s failed: %s", req.component, e, exc_info=True)

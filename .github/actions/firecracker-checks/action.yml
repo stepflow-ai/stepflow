@@ -1,0 +1,156 @@
+name: 'Isolation Proxy Tests'
+description: 'Run subprocess and Firecracker backend tests with timing comparison'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+
+    - name: Configure Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          ./stepflow-rs
+
+    - name: Install protoc
+      uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ github.token }}
+
+    - name: Install uv and Python
+      uses: astral-sh/setup-uv@v5
+      with:
+        version: "0.7.5"
+        enable-cache: true
+
+    - name: Set up Python
+      shell: bash
+      run: uv python install
+      working-directory: sdks/python
+
+    - name: Install Python SDK dependencies
+      shell: bash
+      run: uv sync --all-extras
+      working-directory: sdks/python
+
+    - name: Build Rust binaries
+      shell: bash
+      run: |
+        cd stepflow-rs
+        cargo build -p stepflow-server --no-default-features
+        cargo build -p stepflow-isolation-proxy
+
+    - name: "Test: Subprocess backend"
+      shell: bash
+      run: |
+        cd stepflow-rs
+        echo "=== Subprocess Backend Test ==="
+        STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow-server \
+          cargo test -p stepflow-isolation-proxy --test integration -- --include-ignored --nocapture 2>&1 \
+          | tee /tmp/subprocess-test.log
+        echo "Subprocess test: PASSED"
+        grep "TIMING:" /tmp/subprocess-test.log || true
+
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger
+        sudo chmod 666 /dev/kvm
+
+    - name: Setup Firecracker
+      shell: bash
+      run: sudo ./stepflow-rs/crates/stepflow-isolation-proxy/scripts/setup-firecracker-ci.sh
+
+    - name: Build rootfs
+      shell: bash
+      run: |
+        cd stepflow-rs/crates/stepflow-isolation-proxy
+        sudo ./scripts/build-rootfs.sh
+
+    - name: "Test: Firecracker backend"
+      shell: bash
+      run: |
+        cd stepflow-rs/crates/stepflow-isolation-proxy
+        echo "=== Firecracker Backend Test ==="
+        ./scripts/test-firecracker.sh 2>&1 | tee /tmp/firecracker-test.log
+        # Collect timing data from both test output and proxy log
+        cat /dev/null > /tmp/firecracker-timing.log
+        grep 'TIMING' /tmp/firecracker-test.log >> /tmp/firecracker-timing.log 2>/dev/null || true
+        grep 'TIMING' /tmp/stepflow-proxy.log >> /tmp/firecracker-timing.log 2>/dev/null || true
+        echo "=== All timing data ==="
+        cat /tmp/firecracker-timing.log
+
+    - name: Print timing summary
+      if: always()
+      shell: bash
+      run: |
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════╗"
+        echo "║            Isolation Proxy Timing Summary               ║"
+        echo "╠══════════════════════════════════════════════════════════╣"
+
+        # --- Subprocess ---
+        printf "║  %-52s  ║\n" "SUBPROCESS BACKEND"
+        SUB_ENV=$(grep "subprocess env_create=" /tmp/subprocess-test.log 2>/dev/null | grep -o 'env_create=[^ ]*' | head -1 || echo "N/A")
+        SUB_EXEC=$(grep "subprocess execute_and_complete=" /tmp/subprocess-test.log 2>/dev/null | grep -o 'execute_and_complete=[^ ]*' | head -1 || echo "N/A")
+        SUB_TOTAL=$(grep "subprocess total_per_task=" /tmp/subprocess-test.log 2>/dev/null | grep -o 'total_per_task=[^ ]*' | head -1 || echo "N/A")
+        printf "║    %-50s  ║\n" "(a) Create env: ${SUB_ENV} (NOT pre-warmed)"
+        printf "║    %-50s  ║\n" "(b) Execute + complete: ${SUB_EXEC}"
+        printf "║    %-50s  ║\n" "TOTAL per task: ${SUB_TOTAL}"
+
+        echo "║                                                        ║"
+
+        # --- Firecracker ---
+        printf "║  %-52s  ║\n" "FIRECRACKER BACKEND"
+        FC_LATENCY=$(grep "Latency:" /tmp/firecracker-test.log 2>/dev/null | grep -o '[0-9]*ms' | head -1 || echo "N/A")
+
+        # Pool take = getting a pre-warmed VM
+        POOL_TAKE=$(grep "pool_take=" /tmp/firecracker-timing.log 2>/dev/null | grep -o 'pool_take=[^ ]*' | tail -1 || echo "N/A")
+        # VM restore time (happens in background, before task arrives)
+        VM_RESTORE=$(grep "restored in" /tmp/firecracker-timing.log 2>/dev/null | grep -o 'restored in [^ ]*' | tail -1 || echo "N/A")
+        # E2E from proxy perspective
+        E2E=$(grep "e2e_proxy=" /tmp/firecracker-timing.log 2>/dev/null | grep -o 'e2e_proxy=[^ ]*' | tail -1 || echo "N/A")
+        # Dep load (at snapshot time, 0ms per task)
+        FC_HEAVY_MS=$(grep "heavy_dependency_load" /tmp/firecracker-timing.log 2>/dev/null | grep -o '[0-9]*ms' | head -1 || echo "0")
+
+        printf "║    %-50s  ║\n" "(a) Get pre-warmed VM: ${POOL_TAKE}"
+        printf "║    %-50s  ║\n" "    (VM ${VM_RESTORE}, done before task arrives)"
+        printf "║    %-50s  ║\n" "(b) Execute + complete: ${E2E}"
+        printf "║    %-50s  ║\n" "    Dep load: ${FC_HEAVY_MS}ms at snapshot time, 0ms per task"
+        printf "║    %-50s  ║\n" "TOTAL per task: ${E2E} (submit→complete: ${FC_LATENCY})"
+
+        echo "║                                                        ║"
+
+        # Read detailed timing from the proxy log (not stdout)
+        TIMING_LOG=/tmp/firecracker-timing.log
+        if [ -f "$TIMING_LOG" ] && [ -s "$TIMING_LOG" ]; then
+          printf "║  %-52s  ║\n" "Firecracker breakdown (proxy side):"
+          POOL_TAKE=$(grep "pool_take=" "$TIMING_LOG" | grep -o 'pool_take=[^ ]*' | tail -1 || true)
+          VSOCK_CONN=$(grep "vsock_connect=" "$TIMING_LOG" | grep -o 'vsock_connect=[^ ]*' | tail -1 || true)
+          E2E=$(grep "e2e_proxy=" "$TIMING_LOG" | grep -o 'e2e_proxy=[^ ]*' | tail -1 || true)
+          [ -n "$POOL_TAKE" ] && printf "║    %-50s  ║\n" "$POOL_TAKE"
+          [ -n "$VSOCK_CONN" ] && printf "║    %-50s  ║\n" "$VSOCK_CONN"
+          [ -n "$E2E" ] && printf "║    %-50s  ║\n" "$E2E"
+
+          printf "║  %-52s  ║\n" "Firecracker breakdown (worker side):"
+          CH_OPEN=$(grep "channel_open=" "$TIMING_LOG" | grep -o 'channel_open=[^ ]*' | tail -1 || true)
+          HB_CLAIM=$(grep "heartbeat_claim=" "$TIMING_LOG" | grep -o 'heartbeat_claim=[^ ]*' | tail -1 || true)
+          EXEC=$(grep "execute=" "$TIMING_LOG" | grep -o 'execute=[^ ]*' | head -1 || true)
+          COMPLETE=$(grep "complete_task=" "$TIMING_LOG" | grep -o 'complete_task=[^ ]*' | tail -1 || true)
+          HANDLE=$(grep "handle_task=" "$TIMING_LOG" | grep -o 'handle_task=[^ ]*' | tail -1 || true)
+          [ -n "$CH_OPEN" ] && printf "║    %-50s  ║\n" "$CH_OPEN"
+          [ -n "$HB_CLAIM" ] && printf "║    %-50s  ║\n" "$HB_CLAIM"
+          [ -n "$EXEC" ] && printf "║    %-50s  ║\n" "$EXEC"
+          [ -n "$COMPLETE" ] && printf "║    %-50s  ║\n" "$COMPLETE"
+          [ -n "$HANDLE" ] && printf "║    %-50s  ║\n" "$HANDLE"
+        else
+          printf "║  %-52s  ║\n" "(no detailed timing data — check proxy log)"
+        fi
+
+        echo "║                                                        ║"
+        echo "╚══════════════════════════════════════════════════════════╝"

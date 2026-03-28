@@ -10,4 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-// VM lifecycle management — placeholder for Firecracker backend (Phase 3).
+pub mod api;
+pub mod lifecycle;
+pub mod namespace;
+pub mod pool;
+pub mod snapshot;

@@ -1,0 +1,106 @@
+# Lima configuration for Firecracker development with VZ backend
+# Requires: macOS 15+ with M3+ chip (nested virtualization)
+#
+# Usage:
+#   ./scripts/start-lima.sh          # Auto-detects backend
+#   limactl start config/lima-firecracker-vz.yaml --name stepflow-firecracker
+
+vmType: "vz"
+nestedVirtualization: true
+
+images:
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+- location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+
+cpus: 4
+memory: "8GiB"
+disk: "100GiB"
+
+# Mount the entire stepflow repo so we have access to the Python SDK, protos, etc.
+mounts:
+- location: "~"
+  writable: true
+
+networks:
+- vzNAT: true
+
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+
+    apt-get update
+    apt-get install -y \
+      curl wget git build-essential pkg-config libssl-dev \
+      unzip jq iptables cpu-checker dnsmasq \
+      iproute2 e2fsprogs protobuf-compiler
+
+    # Install Firecracker
+    FIRECRACKER_VERSION="v1.13.1"
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "aarch64" ]; then
+        FIRECRACKER_ARCH="aarch64"
+    else
+        FIRECRACKER_ARCH="x86_64"
+    fi
+    wget -O /tmp/firecracker.tgz "https://github.com/firecracker-microvm/firecracker/releases/download/${FIRECRACKER_VERSION}/firecracker-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH}.tgz"
+    tar -xzf /tmp/firecracker.tgz -C /tmp
+    mv /tmp/release-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH}/firecracker-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH} /usr/local/bin/firecracker
+    mv /tmp/release-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH}/jailer-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH} /usr/local/bin/jailer
+    chmod +x /usr/local/bin/firecracker /usr/local/bin/jailer
+    rm -rf /tmp/firecracker.tgz /tmp/release-${FIRECRACKER_VERSION}-${FIRECRACKER_ARCH}
+
+    # KVM setup
+    groupadd -f kvm
+    usermod -aG kvm lima
+    echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' > /etc/udev/rules.d/99-kvm.rules
+    if [ ! -c /dev/kvm ]; then
+        mknod /dev/kvm c 10 232 || true
+        chown root:kvm /dev/kvm || true
+        chmod 666 /dev/kvm || true
+    fi
+    udevadm control --reload-rules && udevadm trigger
+
+    # Enable IP forwarding
+    echo 1 > /proc/sys/net/ipv4/ip_forward
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+    # Fix DNS (VZ networking sometimes drops resolv.conf)
+    if [ ! -f /etc/resolv.conf ] || ! grep -q nameserver /etc/resolv.conf 2>/dev/null; then
+        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+    fi
+
+    # Fix hostname for sudo (avoids "unable to resolve host" warnings)
+    HOSTNAME=$(hostname)
+    grep -q "$HOSTNAME" /etc/hosts || echo "127.0.0.1 $HOSTNAME" >> /etc/hosts
+
+    echo "✅ Firecracker environment ready"
+
+- mode: user
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+
+    # Install Rust
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source ~/.cargo/env
+    rustup component add rustfmt clippy
+    echo 'source ~/.cargo/env' >> ~/.bashrc
+
+    # Install uv (for Python SDK)
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+
+    echo "✅ Dev tools ready: Rust $(rustc --version), uv $(~/.local/bin/uv --version)"
+
+ssh:
+  localPort: 2222
+  loadDotSSHPubKeys: true
+
+portForwards:
+- guestPort: 53
+  ignore: true

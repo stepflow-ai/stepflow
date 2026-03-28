@@ -15,23 +15,22 @@
 """Vsock/Unix socket transport for Stepflow workers.
 
 Receives tasks as length-delimited protobuf VsockTaskEnvelope messages over
-a single persistent connection. The worker handles the full task lifecycle
-(claim, heartbeat, execute, complete) by talking directly to the orchestrator
-via gRPC.
+vsock or Unix socket connections. Each connection carries one task. The worker
+accepts connections in a loop, allowing VM reuse (e.g., after snapshot/restore).
 
 Supports two modes:
-- Multi-task (default): Processes tasks sequentially until end-of-stream.
+- Multi-task (default): Accepts connections in a loop until the process exits.
 - One-shot (--oneshot): Exits after completing the first task.
 
 Usage:
     # In a Firecracker VM (vsock):
     python -m stepflow_py.worker.vsock_worker --vsock-port 5000
 
+    # One-shot mode:
+    python -m stepflow_py.worker.vsock_worker --vsock-port 5000 --oneshot
+
     # In dev mode (Unix socket):
     python -m stepflow_py.worker.vsock_worker --socket /tmp/stepflow.sock
-
-    # One-shot mode:
-    python -m stepflow_py.worker.vsock_worker --socket /tmp/stepflow.sock --oneshot
 """
 
 from __future__ import annotations
@@ -108,19 +107,18 @@ async def run_vsock_worker(
 ) -> None:
     """Run the vsock/socket worker.
 
-    Listens for a single connection and processes tasks from it.
+    Accepts connections in a loop. Each connection carries one or more tasks
+    as sequential length-delimited protobuf messages. After EOF on a connection,
+    the worker accepts the next connection (unless --oneshot).
 
-    Args:
-        server: StepflowServer with registered components.
-        vsock_port: AF_VSOCK port to listen on (mutually exclusive with socket_path).
-        socket_path: Unix socket path to listen on (mutually exclusive with vsock_port).
-        oneshot: Exit after completing the first task.
-        max_concurrent: Max concurrent tasks (default 1 for sequential execution).
+    This loop structure is critical for snapshot/restore: the snapshot captures
+    the worker blocked in accept(), and the restored VM immediately accepts
+    the next connection.
     """
     if vsock_port is not None:
-        reader, writer = await _accept_vsock(vsock_port)
+        listener = await _create_vsock_listener(vsock_port)
     elif socket_path is not None:
-        reader, writer = await _accept_unix(socket_path)
+        listener = await _create_unix_listener(socket_path)
     else:
         raise ValueError("Either --vsock-port or --socket must be specified")
 
@@ -130,57 +128,88 @@ async def run_vsock_worker(
 
     try:
         while True:
-            envelope = await _read_envelope(reader)
-            if envelope is None:
-                logger.info("End of stream — no more tasks")
-                break
+            # Flush ARP cache before accepting — critical for snapshot/restore.
+            # The snapshot captures the worker blocked in accept() with a clean
+            # ARP cache. After restore into a new namespace, the first packet
+            # triggers a fresh ARP lookup for the new gateway.
+            _flush_arp_cache()
 
-            if not envelope.HasField("assignment"):
-                logger.warning("Received envelope without assignment, skipping")
-                continue
+            # Accept a connection (blocks until a client connects)
+            import time as _time
 
-            task = envelope.assignment
-            logger.info(
-                "Received task %s: component=%s",
-                task.task_id,
-                task.execute.component if task.HasField("execute") else "?",
-            )
+            t_accept = _time.monotonic()
+            reader, writer = await _accept_connection(listener)
+            t_connected = _time.monotonic()
+            logger.info("TIMING: accept_wait=%.1fms", (t_connected - t_accept) * 1000)
 
-            # Override blob URL from envelope if provided
-            if envelope.blob_url:
-                import stepflow_py.worker.task_handler as th
+            try:
+                # Process all tasks on this connection
+                while True:
+                    envelope = await _read_envelope(reader)
+                    t_envelope = _time.monotonic()
+                    if envelope is None:
+                        logger.info("End of stream on connection")
+                        break
 
-                th._BLOB_URL = envelope.blob_url
+                    if not envelope.HasField("assignment"):
+                        logger.warning("Received envelope without assignment, skipping")
+                        continue
 
-            # handle_task releases the semaphore in its finally block,
-            # so we must acquire it first.
-            await semaphore.acquire()
+                    task = envelope.assignment
+                    logger.info(
+                        "TIMING: envelope_read=%.1fms task=%s component=%s",
+                        (t_envelope - t_connected) * 1000,
+                        task.task_id,
+                        task.execute.component if task.HasField("execute") else "?",
+                    )
 
-            # handle_task does: claim, heartbeat, execute, complete
-            from stepflow_py.worker.task_handler import handle_task
+                    # Override blob URL from envelope if provided
+                    if envelope.blob_url:
+                        import stepflow_py.worker.task_handler as th
 
-            await handle_task(
-                server=server,
-                task=task,
-                semaphore=semaphore,
-                worker_id=worker_id,
-                queue_name="vsock",
-                tracer_name="stepflow-vsock-worker",
-                tasks_url=envelope.tasks_url,
-            )
+                        th._BLOB_URL = envelope.blob_url
 
-            tasks_processed += 1
-            logger.info("Task %s completed (%d total)", task.task_id, tasks_processed)
+                    # handle_task releases the semaphore in its finally block
+                    await semaphore.acquire()
 
-            if oneshot:
-                logger.info("One-shot mode — exiting after first task")
-                break
+                    from stepflow_py.worker.task_handler import handle_task
+
+                    t_before_handle = _time.monotonic()
+                    await handle_task(
+                        server=server,
+                        task=task,
+                        semaphore=semaphore,
+                        worker_id=worker_id,
+                        queue_name="vsock",
+                        tracer_name="stepflow-vsock-worker",
+                        tasks_url=envelope.tasks_url,
+                    )
+                    t_after_handle = _time.monotonic()
+
+                    tasks_processed += 1
+                    logger.info(
+                        "TIMING: handle_task=%.1fms (claim+execute+complete)",
+                        (t_after_handle - t_before_handle) * 1000,
+                    )
+                    logger.info(
+                        "Task %s completed (%d total)",
+                        task.task_id,
+                        tasks_processed,
+                    )
+
+                    if oneshot:
+                        logger.info("One-shot mode — exiting after first task")
+                        return
+            finally:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+
     finally:
-        writer.close()
-        try:
-            await writer.wait_closed()
-        except Exception:
-            pass
+        # Clean up listener
+        listener.close()
         # Clean up socket file if we created it
         if socket_path and os.path.exists(socket_path):
             try:
@@ -189,9 +218,24 @@ async def run_vsock_worker(
                 pass
 
 
-async def _accept_vsock(port: int) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """Listen on AF_VSOCK and accept a single connection."""
-    # AF_VSOCK with CID_ANY (0xFFFFFFFF) accepts from any peer
+def _flush_arp_cache() -> None:
+    """Flush the kernel ARP cache. Called before accept() so that snapshots
+    capture a clean state. After restore, the first outbound packet
+    triggers a fresh ARP for the new gateway."""
+    import subprocess
+
+    try:
+        subprocess.run(
+            ["ip", "neigh", "flush", "all"],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass  # Best-effort; may fail on non-Linux or without permissions
+
+
+async def _create_vsock_listener(port: int) -> socket.socket:
+    """Create and bind a vsock listener socket."""
     VMADDR_CID_ANY = 0xFFFFFFFF
     af_vsock = getattr(socket, "AF_VSOCK", None)
     if af_vsock is None:
@@ -199,52 +243,38 @@ async def _accept_vsock(port: int) -> tuple[asyncio.StreamReader, asyncio.Stream
     sock = socket.socket(af_vsock, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((VMADDR_CID_ANY, port))
-    sock.listen(1)
+    sock.listen(5)
     sock.setblocking(False)
 
     logger.info("Listening on vsock port %d", port)
-    # Signal readiness — used by snapshot tooling to know when to pause the VM.
     print(READY_SIGNAL, flush=True)
-
-    loop = asyncio.get_running_loop()
-    conn, addr = await loop.sock_accept(sock)
-    logger.info("Accepted vsock connection from CID %s", addr)
-    sock.close()
-
-    reader, writer = await asyncio.open_connection(sock=conn)
-    return reader, writer
+    return sock
 
 
-async def _accept_unix(
-    path: str,
-) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-    """Listen on a Unix socket and accept a single connection."""
-    # Remove stale socket file
+async def _create_unix_listener(path: str) -> socket.socket:
+    """Create a Unix domain socket listener."""
     if os.path.exists(path):
         os.unlink(path)
 
-    connected: asyncio.Future[tuple[asyncio.StreamReader, asyncio.StreamWriter]] = (
-        asyncio.get_running_loop().create_future()
-    )
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(path)
+    sock.listen(5)
+    sock.setblocking(False)
 
-    async def on_connect(
-        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        if not connected.done():
-            connected.set_result((reader, writer))
-
-    unix_server = await asyncio.start_unix_server(on_connect, path=path)
     logger.info("Listening on Unix socket %s", path)
-    # Signal readiness — used by snapshot tooling to know when to pause the VM.
     print(READY_SIGNAL, flush=True)
+    return sock
 
-    reader, writer = await connected
-    logger.info("Accepted Unix socket connection")
-    # Stop accepting new connections, but don't wait_closed() —
-    # that blocks until all existing connections finish, which
-    # would deadlock since we haven't read the task yet.
-    unix_server.close()
 
+async def _accept_connection(
+    listener: socket.socket,
+) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    """Accept a single connection from the listener socket."""
+    loop = asyncio.get_running_loop()
+    conn, addr = await loop.sock_accept(listener)
+    logger.info("Accepted connection from %s", addr)
+    reader, writer = await asyncio.open_connection(sock=conn)
     return reader, writer
 
 
