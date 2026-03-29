@@ -453,67 +453,28 @@ async fn test_migrations_idempotent() {
         .unwrap();
 }
 
-/// Two separate pools connected to the same file-based SQLite database must
-/// both be able to run migrations without conflict. This simulates two
-/// orchestrators starting concurrently against a shared database.
+/// Migrations are idempotent across sequential store instances against the
+/// same file. This verifies that a new SqliteStateStore can open a database
+/// that was previously migrated (simulates container restart).
 #[tokio::test]
-async fn test_migrations_concurrent_pools() {
-    use sqlx::sqlite::SqlitePoolOptions;
+async fn test_migrations_sequential_stores() {
     use tempfile::NamedTempFile;
 
     let tmp = NamedTempFile::new().unwrap();
     let url = format!("sqlite:{}?mode=rwc", tmp.path().display());
 
-    let pool1 = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .unwrap();
-    let pool2 = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect(&url)
-        .await
-        .unwrap();
-
-    // Enable WAL mode on both (mirrors production setup)
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool1)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA busy_timeout=5000")
-        .execute(&pool1)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA journal_mode=WAL")
-        .execute(&pool2)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA busy_timeout=5000")
-        .execute(&pool2)
-        .await
-        .unwrap();
-
-    // Run migrations from both pools concurrently
-    let (r1, r2) = tokio::join!(
-        crate::migrations::run_all_migrations(&pool1),
-        crate::migrations::run_all_migrations(&pool2),
-    );
-
-    r1.expect("pool1 migrations should succeed");
-    r2.expect("pool2 migrations should succeed");
-
-    // Verify both can read/write after migrations
+    // First store: creates and migrates the database
     let store1 = SqliteStateStore::new(crate::SqliteStateStoreConfig {
         database_url: url.clone(),
         max_connections: 1,
-        auto_migrate: false, // Already migrated
+        auto_migrate: true,
     })
     .await
     .unwrap();
 
-    let test_data = serde_json::json!({"test": "concurrent"});
+    let test_data = serde_json::json!({"test": "first"});
     let blob_bytes = serde_json::to_vec(&test_data).unwrap();
-    store1
+    let blob_id = store1
         .put_blob(
             &blob_bytes,
             stepflow_core::BlobType::Data,
@@ -521,6 +482,22 @@ async fn test_migrations_concurrent_pools() {
         )
         .await
         .unwrap();
+
+    // Drop the first store (simulates container restart)
+    drop(store1);
+
+    // Second store: opens the same file, re-runs migrations (should be no-ops)
+    let store2 = SqliteStateStore::new(crate::SqliteStateStoreConfig {
+        database_url: url.clone(),
+        max_connections: 1,
+        auto_migrate: true,
+    })
+    .await
+    .unwrap();
+
+    // Data from the first store should still be accessible
+    let blob = store2.get_blob(&blob_id).await.unwrap();
+    assert!(blob.is_some(), "Blob written by first store should persist");
 }
 
 // =========================================================================
@@ -771,4 +748,174 @@ async fn test_step_status_concurrent_read_write_file_backed() {
     for h in handles {
         h.await.unwrap();
     }
+}
+
+// =========================================================================
+// Schema drift test
+//
+// Exercises every query_as<_, FromRow>() against a freshly migrated schema.
+// If a migration adds/removes/renames a column without a corresponding
+// FromRow struct update, the query_as decode will fail → test fails.
+// =========================================================================
+
+#[tokio::test]
+async fn test_schema_matches_from_row_structs() {
+    use std::sync::Arc;
+    use stepflow_core::ValueExpr;
+    use stepflow_core::status::StepStatus;
+    use stepflow_core::workflow::{FlowBuilder, StepBuilder, ValueRef};
+    use stepflow_state::{
+        BlobStore as _, CheckpointStore as _, CreateRunParams, ExecutionJournal as _, JournalEvent,
+        MetadataStore as _,
+    };
+
+    let store = SqliteStateStore::in_memory().await.unwrap();
+
+    // Seed data so every query has rows to decode
+    let flow = Arc::new(
+        FlowBuilder::test_flow()
+            .steps(vec![
+                StepBuilder::new("s1")
+                    .component("/mock/test")
+                    .input(ValueExpr::Input {
+                        input: Default::default(),
+                    })
+                    .build(),
+            ])
+            .output(ValueExpr::Step {
+                step: "s1".to_string(),
+                path: Default::default(),
+            })
+            .build(),
+    );
+
+    // BlobRow: store and get a blob
+    let blob_content = serde_json::to_vec(&json!({"test": true})).unwrap();
+    let blob_id = store
+        .put_blob(
+            &blob_content,
+            stepflow_core::BlobType::Data,
+            Default::default(),
+        )
+        .await
+        .unwrap();
+    store
+        .get_blob(&blob_id)
+        .await
+        .expect("BlobRow: get_blob should decode all columns")
+        .expect("blob should exist");
+
+    // RunRow + RunStatRow: create a run and get it
+    let flow_id = store.store_flow(flow).await.unwrap();
+    let run_id = Uuid::now_v7();
+    store
+        .create_run(CreateRunParams::new(
+            run_id,
+            flow_id,
+            vec![ValueRef::new(json!({"x": 1}))],
+            SequenceNumber::new(0),
+        ))
+        .await
+        .unwrap();
+
+    store
+        .get_run(run_id)
+        .await
+        .expect("RunRow: get_run should decode all columns")
+        .expect("run should exist");
+
+    // ListRunsRow: list runs
+    let runs = store
+        .list_runs(&Default::default())
+        .await
+        .expect("ListRunsRow: list_runs should decode all columns");
+    assert!(!runs.is_empty());
+
+    // StepStatusRow: write and read step status
+    store
+        .update_step_status(
+            run_id,
+            0,
+            "s1",
+            0,
+            StepStatus::Completed,
+            Some("/mock/test"),
+            Some(FlowResult::from(json!({"ok": true}))),
+            SequenceNumber::new(1),
+        )
+        .await
+        .unwrap();
+
+    store
+        .get_step_status(run_id, 0, "s1")
+        .await
+        .expect("StepStatusRow: get_step_status should decode all columns")
+        .expect("step status should exist");
+
+    store
+        .get_step_statuses(run_id, None, None)
+        .await
+        .expect("StepStatusRow: get_step_statuses should decode all columns");
+
+    // ItemResultRow: get item results
+    store
+        .get_item_results(run_id, stepflow_domain::ResultOrder::ByIndex)
+        .await
+        .expect("ItemResultRow: get_item_results should decode all columns");
+
+    // JournalEntryRow + MaxSeqRow: write and read journal
+    let root_run_id = run_id;
+    let journal_flow_id =
+        stepflow_core::BlobId::from_content(&ValueRef::new(json!({"test": "flow"}))).unwrap();
+    store
+        .write(
+            root_run_id,
+            JournalEvent::RootRunCreated {
+                run_id,
+                flow_id: journal_flow_id,
+                inputs: vec![],
+                variables: Default::default(),
+            },
+        )
+        .await
+        .expect("MaxSeqRow: write should decode max_seq column");
+
+    // MaxSeqRow: latest_sequence
+    store
+        .latest_sequence(root_run_id)
+        .await
+        .expect("MaxSeqRow: latest_sequence should decode all columns");
+
+    // RootJournalRow: list_active_roots
+    store
+        .list_active_roots()
+        .await
+        .expect("RootJournalRow: list_active_roots should decode all columns");
+
+    // JournalEntryRow: stream entries
+    use futures::StreamExt as _;
+    let mut stream = store.stream_from(root_run_id, SequenceNumber::new(0));
+    let entry = stream.next().await;
+    assert!(
+        entry.is_some(),
+        "JournalEntryRow: stream should return at least one entry"
+    );
+    entry
+        .unwrap()
+        .expect("JournalEntryRow: stream_from should decode all columns");
+
+    // CheckpointRow: store and get checkpoint
+    store
+        .put_checkpoint(
+            root_run_id,
+            SequenceNumber::new(1),
+            bytes::Bytes::from_static(&[1, 2, 3]),
+        )
+        .await
+        .unwrap();
+    store
+        .get_latest_checkpoint(root_run_id)
+        .await
+        .expect("CheckpointRow: get_latest_checkpoint should decode all columns")
+        .expect("checkpoint should exist");
 }

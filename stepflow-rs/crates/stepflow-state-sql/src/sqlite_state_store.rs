@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
 use sqlx::{
-    QueryBuilder, Row as _, Sqlite, SqlitePool,
+    FromRow, QueryBuilder, Sqlite, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 use stepflow_core::status::{ExecutionStatus, StepStatus};
@@ -54,72 +54,279 @@ fn parse_step_status(s: &str) -> StepStatus {
     })
 }
 
-/// Convert a SQLite row to a `StepStatusEntry`.
-fn row_to_step_status_entry(
-    row: &sqlx::sqlite::SqliteRow,
-) -> error_stack::Result<StepStatusEntry, StateError> {
-    let step_id: String = row
-        .try_get("step_id")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode step_id column")?;
-    let step_index: i64 = row
-        .try_get("step_index")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode step_index column")?;
-    let item_index: i64 = row
-        .try_get("item_index")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode item_index column")?;
-    let status_str: String = row
-        .try_get("status")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode status column")?;
-    let component: Option<String> = row
-        .try_get("component")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode component column")?;
-    let result_json: Option<String> = row
-        .try_get("result_json")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode result_json column")?;
-    let journal_seqno: i64 = row
-        .try_get("journal_seqno")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode journal_seqno column")?;
-    let updated_at_str: Option<String> = row
-        .try_get("updated_at")
-        .change_context(StateError::Internal)
-        .attach_printable("failed to decode updated_at column")?;
+/// Parse an `ExecutionStatus` from a database string.
+fn parse_execution_status(s: &str) -> ExecutionStatus {
+    match s {
+        "running" => ExecutionStatus::Running,
+        "completed" => ExecutionStatus::Completed,
+        "failed" => ExecutionStatus::Failed,
+        "cancelled" => ExecutionStatus::Cancelled,
+        "paused" => ExecutionStatus::Paused,
+        "recoveryFailed" => ExecutionStatus::RecoveryFailed,
+        _ => {
+            log::warn!("Unrecognized execution status: {s}");
+            ExecutionStatus::Running
+        }
+    }
+}
 
-    let result = result_json
-        .map(|json| serde_json::from_str::<FlowResult>(&json))
-        .transpose()
-        .change_context(StateError::Serialization)
-        .attach_printable_lazy(|| {
-            format!("failed to deserialize result_json for step '{step_id}'")
+// =========================================================================
+// FromRow structs — typed column extraction for all SQL queries.
+//
+// sqlx::FromRow derives try_get() for every field, replacing manual
+// row.get() calls that panic on decode errors. Field names must match
+// SQL column names (or use #[sqlx(rename = "...")]).
+// =========================================================================
+
+#[derive(FromRow)]
+struct BlobRow {
+    data: Vec<u8>,
+    blob_type: String,
+    filename: Option<String>,
+}
+
+#[derive(FromRow)]
+struct RunRow {
+    status: String,
+    flow_name: Option<String>,
+    flow_id: String,
+    created_at: String,
+    completed_at: Option<String>,
+    root_run_id: Option<String>,
+    parent_run_id: Option<String>,
+    orchestrator_id: Option<String>,
+    created_at_seqno: i64,
+    finished_at_seqno: Option<i64>,
+}
+
+#[derive(FromRow)]
+struct RunStatRow {
+    status: String,
+    cnt: i64,
+}
+
+#[derive(FromRow)]
+struct ListRunsRow {
+    id: String,
+    status: String,
+    flow_name: Option<String>,
+    flow_id: String,
+    created_at: String,
+    completed_at: Option<String>,
+    root_run_id: Option<String>,
+    parent_run_id: Option<String>,
+    orchestrator_id: Option<String>,
+    created_at_seqno: i64,
+    finished_at_seqno: Option<i64>,
+    item_total: i64,
+    item_running: i64,
+    item_completed: i64,
+    item_failed: i64,
+    item_cancelled: i64,
+}
+
+#[derive(FromRow)]
+struct ItemResultRow {
+    item_index: i64,
+    status: String,
+    result_json: Option<String>,
+    completed_at: Option<String>,
+}
+
+#[derive(FromRow)]
+struct ItemCountsRow {
+    total: i64,
+    done: i64,
+    failed: i64,
+}
+
+#[derive(FromRow)]
+struct StepStatusRow {
+    step_id: String,
+    step_index: i64,
+    item_index: i64,
+    status: String,
+    component: Option<String>,
+    result_json: Option<String>,
+    journal_seqno: i64,
+    updated_at: Option<String>,
+}
+
+#[derive(FromRow)]
+struct RunStatusRow {
+    status: String,
+}
+
+#[derive(FromRow)]
+struct JournalEntryRow {
+    sequence: i64,
+    run_id: String,
+    timestamp: String,
+    event_data: String,
+}
+
+#[derive(FromRow)]
+struct MaxSeqRow {
+    max_seq: Option<i64>,
+}
+
+#[derive(FromRow)]
+struct RootJournalRow {
+    root_run_id: String,
+    latest_sequence: i64,
+    entry_count: i64,
+}
+
+#[derive(FromRow)]
+struct CheckpointRow {
+    sequence_number: i64,
+    data: Vec<u8>,
+}
+
+// =========================================================================
+// FromRow → domain type conversions
+// =========================================================================
+
+impl StepStatusRow {
+    fn into_entry(self) -> error_stack::Result<StepStatusEntry, StateError> {
+        let result = self
+            .result_json
+            .map(|json| serde_json::from_str::<FlowResult>(&json))
+            .transpose()
+            .change_context(StateError::Serialization)
+            .attach_printable_lazy(|| {
+                format!(
+                    "failed to deserialize result_json for step '{}'",
+                    self.step_id
+                )
+            })?;
+
+        let updated_at = self
+            .updated_at
+            .as_deref()
+            .and_then(parse_sqlite_datetime)
+            .unwrap_or_else(|| {
+                log::warn!(
+                    "Missing or unparseable updated_at for step '{}'",
+                    self.step_id
+                );
+                chrono::Utc::now()
+            });
+
+        Ok(StepStatusEntry {
+            step_id: self.step_id,
+            step_index: self.step_index as usize,
+            item_index: self.item_index as u32,
+            status: parse_step_status(&self.status),
+            component: self.component,
+            result,
+            journal_seqno: sql_to_u64(self.journal_seqno),
+            updated_at,
+        })
+    }
+}
+
+impl RunRow {
+    fn into_summary(
+        self,
+        run_id: Uuid,
+        items: ItemStatistics,
+    ) -> error_stack::Result<RunSummary, StateError> {
+        let flow_id = BlobId::new(self.flow_id).change_context(StateError::Internal)?;
+        let created_at = parse_sqlite_datetime(&self.created_at).ok_or_else(|| {
+            error_stack::report!(StateError::Internal)
+                .attach_printable(format!("unparseable created_at: {}", self.created_at))
         })?;
+        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+        let root_run_id = self
+            .root_run_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .unwrap_or(run_id);
+        let parent_run_id = self
+            .parent_run_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok());
 
-    let updated_at = updated_at_str
-        .as_deref()
-        .and_then(parse_sqlite_datetime)
-        .unwrap_or_else(|| {
-            log::warn!(
-                "Missing or unparseable updated_at for step '{step_id}': {:?}",
-                updated_at_str
-            );
-            chrono::Utc::now()
-        });
+        Ok(RunSummary {
+            run_id,
+            flow_name: self.flow_name,
+            flow_id,
+            status: parse_execution_status(&self.status),
+            items,
+            created_at,
+            completed_at,
+            root_run_id,
+            parent_run_id,
+            orchestrator_id: self.orchestrator_id,
+            created_at_seqno: sql_to_u64(self.created_at_seqno),
+            finished_at_seqno: self.finished_at_seqno.map(sql_to_u64),
+        })
+    }
+}
 
-    Ok(StepStatusEntry {
-        step_id,
-        step_index: step_index as usize,
-        item_index: item_index as u32,
-        status: parse_step_status(&status_str),
-        component,
-        result,
-        journal_seqno: sql_to_u64(journal_seqno),
-        updated_at,
-    })
+impl ListRunsRow {
+    fn into_summary(self) -> error_stack::Result<RunSummary, StateError> {
+        let run_id = Uuid::parse_str(&self.id).change_context(StateError::Internal)?;
+        let flow_id = BlobId::new(self.flow_id).change_context(StateError::Internal)?;
+        let created_at = parse_sqlite_datetime(&self.created_at)
+            .ok_or_else(|| error_stack::report!(StateError::Internal))?;
+        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+        let root_run_id = self
+            .root_run_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .unwrap_or(run_id);
+        let parent_run_id = self
+            .parent_run_id
+            .as_deref()
+            .and_then(|s| Uuid::parse_str(s).ok());
+
+        Ok(RunSummary {
+            run_id,
+            flow_name: self.flow_name,
+            flow_id,
+            status: parse_execution_status(&self.status),
+            items: ItemStatistics {
+                total: self.item_total as usize,
+                running: self.item_running as usize,
+                completed: self.item_completed as usize,
+                failed: self.item_failed as usize,
+                cancelled: self.item_cancelled as usize,
+            },
+            created_at,
+            completed_at,
+            root_run_id,
+            parent_run_id,
+            orchestrator_id: self.orchestrator_id,
+            created_at_seqno: sql_to_u64(self.created_at_seqno),
+            finished_at_seqno: self.finished_at_seqno.map(sql_to_u64),
+        })
+    }
+}
+
+impl ItemResultRow {
+    fn into_item_result(self) -> error_stack::Result<ItemResult, StateError> {
+        let result = self
+            .result_json
+            .map(|json| serde_json::from_str::<FlowResult>(&json))
+            .transpose()
+            .change_context(StateError::Serialization)
+            .attach_printable_lazy(|| {
+                format!(
+                    "failed to deserialize result_json for item {}",
+                    self.item_index
+                )
+            })?;
+        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+
+        Ok(ItemResult {
+            item_index: self.item_index as usize,
+            status: parse_execution_status(&self.status),
+            result,
+            completed_at,
+        })
+    }
 }
 
 /// Parse a datetime string from SQLite.
@@ -175,11 +382,6 @@ impl SqliteStateStore {
     /// For selective initialization, set `auto_migrate` to false and call the
     /// trait-level `initialize_*` methods instead.
     pub async fn new(config: SqliteStateStoreConfig) -> Result<Self, StateError> {
-        // Parse connection options and set PRAGMAs that apply to EVERY connection
-        // in the pool. This is critical because PRAGMA busy_timeout is per-connection
-        // in SQLite — setting it on just one connection (via sqlx::query) leaves other
-        // pool connections with busy_timeout=0, causing immediate SQLITE_BUSY failures
-        // under any write contention.
         let connect_options = config
             .database_url
             .parse::<SqliteConnectOptions>()
@@ -191,8 +393,16 @@ impl SqliteStateStore {
             })?;
 
         let connect_options = connect_options
+            // WAL mode allows concurrent readers during writes — the facade
+            // polls for status while the execution engine writes step results.
             .pragma("journal_mode", "WAL")
-            .pragma("busy_timeout", "5000");
+            // Writers wait up to 5s instead of failing immediately on contention.
+            .pragma("busy_timeout", "5000")
+            // Store temporary tables and indices in memory. Without this,
+            // SQLite tries to create temp files in /tmp which fails with
+            // SQLITE_IOERR_GETTEMPPATH (6410) when the container has
+            // readOnlyRootFilesystem: true.
+            .pragma("temp_store", "MEMORY");
 
         let pool = SqlitePoolOptions::new()
             .max_connections(config.max_connections)
@@ -325,37 +535,36 @@ impl BlobStore for SqliteStateStore {
         async move {
             let sql = "SELECT data, blob_type, filename FROM blobs WHERE id = ?";
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, BlobRow>(sql)
                 .bind(blob_id.as_str())
                 .fetch_optional(&self.pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| format!("failed to fetch blob '{}'", blob_id.as_str()))?;
 
             let Some(row) = row else {
                 return Ok(None);
             };
 
-            // Read raw bytes from BLOB column
-            let content: Vec<u8> = row.get("data");
-
-            // Get blob type from database
-            let type_str: String = row.get("blob_type");
-            let blob_type = match type_str.as_str() {
+            let blob_type = match row.blob_type.as_str() {
                 "flow" => BlobType::Flow,
                 "data" => BlobType::Data,
                 "binary" => BlobType::Binary,
                 _ => {
-                    log::warn!("Unknown blob type '{}', defaulting to 'data'", type_str);
+                    log::warn!(
+                        "Unknown blob type '{}', defaulting to 'data'",
+                        row.blob_type
+                    );
                     BlobType::Data
                 }
             };
 
-            let filename: Option<String> = row.get("filename");
-
             Ok(Some(RawBlob {
-                content,
+                content: row.data,
                 blob_type,
-                metadata: BlobMetadata { filename },
+                metadata: BlobMetadata {
+                    filename: row.filename,
+                },
             }))
         }
         .boxed()
@@ -383,47 +592,29 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT id, flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno, finished_at_seqno FROM runs WHERE id = ?";
+            let sql = "SELECT flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno, finished_at_seqno FROM runs WHERE id = ?";
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, RunRow>(sql)
                 .bind(run_id.to_string())
                 .fetch_optional(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch run '{run_id}'")
+                })?;
 
             match row {
-                Some(row) => {
-                    let status_str: String = row.get("status");
-                    let status = match status_str.as_str() {
-                        "running" => ExecutionStatus::Running,
-                        "completed" => ExecutionStatus::Completed,
-                        "failed" => ExecutionStatus::Failed,
-                        "cancelled" => ExecutionStatus::Cancelled,
-                        "paused" => ExecutionStatus::Paused,
-                        "recoveryFailed" => ExecutionStatus::RecoveryFailed,
-                        _ => {
-                            log::warn!("Unrecognized execution status: {status_str}");
-                            ExecutionStatus::Running
-                        }
-                    };
-
-                    let flow_name = row.get::<Option<String>, _>("flow_name");
-                    let flow_id = BlobId::new(row.get::<String, _>("flow_id")).change_context(StateError::Internal)?;
-
-                    let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                        .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                    let completed_at = row
-                        .get::<Option<String>, _>("completed_at")
-                        .and_then(|s| parse_sqlite_datetime(&s));
-
+                Some(run_row) => {
                     // Compute item statistics from the run_items table
                     let items_sql = "SELECT status, COUNT(*) as cnt FROM run_items WHERE run_id = ? GROUP BY status";
-                    let stat_rows = sqlx::query(items_sql)
+                    let stat_rows = sqlx::query_as::<_, RunStatRow>(items_sql)
                         .bind(run_id.to_string())
                         .fetch_all(&pool)
                         .await
-                        .change_context(StateError::Internal)?;
+                        .change_context(StateError::Internal)
+                        .attach_printable_lazy(|| {
+                            format!("failed to fetch item stats for run '{run_id}'")
+                        })?;
 
                     let mut running = 0usize;
                     let mut completed_count = 0usize;
@@ -432,11 +623,9 @@ impl MetadataStore for SqliteStateStore {
                     let mut total = 0usize;
 
                     for stat_row in stat_rows {
-                        let s: String = stat_row.get("status");
-                        let cnt: i64 = stat_row.get("cnt");
-                        let cnt = cnt as usize;
+                        let cnt = stat_row.cnt as usize;
                         total += cnt;
-                        match s.as_str() {
+                        match stat_row.status.as_str() {
                             "running" => running += cnt,
                             "completed" => completed_count += cnt,
                             "failed" => failed += cnt,
@@ -453,37 +642,7 @@ impl MetadataStore for SqliteStateStore {
                         cancelled,
                     };
 
-                    let root_run_id_str: Option<String> = row.get("root_run_id");
-                    let root_run_id = root_run_id_str
-                        .as_ref()
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(run_id);
-
-                    let parent_run_id_str: Option<String> = row.get("parent_run_id");
-                    let parent_run_id = parent_run_id_str
-                        .as_ref()
-                        .and_then(|s| Uuid::parse_str(s).ok());
-
-                    let orchestrator_id: Option<String> = row.get("orchestrator_id");
-                    let created_at_seqno: i64 = row.get("created_at_seqno");
-                    let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
-
-                    let summary = RunSummary {
-                        run_id,
-                        flow_name,
-                        flow_id,
-                        status,
-                        items,
-                        created_at,
-                        completed_at,
-                        root_run_id,
-                        parent_run_id,
-                        orchestrator_id,
-                        created_at_seqno: sql_to_u64(created_at_seqno),
-                        finished_at_seqno: finished_at_seqno.map(sql_to_u64),
-                    };
-
-                    Ok(Some(summary))
+                    Ok(Some(run_row.into_summary(run_id, items)?))
                 },
                 None => Ok(None),
             }
@@ -590,77 +749,15 @@ impl MetadataStore for SqliteStateStore {
             }
 
             let rows = qb
-                .build()
+                .build_query_as::<ListRunsRow>()
                 .fetch_all(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| "failed to fetch runs list")?;
 
-            let mut summaries = Vec::new();
+            let mut summaries = Vec::with_capacity(rows.len());
             for row in rows {
-                let run_id_str: String = row.get("id");
-                let run_id = Uuid::parse_str(&run_id_str).change_context(StateError::Internal)?;
-
-                let status_str: String = row.get("status");
-                let status = match status_str.as_str() {
-                    "running" => ExecutionStatus::Running,
-                    "completed" => ExecutionStatus::Completed,
-                    "failed" => ExecutionStatus::Failed,
-                    "cancelled" => ExecutionStatus::Cancelled,
-                    "paused" => ExecutionStatus::Paused,
-                    "recoveryFailed" => ExecutionStatus::RecoveryFailed,
-                    _ => ExecutionStatus::Running,
-                };
-
-                let flow_name = row.get::<Option<String>, _>("flow_name");
-                let flow_id = BlobId::new(row.get::<String, _>("flow_id"))
-                    .change_context(StateError::Internal)?;
-
-                let items = ItemStatistics {
-                    total: row.get::<i64, _>("item_total") as usize,
-                    running: row.get::<i64, _>("item_running") as usize,
-                    completed: row.get::<i64, _>("item_completed") as usize,
-                    failed: row.get::<i64, _>("item_failed") as usize,
-                    cancelled: row.get::<i64, _>("item_cancelled") as usize,
-                };
-
-                let created_at = parse_sqlite_datetime(&row.get::<String, _>("created_at"))
-                    .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-
-                let completed_at = row
-                    .get::<Option<String>, _>("completed_at")
-                    .and_then(|s| parse_sqlite_datetime(&s));
-
-                let root_run_id_str: Option<String> = row.get("root_run_id");
-                let root_run_id = root_run_id_str
-                    .as_ref()
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                    .unwrap_or(run_id);
-
-                let parent_run_id_str: Option<String> = row.get("parent_run_id");
-                let parent_run_id = parent_run_id_str
-                    .as_ref()
-                    .and_then(|s| Uuid::parse_str(s).ok());
-
-                let orchestrator_id: Option<String> = row.get("orchestrator_id");
-                let created_at_seqno: i64 = row.get("created_at_seqno");
-                let finished_at_seqno: Option<i64> = row.get("finished_at_seqno");
-
-                let summary = RunSummary {
-                    run_id,
-                    flow_name,
-                    flow_id,
-                    status,
-                    items,
-                    created_at,
-                    completed_at,
-                    root_run_id,
-                    parent_run_id,
-                    orchestrator_id,
-                    created_at_seqno: sql_to_u64(created_at_seqno),
-                    finished_at_seqno: finished_at_seqno.map(sql_to_u64),
-                };
-
-                summaries.push(summary);
+                summaries.push(row.into_summary()?);
             }
 
             Ok(summaries)
@@ -782,17 +879,20 @@ impl MetadataStore for SqliteStateStore {
                     (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status = 'failed') as failed
             "#;
 
-            let counts = sqlx::query(count_sql)
+            let counts = sqlx::query_as::<_, ItemCountsRow>(count_sql)
                 .bind(run_id.to_string())
                 .bind(run_id.to_string())
                 .bind(run_id.to_string())
                 .fetch_one(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch item counts for run '{run_id}'")
+                })?;
 
-            let total: i64 = counts.get("total");
-            let done: i64 = counts.get("done");
-            let failed: i64 = counts.get("failed");
+            let total = counts.total;
+            let done = counts.done;
+            let failed = counts.failed;
 
             if done >= total {
                 let run_status = if failed > 0 { "failed" } else { "completed" };
@@ -834,42 +934,18 @@ impl MetadataStore for SqliteStateStore {
                 order_clause
             );
 
-            let rows = sqlx::query(&sql)
+            let rows = sqlx::query_as::<_, ItemResultRow>(&sql)
                 .bind(&run_id_str)
                 .fetch_all(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch item results for run '{run_id_str}'")
+                })?;
 
-            let mut items = Vec::new();
+            let mut items = Vec::with_capacity(rows.len());
             for row in rows {
-                let item_index: i64 = row.get("item_index");
-                let status_str: String = row.get("status");
-                let status = match status_str.as_str() {
-                    "completed" => ExecutionStatus::Completed,
-                    "failed" => ExecutionStatus::Failed,
-                    "cancelled" => ExecutionStatus::Cancelled,
-                    _ => ExecutionStatus::Running,
-                };
-
-                let result = if let Some(result_json) = row.get::<Option<String>, _>("result_json")
-                {
-                    let flow_result: FlowResult = serde_json::from_str(&result_json)
-                        .change_context(StateError::Serialization)?;
-                    Some(flow_result)
-                } else {
-                    None
-                };
-
-                let completed_at = row
-                    .get::<Option<String>, _>("completed_at")
-                    .and_then(|s| parse_sqlite_datetime(&s));
-
-                items.push(ItemResult {
-                    item_index: item_index as usize,
-                    status,
-                    result,
-                    completed_at,
-                });
+                items.push(row.into_item_result()?);
             }
 
             Ok(items)
@@ -1005,16 +1081,19 @@ impl MetadataStore for SqliteStateStore {
             let sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
                         FROM step_statuses WHERE run_id = ? AND item_index = ? AND step_id = ?";
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, StepStatusRow>(sql)
                 .bind(run_id.to_string())
                 .bind(item_index as i64)
                 .bind(&step_id)
                 .fetch_optional(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch step status for run '{run_id}', step '{step_id}'")
+                })?;
 
             match row {
-                Some(row) => Ok(Some(row_to_step_status_entry(&row)?)),
+                Some(row) => Ok(Some(row.into_entry()?)),
                 None => Ok(None),
             }
         }
@@ -1050,7 +1129,7 @@ impl MetadataStore for SqliteStateStore {
             qb.push(" ORDER BY step_index, item_index");
 
             let rows = qb
-                .build()
+                .build_query_as::<StepStatusRow>()
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)
@@ -1059,12 +1138,9 @@ impl MetadataStore for SqliteStateStore {
                 })?;
 
             let mut entries = Vec::with_capacity(rows.len());
-            for row in &rows {
-                entries.push(row_to_step_status_entry(row).attach_printable_lazy(|| {
-                    format!(
-                        "failed to convert row for run_id={run_id}, row_count={}",
-                        rows.len()
-                    )
+            for row in rows {
+                entries.push(row.into_entry().attach_printable_lazy(|| {
+                    format!("failed to convert step status row for run_id={run_id}")
                 })?);
             }
 
@@ -1084,16 +1160,16 @@ impl MetadataStore for SqliteStateStore {
 
             let receiver = self.completion_notifier.subscribe();
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, RunStatusRow>(sql)
                 .bind(run_id.to_string())
                 .fetch_optional(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| format!("failed to fetch run status for '{run_id}'"))?;
 
             match row {
                 Some(row) => {
-                    let status_str: String = row.get("status");
-                    if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                    if matches!(row.status.as_str(), "completed" | "failed" | "cancelled") {
                         return Ok(());
                     }
                 }
@@ -1107,16 +1183,18 @@ impl MetadataStore for SqliteStateStore {
                 .await;
 
             loop {
-                let row = sqlx::query(sql)
+                let row = sqlx::query_as::<_, RunStatusRow>(sql)
                     .bind(run_id.to_string())
                     .fetch_optional(&pool)
                     .await
-                    .change_context(StateError::Internal)?;
+                    .change_context(StateError::Internal)
+                    .attach_printable_lazy(|| {
+                        format!("failed to fetch run status for '{run_id}' in poll loop")
+                    })?;
 
                 match row {
                     Some(row) => {
-                        let status_str: String = row.get("status");
-                        if matches!(status_str.as_str(), "completed" | "failed" | "cancelled") {
+                        if matches!(row.status.as_str(), "completed" | "failed" | "cancelled") {
                             return Ok(());
                         }
                     }
@@ -1150,13 +1228,16 @@ impl ExecutionJournal for SqliteStateStore {
             // All events for an execution tree share the same journal keyed by root_run_id.
             let max_seq_sql =
                 "SELECT COALESCE(MAX(sequence), -1) as max_seq FROM journal_entries WHERE root_run_id = ?";
-            let row = sqlx::query(max_seq_sql)
+            let row = sqlx::query_as::<_, MaxSeqRow>(max_seq_sql)
                 .bind(root_run_id.to_string())
                 .fetch_one(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch max sequence for root_run_id '{root_run_id}'")
+                })?;
 
-            let max_seq: i64 = row.get("max_seq");
+            let max_seq: i64 = row.max_seq.unwrap_or(-1);
             let next_seq = SequenceNumber::new((max_seq + 1) as u64);
 
             // Extract a representative run_id for the SQL column (used for indexing/debugging).
@@ -1231,7 +1312,7 @@ impl ExecutionJournal for SqliteStateStore {
                     LIMIT ?
                 "#;
 
-                let rows = match sqlx::query(sql)
+                let rows = match sqlx::query_as::<_, JournalEntryRow>(sql)
                     .bind(root_run_id.to_string())
                     .bind(cursor)
                     .bind(BATCH_SIZE)
@@ -1249,33 +1330,30 @@ impl ExecutionJournal for SqliteStateStore {
                     break;
                 }
 
-                for row in &rows {
-                    let seq: i64 = row.get("sequence");
-                    let run_id_str: String = row.get("run_id");
-                    let timestamp_str: String = row.get("timestamp");
-                    let event_data: String = row.get("event_data");
+                let last_seq = rows.last().unwrap().sequence;
 
-                    let run_id = match Uuid::parse_str(&run_id_str) {
+                for row in rows.iter() {
+                    let run_id = match Uuid::parse_str(&row.run_id) {
                         Ok(id) => id,
                         Err(e) => {
                             yield Err(error_stack::report!(StateError::Serialization).attach(e));
                             return;
                         }
                     };
-                    let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
+                    let timestamp = chrono::DateTime::parse_from_rfc3339(&row.timestamp)
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(|e| {
                             log::warn!(
-                                "Failed to parse journal timestamp '{timestamp_str}': {e}"
+                                "Failed to parse journal timestamp '{}': {e}", row.timestamp
                             );
                             chrono::Utc::now()
                         });
 
-                    match serde_json::from_str::<JournalEvent>(&event_data) {
+                    match serde_json::from_str::<JournalEvent>(&row.event_data) {
                         Ok(event) => yield Ok(JournalEntry {
                             run_id,
                             root_run_id,
-                            sequence: SequenceNumber::new(seq as u64),
+                            sequence: SequenceNumber::new(row.sequence as u64),
                             timestamp,
                             event,
                         }),
@@ -1291,7 +1369,6 @@ impl ExecutionJournal for SqliteStateStore {
                 }
 
                 // Advance cursor past the last sequence seen, handling gaps.
-                let last_seq: i64 = rows.last().unwrap().get("sequence");
                 cursor = last_seq + 1;
             }
         })
@@ -1306,14 +1383,16 @@ impl ExecutionJournal for SqliteStateStore {
         async move {
             let sql = "SELECT MAX(sequence) as max_seq FROM journal_entries WHERE root_run_id = ?";
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, MaxSeqRow>(sql)
                 .bind(root_run_id.to_string())
                 .fetch_one(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch latest sequence for root_run_id '{root_run_id}'")
+                })?;
 
-            let max_seq: Option<i64> = row.get("max_seq");
-            Ok(max_seq.map(|s| SequenceNumber::new(s as u64)))
+            Ok(row.max_seq.map(|s| SequenceNumber::new(s as u64)))
         }
         .boxed()
     }
@@ -1335,26 +1414,21 @@ impl ExecutionJournal for SqliteStateStore {
                 GROUP BY root_run_id
             "#;
 
-            let rows = sqlx::query(sql)
+            let rows = sqlx::query_as::<_, RootJournalRow>(sql)
                 .fetch_all(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| "failed to fetch active root journals")?;
 
-            let mut infos = Vec::new();
+            let mut infos = Vec::with_capacity(rows.len());
             for row in rows {
-                let root_run_id_str: String = row.get("root_run_id");
                 let root_run_id =
-                    Uuid::parse_str(&root_run_id_str).change_context(StateError::Internal)?;
-
-                let latest_sequence =
-                    SequenceNumber::new(row.get::<i64, _>("latest_sequence") as u64);
-
-                let entry_count = row.get::<i64, _>("entry_count") as u64;
+                    Uuid::parse_str(&row.root_run_id).change_context(StateError::Internal)?;
 
                 infos.push(RootJournalInfo {
                     root_run_id,
-                    latest_sequence,
-                    entry_count,
+                    latest_sequence: SequenceNumber::new(row.latest_sequence as u64),
+                    entry_count: row.entry_count as u64,
                 });
             }
 
@@ -1410,19 +1484,18 @@ impl CheckpointStore for SqliteStateStore {
                 WHERE root_run_id = ?
             "#;
 
-            let row = sqlx::query(sql)
+            let row = sqlx::query_as::<_, CheckpointRow>(sql)
                 .bind(root_run_id.to_string())
                 .fetch_optional(&pool)
                 .await
-                .change_context(StateError::Internal)?;
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to fetch checkpoint for root_run_id '{root_run_id}'")
+                })?;
 
-            Ok(row.map(|r| {
-                let sequence = SequenceNumber::new(r.get::<i64, _>("sequence_number") as u64);
-                let data: Vec<u8> = r.get("data");
-                StoredCheckpoint {
-                    sequence,
-                    data: data.into(),
-                }
+            Ok(row.map(|r| StoredCheckpoint {
+                sequence: SequenceNumber::new(r.sequence_number as u64),
+                data: r.data.into(),
             }))
         }
         .boxed()

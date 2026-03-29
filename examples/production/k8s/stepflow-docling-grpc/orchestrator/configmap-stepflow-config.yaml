@@ -38,6 +38,10 @@ data:
         # NOTE: queueName must match STEPFLOW_QUEUE_NAME in worker deployment.
         # Both are "docling" — a single Helm value should feed both locations.
         queueName: docling
+        # Docling steps are CPU-heavy (20-120s each). With a small worker pool,
+        # tasks queue longer than the 30s default. 300s gives headroom for
+        # queue spikes that will be a scaling signal in production.
+        queueTimeoutSecs: 300
 
     routes:
       "/docling/{*component}":
