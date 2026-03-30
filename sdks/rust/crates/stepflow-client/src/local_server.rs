@@ -187,7 +187,7 @@ impl LocalOrchestrator {
             ClientError::LocalServer(format!("Failed to serialize orchestrator config: {e}"))
         })?;
 
-        let mut child = Command::new(&binary)
+        let child = Command::new(&binary)
             .args(["--port", "0", "--config-stdin"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -199,9 +199,14 @@ impl LocalOrchestrator {
                 ))
             })?;
 
+        // Guard that kills the child process if we bail out before
+        // successfully constructing LocalOrchestrator (which has its own Drop).
+        let mut guard = ChildKillGuard::new(child);
+
         // Write config JSON to stdin then close it
         {
             use std::io::Write;
+            let child = guard.0.as_mut().expect("guard is armed");
             let stdin = child.stdin.take().expect("stdin was piped");
             let mut stdin = stdin;
             stdin.write_all(config_json.as_bytes()).map_err(|e| {
@@ -215,7 +220,13 @@ impl LocalOrchestrator {
         // Read port announcement from stdout (blocking in a blocking thread).
         // Wrap in tokio::time::timeout so we don't block indefinitely if the
         // binary hangs before printing the port line.
-        let stdout = child.stdout.take().expect("stdout was piped");
+        let stdout = guard
+            .0
+            .as_mut()
+            .expect("guard is armed")
+            .stdout
+            .take()
+            .expect("stdout was piped");
         let (port, reader) = tokio::time::timeout(
             startup_timeout,
             tokio::task::spawn_blocking(move || read_port_from_stdout(stdout, startup_timeout)),
@@ -244,6 +255,9 @@ impl LocalOrchestrator {
         wait_for_health(&url, startup_timeout).await.map_err(|e| {
             ClientError::LocalServer(format!("Orchestrator health check failed: {e}"))
         })?;
+
+        // Disarm the guard — LocalOrchestrator::drop takes over from here.
+        let child = guard.disarm();
 
         Ok(Self {
             child,
@@ -308,6 +322,32 @@ impl Drop for LocalOrchestrator {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+/// Guard that kills a child process on drop unless [`disarm`](Self::disarm) is called.
+///
+/// Used during `start_with_timeout` to ensure the subprocess is cleaned up if
+/// any step after `spawn` fails (e.g. health check timeout).
+struct ChildKillGuard(Option<Child>);
+
+impl ChildKillGuard {
+    fn new(child: Child) -> Self {
+        Self(Some(child))
+    }
+
+    /// Disarm the guard and return the inner `Child`.
+    fn disarm(&mut self) -> Child {
+        self.0.take().expect("guard already disarmed")
+    }
+}
+
+impl Drop for ChildKillGuard {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
 
 /// Read lines from `stdout` until we see `{"port": N}`, then return the port
 /// together with the remaining `BufReader` so the caller can continue draining.
@@ -423,5 +463,111 @@ async fn reqwest_health_check(url: &str) -> Result<(), ()> {
         Ok(())
     } else {
         Err(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: build a pre-populated log buffer for unit tests.
+    fn make_log_buffer(lines: &[&str]) -> Arc<Mutex<VecDeque<String>>> {
+        let buf: VecDeque<String> = lines.iter().map(|s| s.to_string()).collect();
+        Arc::new(Mutex::new(buf))
+    }
+
+    #[test]
+    fn test_recent_logs_returns_last_n_lines() {
+        let buffer = make_log_buffer(&["line1", "line2", "line3", "line4", "line5"]);
+        let buf = buffer.lock().unwrap();
+        let len = buf.len();
+        let recent: Vec<String> = buf.iter().skip(len.saturating_sub(3)).cloned().collect();
+        assert_eq!(recent, vec!["line3", "line4", "line5"]);
+    }
+
+    #[test]
+    fn test_recent_logs_fewer_than_n() {
+        let buffer = make_log_buffer(&["only_line"]);
+        let buf = buffer.lock().unwrap();
+        let len = buf.len();
+        let recent: Vec<String> = buf.iter().skip(len.saturating_sub(10)).cloned().collect();
+        assert_eq!(recent, vec!["only_line"]);
+    }
+
+    #[test]
+    fn test_recent_logs_empty_buffer() {
+        let buffer = make_log_buffer(&[]);
+        let buf = buffer.lock().unwrap();
+        let len = buf.len();
+        let recent: Vec<String> = buf.iter().skip(len.saturating_sub(5)).cloned().collect();
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn test_ring_buffer_caps_at_capacity() {
+        let mut buf = VecDeque::with_capacity(DEFAULT_LOG_BUFFER_CAPACITY);
+        let total_lines = DEFAULT_LOG_BUFFER_CAPACITY + 100;
+
+        // Simulate the same logic drain_stdout uses.
+        for i in 0..total_lines {
+            if buf.len() == DEFAULT_LOG_BUFFER_CAPACITY {
+                buf.pop_front();
+            }
+            buf.push_back(format!("line {i}"));
+        }
+
+        assert_eq!(buf.len(), DEFAULT_LOG_BUFFER_CAPACITY);
+        // The first retained line should be line 100 (after evicting 0..99).
+        assert_eq!(buf.front().unwrap(), "line 100");
+        assert_eq!(buf.back().unwrap(), &format!("line {}", total_lines - 1));
+    }
+
+    #[test]
+    fn test_child_kill_guard_kills_on_drop() {
+        let child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("failed to spawn sleep");
+
+        let id = child.id();
+        {
+            let _guard = ChildKillGuard::new(child);
+            // guard dropped here — should kill the child
+        }
+
+        // After the guard kills + waits, the pid should be reaped.
+        // Verify by trying to send signal 0 (existence check).
+        std::thread::sleep(Duration::from_millis(50));
+        let status = Command::new("kill")
+            .args(["-0", &id.to_string()])
+            .status();
+        assert!(
+            status.is_err() || !status.unwrap().success(),
+            "process should no longer exist"
+        );
+    }
+
+    #[test]
+    fn test_child_kill_guard_disarm_does_not_kill() {
+        let child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("failed to spawn sleep");
+
+        let mut guard = ChildKillGuard::new(child);
+        let mut child = guard.disarm();
+        // guard dropped here — should be a no-op since it was disarmed
+
+        // Process should still be alive.
+        let alive = Command::new("kill")
+            .args(["-0", &child.id().to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(alive, "process should still be alive after disarm");
+
+        // Clean up.
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
