@@ -538,9 +538,7 @@ mod tests {
         // After the guard kills + waits, the pid should be reaped.
         // Verify by trying to send signal 0 (existence check).
         std::thread::sleep(Duration::from_millis(50));
-        let status = Command::new("kill")
-            .args(["-0", &id.to_string()])
-            .status();
+        let status = Command::new("kill").args(["-0", &id.to_string()]).status();
         assert!(
             status.is_err() || !status.unwrap().success(),
             "process should no longer exist"
