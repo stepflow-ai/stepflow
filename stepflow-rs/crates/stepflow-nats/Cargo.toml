@@ -11,6 +11,8 @@ publish = false
 
 [dependencies]
 async-nats = "0.46"
+async-stream.workspace = true
+chrono.workspace = true
 dashmap.workspace = true
 error-stack.workspace = true
 futures.workspace = true
@@ -22,8 +24,10 @@ serde_json.workspace = true
 stepflow-core.workspace = true
 stepflow-grpc.workspace = true
 stepflow-plugin.workspace = true
+stepflow-state.workspace = true
 tokio.workspace = true
 tonic = { version = "0.14", features = ["transport"] }
+uuid.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
@@ -34,9 +38,11 @@ futures.workspace = true
 prost = "0.14"
 serde_json.workspace = true
 stepflow-grpc.workspace = true
+stepflow-state.workspace = true
 stepflow-test-utils.workspace = true
 testcontainers.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+uuid.workspace = true
 
 [lints]
 workspace = true

@@ -66,12 +66,14 @@ impl JournalComplianceTests {
         Self::test_stream_from_empty_journal(journal).await;
         Self::test_stream_from_returns_entries_in_order(journal).await;
         Self::test_stream_from_respects_from_sequence(journal).await;
+        Self::test_stream_from_is_bounded(journal).await;
         Self::test_latest_sequence_empty(journal).await;
         Self::test_latest_sequence_after_append(journal).await;
         Self::test_list_active_roots_empty(journal).await;
         Self::test_list_active_roots_multiple(journal).await;
         Self::test_subflow_shared_journal(journal).await;
         Self::test_all_event_types_serialization(journal).await;
+        Self::test_follow_delivers_existing_and_new(journal).await;
     }
 
     /// Run all compliance tests with a fresh journal for each test.
@@ -97,12 +99,14 @@ impl JournalComplianceTests {
         Self::test_stream_from_empty_journal(&factory().await).await;
         Self::test_stream_from_returns_entries_in_order(&factory().await).await;
         Self::test_stream_from_respects_from_sequence(&factory().await).await;
+        Self::test_stream_from_is_bounded(&factory().await).await;
         Self::test_latest_sequence_empty(&factory().await).await;
         Self::test_latest_sequence_after_append(&factory().await).await;
         Self::test_list_active_roots_empty(&factory().await).await;
         Self::test_list_active_roots_multiple(&factory().await).await;
         Self::test_subflow_shared_journal(&factory().await).await;
         Self::test_all_event_types_serialization(&factory().await).await;
+        Self::test_follow_delivers_existing_and_new(&factory().await).await;
     }
 
     // =========================================================================
@@ -759,6 +763,168 @@ impl JournalComplianceTests {
             }
         }
         assert!(stream.next().await.is_none(), "Stream should be exhausted");
+    }
+
+    // =========================================================================
+    // stream_from() boundedness test
+    // =========================================================================
+
+    /// Test that stream_from() is bounded and terminates.
+    ///
+    /// Contract: stream_from returns a finite stream that includes all events
+    /// written before the call and terminates without blocking. New events
+    /// written concurrently may or may not appear (the exact snapshot point
+    /// is implementation-defined), but the stream must always terminate.
+    pub async fn test_stream_from_is_bounded<J: ExecutionJournal>(journal: &J) {
+        let root_run_id = Uuid::now_v7();
+        let run_id = root_run_id;
+
+        // Write 3 events before calling stream_from.
+        for i in 0..3 {
+            journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
+        }
+
+        // Open a bounded stream, then write more events.
+        let mut stream = journal.stream_from(root_run_id, SequenceNumber::new(0));
+
+        for i in 3..5 {
+            journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
+        }
+
+        // The stream MUST terminate within a timeout (bounded, not unbounded).
+        // It must include at least the 3 pre-existing events but may include
+        // some of the concurrently written ones depending on implementation.
+        let mut count = 0;
+        let deadline = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(entry) = stream.next().await {
+                entry.expect("stream should not error");
+                count += 1;
+            }
+        });
+        deadline
+            .await
+            .expect("stream_from must terminate (bounded stream)");
+
+        assert!(
+            count >= 3,
+            "stream_from should include all pre-existing events; got {count}, expected >= 3"
+        );
+        assert!(
+            count <= 5,
+            "stream_from should not include more events than exist; got {count}, expected <= 5"
+        );
+    }
+
+    // =========================================================================
+    // follow() tests
+    // =========================================================================
+
+    /// Test that follow() delivers both existing and newly written events.
+    ///
+    /// Contract: follow returns an unbounded stream that first yields all
+    /// existing events from the requested sequence, then yields new events
+    /// as they are written.
+    pub async fn test_follow_delivers_existing_and_new<J: ExecutionJournal>(journal: &J) {
+        let root_run_id = Uuid::now_v7();
+        let run_id = root_run_id;
+
+        // Write 2 events before calling follow.
+        for i in 0..2 {
+            journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({"pre": i}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
+        }
+
+        let mut follow_stream = journal.follow(root_run_id, SequenceNumber::new(0));
+
+        // Read the 2 existing events.
+        for i in 0..2 {
+            let entry = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                follow_stream.next(),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("Timed out waiting for existing event {i}"))
+            .unwrap_or_else(|| panic!("Follow stream ended before existing event {i}"))
+            .expect("follow should not error");
+
+            match &entry.event {
+                JournalEvent::TaskCompleted { step_index, .. } => {
+                    assert_eq!(*step_index, i, "Existing event {i} should have step_index {i}");
+                }
+                _ => panic!("Expected TaskCompleted for existing event {i}"),
+            }
+        }
+
+        // Now write 2 more events AFTER follow was opened.
+        for i in 2..4 {
+            journal
+                .write(
+                    root_run_id,
+                    JournalEvent::TaskCompleted {
+                        run_id,
+                        item_index: 0,
+                        step_index: i,
+                        result: FlowResult::Success(ValueRef::new(json!({"post": i}))),
+                    },
+                )
+                .await
+                .expect("write should succeed");
+        }
+
+        // Read the 2 new events — follow must deliver them.
+        for i in 2..4 {
+            let entry = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                follow_stream.next(),
+            )
+            .await
+            .unwrap_or_else(|_| panic!("Timed out waiting for new event {i}"))
+            .unwrap_or_else(|| panic!("Follow stream ended before new event {i}"))
+            .expect("follow should not error");
+
+            match &entry.event {
+                JournalEvent::TaskCompleted { step_index, .. } => {
+                    assert_eq!(*step_index, i, "New event {i} should have step_index {i}");
+                }
+                _ => panic!("Expected TaskCompleted for new event {i}"),
+            }
+        }
+
+        // Don't assert stream termination — follow is unbounded by contract.
+        // Just drop it.
+        drop(follow_stream);
     }
 }
 

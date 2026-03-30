@@ -425,15 +425,24 @@ pub trait ExecutionJournal: Send + Sync {
 
     /// Stream journal events for a root run starting from a sequence number.
     ///
-    /// Returns a stream yielding all events in the journal (across all runs
-    /// in the tree) in sequence order, starting from `from_sequence`.
+    /// Returns a **bounded** stream yielding events in the journal (across
+    /// all runs in the tree) in sequence order, starting from
+    /// `from_sequence`. The stream is guaranteed to:
+    ///
+    /// - Include all events written before this call.
+    /// - Terminate without blocking (it does **not** wait for new events).
+    ///
+    /// Events written concurrently (after the call but before the first
+    /// poll) may or may not be included — the exact snapshot point is
+    /// implementation-defined. Use [`follow`](Self::follow) for continuous
+    /// delivery of new events.
     ///
     /// # Arguments
     /// * `root_run_id` - The root run's journal to read from
     /// * `from_sequence` - Start reading from this sequence (inclusive)
     ///
     /// # Returns
-    /// A stream of events in sequence order
+    /// A finite stream of events in sequence order
     fn stream_from(
         &self,
         root_run_id: Uuid,
@@ -465,10 +474,11 @@ pub trait ExecutionJournal: Send + Sync {
 
     /// Follow a root run's journal, yielding events as they arrive.
     ///
-    /// Like [`stream_from`](Self::stream_from), but never terminates — when all
-    /// existing events have been yielded, it polls for new entries. The stream
-    /// should be dropped by the consumer when it is no longer needed (e.g., after
-    /// receiving a `RunCompleted` event).
+    /// Unlike [`stream_from`](Self::stream_from), this stream is **unbounded**
+    /// — after yielding all existing events it waits for and delivers new
+    /// events as they are written. The stream should be dropped by the
+    /// consumer when it is no longer needed (e.g., after receiving a
+    /// `RunCompleted` event).
     ///
     /// The default implementation polls `stream_from` in a loop with a 500ms
     /// delay between batches. Backends with native change-notification support
