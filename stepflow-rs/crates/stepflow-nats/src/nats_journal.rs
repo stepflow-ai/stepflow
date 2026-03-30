@@ -71,8 +71,12 @@ impl NatsJournal {
     ///
     /// Uses the default stream name and tenant ID.
     pub async fn connect(url: &str) -> error_stack::Result<Self, StateError> {
-        Self::connect_with_config(url, DEFAULT_STREAM_NAME.to_string(), DEFAULT_TENANT.to_string())
-            .await
+        Self::connect_with_config(
+            url,
+            DEFAULT_STREAM_NAME.to_string(),
+            DEFAULT_TENANT.to_string(),
+        )
+        .await
     }
 
     /// Connect to a NATS server with a custom stream name.
@@ -119,11 +123,7 @@ impl NatsJournal {
 
     /// Subject for a given root run: `journal.<tenant>.<uuid_hex>`.
     fn subject(&self, root_run_id: Uuid) -> String {
-        format!(
-            "{SUBJECT_ROOT}.{}.{}",
-            self.tenant_id,
-            root_run_id.simple()
-        )
+        format!("{SUBJECT_ROOT}.{}.{}", self.tenant_id, root_run_id.simple())
     }
 
     /// Wildcard subject capturing all journal events for this tenant.
@@ -386,11 +386,7 @@ impl ExecutionJournal for NatsJournal {
         .boxed()
     }
 
-    fn follow(
-        &self,
-        root_run_id: Uuid,
-        from_sequence: SequenceNumber,
-    ) -> JournalEventStream<'_> {
+    fn follow(&self, root_run_id: Uuid, from_sequence: SequenceNumber) -> JournalEventStream<'_> {
         Box::pin(async_stream::stream! {
             // Ensure the stream exists so the consumer can attach.
             if let Err(e) = self.ensure_stream().await {

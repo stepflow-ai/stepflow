@@ -870,18 +870,19 @@ impl JournalComplianceTests {
 
         // Read the 2 existing events.
         for i in 0..2 {
-            let entry = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                follow_stream.next(),
-            )
-            .await
-            .unwrap_or_else(|_| panic!("Timed out waiting for existing event {i}"))
-            .unwrap_or_else(|| panic!("Follow stream ended before existing event {i}"))
-            .expect("follow should not error");
+            let entry =
+                tokio::time::timeout(std::time::Duration::from_secs(5), follow_stream.next())
+                    .await
+                    .unwrap_or_else(|_| panic!("Timed out waiting for existing event {i}"))
+                    .unwrap_or_else(|| panic!("Follow stream ended before existing event {i}"))
+                    .expect("follow should not error");
 
             match &entry.event {
                 JournalEvent::TaskCompleted { step_index, .. } => {
-                    assert_eq!(*step_index, i, "Existing event {i} should have step_index {i}");
+                    assert_eq!(
+                        *step_index, i,
+                        "Existing event {i} should have step_index {i}"
+                    );
                 }
                 _ => panic!("Expected TaskCompleted for existing event {i}"),
             }
@@ -905,14 +906,12 @@ impl JournalComplianceTests {
 
         // Read the 2 new events — follow must deliver them.
         for i in 2..4 {
-            let entry = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                follow_stream.next(),
-            )
-            .await
-            .unwrap_or_else(|_| panic!("Timed out waiting for new event {i}"))
-            .unwrap_or_else(|| panic!("Follow stream ended before new event {i}"))
-            .expect("follow should not error");
+            let entry =
+                tokio::time::timeout(std::time::Duration::from_secs(5), follow_stream.next())
+                    .await
+                    .unwrap_or_else(|_| panic!("Timed out waiting for new event {i}"))
+                    .unwrap_or_else(|| panic!("Follow stream ended before new event {i}"))
+                    .expect("follow should not error");
 
             match &entry.event {
                 JournalEvent::TaskCompleted { step_index, .. } => {
