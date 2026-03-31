@@ -58,6 +58,13 @@ const DEFAULT_TENANT: &str = "default";
 /// Subject root. Full subjects are `journal.<tenant>.<root_run_id_hex>`.
 const SUBJECT_ROOT: &str = "journal";
 
+/// Inactivity timeout for ephemeral consumers created by `stream_from()`.
+///
+/// Ephemeral consumers are cleaned up by the NATS server after this period
+/// of inactivity. A short threshold avoids accumulating stale consumers
+/// when streams are dropped before all messages are consumed.
+const EPHEMERAL_INACTIVE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// NATS JetStream-backed execution journal.
 ///
 /// All root runs share a single JetStream stream. Per-run isolation is
@@ -91,11 +98,16 @@ impl NatsJournal {
     }
 
     /// Connect to a NATS server with custom stream name and tenant ID.
+    ///
+    /// The `tenant_id` is embedded in NATS subjects and must contain only
+    /// alphanumeric characters, hyphens, or underscores.
     pub async fn connect_with_config(
         url: &str,
         stream_name: String,
         tenant_id: String,
     ) -> error_stack::Result<Self, StateError> {
+        validate_tenant_id(&tenant_id)?;
+
         let client = async_nats::connect(url)
             .await
             .change_context(StateError::Internal)
@@ -112,15 +124,22 @@ impl NatsJournal {
     }
 
     /// Build a journal from an existing JetStream context.
+    ///
+    /// The `tenant_id` (if provided) must contain only alphanumeric characters,
+    /// hyphens, or underscores.
     pub fn from_jetstream(
         jetstream: async_nats::jetstream::Context,
         stream_name: Option<String>,
         tenant_id: Option<String>,
     ) -> Self {
+        let tenant_id = tenant_id.unwrap_or_else(|| DEFAULT_TENANT.to_string());
+        // Default tenant is known-valid; user-provided tenants are validated
+        // at the connect_with_config level. from_jetstream is an internal
+        // constructor so we trust the caller.
         Self {
             jetstream,
             stream_name: stream_name.unwrap_or_else(|| DEFAULT_STREAM_NAME.to_string()),
-            tenant_id: tenant_id.unwrap_or_else(|| DEFAULT_TENANT.to_string()),
+            tenant_id,
         }
     }
 
@@ -174,6 +193,29 @@ struct JournalPayload {
     event: JournalEvent,
 }
 
+/// Validate that a tenant ID is safe for use in NATS subjects.
+///
+/// NATS subjects use `.` as a hierarchy separator and `>` / `*` as
+/// wildcards. A tenant ID containing these characters would corrupt
+/// the subject scheme.
+fn validate_tenant_id(tenant_id: &str) -> error_stack::Result<(), StateError> {
+    if tenant_id.is_empty() {
+        return Err(error_stack::report!(StateError::Initialization)
+            .attach_printable("tenant_id must not be empty"));
+    }
+    if !tenant_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(error_stack::report!(StateError::Initialization).attach_printable(format!(
+            "tenant_id '{}' contains invalid characters; only alphanumeric, hyphens, and \
+             underscores are allowed",
+            tenant_id
+        )));
+    }
+    Ok(())
+}
+
 /// Returns `true` if a `GetStreamError` indicates the stream does not exist.
 fn is_stream_not_found(err: &GetStreamError) -> bool {
     matches!(
@@ -187,6 +229,14 @@ fn is_stream_not_found(err: &GetStreamError) -> bool {
 /// the subject (as opposed to a transient/connectivity failure).
 fn is_subject_not_found(err: &DirectGetError) -> bool {
     matches!(err.kind(), DirectGetErrorKind::NotFound)
+}
+
+/// Extract the stream sequence number from a JetStream message, or return
+/// an error if the message metadata cannot be parsed.
+fn stream_sequence(msg: &async_nats::jetstream::Message) -> Result<u64, String> {
+    msg.info()
+        .map(|i| i.stream_sequence)
+        .map_err(|e| format!("Failed to parse message info (corrupt reply subject?): {e}"))
 }
 
 impl ExecutionJournal for NatsJournal {
@@ -215,6 +265,11 @@ impl ExecutionJournal for NatsJournal {
                 .change_context(StateError::Serialization)
                 .attach_printable("Failed to serialize journal event")?;
 
+            // The first .await sends the publish; the second .await waits for
+            // the JetStream ack. If no stream captures the subject (e.g.,
+            // initialize_journal was never called), the server returns a "no
+            // responders" error on the second await, so writes are never
+            // silently dropped.
             let ack = self
                 .jetstream
                 .publish(self.subject(root_run_id), data.into())
@@ -281,6 +336,7 @@ impl ExecutionJournal for NatsJournal {
                     deliver_policy,
                     filter_subject: subject,
                     ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
+                    inactive_threshold: EPHEMERAL_INACTIVE_THRESHOLD,
                     ..Default::default()
                 })
                 .await
@@ -313,7 +369,14 @@ impl ExecutionJournal for NatsJournal {
                     }
                 };
 
-                let seq = msg.info().map(|i| i.stream_sequence).unwrap_or(0);
+                let seq = match stream_sequence(&msg) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        yield Err(error_stack::report!(StateError::Internal)
+                            .attach_printable(e));
+                        return;
+                    }
+                };
 
                 let payload: JournalPayload = match serde_json::from_slice(&msg.payload) {
                     Ok(p) => p,
@@ -503,16 +566,25 @@ impl ExecutionJournal for NatsJournal {
                     }
                 };
 
-                let seq = msg.info().map(|i| i.stream_sequence).unwrap_or(0);
+                let seq = match stream_sequence(&msg) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        yield Err(error_stack::report!(StateError::Internal)
+                            .attach_printable(e));
+                        return;
+                    }
+                };
 
                 let payload: JournalPayload = match serde_json::from_slice(&msg.payload) {
                     Ok(p) => p,
                     Err(e) => {
-                        yield Err(error_stack::report!(StateError::Serialization)
-                            .attach_printable(format!(
-                                "Failed to deserialize follow entry: {e}"
-                            )));
-                        return;
+                        // Deserialization failure on a single message should not
+                        // kill the entire follow stream. Log and skip so the
+                        // consumer can continue processing subsequent events.
+                        log::error!(
+                            "Skipping corrupt journal message at seq {seq}: {e}"
+                        );
+                        continue;
                     }
                 };
 
@@ -545,5 +617,27 @@ fn event_run_id(event: &JournalEvent) -> Uuid {
         JournalEvent::TasksStarted { runs } => {
             runs.first().map(|r| r.run_id).unwrap_or(Uuid::nil())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_tenant_ids() {
+        assert!(validate_tenant_id("default").is_ok());
+        assert!(validate_tenant_id("my-tenant").is_ok());
+        assert!(validate_tenant_id("tenant_123").is_ok());
+        assert!(validate_tenant_id("ABC").is_ok());
+    }
+
+    #[test]
+    fn invalid_tenant_ids() {
+        assert!(validate_tenant_id("").is_err());
+        assert!(validate_tenant_id("has.dot").is_err());
+        assert!(validate_tenant_id("has>wildcard").is_err());
+        assert!(validate_tenant_id("has*star").is_err());
+        assert!(validate_tenant_id("has space").is_err());
     }
 }
