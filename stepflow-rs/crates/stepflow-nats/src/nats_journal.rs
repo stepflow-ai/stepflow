@@ -37,9 +37,9 @@
 //! `stream.purge().filter("journal.<id>")`. A `MaxAge` on the stream
 //! config acts as a safety net for orphaned runs.
 
+use async_nats::jetstream::ErrorCode;
 use async_nats::jetstream::context::{GetStreamError, GetStreamErrorKind};
 use async_nats::jetstream::stream::{DirectGetError, DirectGetErrorKind};
-use async_nats::jetstream::ErrorCode;
 use chrono::Utc;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
@@ -353,7 +353,7 @@ impl ExecutionJournal for NatsJournal {
                 Err(e) => {
                     return Err(e)
                         .change_context(StateError::Internal)
-                        .attach_printable("Failed to get journal stream for latest_sequence")
+                        .attach_printable("Failed to get journal stream for latest_sequence");
                 }
             };
 
@@ -381,7 +381,7 @@ impl ExecutionJournal for NatsJournal {
                 Err(e) => {
                     return Err(e)
                         .change_context(StateError::Internal)
-                        .attach_printable("Failed to get journal stream for list_active_roots")
+                        .attach_printable("Failed to get journal stream for list_active_roots");
                 }
             };
 
