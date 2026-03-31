@@ -37,6 +37,9 @@
 //! `stream.purge().filter("journal.<id>")`. A `MaxAge` on the stream
 //! config acts as a safety net for orphaned runs.
 
+use async_nats::jetstream::context::{GetStreamError, GetStreamErrorKind};
+use async_nats::jetstream::stream::{DirectGetError, DirectGetErrorKind};
+use async_nats::jetstream::ErrorCode;
 use chrono::Utc;
 use error_stack::ResultExt as _;
 use futures::future::{BoxFuture, FutureExt as _};
@@ -171,6 +174,21 @@ struct JournalPayload {
     event: JournalEvent,
 }
 
+/// Returns `true` if a `GetStreamError` indicates the stream does not exist.
+fn is_stream_not_found(err: &GetStreamError) -> bool {
+    matches!(
+        err.kind(),
+        GetStreamErrorKind::JetStream(ref js_err)
+            if js_err.error_code() == ErrorCode::STREAM_NOT_FOUND
+    )
+}
+
+/// Returns `true` if a `DirectGetError` indicates no message was found for
+/// the subject (as opposed to a transient/connectivity failure).
+fn is_subject_not_found(err: &DirectGetError) -> bool {
+    matches!(err.kind(), DirectGetErrorKind::NotFound)
+}
+
 impl ExecutionJournal for NatsJournal {
     fn initialize_journal(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         async move {
@@ -218,10 +236,14 @@ impl ExecutionJournal for NatsJournal {
         from_sequence: SequenceNumber,
     ) -> JournalEventStream<'_> {
         Box::pin(async_stream::stream! {
-            // Get the stream; if it doesn't exist, yield nothing.
             let stream = match self.jetstream.get_stream(&self.stream_name).await {
                 Ok(s) => s,
-                Err(_) => return,
+                Err(e) if is_stream_not_found(&e) => return,
+                Err(e) => {
+                    yield Err(error_stack::report!(StateError::Internal)
+                        .attach_printable(format!("Failed to get journal stream: {e}")));
+                    return;
+                }
             };
 
             let subject = self.subject(root_run_id);
@@ -230,7 +252,14 @@ impl ExecutionJournal for NatsJournal {
             // the time of first poll. If no messages exist, return empty.
             let last_subject_seq = match stream.direct_get_last_for_subject(&subject).await {
                 Ok(msg) => msg.sequence,
-                Err(_) => return,
+                Err(e) if is_subject_not_found(&e) => return,
+                Err(e) => {
+                    yield Err(error_stack::report!(StateError::Internal)
+                        .attach_printable(format!(
+                            "Failed to get last message for subject: {e}"
+                        )));
+                    return;
+                }
             };
 
             // If the caller asks to start beyond the last message, nothing to yield.
@@ -251,6 +280,7 @@ impl ExecutionJournal for NatsJournal {
                 .create_consumer(async_nats::jetstream::consumer::pull::Config {
                     deliver_policy,
                     filter_subject: subject,
+                    ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
                     ..Default::default()
                 })
                 .await
@@ -319,14 +349,21 @@ impl ExecutionJournal for NatsJournal {
         async move {
             let stream = match self.jetstream.get_stream(&self.stream_name).await {
                 Ok(s) => s,
-                Err(_) => return Ok(None),
+                Err(e) if is_stream_not_found(&e) => return Ok(None),
+                Err(e) => {
+                    return Err(e)
+                        .change_context(StateError::Internal)
+                        .attach_printable("Failed to get journal stream for latest_sequence")
+                }
             };
 
-            // Use direct-get to fetch the last message for this root run's subject.
             let subject = self.subject(root_run_id);
             match stream.direct_get_last_for_subject(&subject).await {
                 Ok(msg) => Ok(Some(SequenceNumber::new(msg.sequence))),
-                Err(_) => Ok(None),
+                Err(e) if is_subject_not_found(&e) => Ok(None),
+                Err(e) => Err(e)
+                    .change_context(StateError::Internal)
+                    .attach_printable("Failed to get last message for latest_sequence"),
             }
         }
         .boxed()
@@ -340,7 +377,12 @@ impl ExecutionJournal for NatsJournal {
 
             let stream = match self.jetstream.get_stream(&self.stream_name).await {
                 Ok(s) => s,
-                Err(_) => return Ok(Vec::new()),
+                Err(e) if is_stream_not_found(&e) => return Ok(Vec::new()),
+                Err(e) => {
+                    return Err(e)
+                        .change_context(StateError::Internal)
+                        .attach_printable("Failed to get journal stream for list_active_roots")
+                }
             };
 
             // Use the subjects API to enumerate all subjects and their counts.
@@ -371,7 +413,13 @@ impl ExecutionJournal for NatsJournal {
                 // Get the last message for this subject to find the latest sequence.
                 let latest_sequence = match stream.direct_get_last_for_subject(&subject).await {
                     Ok(msg) => SequenceNumber::new(msg.sequence),
-                    Err(_) => continue,
+                    Err(e) if is_subject_not_found(&e) => continue,
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to get last message for subject {subject}: {e}; skipping"
+                        );
+                        continue;
+                    }
                 };
 
                 roots.push(RootJournalInfo {
@@ -415,17 +463,23 @@ impl ExecutionJournal for NatsJournal {
             // automatically handles reconnection and sequence tracking, and
             // never terminates — new messages are delivered as they arrive.
             let subject = self.subject(root_run_id);
-            let ordered: async_nats::jetstream::consumer::pull::Ordered = match stream
+            let consumer = match stream
                 .create_consumer(async_nats::jetstream::consumer::pull::OrderedConfig {
                     deliver_policy,
                     filter_subject: subject,
                     ..Default::default()
                 })
                 .await
-                .map_err(|e| {
-                    error_stack::report!(StateError::Internal)
-                        .attach_printable(format!("Failed to create ordered consumer: {e}"))
-                })?
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    yield Err(error_stack::report!(StateError::Internal)
+                        .attach_printable(format!("Failed to create ordered consumer: {e}")));
+                    return;
+                }
+            };
+
+            let ordered: async_nats::jetstream::consumer::pull::Ordered = match consumer
                 .messages()
                 .await
             {
