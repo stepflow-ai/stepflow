@@ -41,18 +41,22 @@ runs:
       run: |
         cd stepflow-rs
         cargo build -p stepflow-server --no-default-features
-        cargo build -p stepflow-isolation-proxy
+        # stepflow-isolation-proxy temporarily excluded from workspace (see #860)
+        # cargo build -p stepflow-isolation-proxy
 
-    - name: "Test: Subprocess backend"
-      shell: bash
-      run: |
-        cd stepflow-rs
-        echo "=== Subprocess Backend Test ==="
-        STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow-server \
-          cargo test -p stepflow-isolation-proxy --test integration -- --include-ignored --nocapture 2>&1 \
-          | tee /tmp/subprocess-test.log
-        echo "Subprocess test: PASSED"
-        grep "TIMING:" /tmp/subprocess-test.log || true
+    # stepflow-isolation-proxy tests temporarily disabled (see #860)
+    # Uncomment when the crate is re-added to the workspace.
+
+    # - name: "Test: Subprocess backend"
+    #   shell: bash
+    #   run: |
+    #     cd stepflow-rs
+    #     echo "=== Subprocess Backend Test ==="
+    #     STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow-server \
+    #       cargo test -p stepflow-isolation-proxy --test integration -- --include-ignored --nocapture 2>&1 \
+    #       | tee /tmp/subprocess-test.log
+    #     echo "Subprocess test: PASSED"
+    #     grep "TIMING:" /tmp/subprocess-test.log || true
 
     - name: Enable KVM
       shell: bash
@@ -62,30 +66,30 @@ runs:
         sudo udevadm trigger
         sudo chmod 666 /dev/kvm
 
-    - name: Setup Firecracker
-      shell: bash
-      run: sudo ./stepflow-rs/crates/stepflow-isolation-proxy/scripts/setup-firecracker-ci.sh
+    # - name: Setup Firecracker
+    #   shell: bash
+    #   run: sudo ./stepflow-rs/crates/stepflow-isolation-proxy/scripts/setup-firecracker-ci.sh
 
-    - name: Build rootfs
-      shell: bash
-      run: |
-        cd stepflow-rs/crates/stepflow-isolation-proxy
-        sudo ./scripts/build-rootfs.sh
+    # - name: Build rootfs
+    #   shell: bash
+    #   run: |
+    #     cd stepflow-rs/crates/stepflow-isolation-proxy
+    #     sudo ./scripts/build-rootfs.sh
 
-    - name: "Test: Firecracker backend"
-      shell: bash
-      run: |
-        cd stepflow-rs/crates/stepflow-isolation-proxy
-        echo "=== Firecracker Backend Test ==="
-        ./scripts/test-firecracker.sh 2>&1 | tee /tmp/firecracker-test.log
-        # Collect timing data from both test output and proxy log
-        cat /dev/null > /tmp/firecracker-timing.log
-        grep 'TIMING' /tmp/firecracker-test.log >> /tmp/firecracker-timing.log 2>/dev/null || true
-        grep 'TIMING' /tmp/stepflow-proxy.log >> /tmp/firecracker-timing.log 2>/dev/null || true
-        echo "=== All timing data ==="
-        cat /tmp/firecracker-timing.log
+    # - name: "Test: Firecracker backend"
+    #   shell: bash
+    #   run: |
+    #     cd stepflow-rs/crates/stepflow-isolation-proxy
+    #     echo "=== Firecracker Backend Test ==="
+    #     ./scripts/test-firecracker.sh 2>&1 | tee /tmp/firecracker-test.log
+    #     # Collect timing data from both test output and proxy log
+    #     cat /dev/null > /tmp/firecracker-timing.log
+    #     grep 'TIMING' /tmp/firecracker-test.log >> /tmp/firecracker-timing.log 2>/dev/null || true
+    #     grep 'TIMING' /tmp/stepflow-proxy.log >> /tmp/firecracker-timing.log 2>/dev/null || true
+    #     echo "=== All timing data ==="
+    #     cat /tmp/firecracker-timing.log
 
-    - name: Print timing summary
+    - name: Print timing summary (skipped — isolation proxy disabled, see #860)
       if: always()
       shell: bash
       run: |
