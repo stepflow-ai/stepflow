@@ -207,11 +207,13 @@ fn validate_tenant_id(tenant_id: &str) -> error_stack::Result<(), StateError> {
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
     {
-        return Err(error_stack::report!(StateError::Initialization).attach_printable(format!(
-            "tenant_id '{}' contains invalid characters; only alphanumeric, hyphens, and \
+        return Err(
+            error_stack::report!(StateError::Initialization).attach_printable(format!(
+                "tenant_id '{}' contains invalid characters; only alphanumeric, hyphens, and \
              underscores are allowed",
-            tenant_id
-        )));
+                tenant_id
+            )),
+        );
     }
     Ok(())
 }
