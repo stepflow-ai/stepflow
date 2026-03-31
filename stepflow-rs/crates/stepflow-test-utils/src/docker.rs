@@ -73,10 +73,11 @@ pub fn init_docker_host() {
     let _ = *INIT;
 }
 
-/// Skip the current test if Docker is not available.
+/// Ensure Docker is available before running a test.
 ///
-/// Prints a message so `cargo test` output shows why the test was skipped,
-/// then returns early (test counts as passed).
+/// - **CI (`CI` env var set)**: panics so the test fails loudly.
+/// - **Local development**: prints a skip message and returns early
+///   (test counts as passed).
 ///
 /// Also initializes `DOCKER_HOST` for Colima support.
 ///
@@ -94,6 +95,9 @@ macro_rules! require_docker {
     () => {
         $crate::init_docker_host();
         if !$crate::docker_available() {
+            if std::env::var_os("CI").is_some() {
+                panic!("Docker is required for this test but is not available in CI");
+            }
             eprintln!("skipped (Docker not available)");
             return;
         }

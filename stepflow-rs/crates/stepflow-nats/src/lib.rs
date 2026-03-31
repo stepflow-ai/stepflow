@@ -20,8 +20,10 @@
 //! for task dispatch. Workers still report heartbeats, completion, and
 //! sub-runs via the gRPC `OrchestratorService` (URL from `TaskContext`).
 
+pub mod nats_journal;
 pub mod nats_plugin_config;
 pub mod nats_transport;
 
+pub use nats_journal::NatsJournal;
 pub use nats_plugin_config::NatsPluginConfig;
 pub use nats_transport::NatsTaskTransport;

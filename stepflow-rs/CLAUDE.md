@@ -80,6 +80,26 @@ cargo insta show <path>
 cargo insta accept
 ```
 
+### Conditional Test Skipping
+
+Tests that require external infrastructure (Docker, NATS, etcd) must use the `require_docker!()` macro from `stepflow-test-utils`. This macro:
+
+- **In CI** (`CI` env var set): **panics** so the test fails loudly if infrastructure is missing.
+- **Local development** (`CI` not set): prints a skip message and returns early.
+
+```rust
+#[tokio::test]
+async fn my_docker_test() {
+    stepflow_test_utils::require_docker!();
+    // Docker is guaranteed available here — start containers
+}
+```
+
+**Never silently skip tests using bare `return` or `if !available { return; }`.** CI must treat missing infrastructure as a failure, not a pass. If you need to conditionally skip a test, either:
+
+1. Use `require_docker!()` for Docker/container-based tests (preferred).
+2. Use `#[ignore = "reason"]` for tests that need special binaries or manual setup and are excluded from the default `cargo test` run.
+
 ### Code Linting
 
 ```bash
