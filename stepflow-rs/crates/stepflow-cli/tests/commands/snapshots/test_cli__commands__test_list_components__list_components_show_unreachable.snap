@@ -7,7 +7,7 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/zk/lxqpq1490bb5xkvpdg25058r0000gn/T/.tmprlzWDh/filtered-config.yml"
+    - "--config=/var/folders/zk/lxqpq1490bb5xkvpdg25058r0000gn/T/.tmp8slOF5/filtered-config.yml"
     - "--hide-unreachable=false"
   env:
     STEPFLOW_LOG_DESTINATION: ""
@@ -54,6 +54,11 @@ Component: /map (plugin: test-builtins)
   Available Routes:
     /reachable/map
 
+Component: /noop (plugin: test-builtins)
+  Description: No-op component that returns its input unchanged. Used for benchmarking.
+  Available Routes:
+    /reachable/noop
+
 Component: /openai (plugin: test-builtins)
   Description: Send messages to OpenAI's chat completion API and get a response
   Available Routes:
@@ -64,6 +69,11 @@ Component: /put_blob (plugin: test-builtins)
   Available Routes:
     /reachable/put_blob
 
-Total components: 8
+Component: /sleep (plugin: test-builtins)
+  Description: Sleeps for a specified duration then returns. Used for benchmarking concurrent flow capacity.
+  Available Routes:
+    /reachable/sleep
+
+Total components: 10
 
 ----- stderr -----

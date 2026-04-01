@@ -1,0 +1,8 @@
+{
+  "name": "Benchmark - Noop x1",
+  "description": "1 noop step. Baseline for per-step scaling measurement.",
+  "steps": [
+    { "id": "noop_1", "component": "/noop", "input": { "step": 1 } }
+  ],
+  "output": { "$step": "noop_1" }
+}

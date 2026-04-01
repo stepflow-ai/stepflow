@@ -1,0 +1,25 @@
+[package]
+name = "stepflow-bench-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Benchmark worker that instantly completes tasks for orchestrator throughput testing"
+
+[[bin]]
+name = "stepflow-bench-worker"
+path = "src/main.rs"
+
+[dependencies]
+stepflow-worker = { path = "../stepflow-worker" }
+stepflow-proto = { path = "../../../../stepflow-rs/crates/stepflow-proto" }
+tokio = { version = "1", features = ["full", "signal"] }
+tonic = { version = "0.14", features = ["transport"] }
+serde_json = "1"
+clap = { version = "4.5", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+futures = "0.3"

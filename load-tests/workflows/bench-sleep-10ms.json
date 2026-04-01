@@ -1,0 +1,15 @@
+{
+  "name": "Benchmark - Sleep 10ms",
+  "description": "Single /sleep step with 10ms delay. Simulates fast worker latency for concurrent flow capacity testing.",
+  "steps": [
+    {
+      "id": "sleep",
+      "component": "/sleep",
+      "input": {
+        "duration_ms": 10,
+        "passthrough": { "$input": "data" }
+      }
+    }
+  ],
+  "output": { "$step": "sleep" }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "Benchmark - Noop x10",
+  "description": "10 independent /noop steps with no dependencies. Measures concurrent step scheduling within a single run.",
+  "steps": [
+    { "id": "noop_1", "component": "/noop", "input": { "step": 1 } },
+    { "id": "noop_2", "component": "/noop", "input": { "step": 2 } },
+    { "id": "noop_3", "component": "/noop", "input": { "step": 3 } },
+    { "id": "noop_4", "component": "/noop", "input": { "step": 4 } },
+    { "id": "noop_5", "component": "/noop", "input": { "step": 5 } },
+    { "id": "noop_6", "component": "/noop", "input": { "step": 6 } },
+    { "id": "noop_7", "component": "/noop", "input": { "step": 7 } },
+    { "id": "noop_8", "component": "/noop", "input": { "step": 8 } },
+    { "id": "noop_9", "component": "/noop", "input": { "step": 9 } },
+    { "id": "noop_10", "component": "/noop", "input": { "step": 10 } }
+  ],
+  "output": {
+    "s1": { "$step": "noop_1" },
+    "s2": { "$step": "noop_2" },
+    "s3": { "$step": "noop_3" },
+    "s4": { "$step": "noop_4" },
+    "s5": { "$step": "noop_5" },
+    "s6": { "$step": "noop_6" },
+    "s7": { "$step": "noop_7" },
+    "s8": { "$step": "noop_8" },
+    "s9": { "$step": "noop_9" },
+    "s10": { "$step": "noop_10" }
+  }
+}

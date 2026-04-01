@@ -332,6 +332,11 @@ Component: /map (plugin: builtin)
       ]
     }
 
+Component: /noop (plugin: builtin)
+  Description: No-op component that returns its input unchanged. Used for benchmarking.
+  Available Routes:
+    /builtin/noop
+
 Component: /openai (plugin: builtin)
   Description: Send messages to OpenAI's chat completion API and get a response
   Available Routes:
@@ -438,6 +443,49 @@ Component: /put_blob (plugin: builtin)
       ]
     }
 
-Total components: 8
+Component: /sleep (plugin: builtin)
+  Description: Sleeps for a specified duration then returns. Used for benchmarking concurrent flow capacity.
+  Available Routes:
+    /builtin/sleep
+  Input Schema:
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "SleepInput",
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "description": "Duration to sleep in milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "passthrough": {
+          "description": "Optional data to pass through unchanged."
+        }
+      },
+      "required": [
+        "duration_ms"
+      ]
+    }
+  Output Schema:
+    {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "SleepOutput",
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "description": "The duration that was slept, in milliseconds.",
+          "type": "number",
+          "format": "double"
+        },
+        "passthrough": {
+          "description": "The passthrough data, if any was provided."
+        }
+      },
+      "required": [
+        "duration_ms"
+      ]
+    }
+
+Total components: 10
 
 ----- stderr -----

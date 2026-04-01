@@ -1,0 +1,1008 @@
+{
+  "name": "Benchmark - Noop x100",
+  "description": "100 independent noop steps. For per-step scaling measurement.",
+  "steps": [
+    {
+      "id": "noop_1",
+      "component": "/noop",
+      "input": {
+        "step": 1
+      }
+    },
+    {
+      "id": "noop_2",
+      "component": "/noop",
+      "input": {
+        "step": 2
+      }
+    },
+    {
+      "id": "noop_3",
+      "component": "/noop",
+      "input": {
+        "step": 3
+      }
+    },
+    {
+      "id": "noop_4",
+      "component": "/noop",
+      "input": {
+        "step": 4
+      }
+    },
+    {
+      "id": "noop_5",
+      "component": "/noop",
+      "input": {
+        "step": 5
+      }
+    },
+    {
+      "id": "noop_6",
+      "component": "/noop",
+      "input": {
+        "step": 6
+      }
+    },
+    {
+      "id": "noop_7",
+      "component": "/noop",
+      "input": {
+        "step": 7
+      }
+    },
+    {
+      "id": "noop_8",
+      "component": "/noop",
+      "input": {
+        "step": 8
+      }
+    },
+    {
+      "id": "noop_9",
+      "component": "/noop",
+      "input": {
+        "step": 9
+      }
+    },
+    {
+      "id": "noop_10",
+      "component": "/noop",
+      "input": {
+        "step": 10
+      }
+    },
+    {
+      "id": "noop_11",
+      "component": "/noop",
+      "input": {
+        "step": 11
+      }
+    },
+    {
+      "id": "noop_12",
+      "component": "/noop",
+      "input": {
+        "step": 12
+      }
+    },
+    {
+      "id": "noop_13",
+      "component": "/noop",
+      "input": {
+        "step": 13
+      }
+    },
+    {
+      "id": "noop_14",
+      "component": "/noop",
+      "input": {
+        "step": 14
+      }
+    },
+    {
+      "id": "noop_15",
+      "component": "/noop",
+      "input": {
+        "step": 15
+      }
+    },
+    {
+      "id": "noop_16",
+      "component": "/noop",
+      "input": {
+        "step": 16
+      }
+    },
+    {
+      "id": "noop_17",
+      "component": "/noop",
+      "input": {
+        "step": 17
+      }
+    },
+    {
+      "id": "noop_18",
+      "component": "/noop",
+      "input": {
+        "step": 18
+      }
+    },
+    {
+      "id": "noop_19",
+      "component": "/noop",
+      "input": {
+        "step": 19
+      }
+    },
+    {
+      "id": "noop_20",
+      "component": "/noop",
+      "input": {
+        "step": 20
+      }
+    },
+    {
+      "id": "noop_21",
+      "component": "/noop",
+      "input": {
+        "step": 21
+      }
+    },
+    {
+      "id": "noop_22",
+      "component": "/noop",
+      "input": {
+        "step": 22
+      }
+    },
+    {
+      "id": "noop_23",
+      "component": "/noop",
+      "input": {
+        "step": 23
+      }
+    },
+    {
+      "id": "noop_24",
+      "component": "/noop",
+      "input": {
+        "step": 24
+      }
+    },
+    {
+      "id": "noop_25",
+      "component": "/noop",
+      "input": {
+        "step": 25
+      }
+    },
+    {
+      "id": "noop_26",
+      "component": "/noop",
+      "input": {
+        "step": 26
+      }
+    },
+    {
+      "id": "noop_27",
+      "component": "/noop",
+      "input": {
+        "step": 27
+      }
+    },
+    {
+      "id": "noop_28",
+      "component": "/noop",
+      "input": {
+        "step": 28
+      }
+    },
+    {
+      "id": "noop_29",
+      "component": "/noop",
+      "input": {
+        "step": 29
+      }
+    },
+    {
+      "id": "noop_30",
+      "component": "/noop",
+      "input": {
+        "step": 30
+      }
+    },
+    {
+      "id": "noop_31",
+      "component": "/noop",
+      "input": {
+        "step": 31
+      }
+    },
+    {
+      "id": "noop_32",
+      "component": "/noop",
+      "input": {
+        "step": 32
+      }
+    },
+    {
+      "id": "noop_33",
+      "component": "/noop",
+      "input": {
+        "step": 33
+      }
+    },
+    {
+      "id": "noop_34",
+      "component": "/noop",
+      "input": {
+        "step": 34
+      }
+    },
+    {
+      "id": "noop_35",
+      "component": "/noop",
+      "input": {
+        "step": 35
+      }
+    },
+    {
+      "id": "noop_36",
+      "component": "/noop",
+      "input": {
+        "step": 36
+      }
+    },
+    {
+      "id": "noop_37",
+      "component": "/noop",
+      "input": {
+        "step": 37
+      }
+    },
+    {
+      "id": "noop_38",
+      "component": "/noop",
+      "input": {
+        "step": 38
+      }
+    },
+    {
+      "id": "noop_39",
+      "component": "/noop",
+      "input": {
+        "step": 39
+      }
+    },
+    {
+      "id": "noop_40",
+      "component": "/noop",
+      "input": {
+        "step": 40
+      }
+    },
+    {
+      "id": "noop_41",
+      "component": "/noop",
+      "input": {
+        "step": 41
+      }
+    },
+    {
+      "id": "noop_42",
+      "component": "/noop",
+      "input": {
+        "step": 42
+      }
+    },
+    {
+      "id": "noop_43",
+      "component": "/noop",
+      "input": {
+        "step": 43
+      }
+    },
+    {
+      "id": "noop_44",
+      "component": "/noop",
+      "input": {
+        "step": 44
+      }
+    },
+    {
+      "id": "noop_45",
+      "component": "/noop",
+      "input": {
+        "step": 45
+      }
+    },
+    {
+      "id": "noop_46",
+      "component": "/noop",
+      "input": {
+        "step": 46
+      }
+    },
+    {
+      "id": "noop_47",
+      "component": "/noop",
+      "input": {
+        "step": 47
+      }
+    },
+    {
+      "id": "noop_48",
+      "component": "/noop",
+      "input": {
+        "step": 48
+      }
+    },
+    {
+      "id": "noop_49",
+      "component": "/noop",
+      "input": {
+        "step": 49
+      }
+    },
+    {
+      "id": "noop_50",
+      "component": "/noop",
+      "input": {
+        "step": 50
+      }
+    },
+    {
+      "id": "noop_51",
+      "component": "/noop",
+      "input": {
+        "step": 51
+      }
+    },
+    {
+      "id": "noop_52",
+      "component": "/noop",
+      "input": {
+        "step": 52
+      }
+    },
+    {
+      "id": "noop_53",
+      "component": "/noop",
+      "input": {
+        "step": 53
+      }
+    },
+    {
+      "id": "noop_54",
+      "component": "/noop",
+      "input": {
+        "step": 54
+      }
+    },
+    {
+      "id": "noop_55",
+      "component": "/noop",
+      "input": {
+        "step": 55
+      }
+    },
+    {
+      "id": "noop_56",
+      "component": "/noop",
+      "input": {
+        "step": 56
+      }
+    },
+    {
+      "id": "noop_57",
+      "component": "/noop",
+      "input": {
+        "step": 57
+      }
+    },
+    {
+      "id": "noop_58",
+      "component": "/noop",
+      "input": {
+        "step": 58
+      }
+    },
+    {
+      "id": "noop_59",
+      "component": "/noop",
+      "input": {
+        "step": 59
+      }
+    },
+    {
+      "id": "noop_60",
+      "component": "/noop",
+      "input": {
+        "step": 60
+      }
+    },
+    {
+      "id": "noop_61",
+      "component": "/noop",
+      "input": {
+        "step": 61
+      }
+    },
+    {
+      "id": "noop_62",
+      "component": "/noop",
+      "input": {
+        "step": 62
+      }
+    },
+    {
+      "id": "noop_63",
+      "component": "/noop",
+      "input": {
+        "step": 63
+      }
+    },
+    {
+      "id": "noop_64",
+      "component": "/noop",
+      "input": {
+        "step": 64
+      }
+    },
+    {
+      "id": "noop_65",
+      "component": "/noop",
+      "input": {
+        "step": 65
+      }
+    },
+    {
+      "id": "noop_66",
+      "component": "/noop",
+      "input": {
+        "step": 66
+      }
+    },
+    {
+      "id": "noop_67",
+      "component": "/noop",
+      "input": {
+        "step": 67
+      }
+    },
+    {
+      "id": "noop_68",
+      "component": "/noop",
+      "input": {
+        "step": 68
+      }
+    },
+    {
+      "id": "noop_69",
+      "component": "/noop",
+      "input": {
+        "step": 69
+      }
+    },
+    {
+      "id": "noop_70",
+      "component": "/noop",
+      "input": {
+        "step": 70
+      }
+    },
+    {
+      "id": "noop_71",
+      "component": "/noop",
+      "input": {
+        "step": 71
+      }
+    },
+    {
+      "id": "noop_72",
+      "component": "/noop",
+      "input": {
+        "step": 72
+      }
+    },
+    {
+      "id": "noop_73",
+      "component": "/noop",
+      "input": {
+        "step": 73
+      }
+    },
+    {
+      "id": "noop_74",
+      "component": "/noop",
+      "input": {
+        "step": 74
+      }
+    },
+    {
+      "id": "noop_75",
+      "component": "/noop",
+      "input": {
+        "step": 75
+      }
+    },
+    {
+      "id": "noop_76",
+      "component": "/noop",
+      "input": {
+        "step": 76
+      }
+    },
+    {
+      "id": "noop_77",
+      "component": "/noop",
+      "input": {
+        "step": 77
+      }
+    },
+    {
+      "id": "noop_78",
+      "component": "/noop",
+      "input": {
+        "step": 78
+      }
+    },
+    {
+      "id": "noop_79",
+      "component": "/noop",
+      "input": {
+        "step": 79
+      }
+    },
+    {
+      "id": "noop_80",
+      "component": "/noop",
+      "input": {
+        "step": 80
+      }
+    },
+    {
+      "id": "noop_81",
+      "component": "/noop",
+      "input": {
+        "step": 81
+      }
+    },
+    {
+      "id": "noop_82",
+      "component": "/noop",
+      "input": {
+        "step": 82
+      }
+    },
+    {
+      "id": "noop_83",
+      "component": "/noop",
+      "input": {
+        "step": 83
+      }
+    },
+    {
+      "id": "noop_84",
+      "component": "/noop",
+      "input": {
+        "step": 84
+      }
+    },
+    {
+      "id": "noop_85",
+      "component": "/noop",
+      "input": {
+        "step": 85
+      }
+    },
+    {
+      "id": "noop_86",
+      "component": "/noop",
+      "input": {
+        "step": 86
+      }
+    },
+    {
+      "id": "noop_87",
+      "component": "/noop",
+      "input": {
+        "step": 87
+      }
+    },
+    {
+      "id": "noop_88",
+      "component": "/noop",
+      "input": {
+        "step": 88
+      }
+    },
+    {
+      "id": "noop_89",
+      "component": "/noop",
+      "input": {
+        "step": 89
+      }
+    },
+    {
+      "id": "noop_90",
+      "component": "/noop",
+      "input": {
+        "step": 90
+      }
+    },
+    {
+      "id": "noop_91",
+      "component": "/noop",
+      "input": {
+        "step": 91
+      }
+    },
+    {
+      "id": "noop_92",
+      "component": "/noop",
+      "input": {
+        "step": 92
+      }
+    },
+    {
+      "id": "noop_93",
+      "component": "/noop",
+      "input": {
+        "step": 93
+      }
+    },
+    {
+      "id": "noop_94",
+      "component": "/noop",
+      "input": {
+        "step": 94
+      }
+    },
+    {
+      "id": "noop_95",
+      "component": "/noop",
+      "input": {
+        "step": 95
+      }
+    },
+    {
+      "id": "noop_96",
+      "component": "/noop",
+      "input": {
+        "step": 96
+      }
+    },
+    {
+      "id": "noop_97",
+      "component": "/noop",
+      "input": {
+        "step": 97
+      }
+    },
+    {
+      "id": "noop_98",
+      "component": "/noop",
+      "input": {
+        "step": 98
+      }
+    },
+    {
+      "id": "noop_99",
+      "component": "/noop",
+      "input": {
+        "step": 99
+      }
+    },
+    {
+      "id": "noop_100",
+      "component": "/noop",
+      "input": {
+        "step": 100
+      }
+    }
+  ],
+  "output": {
+    "s1": {
+      "$step": "noop_1"
+    },
+    "s2": {
+      "$step": "noop_2"
+    },
+    "s3": {
+      "$step": "noop_3"
+    },
+    "s4": {
+      "$step": "noop_4"
+    },
+    "s5": {
+      "$step": "noop_5"
+    },
+    "s6": {
+      "$step": "noop_6"
+    },
+    "s7": {
+      "$step": "noop_7"
+    },
+    "s8": {
+      "$step": "noop_8"
+    },
+    "s9": {
+      "$step": "noop_9"
+    },
+    "s10": {
+      "$step": "noop_10"
+    },
+    "s11": {
+      "$step": "noop_11"
+    },
+    "s12": {
+      "$step": "noop_12"
+    },
+    "s13": {
+      "$step": "noop_13"
+    },
+    "s14": {
+      "$step": "noop_14"
+    },
+    "s15": {
+      "$step": "noop_15"
+    },
+    "s16": {
+      "$step": "noop_16"
+    },
+    "s17": {
+      "$step": "noop_17"
+    },
+    "s18": {
+      "$step": "noop_18"
+    },
+    "s19": {
+      "$step": "noop_19"
+    },
+    "s20": {
+      "$step": "noop_20"
+    },
+    "s21": {
+      "$step": "noop_21"
+    },
+    "s22": {
+      "$step": "noop_22"
+    },
+    "s23": {
+      "$step": "noop_23"
+    },
+    "s24": {
+      "$step": "noop_24"
+    },
+    "s25": {
+      "$step": "noop_25"
+    },
+    "s26": {
+      "$step": "noop_26"
+    },
+    "s27": {
+      "$step": "noop_27"
+    },
+    "s28": {
+      "$step": "noop_28"
+    },
+    "s29": {
+      "$step": "noop_29"
+    },
+    "s30": {
+      "$step": "noop_30"
+    },
+    "s31": {
+      "$step": "noop_31"
+    },
+    "s32": {
+      "$step": "noop_32"
+    },
+    "s33": {
+      "$step": "noop_33"
+    },
+    "s34": {
+      "$step": "noop_34"
+    },
+    "s35": {
+      "$step": "noop_35"
+    },
+    "s36": {
+      "$step": "noop_36"
+    },
+    "s37": {
+      "$step": "noop_37"
+    },
+    "s38": {
+      "$step": "noop_38"
+    },
+    "s39": {
+      "$step": "noop_39"
+    },
+    "s40": {
+      "$step": "noop_40"
+    },
+    "s41": {
+      "$step": "noop_41"
+    },
+    "s42": {
+      "$step": "noop_42"
+    },
+    "s43": {
+      "$step": "noop_43"
+    },
+    "s44": {
+      "$step": "noop_44"
+    },
+    "s45": {
+      "$step": "noop_45"
+    },
+    "s46": {
+      "$step": "noop_46"
+    },
+    "s47": {
+      "$step": "noop_47"
+    },
+    "s48": {
+      "$step": "noop_48"
+    },
+    "s49": {
+      "$step": "noop_49"
+    },
+    "s50": {
+      "$step": "noop_50"
+    },
+    "s51": {
+      "$step": "noop_51"
+    },
+    "s52": {
+      "$step": "noop_52"
+    },
+    "s53": {
+      "$step": "noop_53"
+    },
+    "s54": {
+      "$step": "noop_54"
+    },
+    "s55": {
+      "$step": "noop_55"
+    },
+    "s56": {
+      "$step": "noop_56"
+    },
+    "s57": {
+      "$step": "noop_57"
+    },
+    "s58": {
+      "$step": "noop_58"
+    },
+    "s59": {
+      "$step": "noop_59"
+    },
+    "s60": {
+      "$step": "noop_60"
+    },
+    "s61": {
+      "$step": "noop_61"
+    },
+    "s62": {
+      "$step": "noop_62"
+    },
+    "s63": {
+      "$step": "noop_63"
+    },
+    "s64": {
+      "$step": "noop_64"
+    },
+    "s65": {
+      "$step": "noop_65"
+    },
+    "s66": {
+      "$step": "noop_66"
+    },
+    "s67": {
+      "$step": "noop_67"
+    },
+    "s68": {
+      "$step": "noop_68"
+    },
+    "s69": {
+      "$step": "noop_69"
+    },
+    "s70": {
+      "$step": "noop_70"
+    },
+    "s71": {
+      "$step": "noop_71"
+    },
+    "s72": {
+      "$step": "noop_72"
+    },
+    "s73": {
+      "$step": "noop_73"
+    },
+    "s74": {
+      "$step": "noop_74"
+    },
+    "s75": {
+      "$step": "noop_75"
+    },
+    "s76": {
+      "$step": "noop_76"
+    },
+    "s77": {
+      "$step": "noop_77"
+    },
+    "s78": {
+      "$step": "noop_78"
+    },
+    "s79": {
+      "$step": "noop_79"
+    },
+    "s80": {
+      "$step": "noop_80"
+    },
+    "s81": {
+      "$step": "noop_81"
+    },
+    "s82": {
+      "$step": "noop_82"
+    },
+    "s83": {
+      "$step": "noop_83"
+    },
+    "s84": {
+      "$step": "noop_84"
+    },
+    "s85": {
+      "$step": "noop_85"
+    },
+    "s86": {
+      "$step": "noop_86"
+    },
+    "s87": {
+      "$step": "noop_87"
+    },
+    "s88": {
+      "$step": "noop_88"
+    },
+    "s89": {
+      "$step": "noop_89"
+    },
+    "s90": {
+      "$step": "noop_90"
+    },
+    "s91": {
+      "$step": "noop_91"
+    },
+    "s92": {
+      "$step": "noop_92"
+    },
+    "s93": {
+      "$step": "noop_93"
+    },
+    "s94": {
+      "$step": "noop_94"
+    },
+    "s95": {
+      "$step": "noop_95"
+    },
+    "s96": {
+      "$step": "noop_96"
+    },
+    "s97": {
+      "$step": "noop_97"
+    },
+    "s98": {
+      "$step": "noop_98"
+    },
+    "s99": {
+      "$step": "noop_99"
+    },
+    "s100": {
+      "$step": "noop_100"
+    }
+  }
+}

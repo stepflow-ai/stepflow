@@ -1,0 +1,12 @@
+{
+  "name": "Benchmark - Rust Echo",
+  "description": "Single step calling a Rust echo component via gRPC worker. Measures Rust worker roundtrip overhead.",
+  "steps": [
+    {
+      "id": "echo",
+      "component": "/rust/echo",
+      "input": { "$input": "" }
+    }
+  ],
+  "output": { "$step": "echo" }
+}

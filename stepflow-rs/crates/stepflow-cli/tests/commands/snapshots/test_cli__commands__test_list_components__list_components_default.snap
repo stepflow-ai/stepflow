@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_list_components.rs
+source: crates/stepflow-cli/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
@@ -8,6 +8,14 @@ info:
     - "--log-level=error"
     - list-components
     - "--config=tests/stepflow-config.yml"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -45,6 +53,11 @@ Component: /map (plugin: builtin)
   Available Routes:
     /builtin/map
 
+Component: /noop (plugin: builtin)
+  Description: No-op component that returns its input unchanged. Used for benchmarking.
+  Available Routes:
+    /builtin/noop
+
 Component: /openai (plugin: builtin)
   Description: Send messages to OpenAI's chat completion API and get a response
   Available Routes:
@@ -55,6 +68,11 @@ Component: /put_blob (plugin: builtin)
   Available Routes:
     /builtin/put_blob
 
-Total components: 8
+Component: /sleep (plugin: builtin)
+  Description: Sleeps for a specified duration then returns. Used for benchmarking concurrent flow capacity.
+  Available Routes:
+    /builtin/sleep
+
+Total components: 10
 
 ----- stderr -----
