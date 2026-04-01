@@ -13,8 +13,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# CI check script for Docling Step Worker - mirrors .github/actions/docling-step-worker behavior
-# This script runs all Docling-related checks that are performed in CI
+# CI check script for Docling Proto Step Worker - mirrors .github/actions/docling-step-worker behavior
+# This script runs all Docling proto-related checks that are performed in CI
 #
 # Usage: ./scripts/check-docling.sh [-v|--verbose]
 #   -v, --verbose  Show full command output (default: quiet, shows only pass/fail)
@@ -34,13 +34,13 @@ parse_flags "$@"
 
 echo "📄 Docling"
 
-cd "$PROJECT_ROOT/integrations/docling-step-worker"
+cd "$PROJECT_ROOT/integrations/docling-proto-step-worker"
 
 # Check for required tool
 require_tool "uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
 # =============================================================================
-# DOCLING STEP WORKER SETUP
+# DOCLING PROTO STEP WORKER SETUP
 # =============================================================================
 # NOTE: Each check uses `|| true` to continue running all checks even when one fails.
 # Failures are tracked by run_check in FAILED_CHECKS array and reported via print_summary,
@@ -50,7 +50,7 @@ run_check "Python install" uv python install || true
 run_check "Dependencies" uv sync --all-extras --group dev || true
 
 # =============================================================================
-# DOCLING STEP WORKER CHECKS
+# DOCLING PROTO STEP WORKER CHECKS
 # =============================================================================
 
 run_check "Formatting" --fix "uv run poe fmt-fix" uv run poe fmt-check || true

@@ -101,7 +101,7 @@ jobs:
               - '.github/actions/docling-step-worker/**'
               - 'scripts/check-docling.sh'
               - 'scripts/_lib.sh'
-              - 'integrations/docling-step-worker/**'
+              - 'integrations/docling-proto-step-worker/**'
             firecracker:
               - '.github/actions/firecracker-checks/**'
               - 'stepflow-rs/crates/stepflow-isolation-proxy/**'
@@ -200,7 +200,7 @@ jobs:
 
   # Docling step worker checks
   docling-checks:
-    name: Docling Step Worker Checks
+    name: Docling Proto Step Worker Checks
     needs: changes
     if: needs.changes.outputs.docling == 'true'
     runs-on: ubuntu-latest
