@@ -24,7 +24,7 @@ use std::sync::Arc;
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::component::ComponentInfo;
-use stepflow_core::workflow::{Component, StepId, ValueRef};
+use stepflow_core::workflow::{Component, StepId};
 use stepflow_plugin::{
     DynPlugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
 };
@@ -396,29 +396,15 @@ impl stepflow_plugin::Plugin for GrpcPlugin {
 
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &stepflow_plugin::TaskRequest,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
-        input: ValueRef,
-        attempt: u32,
-        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         let inner = self.inner.lock().await;
         let inner = inner.as_ref().ok_or_else(|| {
             error_stack::report!(PluginError::Execution).attach_printable("plugin not initialized")
         })?;
-        inner
-            .start_task(
-                task_id,
-                component,
-                run_context,
-                step,
-                input,
-                attempt,
-                route_params,
-            )
-            .await
+        inner.start_task(request, run_context, step).await
     }
 
     async fn prepare_for_retry(&self) -> Result<()> {

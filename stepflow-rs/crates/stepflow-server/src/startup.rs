@@ -140,13 +140,6 @@ impl StepflowService {
         let merged = std::mem::take(grpc_routes.axum_router_mut()).merge(http_app);
         *grpc_routes.axum_router_mut() = merged;
 
-        if options.announce_port {
-            #[allow(clippy::print_stdout)]
-            {
-                println!("{{\"port\":{port}}}");
-            }
-        }
-
         log::info!(
             "Stepflow server starting on http://{}:{}",
             options.bind_address,
@@ -174,6 +167,16 @@ impl StepflowService {
             cancel_token.cancel();
             let _ = server_handle.await;
             return Err(e.change_context(ConfigError::Configuration));
+        }
+
+        // Announce the port — the server is accepting connections.
+        // Plugin readiness is enforced at flow execution time: the step runner
+        // waits for all plugins to report their components before resolving routes.
+        if options.announce_port {
+            #[allow(clippy::print_stdout)]
+            {
+                println!("{{\"port\":{port}}}");
+            }
         }
 
         Ok(Self {

@@ -208,7 +208,7 @@ async def run_grpc_worker(
     logger.info(
         "Registered %d components: %s",
         len(components),
-        ", ".join(c.name for c in components),
+        ", ".join(c.component_id for c in components),
     )
 
     # Semaphore for concurrency control

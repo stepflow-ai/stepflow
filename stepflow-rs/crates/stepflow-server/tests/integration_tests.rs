@@ -125,26 +125,26 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
 
     // Add builtin routes
     routes.insert(
-        "/builtin/{*component}".to_string(),
+        "/builtin".to_string(),
         vec![RouteRule {
             conditions: vec![],
             component_allow: None,
             component_deny: None,
             plugin: "builtin".into(),
-            component: None,
+
             params: std::collections::HashMap::new(),
         }],
     );
 
     if include_mocks {
         routes.insert(
-            "/mock/{*component}".to_string(),
+            "/mock".to_string(),
             vec![RouteRule {
                 conditions: vec![],
                 component_allow: None,
                 component_deny: None,
                 plugin: "mock".into(),
-                component: None,
+
                 params: std::collections::HashMap::new(),
             }],
         );
@@ -153,7 +153,7 @@ async fn create_test_server(include_mocks: bool) -> (Router, Arc<StepflowEnviron
     let routing_config = RoutingConfig { routes };
     plugin_router_builder = plugin_router_builder.with_routing_config(routing_config);
 
-    let plugin_router = plugin_router_builder.build().unwrap();
+    let plugin_router = plugin_router_builder.build().await.unwrap();
 
     let env = Arc::new(StepflowEnvironment::new());
     env.insert(metadata_store);

@@ -97,6 +97,7 @@ impl BuiltinComponent for LoadFileComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/load_file"),
+            path: "/load_file".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

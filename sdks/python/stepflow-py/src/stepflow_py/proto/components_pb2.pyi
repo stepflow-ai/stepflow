@@ -111,14 +111,22 @@ class ComponentInfoEntry(google.protobuf.message.Message):
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    COMPONENT_FIELD_NUMBER: builtins.int
+    COMPONENT_ID_FIELD_NUMBER: builtins.int
     DESCRIPTION_FIELD_NUMBER: builtins.int
     INPUT_SCHEMA_FIELD_NUMBER: builtins.int
     OUTPUT_SCHEMA_FIELD_NUMBER: builtins.int
-    component: builtins.str
-    """Component path (e.g., "/builtin/openai", "/python/my_func")."""
+    PATH_FIELD_NUMBER: builtins.int
+    PLUGIN_FIELD_NUMBER: builtins.int
+    component_id: builtins.str
+    """Unique component identifier within its plugin (e.g., "openai", "my_func")."""
     description: builtins.str
     """Optional human-readable description."""
+    path: builtins.str
+    """Path pattern this component is registered at (e.g., "/openai", "/my_func").
+    Combined with the route prefix to form the full path (e.g., "/builtin/openai").
+    """
+    plugin: builtins.str
+    """The plugin that provides this component (e.g., "builtin", "python")."""
     @property
     def input_schema(self) -> google.protobuf.struct_pb2.Struct:
         """JSON Schema for the component's input (null if schemas not requested)."""
@@ -130,13 +138,15 @@ class ComponentInfoEntry(google.protobuf.message.Message):
     def __init__(
         self,
         *,
-        component: builtins.str = ...,
+        component_id: builtins.str = ...,
         description: builtins.str | None = ...,
         input_schema: google.protobuf.struct_pb2.Struct | None = ...,
         output_schema: google.protobuf.struct_pb2.Struct | None = ...,
+        path: builtins.str = ...,
+        plugin: builtins.str = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "description", b"description", "input_schema", b"input_schema", "output_schema", b"output_schema"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "component", b"component", "description", b"description", "input_schema", b"input_schema", "output_schema", b"output_schema"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "component_id", b"component_id", "description", b"description", "input_schema", b"input_schema", "output_schema", b"output_schema", "path", b"path", "plugin", b"plugin"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_description", b"_description"]) -> typing.Literal["description"] | None: ...
     @typing.overload

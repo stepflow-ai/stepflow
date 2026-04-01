@@ -71,7 +71,7 @@ class StepflowDoclingServer:
             url: "http://docling-load-balancer.stepflow.svc.cluster.local:8080"
 
         routes:
-          "/langflow/core/lfx/components/docling/{*component}":
+          "/langflow/core/lfx/components/docling":
             - plugin: docling_k8s
         ```
     """
@@ -114,7 +114,7 @@ class StepflowDoclingServer:
     def _register_components(self) -> None:
         """Register all Docling components matching Langflow class names."""
 
-        @self.server.component(name="DoclingInlineComponent")
+        @self.server.component(subpath="DoclingInlineComponent")
         async def docling_inline(
             input_data: Any, context: StepflowContext
         ) -> Any:
@@ -134,7 +134,7 @@ class StepflowDoclingServer:
             """
             return await self._process_documents(input_data, context)
 
-        @self.server.component(name="DoclingRemoteComponent")
+        @self.server.component(subpath="DoclingRemoteComponent")
         async def docling_remote(
             input_data: Any, context: StepflowContext
         ) -> Any:
@@ -154,7 +154,7 @@ class StepflowDoclingServer:
             """
             return await self._process_documents(input_data, context)
 
-        @self.server.component(name="ChunkDoclingDocument")
+        @self.server.component(subpath="ChunkDoclingDocument")
         async def chunk_docling(
             input_data: Any, context: StepflowContext
         ) -> Any:
@@ -174,7 +174,7 @@ class StepflowDoclingServer:
             """
             return await self._chunk_documents(input_data, context)
 
-        @self.server.component(name="ExportDoclingDocument")
+        @self.server.component(subpath="ExportDoclingDocument")
         async def export_docling(
             input_data: Any, context: StepflowContext
         ) -> Any:
@@ -197,14 +197,14 @@ class StepflowDoclingServer:
         # These paths match the lfx module structure used when components are
         # identified as known components and routed via:
         #   /langflow/core/lfx/components/docling/{*component}
-        @self.server.component(name="docling_inline/DoclingInlineComponent")
+        @self.server.component(subpath="docling_inline/DoclingInlineComponent")
         async def docling_inline_lfx(
             input_data: Any, context: StepflowContext
         ) -> Any:
             """Alias for DoclingInlineComponent via lfx path."""
             return await self._process_documents(input_data, context)
 
-        @self.server.component(name="docling_remote/DoclingRemoteComponent")
+        @self.server.component(subpath="docling_remote/DoclingRemoteComponent")
         async def docling_remote_lfx(
             input_data: Any, context: StepflowContext
         ) -> Any:
@@ -212,7 +212,7 @@ class StepflowDoclingServer:
             return await self._process_documents(input_data, context)
 
         @self.server.component(
-            name="chunk_docling_document/ChunkDoclingDocumentComponent"
+            subpath="chunk_docling_document/ChunkDoclingDocumentComponent"
         )
         async def chunk_docling_lfx(
             input_data: Any, context: StepflowContext
@@ -221,7 +221,7 @@ class StepflowDoclingServer:
             return await self._chunk_documents(input_data, context)
 
         @self.server.component(
-            name="export_docling_document/ExportDoclingDocumentComponent"
+            subpath="export_docling_document/ExportDoclingDocumentComponent"
         )
         async def export_docling_lfx(
             input_data: Any, context: StepflowContext

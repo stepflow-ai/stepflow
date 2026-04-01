@@ -25,6 +25,7 @@ exit_code: 0
   "components": [
     {
       "component": "/create_messages",
+      "path": "/create_messages",
       "description": "Create a chat message list from system instructions and user prompt",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -65,16 +66,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/create_messages",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/create_messages"
       ]
     },
     {
       "component": "/eval",
+      "path": "/eval",
       "description": "Execute a nested workflow with given input and return the result",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -118,16 +115,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/eval",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/eval"
       ]
     },
     {
       "component": "/get_blob",
+      "path": "/get_blob",
       "description": "Retrieve JSON data from a blob using its ID",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -160,16 +153,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/get_blob",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/get_blob"
       ]
     },
     {
       "component": "/iterate",
+      "path": "/iterate",
       "description": "Iteratively apply a workflow until it returns a result instead of next",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -227,16 +216,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/iterate",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/iterate"
       ]
     },
     {
       "component": "/load_file",
+      "path": "/load_file",
       "description": "Load and parse a file (JSON, YAML, or text) from the filesystem",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -283,16 +268,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/load_file",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/load_file"
       ]
     },
     {
       "component": "/map",
+      "path": "/map",
       "description": "Apply a workflow to each item in a list and collect the results",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -359,16 +340,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/map",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/map"
       ]
     },
     {
       "component": "/openai",
+      "path": "/openai",
       "description": "Send messages to OpenAI's chat completion API and get a response",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -430,16 +407,12 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/openai",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/openai"
       ]
     },
     {
       "component": "/put_blob",
+      "path": "/put_blob",
       "description": "Store JSON data as a blob and return its content-addressable ID",
       "input_schema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -477,12 +450,7 @@ exit_code: 0
       },
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/put_blob",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/put_blob"
       ]
     }
   ]

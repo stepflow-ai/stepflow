@@ -7,7 +7,7 @@ plugins:
     args: ["run", "--project", "../../sdks/python/stepflow-py", "python", "test_worker.py"]
     queueName: python_grpc
 routes:
-  "/python_grpc/{component}":
+  "/python_grpc":
     - plugin: python_grpc
-  "/builtin/{component}":
+  "/builtin":
     - plugin: builtin

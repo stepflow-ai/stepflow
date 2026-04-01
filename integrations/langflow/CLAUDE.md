@@ -187,7 +187,7 @@ plugins:
     args: ["--project", "integrations/langflow", "run", "stepflow-langflow", "serve"]
 
 routes:
-  "/langflow/{*component}":
+  "/langflow":
     - plugin: langflow
 ```
 
@@ -211,7 +211,7 @@ plugins:
     url: "http://localhost:8080"
 
 routes:
-  "/langflow/{*component}":
+  "/langflow":
     - plugin: langflow_http
 ```
 

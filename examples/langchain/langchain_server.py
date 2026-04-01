@@ -44,7 +44,7 @@ if LANGCHAIN_AVAILABLE:
     # DECORATED RUNNABLE: (@server.langchain_component decorator)
     # ============================================================================
 
-    @server.langchain_component(name="text_analyzer")
+    @server.langchain_component(subpath="text_analyzer")
     def create_text_analyzer():
         """Analyze text and return various metrics."""
 
@@ -62,7 +62,7 @@ if LANGCHAIN_AVAILABLE:
 
         return RunnableLambda(analyze_text)
 
-    @server.langchain_component(name="sentiment_classifier")
+    @server.langchain_component(subpath="sentiment_classifier")
     def create_sentiment_classifier():
         """Simple sentiment classifier."""
 
@@ -99,7 +99,7 @@ if LANGCHAIN_AVAILABLE:
 
         return RunnableLambda(classify_sentiment)
 
-    @server.langchain_component(name="math_operations")
+    @server.langchain_component(subpath="math_operations")
     def create_math_operations():
         """Perform parallel math operations on numbers."""
 

@@ -1009,14 +1009,14 @@ async fn build_env_with_checkpoint_interval(
         component_allow: None,
         component_deny: None,
         plugin: "mock".into(),
-        component: None,
         params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
-        .with_routing_path("/{*component}".to_string(), rules)
+        .with_routing_path("/".to_string(), rules)
         .register_plugin("mock".to_string(), dyn_plugin)
         .build()
+        .await
         .unwrap();
 
     let env = Arc::new(StepflowEnvironment::new());

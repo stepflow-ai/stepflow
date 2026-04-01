@@ -214,16 +214,38 @@ impl StepRunner {
             }
         };
 
-        // Get plugin for this component (system error if fails)
-        let (plugin, resolved_component, route_params) = self
-            .run_context
-            .env()
-            .get_plugin_and_component(&self.step.component, input.clone())
+        // Wait for all plugins to report their components before resolving routes.
+        // This ensures gRPC workers have connected and the routing trie is populated.
+        // Use a timeout to avoid blocking forever if a worker never connects
+        // (e.g., after an orchestrator crash where workers are slow to reconnect).
+        let router = self.run_context.env().plugin_router();
+        if !router
+            .wait_ready_timeout(std::time::Duration::from_secs(30))
+            .await
+        {
+            log::warn!(
+                "Plugin readiness timed out — proceeding with potentially incomplete routing trie"
+            );
+        }
+
+        let (plugin, resolved) = router
+            .resolve(self.step.component.path(), input.clone())
             .change_context(ExecutionError::RouterError)?;
+        let plugin = plugin.clone();
+        let resolved_component = resolved.component_id;
+        let path_params = resolved.path_params;
+        let route_params = resolved.route_params;
 
         // Execute the step (system error if infrastructure fails)
         let outcome = self
-            .execute(&plugin, &resolved_component, input, &step_id, &route_params)
+            .execute(
+                &plugin,
+                &resolved_component,
+                input,
+                &step_id,
+                &path_params,
+                &route_params,
+            )
             .await?;
 
         Ok(StepRunResult::new(step_id, component, outcome))
@@ -243,6 +265,7 @@ impl StepRunner {
         resolved_component: &str,
         input: ValueRef,
         step_id: &StepId,
+        path_params: &std::collections::HashMap<String, String>,
         route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<FlowResult> {
         use stepflow_observability::fastrace::prelude::*;
@@ -274,20 +297,19 @@ impl StepRunner {
                 task_id,
             );
 
-            // Create a component from the resolved component name
-            let component = stepflow_core::workflow::Component::from_string(resolved_component);
+            // Build the task request
+            let request = stepflow_plugin::TaskRequest {
+                task_id: task_id.to_string(),
+                component_id: resolved_component.to_string(),
+                path_params: path_params.clone(),
+                input,
+                attempt,
+                route_params: route_params.clone(),
+            };
 
             // Dispatch the task to the plugin
             if let Err(error) = plugin
-                .start_task(
-                    task_id,
-                    &component,
-                    run_context,
-                    Some(step_id),
-                    input,
-                    attempt,
-                    route_params,
-                )
+                .start_task(&request, run_context, Some(step_id))
                 .await
             {
                 // Plugin returned Err — this is a transport/infrastructure error

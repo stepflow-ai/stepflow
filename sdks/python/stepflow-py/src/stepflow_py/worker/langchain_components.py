@@ -114,4 +114,4 @@ def register_langchain_components(server):
         return
 
     # Register the invoke component
-    server.component(langchain_invoke, name="/langchain/invoke")
+    server.component(langchain_invoke, subpath="/langchain/invoke")

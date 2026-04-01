@@ -2,5 +2,5 @@ plugins:
   builtin:
     type: builtin
 routes:
-  "/builtin/{component}":
+  "/builtin":
     - plugin: builtin

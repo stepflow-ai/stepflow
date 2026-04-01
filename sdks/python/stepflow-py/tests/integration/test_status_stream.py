@@ -54,7 +54,7 @@ def _builtin_config(storage_config=None):
     """Create a minimal config with only builtin components."""
     return StepflowConfig(
         plugins={"builtin": BuiltinPluginConfig()},
-        routes={"/builtin/{*component}": [RouteRule(plugin="builtin")]},
+        routes={"/builtin": [RouteRule(plugin="builtin")]},
         storageConfig=storage_config,
     )
 

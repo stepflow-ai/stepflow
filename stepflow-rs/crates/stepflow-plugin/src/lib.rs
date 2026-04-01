@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+mod component_cache;
 mod context;
 mod environment_builder;
 mod environment_ext;
@@ -20,6 +21,7 @@ pub mod routing;
 mod subflow;
 mod task_registry;
 
+pub use component_cache::ComponentCache;
 pub use context::RunContext;
 pub use environment_builder::{
     BlobApiUrl, OrchestratorServiceUrl, build_in_memory_environment, initialize_environment,
@@ -27,7 +29,7 @@ pub use environment_builder::{
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
 pub use execution_config::ExecutionConfig;
-pub use plugin::{DynPlugin, Plugin, PluginConfig};
+pub use plugin::{DynPlugin, Plugin, PluginConfig, TaskRequest};
 pub use subflow::{
     SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,
 };

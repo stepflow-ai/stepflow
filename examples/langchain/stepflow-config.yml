@@ -16,12 +16,12 @@ plugins:
 
 routes:
   # Route builtin components directly to builtin plugin
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/python/{*component}":
+  "/python":
     - plugin: python
   # Route all other components to langchain plugin first, then fallback to builtin
-  "/{*component}":
+  "/":
     - plugin: langchain
     - plugin: builtin
 

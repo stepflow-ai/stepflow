@@ -41,19 +41,19 @@ logger = logging.getLogger(__name__)
 converter_cache = ConverterCache()
 
 
-@server.component(name="classify")
+@server.component
 async def classify(input_data: Any, context: StepflowContext) -> Any:
     """Probe a document to determine optimal pipeline configuration."""
     return await classify_document(input_data, context)
 
 
-@server.component(name="convert")
+@server.component
 async def convert(input_data: Any, context: StepflowContext) -> Any:
     """Convert a document using docling's DocumentConverter directly."""
     return await convert_document(input_data, context, converter_cache)
 
 
-@server.component(name="chunk")
+@server.component
 async def chunk(input_data: Any, context: StepflowContext) -> Any:
     """Chunk a DoclingDocument using docling's HybridChunker."""
     return await chunk_document(input_data, context)

@@ -275,7 +275,7 @@ mod tests {
         let store = Arc::new(InMemoryStateStore::new());
         let metadata_store: Arc<dyn MetadataStore> = store.clone();
         let blob_store: Arc<dyn BlobStore> = store;
-        let plugin_router = PluginRouter::builder().build().unwrap();
+        let plugin_router = PluginRouter::builder().build().await.unwrap();
         let executor = Arc::new(StepflowEnvironment::new());
         executor.insert(metadata_store);
         executor.insert(blob_store.clone());

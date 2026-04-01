@@ -439,16 +439,12 @@ impl Plugin for McpPlugin {
 
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &stepflow_plugin::TaskRequest,
         run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
-        input: ValueRef,
-        _attempt: u32,
-        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
-        let tool_name = component_path_to_tool_name(component.path())
-            .ok_or_else(|| error_stack::report!(PluginError::Execution))?;
+        // MCP components use the component_id as the tool name
+        let tool_name = &request.component_id;
 
         let mut state = self.state.write().await;
         let mcp_client = state
@@ -459,7 +455,7 @@ impl Plugin for McpPlugin {
         // Send tools/call request to execute the tool
         let call_params = json!({
             "name": tool_name,
-            "arguments": input.clone_value()
+            "arguments": request.input.clone_value()
         });
 
         let registry = run_context.env().task_registry();
@@ -473,7 +469,7 @@ impl Plugin for McpPlugin {
                 {
                     // This is a tool execution failure, not an implementation failure
                     registry.complete(
-                        task_id,
+                        &request.task_id,
                         FlowResult::Failed(FlowError::new(
                             stepflow_core::TaskErrorCode::ComponentFailed,
                             format!("Tool '{tool_name}' execution failed"),
@@ -492,7 +488,10 @@ impl Plugin for McpPlugin {
             call_result.clone()
         });
 
-        registry.complete(task_id, FlowResult::Success(ValueRef::new(content)));
+        registry.complete(
+            &request.task_id,
+            FlowResult::Success(ValueRef::new(content)),
+        );
         Ok(())
     }
 

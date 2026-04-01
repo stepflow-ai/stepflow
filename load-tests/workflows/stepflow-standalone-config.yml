@@ -11,11 +11,11 @@ plugins:
     args: ["--project", "../../sdks/python", "run", "python", "message_custom_server.py"]
 
 routes:
-  "/python/{component}":
+  "/python":
     - plugin: python
-  "/custom/{component}":
+  "/custom":
     - plugin: custom
-  "/{component}":
+  "/":
     - plugin: builtin
 
 storageConfig:

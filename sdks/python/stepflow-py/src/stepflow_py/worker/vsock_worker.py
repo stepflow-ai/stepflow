@@ -160,7 +160,7 @@ async def run_vsock_worker(
                         "TIMING: envelope_read=%.1fms task=%s component=%s",
                         (t_envelope - t_connected) * 1000,
                         task.task_id,
-                        task.execute.component if task.HasField("execute") else "?",
+                        task.execute.component_id if task.HasField("execute") else "?",
                     )
 
                     # Override blob URL from envelope if provided

@@ -99,7 +99,7 @@ class ReportGeneratorOutput(msgspec.Struct):
     summary: str
 
 
-@server.langchain_component(name="question_generator")
+@server.langchain_component(subpath="question_generator")
 def create_question_generator():
     """Generate research questions based on a topic and context."""
 
@@ -167,7 +167,7 @@ including theoretical foundations, practical applications, and future directions
     return RunnableLambda(generate_questions)
 
 
-@server.langchain_component(name="text_analyzer")
+@server.langchain_component(subpath="text_analyzer")
 def create_text_analyzer():
     """Analyze text for research insights."""
 
@@ -233,7 +233,7 @@ Analysis completed on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     return RunnableLambda(analyze_text)
 
 
-@server.langchain_component(name="note_generator")
+@server.langchain_component(subpath="note_generator")
 def create_note_generator():
     """Generate structured research notes."""
 
@@ -340,7 +340,7 @@ Based on the initial analysis, the following insights have been identified:
     return RunnableLambda(generate_notes)
 
 
-@server.langchain_component(name="report_generator")
+@server.langchain_component(subpath="report_generator")
 def create_report_generator():
     """Generate a comprehensive research report."""
 

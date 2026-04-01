@@ -28,7 +28,6 @@ from stepflow_py.worker.context import StepflowContext
 from stepflow_py.worker.exceptions import (
     StepflowExecutionError,
 )
-from stepflow_py.worker.path_trie import PathTrie
 from stepflow_py.worker.udf import udf
 
 # Check if LangChain is available
@@ -49,17 +48,13 @@ class ComponentEntry:
     input_type: type
     output_type: type
     description: str | None = None
+    path: str | None = None
 
     def input_schema(self):
         return msgspec.json.schema(self.input_type)
 
     def output_schema(self):
         return msgspec.json.schema(self.output_type)
-
-
-def _has_path_params(name: str) -> bool:
-    """Check if a component name contains path parameters."""
-    return "{" in name and "}" in name
 
 
 class StepflowServer:
@@ -71,7 +66,6 @@ class StepflowServer:
 
     def __init__(self, include_builtins: bool = True):
         self._components: dict[str, ComponentEntry] = {}
-        self._wildcard_trie: PathTrie[ComponentEntry] = PathTrie()
 
         # Add LangChain registry functionality if available
         if _HAS_LANGCHAIN:
@@ -85,35 +79,78 @@ class StepflowServer:
         self,
         func: Callable | None = None,
         *,
-        name: str | None = None,
+        subpath: str | None = None,
+        id: str | None = None,
         description: str | None = None,
+        # Deprecated alias for subpath — use subpath instead.
+        name: str | None = None,
     ):
         """Decorator to register a component function.
 
-        Supports path parameters in component names:
-        - `{name}` - captures a single path segment
-        - `{*name}` - captures remaining path (wildcard/catch-all)
+        Two concepts are at play:
 
-        Path parameters are passed as keyword arguments to the function.
+        * **Component ID** — the unique identifier used as the dispatch key.
+          The orchestrator sends this value as ``component_id`` in
+          ``ComponentExecuteRequest``.  Defaults to the function name.
+        * **Subpath** — the path pattern the component is mounted at, relative
+          to the worker's route prefix.  Defaults to ``"/{id}"``.
+
+        These are distinct: the ID is for dispatch, the subpath is for routing.
+
+        For example, if the orchestrator config maps prefix ``/python`` to this
+        worker, and a component is registered as ``my_func``, then workflows
+        reference it as ``/python/my_func`` — **not** ``/my_func``::
+
+            Orchestrator config       Component subpath       Workflow path
+            ──────────────────        ─────────────────       ─────────────
+            routes:                   @server.component       /python/my_func
+              "/python":              def my_func(...):
+                - plugin: python          ...
+
+        Do **not** include the prefix in component subpaths — the orchestrator
+        adds it automatically.
+
+        Supports path parameters in component subpaths:
+        - ``{name}`` - captures a single path segment
+        - ``{*name}`` - captures remaining path (wildcard/catch-all)
+
+        Path parameters are extracted by the orchestrator and passed as keyword
+        arguments to the function.
 
         Example:
-            @server.component(name="core/{*component}")
+            @server.component(subpath="core/{*component}")
             async def handler(input_data: dict, context: StepflowContext,
                               component: str) -> dict:
+                # Subpath: /core/{*component}
+                # With prefix "/python", full workflow path is /python/core/foo/bar
+                # component="foo/bar" is extracted by the orchestrator
                 ...
 
         Args:
             func: The function to register (provided by the decorator)
-            name: Optional name for the component. If not provided, uses the function
-                name. Supports path parameters like {name} and {*name}.
+            subpath: Optional subpath where the component is mounted under the
+                worker's route prefix.  Defaults to ``"/{id}"``.
+                Supports path parameters like {name} and {*name}.
+            id: Optional component ID (dispatch key).  Defaults to the function
+                name.
             description: Optional description. If not provided, uses the function's
                 docstring
+            name: Deprecated alias for ``subpath``.  Use ``subpath`` instead.
         """
 
         def decorator(f: Callable) -> Callable:
-            component_name = name or f.__name__
-            if not component_name.startswith("/"):
-                component_name = f"/{component_name}"
+            # Resolve subpath: explicit subpath > deprecated name > default
+            resolved_subpath = subpath or name
+
+            # Resolve component ID
+            component_id = id or f.__name__
+
+            if resolved_subpath is not None:
+                component_path = resolved_subpath
+                if not component_path.startswith("/"):
+                    component_path = f"/{component_path}"
+            else:
+                component_path = f"/{component_id}"
 
             # Get input and output types from type hints
             sig = inspect.signature(f)
@@ -129,18 +166,15 @@ class StepflowServer:
             )
 
             entry = ComponentEntry(
-                name=component_name,
+                name=component_id,
                 function=f,
                 input_type=input_type,
                 output_type=return_type,
                 description=component_description,
+                path=component_path,
             )
 
-            # Store in appropriate registry based on whether name has path params
-            if _has_path_params(component_name):
-                self._wildcard_trie.insert(component_name, entry)
-            else:
-                self._components[component_name] = entry
+            self._components[component_id] = entry
 
             if inspect.iscoroutinefunction(f):
 
@@ -160,44 +194,32 @@ class StepflowServer:
             return decorator
         return decorator(func)
 
-    def get_component(
-        self, component_path: str
-    ) -> tuple[ComponentEntry, dict[str, str]] | None:
-        """Get a registered component by path.
+    def get_component(self, component_id: str) -> ComponentEntry | None:
+        """Get a registered component by component ID.
 
-        Supports both exact matches and pattern matching for components
-        registered with path parameters.
+        Simple dict lookup — path matching is handled by the orchestrator.
 
         Args:
-            component_path: The component path to look up
+            component_id: The component ID to look up
 
         Returns:
-            Tuple of (ComponentEntry, path_params) if found, None otherwise.
-            path_params is an empty dict for exact matches.
+            ComponentEntry if found, None otherwise.
         """
-        # Try exact match first (faster)
-        if component_path in self._components:
-            return self._components[component_path], {}
-
-        # Try pattern matching using trie (O(n) where n = path segments)
-        result = self._wildcard_trie.match(component_path)
-        if result is not None:
-            entry, params = result
-            return entry, params
-
-        return None
+        return self._components.get(component_id)
 
     def get_components(self) -> dict[str, ComponentEntry]:
-        """Get all registered components (both exact and pattern-based)."""
-        return {**self._components, **self._wildcard_trie.get_patterns()}
+        """Get all registered components."""
+        return dict(self._components)
 
     def langchain_component(
         self,
         func: Callable | None = None,
         *,
-        name: str | None = None,
+        subpath: str | None = None,
         description: str | None = None,
         execution_mode: str = "invoke",
+        # Deprecated alias for subpath — use subpath instead.
+        name: str | None = None,
     ):
         """
         Decorator to register a LangChain runnable factory as a Stepflow component.
@@ -207,14 +229,15 @@ class StepflowServer:
 
         Args:
             func: The function to register (provided by the decorator)
-            name: Optional name for the component. If not provided, uses the
-                function name
+            subpath: Optional subpath for the component. If not provided, uses
+                the function name
             description: Optional description. If not provided, uses the
                 function's docstring
             execution_mode: Default execution mode ("invoke", "batch", "stream")
+            name: Deprecated alias for ``subpath``.  Use ``subpath`` instead.
 
         Example:
-            @server.langchain_component(name="my_chain")
+            @server.langchain_component(subpath="my_chain")
             def create_my_chain() -> Runnable:
                 return prompt | llm | parser
 
@@ -236,7 +259,7 @@ class StepflowServer:
 
             check_langchain_available()
 
-            component_name = name or f.__name__
+            component_name = subpath or name or f.__name__
             if not component_name.startswith("/"):
                 component_name = f"/{component_name}"
 
@@ -326,10 +349,14 @@ class StepflowServer:
             if component_description:
                 langchain_component_executor.__doc__ = component_description
 
-            # Register the component using the server's component method
+            # Register the component using the server's component method.
+            # Use the factory function's name as the component ID to ensure
+            # uniqueness (the inner executor closure has the same name for all
+            # langchain components).
             self.component(
                 langchain_component_executor,
-                name=component_name,
+                subpath=component_name,
+                id=f.__name__,
                 description=component_description,
             )
 

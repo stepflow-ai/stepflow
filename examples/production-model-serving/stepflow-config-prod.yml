@@ -41,21 +41,21 @@ plugins:
 routes:
   # Route text processing to dedicated text model queue
   # Workers on CPU-optimized nodes pull tasks from the text_models queue
-  "/models/text/{*component}":
+  "/models/text":
     - plugin: text_models_cluster
 
   # Route vision processing to dedicated vision model queue
   # Workers on GPU-enabled nodes pull tasks from the vision_models queue
-  "/models/vision/{*component}":
+  "/models/vision":
     - plugin: vision_models_cluster
 
   # Route basic Python requests to the text models queue
   # We could have a separate queue for Python components if needed.
-  "/python/{*component}":
+  "/python":
     - plugin: text_models_cluster
 
   # Fallback to built-in components for core workflow functionality
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 # Production state store - using managed database service

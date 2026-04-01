@@ -34,15 +34,15 @@ plugins:
 
 routes:
   # Route research components to the research server
-  "/research/{*component}":
+  "/research":
     - plugin: research
   
   # Route filesystem operations to MCP server
-  "/filesystem/{*component}":
+  "/filesystem":
     - plugin: filesystem
   
   # Fallback to builtin components
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 # Optional: State store configuration

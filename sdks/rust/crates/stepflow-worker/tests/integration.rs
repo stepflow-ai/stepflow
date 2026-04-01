@@ -57,26 +57,24 @@ fn init_tracing() {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: wait until an expected component path appears in the orchestrator
+// Helper: wait until an expected component ID appears in the orchestrator
 // ---------------------------------------------------------------------------
 
-/// Poll `list_components` until `component_path` appears, or panic on timeout.
+/// Poll `list_components` until `component_id` appears, or panic on timeout.
 ///
 /// This replaces arbitrary `sleep` calls and makes tests deterministic under CI load.
-async fn wait_for_component(client: &mut StepflowClient, component_path: &str, timeout: Duration) {
+async fn wait_for_component(client: &mut StepflowClient, component_id: &str, timeout: Duration) {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
         if tokio::time::Instant::now() >= deadline {
-            panic!(
-                "Timed out after {timeout:?} waiting for component '{component_path}' to appear"
-            );
+            panic!("Timed out after {timeout:?} waiting for component '{component_id}' to appear");
         }
         match client.list_components(true).await {
             Ok(result)
                 if result
                     .components
                     .iter()
-                    .any(|c| c.component == component_path) =>
+                    .any(|c| c.component == component_id) =>
             {
                 return;
             }
@@ -105,13 +103,13 @@ fn make_config(queue_name: &str) -> OrchestratorConfig {
 
     let mut routes = HashMap::new();
     routes.insert(
-        "/builtin/{*component}".to_string(),
+        "/builtin".to_string(),
         vec![RouteRule {
             plugin: "builtin".to_string(),
         }],
     );
     routes.insert(
-        "/test/{*component}".to_string(),
+        "/test".to_string(),
         vec![RouteRule {
             plugin: "rust-worker".to_string(),
         }],
@@ -149,10 +147,10 @@ async fn test_double_component() {
         .await
         .expect("Failed to start local orchestrator");
 
-    // Register as "/double" — the orchestrator strips the "/test/" route prefix
-    // before dispatching, so the worker sees the component path without the prefix.
+    // Register as "double" — the orchestrator resolves the full path /test/double
+    // to component ID "double" and dispatches it to the worker.
     let mut registry = ComponentRegistry::new();
-    registry.register_fn("/double", |input: DoubleInput, _ctx| async move {
+    registry.register_fn("double", |input: DoubleInput, _ctx| async move {
         Ok(DoubleOutput {
             result: input.value * 2,
         })
@@ -178,12 +176,12 @@ async fn test_double_component() {
     });
 
     // Wait until the worker has connected and registered its components.
-    // list_registered_components returns raw component names (without route prefix),
-    // so we poll for "/double" (what the worker registered), not "/test/double".
+    // list_registered_components returns component IDs (without route prefix),
+    // so we poll for "double" (the component ID), not "/test/double".
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect to orchestrator");
-    wait_for_component(&mut client, "/double", Duration::from_secs(60)).await;
+    wait_for_component(&mut client, "double", Duration::from_secs(60)).await;
 
     let mut builder = FlowBuilder::new();
     builder.add_step(
@@ -249,14 +247,14 @@ async fn test_chained_steps() {
 
     let mut registry = ComponentRegistry::new();
 
-    // Register without the "/test/" route prefix — the orchestrator strips it before dispatching.
-    registry.register_fn("/greet", |input: GreetInput, _ctx| async move {
+    // Register by component ID — the orchestrator resolves /test/greet to ID "greet".
+    registry.register_fn("greet", |input: GreetInput, _ctx| async move {
         Ok(GreetOutput {
             message: format!("Hello, {}!", input.name),
         })
     });
 
-    registry.register_fn("/shout", |input: ShoutInput, _ctx| async move {
+    registry.register_fn("shout", |input: ShoutInput, _ctx| async move {
         Ok(ShoutOutput {
             loud: input.message.to_uppercase(),
         })
@@ -282,8 +280,8 @@ async fn test_chained_steps() {
     let mut client = StepflowClient::connect(orch.url())
         .await
         .expect("Failed to connect");
-    // list_registered_components returns raw component names (without route prefix).
-    wait_for_component(&mut client, "/greet", Duration::from_secs(60)).await;
+    // list_registered_components returns raw component IDs (without route prefix).
+    wait_for_component(&mut client, "greet", Duration::from_secs(60)).await;
 
     // Flow: greet → shout → output.loud
     let mut builder = FlowBuilder::new();

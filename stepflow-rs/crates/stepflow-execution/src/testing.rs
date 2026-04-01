@@ -110,14 +110,14 @@ impl MockExecutorBuilder {
             component_allow: None,
             component_deny: None,
             plugin: "mock".into(),
-            component: None,
             params: std::collections::HashMap::new(),
         }];
 
         let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
-            .with_routing_path("/{*component}".to_string(), rules)
+            .with_routing_path("/".to_string(), rules)
             .register_plugin("mock".to_string(), dyn_plugin)
             .build()
+            .await
             .unwrap();
 
         create_test_environment(plugin_router).await
@@ -345,14 +345,14 @@ pub async fn create_executor_with_behaviors(
         component_allow: None,
         component_deny: None,
         plugin: "mock".into(),
-        component: None,
         params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
-        .with_routing_path("/{*component}".to_string(), rules)
+        .with_routing_path("/".to_string(), rules)
         .register_plugin("mock".to_string(), dyn_plugin)
         .build()
+        .await
         .unwrap();
 
     create_test_environment(plugin_router).await
@@ -412,14 +412,14 @@ pub async fn create_env_with_wait_signal(
         component_allow: None,
         component_deny: None,
         plugin: "mock".into(),
-        component: None,
         params: std::collections::HashMap::new(),
     }];
 
     let plugin_router = stepflow_plugin::routing::PluginRouter::builder()
-        .with_routing_path("/{*component}".to_string(), rules)
+        .with_routing_path("/".to_string(), rules)
         .register_plugin("mock".to_string(), dyn_plugin)
         .build()
+        .await
         .unwrap();
 
     let env = create_test_environment(plugin_router).await;

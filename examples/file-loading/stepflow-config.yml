@@ -7,7 +7,7 @@ plugins:
   builtin:
     type: builtin
 routes:
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/python/{*component}":
+  "/python":
     - plugin: python

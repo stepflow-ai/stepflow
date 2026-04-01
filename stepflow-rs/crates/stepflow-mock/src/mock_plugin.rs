@@ -202,6 +202,7 @@ impl Plugin for MockPlugin {
             .iter()
             .map(|(component, mock_component)| ComponentInfo {
                 component: component.clone(),
+                path: component.path().to_string(),
                 input_schema: Some(mock_component.input_schema.clone()),
                 output_schema: Some(mock_component.output_schema.clone()),
                 description: None,
@@ -216,6 +217,7 @@ impl Plugin for MockPlugin {
             .ok_or(PluginError::UdfImport)?;
         Ok(ComponentInfo {
             component: component.clone(),
+            path: component.path().to_string(),
             input_schema: Some(mock_component.input_schema.clone()),
             output_schema: Some(mock_component.output_schema.clone()),
             description: None,
@@ -224,17 +226,14 @@ impl Plugin for MockPlugin {
 
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &stepflow_plugin::TaskRequest,
         run_context: &Arc<RunContext>,
         _step: Option<&StepId>,
-        input: ValueRef,
-        _attempt: u32,
-        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
+        let component = Component::from_string(&request.component_id);
         let mock_component = self
             .components
-            .get(component)
+            .get(&component)
             .ok_or(PluginError::UdfImport)
             .attach_printable_lazy(|| component.clone())?;
         // Debug logging for tests only - not included in production builds
@@ -242,7 +241,7 @@ impl Plugin for MockPlugin {
         log::debug!("Mock plugin executing component: {}", component);
 
         // Check for a wait signal for this component/input combination
-        let key = (component.clone(), input.clone());
+        let key = (component.clone(), request.input.clone());
         let wait_signal = {
             let mut signals = self.wait_signals.lock().await;
             signals.remove(&key)
@@ -253,21 +252,21 @@ impl Plugin for MockPlugin {
             log::debug!(
                 "Mock plugin waiting for signal: component={}, input={}",
                 component,
-                input.value()
+                request.input.value()
             );
             // Wait for the signal (ignore result - we just care that it was signaled)
             let _ = rx.await;
             log::debug!(
                 "Mock plugin received signal: component={}, input={}",
                 component,
-                input.value()
+                request.input.value()
             );
         }
 
-        let input_value = input.value();
+        let input_value = request.input.value();
         let output = mock_component
             .behaviors
-            .get(&input)
+            .get(&request.input)
             .ok_or(PluginError::UdfExecution)
             .attach_printable_lazy(|| {
                 format!("No behavior defined for {component} on {input_value}")
@@ -277,7 +276,7 @@ impl Plugin for MockPlugin {
         match output {
             MockComponentBehavior::Error { .. } => error_stack::bail!(PluginError::UdfExecution),
             MockComponentBehavior::Result { result } => {
-                registry.complete(task_id, result.clone());
+                registry.complete(&request.task_id, result.clone());
                 Ok(())
             }
         }

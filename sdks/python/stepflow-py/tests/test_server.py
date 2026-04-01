@@ -16,7 +16,7 @@
 
 This test file focuses on testing the core server functionality:
 - Component registration and management
-- Component lookup (exact and pattern-based)
+- Component lookup by component ID
 - Context detection
 """
 
@@ -51,33 +51,32 @@ def test_component_registration(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "/test_component" in server.get_components()
-    result = server.get_component("/test_component")
+    assert "test_component" in server.get_components()
+    result = server.get_component("test_component")
     assert result is not None
-    component, path_params = result
-    assert isinstance(component, ComponentEntry)
-    assert path_params == {}
-    assert component.name == "/test_component"
-    assert component.input_type == ValidInput
-    assert component.output_type == ValidOutput
+    assert isinstance(result, ComponentEntry)
+    assert result.name == "test_component"
+    assert result.path == "/test_component"
+    assert result.input_type == ValidInput
+    assert result.output_type == ValidOutput
 
 
-def test_component_with_custom_name(server):
-    @server.component(name="custom_name")
+def test_component_with_custom_subpath(server):
+    @server.component(subpath="custom_name")
     def test_component(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    assert "/custom_name" in server.get_components()
-    result = server.get_component("/custom_name")
+    # Component ID defaults to function name, subpath is custom
+    assert "test_component" in server.get_components()
+    result = server.get_component("test_component")
     assert result is not None
-    component, path_params = result
-    assert isinstance(component, ComponentEntry)
-    assert path_params == {}
-    assert component.name == "/custom_name"
-    assert component.input_type == ValidInput
-    assert component.output_type == ValidOutput
+    assert isinstance(result, ComponentEntry)
+    assert result.name == "test_component"
+    assert result.path == "/custom_name"
+    assert result.input_type == ValidInput
+    assert result.output_type == ValidOutput
 
 
 def test_component_execution(server):
@@ -87,10 +86,8 @@ def test_component_execution(server):
             greeting=f"Hello {input_data.name}!", age_next_year=input_data.age + 1
         )
 
-    lookup_result = server.get_component("/test_component")
-    assert lookup_result is not None
-    component, path_params = lookup_result
-    assert path_params == {}
+    component = server.get_component("test_component")
+    assert component is not None
     result = component.function(ValidInput(name="Alice", age=25))
     assert isinstance(result, ValidOutput)
     assert result.greeting == "Hello Alice!"
@@ -98,22 +95,22 @@ def test_component_execution(server):
 
 
 def test_list_components(server):
-    @server.component(name="component1")
+    @server.component(subpath="component1")
     def test_component1(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
-    @server.component(name="component2")
+    @server.component(subpath="component2")
     def test_component2(input_data: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="", age_next_year=0)
 
     components = server.get_components()
-    expected_components = ["/component1", "/component2", "/udf"]
+    expected_components = ["test_component1", "test_component2", "udf"]
 
     # LangChain components may be registered if langchain is available
     try:
         import langchain_core  # noqa: F401
 
-        expected_components.extend(["/langchain/invoke"])
+        expected_components.extend(["langchain_invoke"])
     except ImportError:
         pass
 
@@ -121,15 +118,15 @@ def test_list_components(server):
     for expected in expected_components:
         assert expected in components
 
-    component1 = components["/component1"]
+    component1 = components["test_component1"]
     assert isinstance(component1, ComponentEntry)
-    assert component1.name == "/component1"
+    assert component1.name == "test_component1"
     assert component1.input_type == ValidInput
     assert component1.output_type == ValidOutput
 
-    component2 = components["/component2"]
+    component2 = components["test_component2"]
     assert isinstance(component2, ComponentEntry)
-    assert component2.name == "/component2"
+    assert component2.name == "test_component2"
     assert component2.input_type == ValidInput
     assert component2.output_type == ValidOutput
 
@@ -144,10 +141,8 @@ async def test_decorator_sync():
             greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
         )
 
-    lookup_result = server.get_component("/sync_component")
-    assert lookup_result is not None
-    component, path_params = lookup_result
-    assert path_params == {}
+    component = server.get_component("sync_component")
+    assert component is not None
     result = component.function(ValidInput(name="Bob", age=30))
     assert isinstance(result, ValidOutput)
     assert result.greeting == "Sync Hello Bob!"
@@ -164,10 +159,8 @@ async def test_decorator_async():
             greeting=f"Sync Hello {input.name}!", age_next_year=input.age + 1
         )
 
-    lookup_result = server.get_component("/async_component")
-    assert lookup_result is not None
-    component, path_params = lookup_result
-    assert path_params == {}
+    component = server.get_component("async_component")
+    assert component is not None
     assert inspect.iscoroutinefunction(component.function)
     result = await component.function(ValidInput(name="Bob", age=30))
     assert isinstance(result, ValidOutput)
@@ -175,12 +168,10 @@ async def test_decorator_async():
     assert result.age_next_year == 31
 
     server2 = StepflowServer()
-    server2.component(async_component, name="async_component2")
+    server2.component(async_component, subpath="async_component2")
 
-    lookup_result2 = server2.get_component("/async_component2")
-    assert lookup_result2 is not None
-    component2, path_params2 = lookup_result2
-    assert path_params2 == {}
+    component2 = server2.get_component("async_component")
+    assert component2 is not None
     assert inspect.iscoroutinefunction(component2.function)
     result2 = await component2.function(ValidInput(name="Bob", age=30))
     assert isinstance(result2, ValidOutput)
@@ -189,70 +180,50 @@ async def test_decorator_async():
 
 
 # =============================================================================
-# Path Parameter Tests
+# Path Parameter Registration Tests
 # =============================================================================
 
 
-def test_wildcard_path_parameter():
-    """Test wildcard path parameter {*name} captures remaining path."""
+def test_wildcard_path_parameter_registration():
+    """Test wildcard path parameter components are registered by function name."""
     server = StepflowServer(include_builtins=False)
 
-    @server.component(name="core/{*component}")
+    @server.component(subpath="core/{*component}")
     def core_handler(input: ValidInput, component: str) -> ValidOutput:
         return ValidOutput(greeting=f"Component: {component}", age_next_year=input.age)
 
-    # Test wildcard matching with nested path
-    result = server.get_component("/core/my/nested/component")
+    # Component is registered by function name (component_id)
+    result = server.get_component("core_handler")
     assert result is not None
-    component, path_params = result
-    assert path_params == {"component": "my/nested/component"}
-    assert component.name == "/core/{*component}"
-
-    # Test single segment also matches
-    result2 = server.get_component("/core/simple")
-    assert result2 is not None
-    _, path_params2 = result2
-    assert path_params2 == {"component": "simple"}
-
-    # Test no match for just the prefix
-    assert server.get_component("/core") is None
-    assert server.get_component("/core/") is None
+    assert result.name == "core_handler"
+    assert result.path == "/core/{*component}"
 
 
-def test_single_segment_path_parameter():
-    """Test single segment path parameter {name} captures one segment."""
+def test_single_segment_path_parameter_registration():
+    """Test single segment path parameter components are registered by function name."""
     server = StepflowServer(include_builtins=False)
 
-    @server.component(name="users/{user_id}/profile")
+    @server.component(subpath="users/{user_id}/profile")
     def user_profile(input: ValidInput, user_id: str) -> ValidOutput:
         return ValidOutput(greeting=f"User: {user_id}", age_next_year=input.age)
 
-    # Test matching
-    result = server.get_component("/users/alice/profile")
+    result = server.get_component("user_profile")
     assert result is not None
-    component, path_params = result
-    assert path_params == {"user_id": "alice"}
-    assert component.name == "/users/{user_id}/profile"
-
-    # Test non-matching (too many segments)
-    assert server.get_component("/users/alice/bob/profile") is None
-
-    # Test non-matching (wrong suffix)
-    assert server.get_component("/users/alice/settings") is None
+    assert result.name == "user_profile"
+    assert result.path == "/users/{user_id}/profile"
 
 
-def test_multiple_path_parameters():
-    """Test multiple path parameters in one path."""
+def test_multiple_path_parameters_registration():
+    """Test multiple path parameters — registered by function name."""
     server = StepflowServer(include_builtins=False)
 
-    @server.component(name="orgs/{org}/repos/{repo}")
+    @server.component(subpath="orgs/{org}/repos/{repo}")
     def repo_handler(input: ValidInput, org: str, repo: str) -> ValidOutput:
         return ValidOutput(greeting=f"{org}/{repo}", age_next_year=input.age)
 
-    result = server.get_component("/orgs/acme/repos/my-project")
+    result = server.get_component("repo_handler")
     assert result is not None
-    component, path_params = result
-    assert path_params == {"org": "acme", "repo": "my-project"}
+    assert result.path == "/orgs/{org}/repos/{repo}"
 
 
 def test_path_params_passed_to_function():
@@ -261,63 +232,37 @@ def test_path_params_passed_to_function():
 
     captured_params = {}
 
-    @server.component(name="api/{version}/{*path}")
+    @server.component(subpath="api/{version}/{*path}")
     def api_handler(input: ValidInput, version: str, path: str) -> ValidOutput:
         captured_params["version"] = version
         captured_params["path"] = path
         return ValidOutput(greeting=f"v{version}: {path}", age_next_year=input.age)
 
-    result = server.get_component("/api/v2/users/list")
+    result = server.get_component("api_handler")
     assert result is not None
-    component, path_params = result
-    assert path_params == {"version": "v2", "path": "users/list"}
+    assert result.path == "/api/{version}/{*path}"
 
-    # Call function with path params
-    output = component.function(ValidInput(name="test", age=25), **path_params)
+    # Call function with path params (these would come from the proto request)
+    path_params = {"version": "v2", "path": "users/list"}
+    output = result.function(ValidInput(name="test", age=25), **path_params)
     assert captured_params == {"version": "v2", "path": "users/list"}
     assert output.greeting == "vv2: users/list"
 
 
-def test_exact_match_takes_precedence():
-    """Test that exact component matches take precedence over wildcards."""
-    server = StepflowServer(include_builtins=False)
-
-    @server.component(name="api/{*path}")
-    def wildcard_handler(input: ValidInput, path: str) -> ValidOutput:
-        return ValidOutput(greeting=f"Wildcard: {path}", age_next_year=input.age)
-
-    @server.component(name="api/health")
-    def health_handler(input: ValidInput) -> ValidOutput:
-        return ValidOutput(greeting="Health OK", age_next_year=input.age)
-
-    # Exact match should win
-    result = server.get_component("/api/health")
-    assert result is not None
-    component, path_params = result
-    assert path_params == {}
-    assert component.name == "/api/health"
-
-    # Wildcard should match other paths
-    result2 = server.get_component("/api/other/path")
-    assert result2 is not None
-    component2, path_params2 = result2
-    assert path_params2 == {"path": "other/path"}
-    assert component2.name == "/api/{*path}"
-
-
 def test_get_components_includes_wildcard():
-    """Test that get_components() includes wildcard components."""
+    """Test that get_components() includes wildcard-pattern components."""
     server = StepflowServer(include_builtins=False)
 
-    @server.component(name="exact")
+    @server.component(subpath="exact")
     def exact_handler(input: ValidInput) -> ValidOutput:
         return ValidOutput(greeting="exact", age_next_year=input.age)
 
-    @server.component(name="wild/{*path}")
+    @server.component(subpath="wild/{*path}")
     def wildcard_handler(input: ValidInput, path: str) -> ValidOutput:
         return ValidOutput(greeting=f"wild: {path}", age_next_year=input.age)
 
     components = server.get_components()
-    assert "/exact" in components
-    assert "/wild/{*path}" in components
-    # Note: LangChain components may also be present if langchain is installed
+    assert "exact_handler" in components
+    # Wildcard components are keyed by function name (component ID)
+    assert "wildcard_handler" in components
+    assert components["wildcard_handler"].path == "/wild/{*path}"

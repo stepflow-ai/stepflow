@@ -14,7 +14,7 @@ plugins:
       STEPFLOW_MAX_CONCURRENT: "16"
 
 routes:
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/python/{*component}":
+  "/python":
     - plugin: python

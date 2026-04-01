@@ -13,6 +13,7 @@
 //! Extension trait for PluginRouter access in StepflowEnvironment.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
@@ -20,6 +21,7 @@ use stepflow_core::workflow::{Component, ValueRef};
 
 use crate::routing::PluginRouter;
 use crate::{DynPlugin, PluginError, Result};
+use stepflow_core::component::ComponentInfo;
 
 /// Extension trait providing PluginRouter access for StepflowEnvironment.
 ///
@@ -60,6 +62,20 @@ pub trait PluginRouterExt {
 
     /// List all registered plugins with their config names.
     fn plugins_with_names(&self) -> Vec<(String, Arc<DynPlugin<'static>>)>;
+
+    /// Update a plugin's component registrations and rebuild the routing trie
+    /// if the registrations changed. Returns `true` if the trie was rebuilt.
+    fn update_plugin_components(
+        &self,
+        plugin_name: &str,
+        components: Vec<ComponentInfo>,
+    ) -> Result<bool>;
+
+    /// Wait for all plugins to report their components, with a timeout.
+    ///
+    /// Returns `true` if all plugins became ready, `false` if the timeout elapsed.
+    #[allow(async_fn_in_trait)] // Only implemented for StepflowEnvironment, not used as dyn
+    async fn wait_plugins_ready(&self, timeout: Duration) -> bool;
 }
 
 impl PluginRouterExt for StepflowEnvironment {
@@ -93,5 +109,18 @@ impl PluginRouterExt for StepflowEnvironment {
             .plugins_with_names()
             .map(|(name, plugin)| (name.to_string(), plugin.clone()))
             .collect()
+    }
+
+    fn update_plugin_components(
+        &self,
+        plugin_name: &str,
+        components: Vec<ComponentInfo>,
+    ) -> Result<bool> {
+        self.plugin_router()
+            .update_plugin_components(plugin_name, components)
+    }
+
+    async fn wait_plugins_ready(&self, timeout: Duration) -> bool {
+        self.plugin_router().wait_ready_timeout(timeout).await
     }
 }

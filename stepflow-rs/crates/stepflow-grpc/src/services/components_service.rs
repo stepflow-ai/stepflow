@@ -42,19 +42,24 @@ impl ComponentsService for ComponentsServiceImpl {
         let req = request.into_inner();
         let include_schemas = !req.exclude_schemas;
 
-        let mut all_components = Vec::new();
+        let mut all_components: Vec<(String, _)> = Vec::new();
         let mut failed_plugins = Vec::new();
 
         for (name, plugin) in self.env.plugins_with_names() {
             match plugin.list_components().await {
                 Ok(mut components) => {
+                    // Update the routing trie if component registrations changed
+                    // (e.g., a new gRPC worker connected since the last poll).
+                    if let Err(e) = self.env.update_plugin_components(&name, components.clone()) {
+                        log::warn!("Failed to update routing trie for plugin '{name}': {e}");
+                    }
                     if !include_schemas {
                         for c in components.iter_mut() {
                             c.input_schema = None;
                             c.output_schema = None;
                         }
                     }
-                    all_components.extend(components);
+                    all_components.extend(components.into_iter().map(|c| (name.clone(), c)));
                 }
                 Err(e) => {
                     log::warn!("Component discovery failed for plugin '{name}': {e}");
@@ -66,11 +71,11 @@ impl ComponentsService for ComponentsServiceImpl {
             }
         }
 
-        all_components.sort_by(|a, b| a.component.cmp(&b.component));
+        all_components.sort_by(|a, b| a.1.component.cmp(&b.1.component));
 
         let entries = all_components
             .into_iter()
-            .map(|c| {
+            .map(|(plugin_name, c)| {
                 let input_schema = c.input_schema.and_then(|s| {
                     serde_json::to_value(&s)
                         .ok()
@@ -82,10 +87,12 @@ impl ComponentsService for ComponentsServiceImpl {
                         .and_then(|v| serde_json::from_value(v).ok())
                 });
                 ComponentInfoEntry {
-                    component: c.component.to_string(),
+                    component_id: c.component.to_string(),
                     description: c.description,
                     input_schema,
                     output_schema,
+                    path: c.component.path().to_string(),
+                    plugin: plugin_name,
                 }
             })
             .collect();

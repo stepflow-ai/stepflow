@@ -18,7 +18,6 @@ doctest = false
 [dependencies]
 error-stack.workspace = true
 serde.workspace = true
-serde_json.workspace = true
 stepflow-plugin.workspace = true
 stepflow-core.workspace = true
 log.workspace = true

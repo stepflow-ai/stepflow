@@ -30,9 +30,9 @@ plugins:
   #     BRAVE_API_KEY: "your-api-key-here"
 
 routes:
-  "/filesystem/{*component}":
+  "/filesystem":
     - plugin: filesystem
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 # Optional: Configure state storage

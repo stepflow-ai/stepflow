@@ -7,7 +7,7 @@ plugins:
     args: ["--project", "../../sdks/python/stepflow-py", "run", "stepflow_worker"]
     queueName: python
 routes:
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/python/{*component}":
+  "/python":
     - plugin: python

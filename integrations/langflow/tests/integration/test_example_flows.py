@@ -143,8 +143,8 @@ def shared_config():
             ),
         },
         routes={
-            "/langflow/{*component}": [RouteRule(plugin="langflow")],
-            "/builtin/{*component}": [RouteRule(plugin="builtin")],
+            "/langflow": [RouteRule(plugin="langflow")],
+            "/builtin": [RouteRule(plugin="builtin")],
         },
         storageConfig=InMemoryStoreConfig(),
     )
@@ -283,7 +283,9 @@ class TestExecutor:
         if response.summary.status != EXECUTION_STATUS_COMPLETED:
             status_name = ExecutionStatus.Name(response.summary.status)
             raise AssertionError(
-                f"Workflow execution failed with status {status_name}."
+                f"Workflow execution failed with status {status_name}.\n"
+                f"Summary: {response.summary}\n"
+                f"Results: {response.results}"
             )
 
         if not response.results:

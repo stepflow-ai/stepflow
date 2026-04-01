@@ -286,10 +286,10 @@ async fn execute_component(
     task_context: stepflow_proto::TaskContext,
     orch_channel: Channel,
 ) -> Result<TaskResult, ComponentError> {
-    let component_path = &req.component;
+    let component_id = &req.component_id;
 
-    let component = registry.lookup(component_path).ok_or_else(|| {
-        ComponentError::WorkerError(format!("Component not found: {component_path}"))
+    let component = registry.lookup(component_id).ok_or_else(|| {
+        ComponentError::WorkerError(format!("Component not found: {component_id}"))
     })?;
 
     // Convert proto input → serde_json::Value
@@ -313,7 +313,7 @@ async fn execute_component(
         orch_channel,
     );
 
-    debug!(task_id, component = component_path, "Executing component");
+    debug!(task_id, component_id, "Executing component");
 
     let output_json = component.execute(input_json, &ctx).await?;
 
@@ -344,10 +344,11 @@ pub(crate) fn list_components_response(
                 .output_schema
                 .and_then(|s| serde_json::to_string(&s).ok());
             ProtoComponentInfo {
-                name: info.name,
+                component_id: info.name,
                 description: Some(info.description.unwrap_or_default()),
                 input_schema,
                 output_schema,
+                path: info.path,
             }
         })
         .collect();
@@ -390,12 +391,30 @@ mod tests {
 
     #[test]
     fn test_list_components_response_names() {
-        let registry = make_registry(&["/alpha", "/beta", "/gamma"]);
+        let registry = make_registry(&["alpha", "beta", "gamma"]);
         let result = list_components_response(&registry, stepflow_proto::ListComponentsRequest {});
         match result.unwrap() {
             TaskResult::ListComponents(r) => {
-                let names: Vec<_> = r.components.iter().map(|c| c.name.as_str()).collect();
-                assert_eq!(names, ["/alpha", "/beta", "/gamma"]);
+                let ids: Vec<_> = r
+                    .components
+                    .iter()
+                    .map(|c| c.component_id.as_str())
+                    .collect();
+                assert_eq!(ids, ["alpha", "beta", "gamma"]);
+            }
+            other => panic!("unexpected result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_list_components_response_includes_path() {
+        let registry = make_registry(&["echo"]);
+        let result = list_components_response(&registry, stepflow_proto::ListComponentsRequest {});
+        match result.unwrap() {
+            TaskResult::ListComponents(r) => {
+                assert_eq!(r.components.len(), 1);
+                assert_eq!(r.components[0].component_id, "echo");
+                assert_eq!(r.components[0].path, "/echo");
             }
             other => panic!("unexpected result: {other:?}"),
         }

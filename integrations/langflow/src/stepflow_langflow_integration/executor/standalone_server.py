@@ -44,8 +44,9 @@ custom_code_executor = CustomCodeExecutor()
 core_executor = CoreExecutor()
 
 
-# Register the main custom code executor component at module level
-@server.component(name="custom_code")
+# Register the main custom code executor component at module level.
+# Component ID = "custom_code_component" (from function name), subpath = "/custom_code".
+@server.component(subpath="custom_code")
 async def custom_code_component(
     input_data: dict[str, Any], context: StepflowContext
 ) -> dict[str, Any]:
@@ -53,8 +54,9 @@ async def custom_code_component(
     return await custom_code_executor.execute(input_data, context)
 
 
-# Register the core component handler with wildcard path
-@server.component(name="core/{*component}")
+# Register the core component handler with wildcard subpath.
+# Component ID = "core_component" (from function name), subpath = "/core/{*component}".
+@server.component(subpath="core/{*component}")
 async def core_component(
     input_data: dict[str, Any],
     context: StepflowContext,
@@ -64,8 +66,9 @@ async def core_component(
     return await core_executor.execute(component, input_data, context)
 
 
-# Register the component tool wrapper component
-@server.component(name="component_tool")
+# Register the component tool wrapper component.
+# ID = "component_tool_component", subpath = "/component_tool".
+@server.component(subpath="component_tool")
 async def component_tool_component(
     input_data: dict[str, Any], context: StepflowContext
 ) -> dict[str, Any]:

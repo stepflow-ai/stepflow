@@ -95,6 +95,7 @@ impl BuiltinComponent for OpenAIComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/openai"),
+            path: "/openai".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

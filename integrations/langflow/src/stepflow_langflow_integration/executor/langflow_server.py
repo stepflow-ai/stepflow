@@ -54,7 +54,7 @@ class StepflowLangflowServer:
     def _register_components(self) -> None:
         """Register all Langflow components."""
 
-        @self.server.component(name="custom_code")
+        @self.server.component
         async def custom_code(
             input_data: dict[str, Any], context: StepflowContext
         ) -> dict[str, Any]:
@@ -65,7 +65,7 @@ class StepflowLangflowServer:
             """
             return await self.custom_code_executor.execute(input_data, context)
 
-        @self.server.component(name="core/{*component}")
+        @self.server.component(subpath="core/{*component}")
         async def core(
             input_data: dict[str, Any],
             context: StepflowContext,
@@ -84,8 +84,8 @@ class StepflowLangflowServer:
             return await self.core_executor.execute(component, input_data, context)
 
         # TODO: Register native component implementations
-        # self.server.component(name="openai_chat", func=self._openai_chat)
-        # self.server.component(name="chat_input", func=self._chat_input)
+        # self.server.component(subpath="openai_chat", func=self._openai_chat)
+        # self.server.component(subpath="chat_input", func=self._chat_input)
 
     def run_grpc(
         self,

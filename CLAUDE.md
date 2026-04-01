@@ -104,13 +104,13 @@ plugins:
       MCP_LOG_LEVEL: "${LOG_LEVEL:-info}"
 
 routes:
-  "/python/{*component}":
+  "/python":
     - plugin: python
-  "/remote/{*component}":
+  "/remote":
     - plugin: remote_server
-  "/filesystem/{*component}":
+  "/filesystem":
     - plugin: filesystem
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 storageConfig:
@@ -129,11 +129,10 @@ Both `grpc` and `mcp` plugins support environment variable substitution in `args
 
 ### Routes
 
-Routes map component paths to plugins. Rules are evaluated in order, first match wins.
+Routes map path prefixes to plugins. Each plugin registers its component paths (via `list_components`), and the orchestrator builds a per-plugin trie from those registered components. The full component path is the prefix joined with the component path (e.g., `/python` + `/my_func` = `/python/my_func`).
 
-**Path Patterns**:
-- `{component}`: Single path segment
-- `{*component}`: Wildcard matching remaining path
+- `"/"` acts as a catch-all prefix for components that don't match a more specific prefix.
+- Rules are evaluated by longest prefix match.
 
 **Advanced**: Routes support input-based conditions. See schema for details.
 

@@ -64,13 +64,12 @@ impl PluginSchemaProvider {
             };
 
             // Cache schema from each component info, storing by routed path
+            let prefixes = router.prefixes_for_plugin(plugin_name);
             for info in component_infos {
                 let cached = CachedSchema::from_info(&info);
+                let component_path = &info.path;
 
-                // Get all routes that expose this component
-                let routes = router.find_routes_for(plugin_name, info.component.path());
-
-                if routes.is_empty() {
+                if prefixes.is_empty() {
                     // Fall back to native path if no routes found
                     log::debug!(
                         "No routes found for component {}, storing under native path",
@@ -78,14 +77,16 @@ impl PluginSchemaProvider {
                     );
                     schemas.insert(info.component.path().to_string(), cached);
                 } else {
-                    // Store under all resolved paths
-                    for route in routes {
+                    // Store under all resolved paths (prefix + component_path)
+                    for prefix in &prefixes {
+                        let prefix = prefix.trim_end_matches('/');
+                        let resolved_path = format!("{prefix}{component_path}");
                         log::debug!(
                             "Storing schema for {} under routed path {}",
                             info.component.path(),
-                            route.resolved_path
+                            resolved_path
                         );
-                        schemas.insert(route.resolved_path, cached.clone());
+                        schemas.insert(resolved_path, cached.clone());
                     }
                 }
             }

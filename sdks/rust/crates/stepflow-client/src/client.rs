@@ -306,7 +306,7 @@ impl StepflowClient {
             .components
             .into_iter()
             .map(|c| ComponentInfo {
-                component: c.component,
+                component: c.component_id,
                 description: c.description,
                 input_schema: c.input_schema.map(proto_struct_to_json),
                 output_schema: c.output_schema.map(proto_struct_to_json),

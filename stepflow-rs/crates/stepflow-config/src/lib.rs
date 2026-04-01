@@ -185,6 +185,7 @@ impl StepflowConfig {
 
         let plugin_router = plugin_router_builder
             .build()
+            .await
             .change_context(ConfigError::Configuration)?;
 
         // Build the environment directly
@@ -301,7 +302,7 @@ mod tests {
                 "builtin": { "type": "builtin" }
             },
             "routes": {
-                "/{*component}": [{ "plugin": "builtin" }]
+                "/": [{ "plugin": "builtin" }]
             },
             "workingDirectory": null,
             "storageConfig": null,

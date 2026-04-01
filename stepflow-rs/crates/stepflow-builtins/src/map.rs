@@ -71,6 +71,7 @@ impl BuiltinComponent for MapComponent {
 
         Ok(ComponentInfo {
             component: stepflow_core::workflow::Component::from_string("/map"),
+            path: "/map".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

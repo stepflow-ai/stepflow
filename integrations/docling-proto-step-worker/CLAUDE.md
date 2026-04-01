@@ -2,7 +2,7 @@
 
 ## About
 
-This package wraps docling's `DocumentConverter` library directly as Stepflow components using **gRPC pull-based transport** (Protocol Buffers). Three components are registered: `classify`, `convert`, `chunk` (no leading slash — the gRPC worker strips "/" from orchestrator paths at lookup time). The `/docling/` prefix is added by the routing config, not the worker itself.
+This package wraps docling's `DocumentConverter` library directly as Stepflow components using **gRPC pull-based transport** (Protocol Buffers). Three components are registered with IDs `classify`, `convert`, `chunk` (subpaths `/classify`, `/convert`, `/chunk`). The `/docling/` prefix is added by the orchestrator's routing config, not the worker itself.
 
 This is the gRPC variant of `integrations/docling-step-worker/` (which uses HTTP JSON-RPC push transport). The domain logic (classify, convert, chunk, blob_utils, etc.) is identical — only the transport and server wiring differ.
 
@@ -12,7 +12,7 @@ This is the gRPC variant of `integrations/docling-step-worker/` (which uses HTTP
 |--------|---------------------------|----------------------------------|
 | Transport | HTTP JSON-RPC (push) | gRPC pull (Protocol Buffers) |
 | Server pattern | `DoclingStepWorkerServer` class | Module-level `server` + `@server.component` decorators |
-| Component names | `/classify`, `/convert`, `/chunk` | `classify`, `convert`, `chunk` (no leading slash) |
+| Component IDs | `/classify`, `/convert`, `/chunk` | `classify`, `convert`, `chunk` (bare IDs, subpath `/classify` etc.) |
 | Plugin type | `type: stepflow` | `type: grpc` |
 | Worker role | HTTP server (accepts connections) | gRPC client (connects to orchestrator) |
 | Load balancer | Required (HTTP proxy) | Not needed (orchestrator manages queue) |

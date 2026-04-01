@@ -44,7 +44,7 @@ plugins:
       # through the protocol's ObservabilityContext in each request
 
 routes:
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/python/{*component}":
+  "/python":
     - plugin: python

@@ -76,8 +76,6 @@ pub enum WorkerError {
     MaxRetriesExceeded { attempts: u32 },
     #[error("Worker configuration error: {0}")]
     Config(String),
-    #[error("Duplicate component path: {0}")]
+    #[error("Duplicate component ID: {0}")]
     DuplicateComponent(String),
-    #[error("Invalid component route pattern: {0}")]
-    InvalidComponentRoute(String),
 }
