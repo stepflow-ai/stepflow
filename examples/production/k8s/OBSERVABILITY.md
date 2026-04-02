@@ -11,12 +11,12 @@ The observability stack provides comprehensive monitoring, tracing, and logging 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Stepflow Services                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Stepflow   │  │    Load      │  │   Langflow   │     │
-│  │    Server    │  │  Balancer    │  │    Worker    │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                  │                  │              │
-│         └──────────────────┼──────────────────┘              │
+│  ┌──────────────┐  ┌──────────────┐                        │
+│  │   Stepflow   │  │   Langflow   │                        │
+│  │    Server    │  │    Worker    │                        │
+│  └──────┬───────┘  └──────┬───────┘                        │
+│         │                  │                                │
+│         └──────────────────┘                                │
 │                            │ OTLP/gRPC                       │
 │                            │                                 │
 │  Infrastructure Services (optional OTLP):                    │
@@ -243,11 +243,6 @@ env:
 - Traces workflow execution
 - Emits metrics for workflow performance
 
-**Stepflow Load Balancer** (`k8s/load-balancer/deployment.yaml`):
-- Service name: `stepflow-load-balancer`
-- Traces request routing
-- Emits metrics for load distribution
-
 **Langflow Worker** (`k8s/langflow-worker/deployment.yaml`):
 - Service name: `langflow-worker`
 - Python-based service with auto-instrumentation
@@ -357,7 +352,7 @@ sum by (app) (count_over_time({namespace="stepflow-demo"} |~ "(?i)error" [5m]))
 {run_id="<run-id>"} | line_format "{{.app}}: {{.log}}"
 
 # Filter by time and service
-{app="stepflow-load-balancer"} | json | level="INFO"
+{app="stepflow-server"} | json | level="INFO"
 ```
 
 ### Method 2: Stepflow Workflow Overview Dashboard (Recommended for Monitoring)
@@ -390,7 +385,7 @@ This pre-built dashboard provides a comprehensive single pane of glass:
 When viewing traces, navigate directly to related logs:
 
 1. Open Explore → Select Jaeger datasource
-2. Search for service: `stepflow-server`, `stepflow-load-balancer`, or `langflow-worker`
+2. Search for service: `stepflow-server` or `langflow-worker`
 3. Click on any trace to open trace details
 4. Click on any span in the trace timeline
 5. Look for "Logs for this span" button in span details
@@ -476,7 +471,7 @@ All Grafana views share a time range picker:
 ### Direct Access (Optional)
 
 **Jaeger UI**: http://localhost:30686
-- Search traces by service: `stepflow-server`, `stepflow-load-balancer`, `langflow-worker`
+- Search traces by service: `stepflow-server`, `langflow-worker`
 - Filter by operation, tags, duration
 - View trace timeline and span details
 
@@ -655,7 +650,7 @@ Look for:
 curl -s "http://localhost:3100/loki/api/v1/label/app/values" | jq
 ```
 
-Should return service names like: `stepflow-server`, `stepflow-load-balancer`, `langflow-worker`
+Should return service names like: `stepflow-server`, `langflow-worker`
 
 **Check trace_id labels are extracted:**
 ```bash

@@ -8,7 +8,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 
 ## Repository Organization
 
-- **`stepflow-rs/`**: Core orchestrator and load balancer written in Rust
+- **`stepflow-rs/`**: Core orchestrator written in Rust
   - Workflow execution engine with parallel processing
   - Plugin system and component routing
   - gRPC protocol for component communication

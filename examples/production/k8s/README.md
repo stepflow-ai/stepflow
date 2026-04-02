@@ -7,7 +7,6 @@ This directory contains Kubernetes manifests for deploying Stepflow and its supp
 The Stepflow K8s deployment provides a complete local development environment with:
 
 - **Stepflow Server**: Core workflow orchestration engine
-- **Load Balancer**: Pingora-based request routing to workers
 - **Langflow Worker**: Python-based component execution
 - **Docling Worker**: Document processing with sidecar architecture
 - **OpenSearch**: Document storage and vector search (with jvector plugin)
@@ -23,7 +22,6 @@ flowchart TB
 
     subgraph stepflow["stepflow namespace"]
         Server["Stepflow Server<br/>(workflow engine)"]
-        LB["Load Balancer<br/>(Pingora)"]
 
         subgraph workers["Worker Pods"]
             LW1["Langflow<br/>Worker 1"]
@@ -57,15 +55,14 @@ flowchart TB
     end
 
     CLI -->|":7840"| Server
-    Server --> LB
-    LB --> LW1 & LW2
-    LB --> DC1 & DC2 & DC3
+    Server --> LW1 & LW2
+    Server --> DC1 & DC2 & DC3
     DC1 -->|"localhost:5001"| DS1
     DC2 -->|"localhost:5001"| DS2
     DC3 -->|"localhost:5001"| DS3
     LW1 & LW2 --> OS
 
-    Server & LB & LW1 & LW2 & DC1 & DC2 & DC3 -->|"OTLP"| OTEL
+    Server & LW1 & LW2 & DC1 & DC2 & DC3 -->|"OTLP"| OTEL
     OTEL --> Jaeger & Prometheus & Loki
     Grafana --> Jaeger & Prometheus & Loki
 ```
@@ -83,7 +80,7 @@ flowchart LR
         SF -->|"localhost:5001"| DS
     end
 
-    LB["Load Balancer"] -->|":8080"| SF
+    Server["Stepflow Server"] -->|":8080"| SF
     DS -->|"ML Models"| Models["Pre-loaded<br/>OCR/Layout Models"]
 ```
 
@@ -111,7 +108,6 @@ From the repository root:
 ```bash
 # Build core Stepflow images
 podman build -t localhost/stepflow-server:latest -f docker/Dockerfile.server .
-podman build -t localhost/stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
 podman build -t localhost/langflow-worker:latest -f docker/langflow-component-server/Dockerfile .
 
 # Build docling worker
@@ -184,7 +180,6 @@ This creates a cluster named `stepflow` with port mappings for:
 # For Podman, use: podman save <image> | kind load image-archive /dev/stdin --name stepflow
 
 kind load docker-image localhost/stepflow-server:latest --name stepflow
-kind load docker-image localhost/stepflow-load-balancer:latest --name stepflow
 kind load docker-image localhost/langflow-worker:latest --name stepflow
 kind load docker-image localhost/stepflow-docling:v14 --name stepflow
 kind load docker-image localhost/opensearch-jvector:latest --name stepflow
@@ -241,7 +236,7 @@ kubectl port-forward -n stepflow deployment/docling-worker 5001:5001
 
 | Namespace | Purpose |
 |-----------|---------|
-| `stepflow` | Application workloads (server, load balancer, workers) and infrastructure services (OpenSearch, Docling) |
+| `stepflow` | Application workloads (server, workers) and infrastructure services (OpenSearch, Docling) |
 | `stepflow-o11y` | Observability stack (OTel Collector, Jaeger, Prometheus, Loki, Grafana) |
 
 ## Running Workflows
@@ -330,7 +325,6 @@ k8s/
 ├── stepflow-config.yml            # Reference config (see stepflow/server/configmap.yaml)
 ├── stepflow/                      # Application manifests
 │   ├── server/                    # Stepflow server
-│   ├── loadbalancer/              # Pingora load balancer
 │   ├── langflow-worker/           # Python workers
 │   ├── opensearch/                # OpenSearch (infrastructure)
 │   └── docling/                   # Docling document processing (infrastructure)
@@ -349,7 +343,7 @@ k8s/
 
 The server configuration is stored in `k8s/stepflow/server/configmap.yaml`. Key settings:
 
-- Routes `/langflow/*` components to the load balancer
+- Routes `/langflow/*` components to workers
 - Routes `/builtin/*` to built-in components
 - Sends telemetry to OTel Collector
 
@@ -404,12 +398,12 @@ This deployment distinguishes between two types of services:
 
 ### Routed Components
 
-Components accessible via the Stepflow routing configuration. These are invoked by workflow steps and routed through the load balancer.
+Components accessible via the Stepflow routing configuration. These are invoked by workflow steps and routed to workers by the orchestrator.
 
 | Path Pattern | Plugin | Description |
 |--------------|--------|-------------|
-| `/langflow/*` | langflow_k8s | Langflow components via load balancer |
-| `/docling/*` | docling_k8s | Docling document processing via load balancer |
+| `/langflow/*` | langflow_k8s | Langflow components |
+| `/docling/*` | docling_k8s | Docling document processing |
 | `/builtin/*` | builtin | Built-in components (OpenAI, eval, etc.) |
 
 ### Infrastructure Services
