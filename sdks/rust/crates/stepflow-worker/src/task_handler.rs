@@ -23,6 +23,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use scc::HashCache;
 use tonic::transport::Channel;
 use tracing::{debug, warn};
 
@@ -54,6 +55,7 @@ pub(crate) async fn handle_task(
     default_orchestrator_url: &str,
     default_blob_url: Option<&str>,
     default_orch_channel: Channel,
+    channel_cache: &ChannelCache,
 ) -> bool {
     let task_id = assignment.task_id.clone();
     let heartbeat_interval_secs = assignment.heartbeat_interval_secs;
@@ -73,6 +75,7 @@ pub(crate) async fn handle_task(
         &orchestrator_url,
         default_orchestrator_url,
         default_orch_channel,
+        channel_cache,
     ) else {
         return false;
     };
@@ -140,33 +143,74 @@ pub(crate) async fn handle_task(
 // Helpers (split out for testability)
 // ---------------------------------------------------------------------------
 
+/// Maximum number of cached orchestrator channels.
+///
+/// In practice workers talk to 1–2 orchestrators, so a small cap suffices.
+/// LRU eviction drops idle connections from orchestrators that have scaled
+/// away or been replaced during a rolling deploy.
+const MAX_CACHED_CHANNELS: usize = 16;
+
+/// A cache of gRPC channels keyed by normalised URL.
+///
+/// Uses `scc::HashCache` which provides LRU eviction (preventing unbounded
+/// growth of idle connections) with bucket-level locking (negligible
+/// contention for the small number of entries we expect).
+pub(crate) type ChannelCache = Arc<HashCache<String, Channel>>;
+
+/// Create a new, empty channel cache.
+pub(crate) fn new_channel_cache() -> ChannelCache {
+    Arc::new(HashCache::with_capacity(0, MAX_CACHED_CHANNELS))
+}
+
+/// Normalise a URL for comparison: ensure `http://` scheme, resolve `localhost` to
+/// `127.0.0.1`, and strip trailing slashes.
+fn normalize_url(url: &str) -> String {
+    let with_scheme = if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("http://{url}")
+    };
+    with_scheme
+        .trim_end_matches('/')
+        .replace("://localhost:", "://127.0.0.1:")
+        .replace("://localhost", "://127.0.0.1")
+}
+
 /// Resolve the orchestrator gRPC channel to use for this task.
 ///
-/// Reuses `default_channel` when the normalized `url` matches `default_url` to avoid opening
-/// a new connection. Returns `None` (and logs a warning) if `url` is not a valid gRPC endpoint.
+/// Reuses `default_channel` when the normalised URL matches `default_url`, then falls
+/// back to the `channel_cache` for previously-seen URLs. Only creates a new
+/// `connect_lazy()` channel when the URL has never been seen before.
 ///
-/// The orchestrator may advertise its address without an `http://` scheme (e.g.
-/// `"127.0.0.1:7837"` in `run`/`test` mode).  We normalise such URLs by prepending
-/// `"http://"` before comparing and before creating the tonic channel.
+/// Returns `None` (and logs a warning) if `url` is not a valid gRPC endpoint.
 pub(crate) fn resolve_orch_channel(
     task_id: &str,
     url: &str,
     default_url: &str,
     default_channel: Channel,
+    channel_cache: &ChannelCache,
 ) -> Option<Channel> {
-    // Normalise: add http:// scheme if the URL has no scheme.
-    let normalised = if url.starts_with("http://") || url.starts_with("https://") {
-        url.to_string()
-    } else {
-        format!("http://{url}")
-    };
+    let normalised = normalize_url(url);
+    let default_normalised = normalize_url(default_url);
 
-    if normalised == default_url {
+    if normalised == default_normalised {
         return Some(default_channel);
     }
 
+    // Fast path: channel already cached for this URL.
+    if let Some(ch) = channel_cache.read(&normalised, |_k, v| v.clone()) {
+        return Some(ch);
+    }
+
+    // Slow path: create a new channel and cache it.
     match tonic::transport::Channel::from_shared(normalised.clone()) {
-        Ok(endpoint) => Some(endpoint.connect_lazy()),
+        Ok(endpoint) => {
+            let ch = endpoint.connect_lazy();
+            // entry() ensures only one channel is created if two tasks race.
+            let (_evicted, occupied) = channel_cache.entry(normalised).or_put_with(|| ch);
+            let ch = occupied.get().clone();
+            Some(ch)
+        }
         Err(e) => {
             warn!(
                 task_id,
@@ -420,27 +464,93 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_normalize_url_adds_scheme() {
+        assert_eq!(normalize_url("127.0.0.1:7837"), "http://127.0.0.1:7837");
+    }
+
+    #[test]
+    fn test_normalize_url_localhost_to_ip() {
+        assert_eq!(
+            normalize_url("http://localhost:7837"),
+            "http://127.0.0.1:7837"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_strips_trailing_slash() {
+        assert_eq!(
+            normalize_url("http://127.0.0.1:7837/"),
+            "http://127.0.0.1:7837"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_localhost_without_port() {
+        assert_eq!(normalize_url("http://localhost"), "http://127.0.0.1");
+    }
+
     #[tokio::test]
     async fn test_resolve_orch_channel_reuses_default() {
-        // When URLs match, the same channel object is returned (not a new connection).
         let url = "http://127.0.0.1:7837";
         let endpoint = tonic::transport::Channel::from_shared(url).unwrap();
         let channel = endpoint.connect_lazy();
-        let result = resolve_orch_channel("task-1", url, url, channel);
+        let cache = new_channel_cache();
+        let result = resolve_orch_channel("task-1", url, url, channel, &cache);
         assert!(result.is_some());
     }
 
     #[tokio::test]
     async fn test_resolve_orch_channel_normalises_scheme() {
-        // The orchestrator may advertise "127.0.0.1:port" without http://.
-        // resolve_orch_channel should prepend http:// so the channel is valid.
         let default_url = "http://127.0.0.1:7837";
         let channel = tonic::transport::Channel::from_shared(default_url)
             .unwrap()
             .connect_lazy();
-        // Scheme-less variant — normalises to "http://127.0.0.1:7837", which equals default_url.
-        let result = resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel);
+        let cache = new_channel_cache();
+        let result =
+            resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel, &cache);
         assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_orch_channel_localhost_matches_ip() {
+        // The core bug: localhost:PORT should match 127.0.0.1:PORT
+        let default_url = "http://localhost:7837";
+        let channel = tonic::transport::Channel::from_shared(default_url)
+            .unwrap()
+            .connect_lazy();
+        let cache = new_channel_cache();
+        let result = resolve_orch_channel(
+            "task-1",
+            "http://127.0.0.1:7837",
+            default_url,
+            channel,
+            &cache,
+        );
+        assert!(result.is_some());
+        // Cache should be empty because we matched the default
+        assert!(cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_orch_channel_caches_new_url() {
+        let default_url = "http://127.0.0.1:7837";
+        let channel = tonic::transport::Channel::from_shared(default_url)
+            .unwrap()
+            .connect_lazy();
+        let cache = new_channel_cache();
+        let other_url = "http://10.0.0.5:7837";
+
+        // First call creates a new channel and caches it
+        let result = resolve_orch_channel("task-1", other_url, default_url, channel.clone(), &cache);
+        assert!(result.is_some());
+        assert_eq!(cache.len(), 1);
+
+        // Second call with the same URL reuses the cached channel
+        let result2 =
+            resolve_orch_channel("task-2", other_url, default_url, channel, &cache);
+        assert!(result2.is_some());
+        assert_eq!(cache.len(), 1);
     }
 
     #[tokio::test]
@@ -448,8 +558,9 @@ mod tests {
         let channel = tonic::transport::Channel::from_shared("http://127.0.0.1:7837")
             .unwrap()
             .connect_lazy();
+        let cache = new_channel_cache();
         let result =
-            resolve_orch_channel("task-1", "not a url !!!", "http://127.0.0.1:7837", channel);
+            resolve_orch_channel("task-1", "not a url !!!", "http://127.0.0.1:7837", channel, &cache);
         assert!(result.is_none());
     }
 }

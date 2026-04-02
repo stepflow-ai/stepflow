@@ -21,7 +21,7 @@ use tracing::{debug, info, warn};
 
 use stepflow_proto::{PullTasksRequest, TaskAssignment, tasks_service_client::TasksServiceClient};
 
-use crate::task_handler::handle_task;
+use crate::task_handler::{ChannelCache, handle_task, new_channel_cache};
 use crate::{ComponentRegistry, WorkerError};
 
 /// Configuration for a [`Worker`].
@@ -195,6 +195,7 @@ impl Worker {
         // Pin shutdown so it can be used in select!
         tokio::pin!(shutdown);
 
+        let channel_cache = new_channel_cache();
         let mut consecutive_failures: u32 = 0;
         let mut in_flight: JoinSet<()> = JoinSet::new();
 
@@ -272,6 +273,7 @@ impl Worker {
                                     orchestrator_url.clone(),
                                     config.blob_url.clone(),
                                     channel.clone(),
+                                    Arc::clone(&channel_cache),
                                     &mut in_flight,
                                 );
                             }
@@ -389,6 +391,7 @@ async fn open_stream(
 }
 
 /// Spawn a task handler into the in-flight set.
+#[allow(clippy::too_many_arguments)]
 fn spawn_task(
     assignment: TaskAssignment,
     registry: Arc<ComponentRegistry>,
@@ -396,6 +399,7 @@ fn spawn_task(
     orchestrator_url: String,
     blob_url: Option<String>,
     channel: tonic::transport::Channel,
+    channel_cache: ChannelCache,
     in_flight: &mut JoinSet<()>,
 ) {
     in_flight.spawn(async move {
@@ -406,6 +410,7 @@ fn spawn_task(
             &orchestrator_url,
             blob_url.as_deref(),
             channel,
+            &channel_cache,
         )
         .await;
     });
