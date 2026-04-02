@@ -59,7 +59,6 @@ kubectl apply -f k8s/stepflow-o11y/grafana/
 # Deploy application stack
 kubectl apply -f k8s/stepflow/opensearch/
 kubectl apply -f k8s/stepflow/server/
-kubectl apply -f k8s/stepflow/loadbalancer/
 kubectl apply -f k8s/stepflow/langflow-worker/
 ```
 
@@ -99,7 +98,6 @@ kubectl top pod -n stepflow
 ```bash
 # Restart a deployment (rolling restart)
 kubectl rollout restart deployment/stepflow-server -n stepflow
-kubectl rollout restart deployment/stepflow-load-balancer -n stepflow
 kubectl rollout restart deployment/langflow-worker -n stepflow
 kubectl rollout restart deployment/opensearch -n stepflow
 
@@ -121,9 +119,6 @@ kubectl delete pods -n stepflow --all
 # Stepflow server logs
 kubectl logs -n stepflow deployment/stepflow-server --tail=100
 kubectl logs -n stepflow deployment/stepflow-server -f  # follow
-
-# Load balancer logs
-kubectl logs -n stepflow deployment/stepflow-load-balancer --tail=100
 
 # Worker logs (all replicas)
 kubectl logs -n stepflow -l app=langflow-worker --tail=50
@@ -174,9 +169,6 @@ kubectl logs -n stepflow deployment/stepflow-server --since=10m
 ```bash
 # Stepflow API (primary)
 kubectl port-forward -n stepflow svc/stepflow-server 7840:7840
-
-# Load balancer (direct access)
-kubectl port-forward -n stepflow svc/stepflow-load-balancer 8080:8080
 
 # OpenSearch
 kubectl port-forward -n stepflow svc/opensearch 9200:9200
@@ -268,7 +260,6 @@ kubectl edit configmap stepflow-server-config -n stepflow
 ```bash
 # From repository root
 podman build -t stepflow-server:latest -f docker/Dockerfile.server .
-podman build -t stepflow-load-balancer:latest -f docker/Dockerfile.loadbalancer .
 podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
 ```
 
@@ -276,7 +267,6 @@ podman build -t langflow-worker:latest -f docker/langflow-worker/Dockerfile .
 
 ```bash
 kind load docker-image stepflow-server:latest --name stepflow
-kind load docker-image stepflow-load-balancer:latest --name stepflow
 kind load docker-image langflow-worker:latest --name stepflow
 ```
 

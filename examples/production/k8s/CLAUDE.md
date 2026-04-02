@@ -2,9 +2,9 @@
 
 ## Active Deployment: `stepflow-docling-grpc`
 
-The **gRPC pull-based transport** (`stepflow-docling-grpc/`) is the current deployment architecture. Workers are gRPC clients that connect to the orchestrator's `TasksService` and pull tasks from a shared queue. This eliminates the load balancer entirely — the orchestrator manages task distribution.
+The **gRPC pull-based transport** (`stepflow-docling-grpc/`) is the current deployment architecture. Workers are gRPC clients that connect to the orchestrator's `TasksService` and pull tasks from a shared queue. The orchestrator manages task distribution directly.
 
-> The older deployments (`stepflow-docling/`, `stepflow/`) are retained for reference but are not actively maintained. They used HTTP push-based transport with a load balancer.
+> The older `stepflow/` deployment is retained for reference but is not actively maintained.
 
 ### Architecture
 
@@ -170,7 +170,6 @@ Dashboards are provisioned via ConfigMaps mounted into the Grafana pod:
 | Docling gRPC Worker | `grafana-dashboard-docling-grpc` | Stepflow | **Current** — queue health, task lifecycle, retries, traces |
 | Docling Step Worker | `grafana-dashboard-docling-worker` | Stepflow | Legacy HTTP push worker |
 | Stepflow | `grafana-dashboard-stepflow` | Stepflow | Core orchestrator metrics |
-| Load Balancer | `grafana-dashboard-loadbalancer` | Infrastructure | Legacy LB metrics |
 | Docling | `grafana-dashboard-docling` | Infrastructure | Legacy Langflow docling integration |
 | Infrastructure | `grafana-dashboard-infrastructure` | Infrastructure | Cluster resource usage |
 
@@ -360,9 +359,4 @@ When code changes don't take effect in a pod:
 
 ## Legacy Deployments (Reference Only)
 
-The following directories predate the gRPC pull transport and are **not actively maintained**:
-
-- **`stepflow-docling/`** — HTTP push-based transport with load balancer. Used `type: stepflow` plugin, required a `stepflow-load-balancer` sidecar, and health-check init containers. Superseded by `stepflow-docling-grpc/`.
-- **`stepflow/`** — Basic Stepflow deployment without docling integration.
-
-These manifests may reference older image tags and configuration patterns. Consult `stepflow-docling-grpc/` for current patterns.
+- **`stepflow/`** — Basic Stepflow deployment without docling integration. Retained for reference but not actively maintained. Consult `stepflow-docling-grpc/` for current patterns.
