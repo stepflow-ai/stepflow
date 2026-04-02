@@ -101,13 +101,13 @@ mod tests {
 
         let mut routes = HashMap::new();
         routes.insert(
-            "/{*component}".to_string(),
+            "/".to_string(),
             vec![RouteRule {
                 plugin: "builtin".into(),
                 conditions: vec![],
                 component_allow: None,
                 component_deny: None,
-                component: None,
+
                 params: std::collections::HashMap::new(),
             }],
         );
@@ -158,13 +158,13 @@ mod tests {
 
         let mut routes = HashMap::new();
         routes.insert(
-            "/{*component}".to_string(),
+            "/".to_string(),
             vec![RouteRule {
                 plugin: "nonexistent".into(), // Invalid plugin reference
                 conditions: vec![],
                 component_allow: None,
                 component_deny: None,
-                component: None,
+
                 params: std::collections::HashMap::new(),
             }],
         );

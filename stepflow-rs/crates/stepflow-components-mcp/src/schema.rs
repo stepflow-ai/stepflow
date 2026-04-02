@@ -51,6 +51,7 @@ pub fn mcp_tool_to_component_info(tool: &Tool) -> Result<ComponentInfo> {
 
     Ok(ComponentInfo {
         component,
+        path: component_path,
         description: Some(description),
         input_schema: Some(input_schema),
         output_schema: Some(output_schema),

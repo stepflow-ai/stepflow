@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_list_components.rs
+source: crates/stepflow-cli/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
@@ -7,8 +7,16 @@ info:
     - "--omit-stack-trace"
     - "--log-level=error"
     - list-components
-    - "--config=/var/folders/c4/dcr0mh3d183d5kh9gf89wsc00000gn/T/.tmpmN9KLx/filtered-config.yml"
+    - "--config=/var/folders/zk/lxqpq1490bb5xkvpdg25058r0000gn/T/.tmprlzWDh/filtered-config.yml"
     - "--hide-unreachable=false"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -23,23 +31,28 @@ Component: /create_messages (plugin: test-builtins)
 
 Component: /eval (plugin: test-builtins)
   Description: Execute a nested workflow with given input and return the result
-  Available Routes: None
+  Available Routes:
+    /reachable/eval
 
 Component: /get_blob (plugin: test-builtins)
   Description: Retrieve JSON data from a blob using its ID
-  Available Routes: None
+  Available Routes:
+    /reachable/get_blob
 
 Component: /iterate (plugin: test-builtins)
   Description: Iteratively apply a workflow until it returns a result instead of next
-  Available Routes: None
+  Available Routes:
+    /reachable/iterate
 
 Component: /load_file (plugin: test-builtins)
   Description: Load and parse a file (JSON, YAML, or text) from the filesystem
-  Available Routes: None
+  Available Routes:
+    /reachable/load_file
 
 Component: /map (plugin: test-builtins)
   Description: Apply a workflow to each item in a list and collect the results
-  Available Routes: None
+  Available Routes:
+    /reachable/map
 
 Component: /openai (plugin: test-builtins)
   Description: Send messages to OpenAI's chat completion API and get a response
@@ -48,7 +61,8 @@ Component: /openai (plugin: test-builtins)
 
 Component: /put_blob (plugin: test-builtins)
   Description: Store JSON data as a blob and return its content-addressable ID
-  Available Routes: None
+  Available Routes:
+    /reachable/put_blob
 
 Total components: 8
 

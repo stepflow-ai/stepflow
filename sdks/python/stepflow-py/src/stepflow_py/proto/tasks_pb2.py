@@ -26,7 +26,7 @@ from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 from . import common_pb2 as stepflow_dot_v1_dot_common__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17stepflow/v1/tasks.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x18stepflow/v1/common.proto\"D\n\x0bTaskContext\x12 \n\x18orchestrator_service_url\x18\x01 \x01(\t\x12\x13\n\x0broot_run_id\x18\x02 \x01(\t\"\x17\n\x15ListComponentsRequest\"H\n\x16ListComponentsResponse\x12.\n\ncomponents\x18\x01 \x03(\x0b\x32\x1a.stepflow.v1.ComponentInfo\"\xa1\x01\n\rComponentInfo\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x18\n\x0b\x64\x65scription\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x19\n\x0cinput_schema\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x1a\n\routput_schema\x18\x04 \x01(\tH\x02\x88\x01\x01\x42\x0e\n\x0c_descriptionB\x0f\n\r_input_schemaB\x10\n\x0e_output_schema\")\n\x14\x43omponentInfoRequest\x12\x11\n\tcomponent\x18\x01 \x01(\t\"A\n\x15\x43omponentInfoResponse\x12(\n\x04info\x18\x01 \x01(\x0b\x32\x1a.stepflow.v1.ComponentInfo\"\x9e\x01\n\x17\x43omponentExecuteRequest\x12\x11\n\tcomponent\x18\x01 \x01(\t\x12%\n\x05input\x18\x02 \x01(\x0b\x32\x16.google.protobuf.Value\x12\x0f\n\x07\x61ttempt\x18\x03 \x01(\r\x12\x38\n\robservability\x18\x04 \x01(\x0b\x32!.stepflow.v1.ObservabilityContext\"B\n\x18\x43omponentExecuteResponse\x12&\n\x06output\x18\x01 \x01(\x0b\x32\x16.google.protobuf.Value\"9\n\x10PullTasksRequest\x12\x12\n\nqueue_name\x18\x01 \x01(\t\x12\x11\n\tworker_id\x18\x02 \x01(\t\"\xed\x01\n\x0eTaskAssignment\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x37\n\x07\x65xecute\x18\x02 \x01(\x0b\x32$.stepflow.v1.ComponentExecuteRequestH\x00\x12=\n\x0flist_components\x18\x03 \x01(\x0b\x32\".stepflow.v1.ListComponentsRequestH\x00\x12)\n\x07\x63ontext\x18\x04 \x01(\x0b\x32\x18.stepflow.v1.TaskContext\x12\x1f\n\x17heartbeat_interval_secs\x18\x05 \x01(\rB\x06\n\x04task\".\n\x1cGetOrchestratorForRunRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\"A\n\x1dGetOrchestratorForRunResponse\x12 \n\x18orchestrator_service_url\x18\x01 \x01(\t2\xc9\x01\n\x0cTasksService\x12I\n\tPullTasks\x12\x1d.stepflow.v1.PullTasksRequest\x1a\x1b.stepflow.v1.TaskAssignment0\x01\x12n\n\x15GetOrchestratorForRun\x12).stepflow.v1.GetOrchestratorForRunRequest\x1a*.stepflow.v1.GetOrchestratorForRunResponseB;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17stepflow/v1/tasks.proto\x12\x0bstepflow.v1\x1a\x1cgoogle/protobuf/struct.proto\x1a\x18stepflow/v1/common.proto\"D\n\x0bTaskContext\x12 \n\x18orchestrator_service_url\x18\x01 \x01(\t\x12\x13\n\x0broot_run_id\x18\x02 \x01(\t\"\x17\n\x15ListComponentsRequest\"H\n\x16ListComponentsResponse\x12.\n\ncomponents\x18\x01 \x03(\x0b\x32\x1a.stepflow.v1.ComponentInfo\"\xb7\x01\n\rComponentInfo\x12\x14\n\x0c\x63omponent_id\x18\x01 \x01(\t\x12\x18\n\x0b\x64\x65scription\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x19\n\x0cinput_schema\x18\x03 \x01(\tH\x01\x88\x01\x01\x12\x1a\n\routput_schema\x18\x04 \x01(\tH\x02\x88\x01\x01\x12\x0c\n\x04path\x18\x05 \x01(\tB\x0e\n\x0c_descriptionB\x0f\n\r_input_schemaB\x10\n\x0e_output_schema\",\n\x14\x43omponentInfoRequest\x12\x14\n\x0c\x63omponent_id\x18\x01 \x01(\t\"A\n\x15\x43omponentInfoResponse\x12(\n\x04info\x18\x01 \x01(\x0b\x32\x1a.stepflow.v1.ComponentInfo\"\x9f\x02\n\x17\x43omponentExecuteRequest\x12\x14\n\x0c\x63omponent_id\x18\x01 \x01(\t\x12%\n\x05input\x18\x02 \x01(\x0b\x32\x16.google.protobuf.Value\x12\x0f\n\x07\x61ttempt\x18\x03 \x01(\r\x12\x38\n\robservability\x18\x04 \x01(\x0b\x32!.stepflow.v1.ObservabilityContext\x12I\n\x0bpath_params\x18\x05 \x03(\x0b\x32\x34.stepflow.v1.ComponentExecuteRequest.PathParamsEntry\x1a\x31\n\x0fPathParamsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"B\n\x18\x43omponentExecuteResponse\x12&\n\x06output\x18\x01 \x01(\x0b\x32\x16.google.protobuf.Value\"9\n\x10PullTasksRequest\x12\x12\n\nqueue_name\x18\x01 \x01(\t\x12\x11\n\tworker_id\x18\x02 \x01(\t\"\xed\x01\n\x0eTaskAssignment\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x37\n\x07\x65xecute\x18\x02 \x01(\x0b\x32$.stepflow.v1.ComponentExecuteRequestH\x00\x12=\n\x0flist_components\x18\x03 \x01(\x0b\x32\".stepflow.v1.ListComponentsRequestH\x00\x12)\n\x07\x63ontext\x18\x04 \x01(\x0b\x32\x18.stepflow.v1.TaskContext\x12\x1f\n\x17heartbeat_interval_secs\x18\x05 \x01(\rB\x06\n\x04task\".\n\x1cGetOrchestratorForRunRequest\x12\x0e\n\x06run_id\x18\x01 \x01(\t\"A\n\x1dGetOrchestratorForRunResponse\x12 \n\x18orchestrator_service_url\x18\x01 \x01(\t2\xc9\x01\n\x0cTasksService\x12I\n\tPullTasks\x12\x1d.stepflow.v1.PullTasksRequest\x1a\x1b.stepflow.v1.TaskAssignment0\x01\x12n\n\x15GetOrchestratorForRun\x12).stepflow.v1.GetOrchestratorForRunRequest\x1a*.stepflow.v1.GetOrchestratorForRunResponseB;Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,6 +34,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'stepflow.v1.tasks_pb2', _gl
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z9github.com/datastax/stepflow/proto/stepflow/v1;stepflowv1'
+  _globals['_COMPONENTEXECUTEREQUEST_PATHPARAMSENTRY']._loaded_options = None
+  _globals['_COMPONENTEXECUTEREQUEST_PATHPARAMSENTRY']._serialized_options = b'8\001'
   _globals['_TASKCONTEXT']._serialized_start=96
   _globals['_TASKCONTEXT']._serialized_end=164
   _globals['_LISTCOMPONENTSREQUEST']._serialized_start=166
@@ -41,23 +43,25 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_LISTCOMPONENTSRESPONSE']._serialized_start=191
   _globals['_LISTCOMPONENTSRESPONSE']._serialized_end=263
   _globals['_COMPONENTINFO']._serialized_start=266
-  _globals['_COMPONENTINFO']._serialized_end=427
-  _globals['_COMPONENTINFOREQUEST']._serialized_start=429
-  _globals['_COMPONENTINFOREQUEST']._serialized_end=470
-  _globals['_COMPONENTINFORESPONSE']._serialized_start=472
-  _globals['_COMPONENTINFORESPONSE']._serialized_end=537
-  _globals['_COMPONENTEXECUTEREQUEST']._serialized_start=540
-  _globals['_COMPONENTEXECUTEREQUEST']._serialized_end=698
-  _globals['_COMPONENTEXECUTERESPONSE']._serialized_start=700
-  _globals['_COMPONENTEXECUTERESPONSE']._serialized_end=766
-  _globals['_PULLTASKSREQUEST']._serialized_start=768
-  _globals['_PULLTASKSREQUEST']._serialized_end=825
-  _globals['_TASKASSIGNMENT']._serialized_start=828
-  _globals['_TASKASSIGNMENT']._serialized_end=1065
-  _globals['_GETORCHESTRATORFORRUNREQUEST']._serialized_start=1067
-  _globals['_GETORCHESTRATORFORRUNREQUEST']._serialized_end=1113
-  _globals['_GETORCHESTRATORFORRUNRESPONSE']._serialized_start=1115
-  _globals['_GETORCHESTRATORFORRUNRESPONSE']._serialized_end=1180
-  _globals['_TASKSSERVICE']._serialized_start=1183
-  _globals['_TASKSSERVICE']._serialized_end=1384
+  _globals['_COMPONENTINFO']._serialized_end=449
+  _globals['_COMPONENTINFOREQUEST']._serialized_start=451
+  _globals['_COMPONENTINFOREQUEST']._serialized_end=495
+  _globals['_COMPONENTINFORESPONSE']._serialized_start=497
+  _globals['_COMPONENTINFORESPONSE']._serialized_end=562
+  _globals['_COMPONENTEXECUTEREQUEST']._serialized_start=565
+  _globals['_COMPONENTEXECUTEREQUEST']._serialized_end=852
+  _globals['_COMPONENTEXECUTEREQUEST_PATHPARAMSENTRY']._serialized_start=803
+  _globals['_COMPONENTEXECUTEREQUEST_PATHPARAMSENTRY']._serialized_end=852
+  _globals['_COMPONENTEXECUTERESPONSE']._serialized_start=854
+  _globals['_COMPONENTEXECUTERESPONSE']._serialized_end=920
+  _globals['_PULLTASKSREQUEST']._serialized_start=922
+  _globals['_PULLTASKSREQUEST']._serialized_end=979
+  _globals['_TASKASSIGNMENT']._serialized_start=982
+  _globals['_TASKASSIGNMENT']._serialized_end=1219
+  _globals['_GETORCHESTRATORFORRUNREQUEST']._serialized_start=1221
+  _globals['_GETORCHESTRATORFORRUNREQUEST']._serialized_end=1267
+  _globals['_GETORCHESTRATORFORRUNRESPONSE']._serialized_start=1269
+  _globals['_GETORCHESTRATORFORRUNRESPONSE']._serialized_end=1334
+  _globals['_TASKSSERVICE']._serialized_start=1337
+  _globals['_TASKSSERVICE']._serialized_end=1538
 # @@protoc_insertion_point(module_scope)

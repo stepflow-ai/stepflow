@@ -147,7 +147,7 @@ async def run_nats_worker(
         stream,
         consumer,
         max_concurrent,
-        ", ".join(c.name for c in components),
+        ", ".join(c.component_id for c in components),
     )
 
     semaphore = asyncio.Semaphore(max_concurrent)
@@ -299,9 +299,9 @@ async def _fetch_loop(
                 continue
 
             logger.debug(
-                "Received task %s: component=%s",
+                "Received task %s: component_id=%s",
                 task.task_id,
-                task.execute.component,
+                task.execute.component_id,
             )
 
             # Normal task — semaphore already acquired, delegate to handler.

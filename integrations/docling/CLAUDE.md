@@ -53,7 +53,7 @@ integrations/docling/
   - `DoclingRemoteComponent` - Remote API processing
   - `ChunkDoclingDocument` - Document chunking for RAG
   - `ExportDoclingDocument` - Format export
-- Uses `@server.component(name="...")` decorator
+- Uses `@server.component` decorator (ID derived from function name)
 - Calls docling-serve for actual processing
 
 ### Design Decisions

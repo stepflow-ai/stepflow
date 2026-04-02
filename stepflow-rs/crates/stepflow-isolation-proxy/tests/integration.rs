@@ -67,13 +67,13 @@ fn make_config(queue_name: &str) -> OrchestratorConfig {
 
     let mut routes = HashMap::new();
     routes.insert(
-        "/builtin/{*component}".to_string(),
+        "/builtin".to_string(),
         vec![RouteRule {
             plugin: "builtin".to_string(),
         }],
     );
     routes.insert(
-        "/fc/{*component}".to_string(),
+        "/fc".to_string(),
         vec![RouteRule {
             plugin: "firecracker".to_string(),
         }],

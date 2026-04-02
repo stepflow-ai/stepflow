@@ -60,20 +60,20 @@ plugins:
 routes:
   # Route text model requests to the text models server
   # This allows all text processing to be handled by specialized hardware/processes
-  "/models/text/{*component}":
+  "/models/text":
     - plugin: text_models
 
   # Route vision model requests to the vision models server
   # Vision models typically require different resources (GPU memory, specialized libraries)
-  "/models/vision/{*component}":
+  "/models/vision":
     - plugin: vision_models
 
   # Route Python UDF requests to the dedicated Python SDK server
-  "/python/{*component}":
+  "/python":
     - plugin: python_sdk
 
   # Route all other components to built-in implementations
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 # Development state store - uses SQLite for persistence during testing

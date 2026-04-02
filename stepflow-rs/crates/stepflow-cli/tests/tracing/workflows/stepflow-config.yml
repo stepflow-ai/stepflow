@@ -15,10 +15,10 @@ plugins:
       STEPFLOW_SERVICE_NAME: "${STEPFLOW_SERVICE_NAME:-stepflow-python}"
 
 routes:
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
 
-  "/python/{*component}":
+  "/python":
     - plugin: python
 
 storageConfig:

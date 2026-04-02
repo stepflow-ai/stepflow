@@ -16,58 +16,56 @@ use std::collections::HashMap;
 use stepflow_core::values::ValueRef;
 use stepflow_core::workflow::JsonPath;
 
-/// Path-keyed routing configuration
+/// Prefix-keyed routing configuration.
+///
+/// Keys are single-segment path prefixes (e.g., "/python", "/builtin") or the
+/// root catch-all "/". Multi-segment prefixes (e.g., "/python/core") are not
+/// allowed. Each plugin's registered component paths are mounted under the
+/// prefix. The orchestrator builds a per-plugin trie from the plugin's
+/// component registrations.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutingConfig {
-    /// Path-to-routing rules mapping
+    /// Prefix-to-routing rules mapping.
     ///
-    /// Keys describe paths. For example "/python/{component}" or "/openai/{component}".
-    /// Placeholders may match a single segment (e.g., "{component}") or multiple segments (e.g., "{*component}").
+    /// Keys must be either "/" (catch-all) or a single-segment prefix like
+    /// "/python", "/builtin". Multi-segment prefixes are rejected at build time.
+    /// Each plugin's registered component paths are mounted under the prefix.
     ///
-    /// Value: ordered list of routing rules to apply to that path.
-    ///
-    /// Routes will be applied in the order they are listed, with the first matching rule being used.
+    /// Value: ordered list of routing rules. When multiple rules exist for a prefix,
+    /// they are evaluated in order — the first rule whose conditions match is used.
     pub routes: HashMap<String, Vec<RouteRule>>,
 }
 
-/// A single routing rule for a specific path
+/// A single routing rule mapping a prefix to a plugin.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteRule {
-    /// Optional input conditions that must match for this rule to apply
+    /// Optional input conditions that must match for this rule to apply.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<InputCondition>,
 
-    /// Optional component allowlist - only these components are allowed to match this rule
+    /// Optional component allowlist — only these component IDs are allowed.
     ///
-    /// If omitted, all components are allowed to match.
+    /// If omitted, all components are allowed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<Vec<String>>")]
     pub component_allow: Option<Vec<Cow<'static, str>>>,
 
-    /// Optional component denylist - these components are blocked from matching this rule
+    /// Optional component denylist — these component IDs are blocked.
     ///
     /// If omitted, no components are blocked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<Vec<String>>")]
     pub component_deny: Option<Vec<Cow<'static, str>>>,
 
-    /// Plugin name to route to
+    /// Plugin name to route to.
     #[schemars(with = "String")]
     pub plugin: Cow<'static, str>,
 
-    /// Component name to pass to the plugin.
-    /// Defaults to `/{component}` if not specified, meaning the extracted component name is used.
-    ///
-    /// May be a pattern referencing path placeholders, e.g., "{component}" or "{*component}".
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<String>")]
-    pub component: Option<Cow<'static, str>>,
-
     /// Additional parameters passed to the plugin at task dispatch time.
     ///
-    /// These are transport-specific overrides (e.g., `subject` for NATS,
+    /// These are transport-specific overrides (e.g., `stream` for NATS,
     /// `queueName` for gRPC) that the plugin merges with its own defaults.
     /// Unknown fields in route rules are captured here via `#[serde(flatten)]`.
     #[serde(flatten)]
@@ -90,7 +88,7 @@ pub struct InputCondition {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RouteMatch {
-    /// The path pattern that matches this route (e.g., "/builtin/{component}")
+    /// The path pattern that matches this route (e.g., "/builtin")
     pub path_pattern: String,
     /// The resolved path for this specific component (e.g., "/builtin/eval")
     pub resolved_path: String,
@@ -107,18 +105,17 @@ mod tests {
     fn test_routing_config_serialization() {
         let mut routes = HashMap::new();
         routes.insert(
-            "/openai/{component}".to_string(),
+            "/openai".to_string(),
             vec![RouteRule {
                 conditions: vec![],
                 component_allow: None,
                 component_deny: None,
                 plugin: "openai".into(),
-                component: None,
                 params: std::collections::HashMap::new(),
             }],
         );
         routes.insert(
-            "/python/{component}".to_string(),
+            "/python".to_string(),
             vec![
                 RouteRule {
                     conditions: vec![InputCondition {
@@ -128,7 +125,6 @@ mod tests {
                     component_allow: None,
                     component_deny: None,
                     plugin: "llama2_pool".into(),
-                    component: None,
                     params: std::collections::HashMap::new(),
                 },
                 RouteRule {
@@ -136,7 +132,6 @@ mod tests {
                     component_allow: None,
                     component_deny: None,
                     plugin: "default_pool".into(),
-                    component: None,
                     params: std::collections::HashMap::new(),
                 },
             ],
@@ -144,8 +139,8 @@ mod tests {
 
         let config = RoutingConfig { routes };
         let serialized = serde_json::to_string(&config).unwrap();
-        assert!(serialized.contains("/openai/{component}"));
-        assert!(serialized.contains("/python/{component}"));
+        assert!(serialized.contains("/openai"));
+        assert!(serialized.contains("/python"));
         assert!(serialized.contains("llama2"));
     }
 
@@ -154,12 +149,12 @@ mod tests {
         let json_str = r#"
         {
             "routes": {
-                "/openai/{component}": [
+                "/openai": [
                     {
                         "plugin": "openai"
                     }
                 ],
-                "/python/{component}": [
+                "/python": [
                     {
                         "conditions": [
                             {
@@ -180,11 +175,11 @@ mod tests {
         let config: RoutingConfig = serde_json::from_str(json_str).unwrap();
         assert_eq!(config.routes.len(), 2);
 
-        let openai_rules = &config.routes["/openai/{component}"];
+        let openai_rules = &config.routes["/openai"];
         assert_eq!(openai_rules.len(), 1);
         assert_eq!(openai_rules[0].plugin, "openai");
 
-        let python_rules = &config.routes["/python/{component}"];
+        let python_rules = &config.routes["/python"];
         assert_eq!(python_rules.len(), 2);
         assert_eq!(python_rules[0].conditions.len(), 1);
         assert_eq!(python_rules[0].plugin, "llama2_pool");
@@ -207,7 +202,6 @@ mod tests {
             component_allow: Some(vec!["allowed_component".into()]),
             component_deny: Some(vec!["denied_component".into()]),
             plugin: "test_plugin".into(),
-            component: Some("rewritten_component".into()),
             params: std::collections::HashMap::new(),
         };
 
@@ -227,7 +221,6 @@ mod tests {
             component_allow: None,
             component_deny: None,
             plugin: "simple_plugin".into(),
-            component: None,
             params: std::collections::HashMap::new(),
         };
 
@@ -245,12 +238,12 @@ mod tests {
     fn test_route_rule_with_params_deserialization() {
         let yaml = r#"
 routes:
-  "/nats/{component}":
+  "/nats":
     - plugin: nats
       stream: "FOO_TASKS"
 "#;
         let config: RoutingConfig = serde_yaml_ng::from_str(yaml).unwrap();
-        let rules = &config.routes["/nats/{component}"];
+        let rules = &config.routes["/nats"];
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].plugin, "nats");
         assert_eq!(
@@ -271,7 +264,6 @@ routes:
             component_allow: None,
             component_deny: None,
             plugin: "nats".into(),
-            component: None,
             params,
         };
 
@@ -297,7 +289,6 @@ routes:
             component_allow: None,
             component_deny: None,
             plugin: "simple".into(),
-            component: None,
             params: std::collections::HashMap::new(),
         };
 
@@ -318,22 +309,18 @@ routes:
     fn test_route_serialization_yaml() {
         let mut routes = HashMap::new();
         routes.insert(
-            "/mock/{component}".to_string(),
+            "/mock".to_string(),
             vec![RouteRule {
                 conditions: vec![],
                 component_allow: None,
                 component_deny: None,
                 plugin: "mock".into(),
-                component: None,
                 params: std::collections::HashMap::new(),
             }],
         );
 
         let routes = RoutingConfig { routes };
         let serialized = serde_yaml_ng::to_string(&routes).unwrap();
-        assert_eq!(
-            serialized,
-            "routes:\n  /mock/{component}:\n  - plugin: mock\n"
-        );
+        assert_eq!(serialized, "routes:\n  /mock:\n  - plugin: mock\n");
     }
 }

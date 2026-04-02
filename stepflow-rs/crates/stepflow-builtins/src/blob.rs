@@ -60,6 +60,7 @@ impl BuiltinComponent for PutBlobComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/put_blob"),
+            path: "/put_blob".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(
@@ -133,6 +134,7 @@ impl BuiltinComponent for GetBlobComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/get_blob"),
+            path: "/get_blob".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some("Retrieve JSON data from a blob using its ID".to_string()),

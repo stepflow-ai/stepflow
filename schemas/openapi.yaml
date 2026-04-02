@@ -652,9 +652,9 @@ components:
         ComponentInfoEntry:
             type: object
             properties:
-                component:
+                componentId:
                     type: string
-                    description: Component path (e.g., "/builtin/openai", "/python/my_func").
+                    description: Unique component identifier within its plugin (e.g., "openai", "my_func").
                 description:
                     type: string
                     description: Optional human-readable description.
@@ -664,6 +664,14 @@ components:
                 outputSchema:
                     type: object
                     description: JSON Schema for the component's output (null if schemas not requested).
+                path:
+                    type: string
+                    description: |-
+                        Path pattern this component is registered at (e.g., "/openai", "/my_func").
+                         Combined with the route prefix to form the full path (e.g., "/builtin/openai").
+                plugin:
+                    type: string
+                    description: The plugin that provides this component (e.g., "builtin", "python").
             description: A component registered with the orchestrator.
         CreateRunRequest:
             type: object

@@ -110,7 +110,7 @@ plugins:
     args: ["--project", "../sdks/python/stepflow-py", "run", "stepflow_py"]
 
 routes:
-  "/python/{*component}":
+  "/python":
     - plugin: python
 ```
 
@@ -128,6 +128,20 @@ uv run --project sdks/python/stepflow-py stepflow_py --nats --nats-url nats://lo
 ```
 
 ## Component Development
+
+### Routing: prefix + subpath
+
+Component names are **subpaths relative to the worker's route prefix** in the orchestrator config. The full workflow path is the prefix + subpath.
+
+```
+Orchestrator config         Component subpath              Full workflow path
+───────────────────         ─────────────────              ──────────────────
+routes:                     @server.component              component: /python/my_func
+  "/python":                def my_func(...): ...
+    - plugin: python
+```
+
+Do **not** include the prefix in component names — the orchestrator adds it. A component registered as `my_func` (subpath `/my_func`) on a worker at prefix `/python` is referenced in workflows as `/python/my_func`.
 
 ### Basic Component Registration
 

@@ -15,11 +15,11 @@ plugins:
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
 
 routes:
-  "/python/{component}":
+  "/python":
     - plugin: python
-  "/custom/{component}":
+  "/custom":
     - plugin: custom
-  "/{component}":
+  "/":
     - plugin: builtin
 
 storageConfig:

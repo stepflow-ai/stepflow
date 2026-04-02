@@ -159,9 +159,9 @@ async def handle_task(
     try:
         req = task.execute
         logger.info(
-            "Executing task %s: component=%s, attempt=%d",
+            "Executing task %s: component_id=%s, attempt=%d",
             task.task_id,
-            req.component,
+            req.component_id,
             req.attempt,
         )
 
@@ -195,11 +195,11 @@ async def handle_task(
             try:
                 tracer = otel_trace.get_tracer(tracer_name)
                 _span_cm = tracer.start_as_current_span(
-                    f"execute {req.component}",
+                    f"execute {req.component_id}",
                     context=parent_ctx,
                     attributes={
                         "stepflow.task_id": task.task_id,
-                        "stepflow.component": req.component,
+                        "stepflow.component_id": req.component_id,
                         "stepflow.attempt": req.attempt,
                         "stepflow.queue_name": queue_name,
                     },
@@ -290,23 +290,19 @@ async def handle_task(
         # Convert proto Value to Python dict
         input_data = proto_value_to_python(req.input)
 
-        # Look up the component — strip leading slash since the orchestrator
-        # sends the resolved path (e.g., "/echo") but components register
-        # by name (e.g., "echo").
-        component_name = req.component.lstrip("/")
-        lookup = server.get_component(component_name)
-        if lookup is None:
-            # Try with the original path in case of pattern-based registration
-            lookup = server.get_component(req.component)
-        if lookup is None:
+        # Look up the component by ID — the orchestrator handles path
+        # matching and sends the component_id directly.
+        component = server.get_component(req.component_id)
+        if component is None:
             await _complete_task_error(
                 task,
-                f"Component '{req.component}' not found",
+                f"Component '{req.component_id}' not found",
                 queue_name=queue_name,
             )
             return
 
-        component, path_params = lookup
+        # Get path_params from the proto request (orchestrator extracted them)
+        path_params = dict(req.path_params)
 
         # Span wraps only component execution, not StartTask/heartbeat setup
         with span_ctx:
@@ -348,7 +344,9 @@ async def handle_task(
                     (_t_complete - _t0) * 1000,
                 )
             except Exception as e:
-                logger.error("Component %s failed: %s", req.component, e, exc_info=True)
+                logger.error(
+                    "Component %s failed: %s", req.component_id, e, exc_info=True
+                )
                 error_code, error_data = classify_exception(e)
                 await _complete_task_error(
                     task,
@@ -757,9 +755,10 @@ def build_component_info_list(
     import json
 
     infos = []
-    for name, entry in server._components.items():  # noqa: SLF001
+    for component_id, entry in server._components.items():  # noqa: SLF001
         info = ComponentInfo(
-            name=name,
+            component_id=component_id,
+            path=entry.path or component_id,
             description=entry.description or "",
         )
         try:

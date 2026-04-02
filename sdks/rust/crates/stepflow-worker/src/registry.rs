@@ -14,6 +14,8 @@
 
 use std::sync::Arc;
 
+use indexmap::IndexMap;
+
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -28,6 +30,32 @@ use crate::{ComponentContext, ComponentError};
 /// Implement this trait directly for full control, or use
 /// [`ComponentRegistry::register_fn`] for a simpler closure-based approach.
 ///
+/// Two concepts are at play:
+///
+/// * **Component ID** ([`name()`](Component::name)) — the unique identifier
+///   used as the dispatch key. The orchestrator sends this value as
+///   `component_id` in `ComponentExecuteRequest`.
+/// * **Subpath** ([`path()`](Component::path)) — the path pattern the
+///   component is mounted at, relative to the worker's route prefix.
+///   Defaults to `"/{name}"`.
+///
+/// For example, if the orchestrator config maps prefix `"/python"` to this
+/// worker, and a component has `name() = "echo"` (subpath defaults to
+/// `"/echo"`), then workflows reference it as `/python/echo` — **not** `/echo`.
+///
+/// ```text
+/// Orchestrator config          Component ID / subpath       Full workflow path
+/// ─────────────────────        ──────────────────────       ──────────────────
+/// routes:                      name() → "echo"              /python/echo
+///   "/python":                 path() → "/echo"
+///     - plugin: python
+///
+///   Full path = prefix "/python" + subpath "/echo" = "/python/echo"
+/// ```
+///
+/// Do **not** include the prefix in component IDs or subpaths — the
+/// orchestrator adds it automatically.
+///
 /// # Example
 ///
 /// ```rust,no_run
@@ -38,7 +66,7 @@ use crate::{ComponentContext, ComponentError};
 ///
 /// #[async_trait]
 /// impl Component for EchoComponent {
-///     fn name(&self) -> &str { "/echo" }
+///     fn name(&self) -> &str { "echo" }
 ///
 ///     async fn execute(
 ///         &self,
@@ -51,11 +79,28 @@ use crate::{ComponentContext, ComponentError};
 /// ```
 #[async_trait]
 pub trait Component: Send + Sync + 'static {
-    /// The component's path, e.g. `"/my_crate/process"` or `"/math/{op}"`.
+    /// The component's unique identifier, used as the dispatch key.
     ///
-    /// Supports `{param}` (single segment) and `{*param}` (wildcard) patterns for
-    /// dynamic routing via [`matchit`].
+    /// The orchestrator sends this value as `component_id` in
+    /// `ComponentExecuteRequest`. It is unrelated to the component's
+    /// subpath — see [`path()`](Component::path) for the subpath.
     fn name(&self) -> &str;
+
+    /// The subpath pattern this component is registered at, relative to the
+    /// worker's route prefix.
+    ///
+    /// This is the component's path *within* the worker — the orchestrator
+    /// prepends the route prefix to form the full workflow path. For example,
+    /// with route prefix `"/python"` and subpath `"/echo"`, the full workflow
+    /// path is `/python/echo`.
+    ///
+    /// Defaults to `"/{name}"` (e.g., name `"echo"` → subpath `"/echo"`).
+    ///
+    /// Override this for wildcard patterns like `"/core/{*path}"`. With prefix
+    /// `"/python"`, the full workflow path becomes `/python/core/...`.
+    fn path(&self) -> String {
+        format!("/{}", self.name())
+    }
 
     /// Optional human-readable description reported during component discovery.
     fn description(&self) -> Option<&str> {
@@ -89,6 +134,7 @@ pub trait Component: Send + Sync + 'static {
 /// Created by [`ComponentRegistry::register_fn`].
 struct FnComponent<I, O, F> {
     name: String,
+    path: Option<String>,
     description: Option<String>,
     input_schema: Option<serde_json::Value>,
     output_schema: Option<serde_json::Value>,
@@ -106,6 +152,12 @@ where
 {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn path(&self) -> String {
+        self.path
+            .clone()
+            .unwrap_or_else(|| format!("/{}", self.name))
     }
 
     fn description(&self) -> Option<&str> {
@@ -139,8 +191,9 @@ where
 
 /// Registry of components that a [`crate::Worker`] can execute.
 ///
-/// Supports both exact path matching (e.g. `"/math/add"`) and wildcard patterns
-/// (e.g. `"/math/{op}"` or `"/tools/{*name}"`) using the [`matchit`] router.
+/// Components are looked up by their [`Component::name`] (the component ID).
+/// The orchestrator handles all path matching and sends the `component_id`
+/// (which corresponds to `name()`) in each `ComponentExecuteRequest`.
 ///
 /// # Example
 ///
@@ -155,23 +208,21 @@ where
 /// struct AddOutput { result: f64 }
 ///
 /// let mut registry = ComponentRegistry::new();
-/// registry.register_fn("/math/add", |input: AddInput, _ctx| async move {
+/// registry.register_fn("add", |input: AddInput, _ctx| async move {
 ///     Ok(AddOutput { result: input.a + input.b })
 /// });
 /// ```
 pub struct ComponentRegistry {
-    // O(1) path matching with named parameters
-    router: matchit::Router<Arc<dyn Component>>,
-    // Insertion-ordered list for deterministic ListComponents responses
-    components: Vec<Arc<dyn Component>>,
+    /// O(1) lookup by component ID, with insertion-order iteration for
+    /// deterministic `ListComponents` responses.
+    components: IndexMap<String, Arc<dyn Component>>,
 }
 
 impl ComponentRegistry {
     /// Create an empty registry.
     pub fn new() -> Self {
         Self {
-            router: matchit::Router::new(),
-            components: Vec::new(),
+            components: IndexMap::new(),
         }
     }
 
@@ -179,9 +230,8 @@ impl ComponentRegistry {
     ///
     /// # Panics
     ///
-    /// Panics if the component path is already registered or is an invalid
-    /// [`matchit`] pattern. Use [`try_register`](Self::try_register) for
-    /// recoverable error handling.
+    /// Panics if a component with the same ID is already registered.
+    /// Use [`try_register`](Self::try_register) for recoverable error handling.
     pub fn register(&mut self, component: impl Component) -> &mut Self {
         self.try_register(component)
             .unwrap_or_else(|e| panic!("{e}"))
@@ -189,28 +239,17 @@ impl ComponentRegistry {
 
     /// Register a component, returning an error instead of panicking on failure.
     ///
-    /// Returns [`crate::error::WorkerError::DuplicateComponent`] if a component with the same path
-    /// is already registered, or [`crate::error::WorkerError::InvalidComponentRoute`] if the path
-    /// is not a valid [`matchit`] pattern.
+    /// Returns [`crate::error::WorkerError::DuplicateComponent`] if a component with the same
+    /// ID is already registered.
     pub fn try_register(
         &mut self,
         component: impl Component,
     ) -> Result<&mut Self, crate::error::WorkerError> {
         let name = component.name().to_string();
-        let arc: Arc<dyn Component> = Arc::new(component);
-        self.router
-            .insert(name.clone(), Arc::clone(&arc))
-            .map_err(|e| {
-                let msg = e.to_string();
-                // matchit reports path conflicts as "conflict" errors; anything else is a
-                // pattern syntax error (e.g. unclosed `{`, ambiguous wildcard placement).
-                if msg.to_lowercase().contains("conflict") {
-                    crate::error::WorkerError::DuplicateComponent(format!("{name}: {msg}"))
-                } else {
-                    crate::error::WorkerError::InvalidComponentRoute(format!("{name}: {msg}"))
-                }
-            })?;
-        self.components.push(arc);
+        if self.components.contains_key(&name) {
+            return Err(crate::error::WorkerError::DuplicateComponent(name));
+        }
+        self.components.insert(name, Arc::new(component));
         Ok(self)
     }
 
@@ -222,7 +261,7 @@ impl ComponentRegistry {
     ///
     /// # Panics
     ///
-    /// Panics if the component path is already registered. Use
+    /// Panics if the component ID is already registered. Use
     /// [`try_register_fn`](Self::try_register_fn) for recoverable error handling.
     pub fn register_fn<I, O, F, Fut>(&mut self, name: impl Into<String>, f: F) -> &mut Self
     where
@@ -249,6 +288,7 @@ impl ComponentRegistry {
     {
         let component = FnComponent {
             name: name.into(),
+            path: None,
             description: None,
             input_schema: None,
             output_schema: None,
@@ -258,11 +298,12 @@ impl ComponentRegistry {
         self.try_register(component)
     }
 
-    /// Look up a component by path, supporting wildcard patterns.
+    /// Look up a component by ID.
     ///
-    /// Returns the matched component for the given path, if any.
-    pub(crate) fn lookup(&self, path: &str) -> Option<Arc<dyn Component>> {
-        self.router.at(path).ok().map(|m| Arc::clone(m.value))
+    /// The orchestrator resolves path patterns and sends the `component_id`
+    /// (which matches [`Component::name`]) in the task assignment.
+    pub(crate) fn lookup(&self, component_id: &str) -> Option<Arc<dyn Component>> {
+        self.components.get(component_id).cloned()
     }
 
     /// Return metadata for all registered components in insertion order.
@@ -270,9 +311,10 @@ impl ComponentRegistry {
     /// Used for `ListComponents` responses sent to the orchestrator.
     pub(crate) fn list_components(&self) -> Vec<ComponentInfo> {
         self.components
-            .iter()
+            .values()
             .map(|c| ComponentInfo {
                 name: c.name().to_string(),
+                path: c.path(),
                 description: c.description().map(str::to_string),
                 input_schema: c.input_schema(),
                 output_schema: c.output_schema(),
@@ -291,6 +333,7 @@ impl Default for ComponentRegistry {
 #[derive(Debug, Clone)]
 pub(crate) struct ComponentInfo {
     pub name: String,
+    pub path: String,
     pub description: Option<String>,
     pub input_schema: Option<serde_json::Value>,
     pub output_schema: Option<serde_json::Value>,
@@ -303,71 +346,74 @@ mod tests {
     #[test]
     fn test_register_and_lookup() {
         let mut registry = ComponentRegistry::new();
-        registry.register_fn("/test/echo", |input: serde_json::Value, _ctx| async move {
-            Ok(input)
-        });
+        registry.register_fn(
+            "echo",
+            |input: serde_json::Value, _ctx| async move { Ok(input) },
+        );
 
-        assert!(registry.lookup("/test/echo").is_some());
-        assert!(registry.lookup("/test/other").is_none());
+        assert!(registry.lookup("echo").is_some());
+        assert!(registry.lookup("other").is_none());
     }
 
     #[test]
-    fn test_wildcard_lookup() {
+    fn test_lookup_is_flat_by_id() {
+        // Lookup is by exact component ID, not by path pattern matching.
         let mut registry = ComponentRegistry::new();
-        registry.register_fn("/math/{op}", |input: serde_json::Value, _ctx| async move {
-            Ok(input)
-        });
+        registry.register_fn(
+            "add",
+            |input: serde_json::Value, _ctx| async move { Ok(input) },
+        );
 
-        assert!(registry.lookup("/math/add").is_some());
-        assert!(registry.lookup("/math/subtract").is_some());
-        assert!(registry.lookup("/other/add").is_none());
+        assert!(registry.lookup("add").is_some());
+        // Path-style lookups do not match — only exact name does.
+        assert!(registry.lookup("/math/add").is_none());
     }
 
     #[test]
     fn test_list_components_insertion_order() {
         let mut registry = ComponentRegistry::new();
-        registry.register_fn("/a", |_: serde_json::Value, _ctx| async move {
+        registry.register_fn("a", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
         });
-        registry.register_fn("/b", |_: serde_json::Value, _ctx| async move {
+        registry.register_fn("b", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
         });
-        registry.register_fn("/c", |_: serde_json::Value, _ctx| async move {
+        registry.register_fn("c", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
         });
 
         let list = registry.list_components();
         assert_eq!(list.len(), 3);
-        assert_eq!(list[0].name, "/a");
-        assert_eq!(list[1].name, "/b");
-        assert_eq!(list[2].name, "/c");
+        assert_eq!(list[0].name, "a");
+        assert_eq!(list[1].name, "b");
+        assert_eq!(list[2].name, "c");
     }
 
     #[test]
-    fn test_list_components_uses_arc_directly() {
-        // Verify list_components works for wildcard patterns (which can't be re-looked-up
-        // by exact name through the router).
+    fn test_list_components_includes_path() {
         let mut registry = ComponentRegistry::new();
-        registry.register_fn("/math/{op}", |_: serde_json::Value, _ctx| async move {
+        registry.register_fn("echo", |_: serde_json::Value, _ctx| async move {
             Ok(serde_json::Value::Null)
         });
 
         let list = registry.list_components();
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].name, "/math/{op}");
+        assert_eq!(list[0].name, "echo");
+        assert_eq!(list[0].path, "/echo");
     }
 
     #[test]
     fn test_duplicate_registration_returns_error() {
         let mut registry = ComponentRegistry::new();
-        registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
-            Ok(input)
-        });
+        registry.register_fn(
+            "echo",
+            |input: serde_json::Value, _ctx| async move { Ok(input) },
+        );
 
-        let result = registry
-            .try_register_fn("/echo", |input: serde_json::Value, _ctx| async move {
-                Ok(input)
-            });
+        let result = registry.try_register_fn(
+            "echo",
+            |input: serde_json::Value, _ctx| async move { Ok(input) },
+        );
 
         assert!(
             matches!(
@@ -382,12 +428,14 @@ mod tests {
     fn test_register_panics_on_duplicate() {
         let result = std::panic::catch_unwind(|| {
             let mut registry = ComponentRegistry::new();
-            registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
-                Ok(input)
-            });
-            registry.register_fn("/echo", |input: serde_json::Value, _ctx| async move {
-                Ok(input)
-            });
+            registry.register_fn(
+                "echo",
+                |input: serde_json::Value, _ctx| async move { Ok(input) },
+            );
+            registry.register_fn(
+                "echo",
+                |input: serde_json::Value, _ctx| async move { Ok(input) },
+            );
         });
         assert!(result.is_err(), "register should panic on duplicate");
     }

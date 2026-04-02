@@ -18,7 +18,6 @@ use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use stepflow_core::component::ComponentInfo;
-use stepflow_plugin::routing::RouteMatch;
 use stepflow_plugin::{Plugin as _, PluginRouterExt as _};
 
 /// Output format for command line display
@@ -35,8 +34,8 @@ struct ComponentWithRoutes {
     pub component_info: ComponentInfo,
     /// The plugin that provides this component
     pub plugin: String,
-    /// Available routes for accessing this component
-    pub routes: Vec<RouteMatch>,
+    /// Full paths for accessing this component (e.g., "/builtin/eval")
+    pub routes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,10 +83,16 @@ pub async fn list_components(
                 info.output_schema = None;
             }
 
-            let component_name = info.component.path();
-
-            // Find routes for this plugin/component combination
-            let routes = plugin_router.find_routes_for(plugin_name, component_name);
+            // Compute full paths: prefix + component path
+            let prefixes = plugin_router.prefixes_for_plugin(plugin_name);
+            let component_path = &info.path;
+            let routes: Vec<String> = prefixes
+                .iter()
+                .map(|prefix| {
+                    let prefix = prefix.trim_end_matches('/');
+                    format!("{prefix}{component_path}")
+                })
+                .collect();
 
             all_components.push(ComponentWithRoutes {
                 component_info: info,
@@ -157,13 +162,7 @@ fn print_pretty(components: &[ComponentWithRoutes]) {
         if !component.routes.is_empty() {
             println!("  Available Routes:");
             for route in &component.routes {
-                println!("    {}", route.resolved_path);
-                if !route.conditions.is_empty() {
-                    println!("      Conditions:");
-                    for condition in &route.conditions {
-                        println!("        {}: {:?}", condition.path, condition.value);
-                    }
-                }
+                println!("    {route}");
             }
         } else {
             println!("  Available Routes: None");

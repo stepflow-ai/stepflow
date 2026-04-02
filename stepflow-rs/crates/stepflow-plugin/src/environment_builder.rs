@@ -201,6 +201,7 @@ pub async fn build_in_memory_environment() -> Result<Arc<StepflowEnvironment>> {
 
     let plugin_router = PluginRouter::builder()
         .build()
+        .await
         .change_context(PluginError::Initializing)?;
 
     let store = Arc::new(InMemoryStateStore::new());

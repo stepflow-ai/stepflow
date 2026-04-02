@@ -239,7 +239,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
                     .into_iter()
                     .map(|c| {
                         serde_json::json!({
-                            "name": c.name,
+                            "component_id": c.component_id,
+                            "path": c.path,
                             "description": c.description,
                             "input_schema": c.input_schema,
                             "output_schema": c.output_schema,

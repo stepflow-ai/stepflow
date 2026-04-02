@@ -100,8 +100,9 @@ message ListComponentsResponse {
 
 // Information about a single component.
 message ComponentInfo {
-  // Component path (e.g., "my_function", "transform/clean").
-  string name = 1;
+  // Unique component identifier within its plugin (e.g., "my_function", "clean").
+  // Used by workers for flat lookup when executing tasks.
+  string component_id = 1;
 
   // Human-readable description.
   optional string description = 2;
@@ -111,13 +112,18 @@ message ComponentInfo {
 
   // JSON Schema for the component's output, encoded as JSON string.
   optional string output_schema = 4;
+
+  // Path pattern this component is registered at (e.g., "/my_function", "/core/{*path}").
+  // The orchestrator mounts this under the plugin's route prefix to build the
+  // unified routing trie. Defaults to "/{component_id}" if empty.
+  string path = 5;
 }
 
 // --- GetComponentInfo ---
 
 message ComponentInfoRequest {
-  // Component path to get info for.
-  string component = 1;
+  // Component ID to get info for.
+  string component_id = 1;
 }
 
 message ComponentInfoResponse {
@@ -127,8 +133,9 @@ message ComponentInfoResponse {
 // --- ExecuteComponent ---
 
 message ComponentExecuteRequest {
-  // Component path to execute (e.g., "my_function").
-  string component = 1;
+  // Component ID to execute (e.g., "my_function").
+  // Workers use this for flat lookup in their component registry.
+  string component_id = 1;
 
   // Input data for the component.
   google.protobuf.Value input = 2;
@@ -140,6 +147,11 @@ message ComponentExecuteRequest {
 
   // Observability context for tracing and logging.
   ObservabilityContext observability = 4;
+
+  // Parameters extracted from path pattern matching by the orchestrator's
+  // routing trie (e.g., {"path": "bar/baz"} from pattern "/core/{*path}").
+  // Workers pass these to the component function.
+  map<string, string> path_params = 5;
 }
 
 message ComponentExecuteResponse {

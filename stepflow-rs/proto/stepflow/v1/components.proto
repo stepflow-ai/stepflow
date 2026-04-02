@@ -72,8 +72,8 @@ message PluginDiscoveryError {
 
 // A component registered with the orchestrator.
 message ComponentInfoEntry {
-  // Component path (e.g., "/builtin/openai", "/python/my_func").
-  string component = 1;
+  // Unique component identifier within its plugin (e.g., "openai", "my_func").
+  string component_id = 1;
 
   // Optional human-readable description.
   optional string description = 2;
@@ -83,4 +83,11 @@ message ComponentInfoEntry {
 
   // JSON Schema for the component's output (null if schemas not requested).
   optional google.protobuf.Struct output_schema = 4;
+
+  // Path pattern this component is registered at (e.g., "/openai", "/my_func").
+  // Combined with the route prefix to form the full path (e.g., "/builtin/openai").
+  string path = 5;
+
+  // The plugin that provides this component (e.g., "builtin", "python").
+  string plugin = 6;
 }

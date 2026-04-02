@@ -545,8 +545,8 @@ async def _run_local(
                 "langflow": langflow_plugin,
             },
             "routes": {
-                "/langflow/{*component}": [{"plugin": "langflow"}],
-                "/builtin/{*component}": [{"plugin": "builtin"}],
+                "/langflow": [{"plugin": "langflow"}],
+                "/builtin": [{"plugin": "builtin"}],
             },
             "storageConfig": {"type": "inMemory"},
         },
@@ -744,9 +744,9 @@ def execute(
     args: ["--project", "{current_dir}", "run", "stepflow-langflow-server"]
 
 routes:
-  "/langflow/{{*component}}":
+  "/langflow":
     - plugin: langflow
-  "/builtin/{{*component}}":
+  "/builtin":
     - plugin: builtin
 
 storageConfig:

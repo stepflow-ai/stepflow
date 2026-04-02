@@ -205,13 +205,9 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
 
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &stepflow_plugin::TaskRequest,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
-        input: ValueRef,
-        attempt: u32,
-        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
         // Build observability context
         let observability = build_observability_context(run_context, step);
@@ -224,16 +220,17 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         }
 
         // Convert input to proto Value
-        let proto_input = value_ref_to_proto(&input)?;
+        let proto_input = value_ref_to_proto(&request.input)?;
 
         let task = proto::TaskAssignment {
-            task_id: task_id.to_string(),
+            task_id: request.task_id.clone(),
             task: Some(proto::task_assignment::Task::Execute(Box::new(
                 proto::ComponentExecuteRequest {
-                    component: component.path().to_string(),
+                    component_id: request.component_id.clone(),
                     input: Some(proto_input),
-                    attempt,
+                    attempt: request.attempt,
                     observability: Some(observability),
+                    path_params: request.path_params.clone(),
                 },
             ))),
             context,
@@ -244,16 +241,16 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         // The task is already registered in the shared TaskRegistry by the executor;
         // PendingTasks adds gRPC-specific lifecycle tracking on top.
         self.registry.track(
-            task_id.to_string(),
-            component.path().to_string(),
+            request.task_id.clone(),
+            request.component_id.clone(),
             self.queue_timeout,
             self.execution_timeout,
         );
 
         // Dispatch the task via the configured transport
-        if let Err(e) = self.transport.send_task(task, route_params).await {
+        if let Err(e) = self.transport.send_task(task, &request.route_params).await {
             // Clean up the tracking on send failure
-            self.registry.untrack(task_id);
+            self.registry.untrack(&request.task_id);
             return Err(e);
         }
 
@@ -314,7 +311,15 @@ fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
 
     let mut components = Vec::with_capacity(components_json.len());
     for c in components_json {
-        let name = c.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+        let name = c
+            .get("component_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let path = c
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(name)
+            .to_string();
         let description = c
             .get("description")
             .and_then(|v| v.as_str())
@@ -330,6 +335,7 @@ fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
 
         components.push(ComponentInfo {
             component: stepflow_core::workflow::Component::from_string(name.to_string()),
+            path,
             description,
             input_schema,
             output_schema,

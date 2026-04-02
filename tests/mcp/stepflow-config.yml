@@ -8,7 +8,7 @@ plugins:
     env:
       TEST_VAR: "mcp_test"
 routes:
-  "/test-mcp/{*component}":
+  "/test-mcp":
     - plugin: test-mcp
-  "/{*component}":
+  "/":
     - plugin: builtin

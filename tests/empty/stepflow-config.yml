@@ -3,7 +3,7 @@ plugins:
     type: builtin
 
 routes:
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 storageConfig:

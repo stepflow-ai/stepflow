@@ -16,7 +16,7 @@ use std::sync::Arc;
 use stepflow_components_mcp::McpPluginConfig;
 use stepflow_core::{
     BlobId, FlowResult,
-    workflow::{Component, Flow, ValueRef},
+    workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::{
     Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, TaskRegistryExt as _,
@@ -75,8 +75,7 @@ async fn test_mcp_tool_execution() {
     let (_, run_context) = create_test_context().await;
     plugin.ensure_initialized(run_context.env()).await.unwrap();
 
-    // Test echo tool
-    let echo_component = Component::from_string("/mock-server/echo");
+    // Test echo tool — component_id is the MCP tool name, not the full path
     let echo_input = ValueRef::new(json!({
         "message": "Hello, MCP!"
     }));
@@ -84,17 +83,16 @@ async fn test_mcp_tool_execution() {
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
-    let empty_params = std::collections::HashMap::new();
+    let request = stepflow_plugin::TaskRequest {
+        task_id: task_id.clone(),
+        component_id: "echo".to_string(),
+        path_params: Default::default(),
+        input: echo_input,
+        attempt: 1,
+        route_params: Default::default(),
+    };
     plugin
-        .start_task(
-            &task_id,
-            &echo_component,
-            &run_context,
-            None,
-            echo_input,
-            1,
-            &empty_params,
-        )
+        .start_task(&request, &run_context, None)
         .await
         .unwrap();
     let result = rx.await.unwrap();
@@ -112,7 +110,6 @@ async fn test_mcp_tool_execution() {
     }
 
     // Test add tool
-    let add_component = Component::from_string("/mock-server/add");
     let add_input = ValueRef::new(json!({
         "a": 5,
         "b": 3
@@ -121,17 +118,16 @@ async fn test_mcp_tool_execution() {
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
-    let empty_params = std::collections::HashMap::new();
+    let request = stepflow_plugin::TaskRequest {
+        task_id: task_id.clone(),
+        component_id: "add".to_string(),
+        path_params: Default::default(),
+        input: add_input,
+        attempt: 1,
+        route_params: Default::default(),
+    };
     plugin
-        .start_task(
-            &task_id,
-            &add_component,
-            &run_context,
-            None,
-            add_input,
-            1,
-            &empty_params,
-        )
+        .start_task(&request, &run_context, None)
         .await
         .unwrap();
     let result = rx.await.unwrap();
@@ -163,25 +159,21 @@ async fn test_mcp_error_handling() {
     let (_, run_context) = create_test_context().await;
     plugin.ensure_initialized(run_context.env()).await.unwrap();
 
-    // Test calling a non-existent tool
-    let bad_component = Component::from_string("/mock-server/nonexistent");
+    // Test calling a non-existent tool — component_id is the MCP tool name
     let input = ValueRef::new(json!({}));
 
     let task_id = Uuid::now_v7().to_string();
     let registry = run_context.env().task_registry();
     let rx = registry.register(task_id.clone());
-    let empty_params = std::collections::HashMap::new();
-    let start_result = plugin
-        .start_task(
-            &task_id,
-            &bad_component,
-            &run_context,
-            None,
-            input,
-            1,
-            &empty_params,
-        )
-        .await;
+    let request = stepflow_plugin::TaskRequest {
+        task_id: task_id.clone(),
+        component_id: "nonexistent".to_string(),
+        path_params: Default::default(),
+        input,
+        attempt: 1,
+        route_params: Default::default(),
+    };
+    let start_result = plugin.start_task(&request, &run_context, None).await;
     assert!(
         start_result.is_ok(),
         "Expected Ok, got Err: {start_result:?}"

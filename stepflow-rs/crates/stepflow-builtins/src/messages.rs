@@ -47,6 +47,7 @@ impl BuiltinComponent for CreateMessagesComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/create_messages"),
+            path: "/create_messages".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

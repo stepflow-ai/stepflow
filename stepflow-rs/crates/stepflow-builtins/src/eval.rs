@@ -66,6 +66,7 @@ impl BuiltinComponent for EvalComponent {
 
         Ok(ComponentInfo {
             component: Component::from_string("/eval"),
+            path: "/eval".to_string(),
             input_schema: Some(input_schema),
             output_schema: Some(output_schema),
             description: Some(

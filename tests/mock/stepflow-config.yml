@@ -83,7 +83,7 @@ plugins:
             outcome: success
             result: {output: received null}
 routes:
-  "/mock/{component}":
+  "/mock":
     - plugin: mock
 retry:
   transportMaxRetries: 0

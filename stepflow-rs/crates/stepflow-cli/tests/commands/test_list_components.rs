@@ -93,7 +93,7 @@ plugins:
   test-builtins:
     type: builtin
 routes:
-  "/test-builtins/{*component}":
+  "/test-builtins":
     - plugin: test-builtins
 "#;
 
@@ -130,7 +130,7 @@ plugins:
   test-builtins:
     type: builtin
 routes:
-  "/reachable/{*component}":
+  "/reachable":
     - plugin: test-builtins
       componentAllow: ["/openai", "/create_messages"]
 "#;
@@ -158,7 +158,7 @@ plugins:
   test-builtins:
     type: builtin
 routes:
-  "/reachable/{*component}":
+  "/reachable":
     - plugin: test-builtins
       componentAllow: ["/openai", "/create_messages"]
 "#;

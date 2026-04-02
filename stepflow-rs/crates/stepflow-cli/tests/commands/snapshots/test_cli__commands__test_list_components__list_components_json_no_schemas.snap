@@ -1,5 +1,5 @@
 ---
-source: crates/stepflow-main/tests/commands/test_list_components.rs
+source: crates/stepflow-cli/tests/commands/test_list_components.rs
 info:
   program: stepflow
   args:
@@ -10,6 +10,14 @@ info:
     - "--config=tests/stepflow-config.yml"
     - "--format=json"
     - "--schemas=false"
+  env:
+    STEPFLOW_LOG_DESTINATION: ""
+    STEPFLOW_LOG_FILE: ""
+    STEPFLOW_LOG_FORMAT: ""
+    STEPFLOW_LOG_LEVEL: ""
+    STEPFLOW_OTHER_LOG_LEVEL: ""
+    STEPFLOW_OTLP_ENDPOINT: ""
+    STEPFLOW_TRACE_ENABLED: ""
 ---
 success: true
 exit_code: 0
@@ -18,106 +26,74 @@ exit_code: 0
   "components": [
     {
       "component": "/create_messages",
+      "path": "/create_messages",
       "description": "Create a chat message list from system instructions and user prompt",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/create_messages",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/create_messages"
       ]
     },
     {
       "component": "/eval",
+      "path": "/eval",
       "description": "Execute a nested workflow with given input and return the result",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/eval",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/eval"
       ]
     },
     {
       "component": "/get_blob",
+      "path": "/get_blob",
       "description": "Retrieve JSON data from a blob using its ID",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/get_blob",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/get_blob"
       ]
     },
     {
       "component": "/iterate",
+      "path": "/iterate",
       "description": "Iteratively apply a workflow until it returns a result instead of next",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/iterate",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/iterate"
       ]
     },
     {
       "component": "/load_file",
+      "path": "/load_file",
       "description": "Load and parse a file (JSON, YAML, or text) from the filesystem",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/load_file",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/load_file"
       ]
     },
     {
       "component": "/map",
+      "path": "/map",
       "description": "Apply a workflow to each item in a list and collect the results",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/map",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/map"
       ]
     },
     {
       "component": "/openai",
+      "path": "/openai",
       "description": "Send messages to OpenAI's chat completion API and get a response",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/openai",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/openai"
       ]
     },
     {
       "component": "/put_blob",
+      "path": "/put_blob",
       "description": "Store JSON data as a blob and return its content-addressable ID",
       "plugin": "builtin",
       "routes": [
-        {
-          "pathPattern": "/builtin/{*component}",
-          "resolvedPath": "/builtin/put_blob",
-          "conditions": [],
-          "isConditional": false
-        }
+        "/builtin/put_blob"
       ]
     }
   ]

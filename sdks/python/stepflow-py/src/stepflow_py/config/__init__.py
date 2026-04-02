@@ -103,8 +103,8 @@ class StepflowConfig(Struct, kw_only=True):
                 ),
             },
             routes={
-                "/builtin/{*component}": [RouteRule(plugin="builtin")],
-                "/python/{*component}": [RouteRule(plugin="python")],
+                "/builtin": [RouteRule(plugin="builtin")],
+                "/python": [RouteRule(plugin="python")],
             },
             storageConfig=InMemoryStoreConfig(),
         )

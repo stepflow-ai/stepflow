@@ -65,9 +65,9 @@ test:
         queueTimeoutSecs: 120
 
     routes:
-      "/builtin/{component}":
+      "/builtin":
         - plugin: builtin
-      "/docling/{component}":
+      "/docling":
         - plugin: docling
 
   cases:

@@ -80,8 +80,8 @@ class StepflowConfigBuilder:
                 },
             },
             "routes": {
-                "/langflow/{*component}": [{"plugin": "langflow"}],
-                "/builtin/{*component}": [{"plugin": "builtin"}],
+                "/langflow": [{"plugin": "langflow"}],
+                "/builtin": [{"plugin": "builtin"}],
             },
             "storageConfig": {"type": "inMemory"},
         }

@@ -63,9 +63,9 @@ test:
         args: ["run", "--project", "../..", "docling-step-worker-server"]
 
     routes:
-      "/builtin/{component}":
+      "/builtin":
         - plugin: builtin
-      "/docling/{component}":
+      "/docling":
         - plugin: docling
 
   cases:

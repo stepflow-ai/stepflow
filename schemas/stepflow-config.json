@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "StepflowConfig",
-  "description": "Path-keyed routing configuration",
+  "description": "Prefix-keyed routing configuration.\n\nKeys are single-segment path prefixes (e.g., \"/python\", \"/builtin\") or the\nroot catch-all \"/\". Multi-segment prefixes (e.g., \"/python/core\") are not\nallowed. Each plugin's registered component paths are mounted under the\nprefix. The orchestrator builds a per-plugin trie from the plugin's\ncomponent registrations.",
   "type": "object",
   "properties": {
     "workingDirectory": {
@@ -18,7 +18,7 @@
       }
     },
     "routes": {
-      "description": "Path-to-routing rules mapping\n\nKeys describe paths. For example \"/python/{component}\" or \"/openai/{component}\".\nPlaceholders may match a single segment (e.g., \"{component}\") or multiple segments (e.g., \"{*component}\").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.",
+      "description": "Prefix-to-routing rules mapping.\n\nKeys must be either \"/\" (catch-all) or a single-segment prefix like\n\"/python\", \"/builtin\". Multi-segment prefixes are rejected at build time.\nEach plugin's registered component paths are mounted under the prefix.\n\nValue: ordered list of routing rules. When multiple rules exist for a prefix,\nthey are evaluated in order — the first rule whose conditions match is used.",
       "type": "object",
       "additionalProperties": {
         "type": "array",
@@ -403,7 +403,7 @@
       ]
     },
     "NatsPluginConfig": {
-      "description": "Configuration for a NATS JetStream transport plugin.\n\nEach route (or the plugin default) maps to a JetStream **stream** with\nWorkQueue retention. The stream is the unit of isolation — one per\nworker pool. Within each stream, tasks are published to a fixed\ninternal subject (`tasks`).\n\n# Config example\n\n```yaml\nplugins:\n  nats:\n    type: nats\n    url: \"nats://localhost:4222\"\n    stream: PYTHON_TASKS\n    consumer: python-workers\n    queueTimeoutSecs: 30\n\nroutes:\n  \"/python/foo/{component}\":\n    - plugin: nats\n      stream: FOO_TASKS          # separate worker pool\n  \"/python/{*component}\":\n    - plugin: nats               # uses default stream\n```",
+      "description": "Configuration for a NATS JetStream transport plugin.\n\nEach route (or the plugin default) maps to a JetStream **stream** with\nWorkQueue retention. The stream is the unit of isolation — one per\nworker pool. Within each stream, tasks are published to a fixed\ninternal subject (`tasks`).\n\n# Config example\n\n```yaml\nplugins:\n  nats:\n    type: nats\n    url: \"nats://localhost:4222\"\n    stream: PYTHON_TASKS\n    consumer: python-workers\n    queueTimeoutSecs: 30\n\nroutes:\n  \"/python/foo\":\n    - plugin: nats\n      stream: FOO_TASKS          # separate worker pool\n  \"/python\":\n    - plugin: nats               # uses default stream\n```",
       "type": "object",
       "properties": {
         "url": {
@@ -475,18 +475,18 @@
       ]
     },
     "RouteRule": {
-      "description": "A single routing rule for a specific path",
+      "description": "A single routing rule mapping a prefix to a plugin.",
       "type": "object",
       "properties": {
         "conditions": {
-          "description": "Optional input conditions that must match for this rule to apply",
+          "description": "Optional input conditions that must match for this rule to apply.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/InputCondition"
           }
         },
         "componentAllow": {
-          "description": "Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match.",
+          "description": "Optional component allowlist — only these component IDs are allowed.\n\nIf omitted, all components are allowed.",
           "type": [
             "array",
             "null"
@@ -496,7 +496,7 @@
           }
         },
         "componentDeny": {
-          "description": "Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked.",
+          "description": "Optional component denylist — these component IDs are blocked.\n\nIf omitted, no components are blocked.",
           "type": [
             "array",
             "null"
@@ -506,15 +506,8 @@
           }
         },
         "plugin": {
-          "description": "Plugin name to route to",
+          "description": "Plugin name to route to.",
           "type": "string"
-        },
-        "component": {
-          "description": "Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., \"{component}\" or \"{*component}\".",
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "required": [

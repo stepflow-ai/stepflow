@@ -109,28 +109,37 @@ class ComponentInfo(google.protobuf.message.Message):
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    NAME_FIELD_NUMBER: builtins.int
+    COMPONENT_ID_FIELD_NUMBER: builtins.int
     DESCRIPTION_FIELD_NUMBER: builtins.int
     INPUT_SCHEMA_FIELD_NUMBER: builtins.int
     OUTPUT_SCHEMA_FIELD_NUMBER: builtins.int
-    name: builtins.str
-    """Component path (e.g., "my_function", "transform/clean")."""
+    PATH_FIELD_NUMBER: builtins.int
+    component_id: builtins.str
+    """Unique component identifier within its plugin (e.g., "my_function", "clean").
+    Used by workers for flat lookup when executing tasks.
+    """
     description: builtins.str
     """Human-readable description."""
     input_schema: builtins.str
     """JSON Schema for the component's expected input, encoded as JSON string."""
     output_schema: builtins.str
     """JSON Schema for the component's output, encoded as JSON string."""
+    path: builtins.str
+    """Path pattern this component is registered at (e.g., "/my_function", "/core/{*path}").
+    The orchestrator mounts this under the plugin's route prefix to build the
+    unified routing trie. Defaults to "/{component_id}" if empty.
+    """
     def __init__(
         self,
         *,
-        name: builtins.str = ...,
+        component_id: builtins.str = ...,
         description: builtins.str | None = ...,
         input_schema: builtins.str | None = ...,
         output_schema: builtins.str | None = ...,
+        path: builtins.str = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "description", b"description", "input_schema", b"input_schema", "output_schema", b"output_schema"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "description", b"description", "input_schema", b"input_schema", "name", b"name", "output_schema", b"output_schema"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["_description", b"_description", "_input_schema", b"_input_schema", "_output_schema", b"_output_schema", "component_id", b"component_id", "description", b"description", "input_schema", b"input_schema", "output_schema", b"output_schema", "path", b"path"]) -> None: ...
     @typing.overload
     def WhichOneof(self, oneof_group: typing.Literal["_description", b"_description"]) -> typing.Literal["description"] | None: ...
     @typing.overload
@@ -146,15 +155,15 @@ class ComponentInfoRequest(google.protobuf.message.Message):
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    COMPONENT_FIELD_NUMBER: builtins.int
-    component: builtins.str
-    """Component path to get info for."""
+    COMPONENT_ID_FIELD_NUMBER: builtins.int
+    component_id: builtins.str
+    """Component ID to get info for."""
     def __init__(
         self,
         *,
-        component: builtins.str = ...,
+        component_id: builtins.str = ...,
     ) -> None: ...
-    def ClearField(self, field_name: typing.Literal["component", b"component"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["component_id", b"component_id"]) -> None: ...
 
 Global___ComponentInfoRequest: typing_extensions.TypeAlias = ComponentInfoRequest
 
@@ -181,12 +190,31 @@ class ComponentExecuteRequest(google.protobuf.message.Message):
 
     DESCRIPTOR: google.protobuf.descriptor.Descriptor
 
-    COMPONENT_FIELD_NUMBER: builtins.int
+    @typing.final
+    class PathParamsEntry(google.protobuf.message.Message):
+        DESCRIPTOR: google.protobuf.descriptor.Descriptor
+
+        KEY_FIELD_NUMBER: builtins.int
+        VALUE_FIELD_NUMBER: builtins.int
+        key: builtins.str
+        value: builtins.str
+        def __init__(
+            self,
+            *,
+            key: builtins.str = ...,
+            value: builtins.str = ...,
+        ) -> None: ...
+        def ClearField(self, field_name: typing.Literal["key", b"key", "value", b"value"]) -> None: ...
+
+    COMPONENT_ID_FIELD_NUMBER: builtins.int
     INPUT_FIELD_NUMBER: builtins.int
     ATTEMPT_FIELD_NUMBER: builtins.int
     OBSERVABILITY_FIELD_NUMBER: builtins.int
-    component: builtins.str
-    """Component path to execute (e.g., "my_function")."""
+    PATH_PARAMS_FIELD_NUMBER: builtins.int
+    component_id: builtins.str
+    """Component ID to execute (e.g., "my_function").
+    Workers use this for flat lookup in their component registry.
+    """
     attempt: builtins.int
     """Execution attempt number (1-based, monotonically increasing).
     Increments on transport errors, component retries, or orchestrator recovery.
@@ -200,16 +228,24 @@ class ComponentExecuteRequest(google.protobuf.message.Message):
     def observability(self) -> common_pb2.ObservabilityContext:
         """Observability context for tracing and logging."""
 
+    @property
+    def path_params(self) -> google.protobuf.internal.containers.ScalarMap[builtins.str, builtins.str]:
+        """Parameters extracted from path pattern matching by the orchestrator's
+        routing trie (e.g., {"path": "bar/baz"} from pattern "/core/{*path}").
+        Workers pass these to the component function.
+        """
+
     def __init__(
         self,
         *,
-        component: builtins.str = ...,
+        component_id: builtins.str = ...,
         input: google.protobuf.struct_pb2.Value | None = ...,
         attempt: builtins.int = ...,
         observability: common_pb2.ObservabilityContext | None = ...,
+        path_params: collections.abc.Mapping[builtins.str, builtins.str] | None = ...,
     ) -> None: ...
     def HasField(self, field_name: typing.Literal["input", b"input", "observability", b"observability"]) -> builtins.bool: ...
-    def ClearField(self, field_name: typing.Literal["attempt", b"attempt", "component", b"component", "input", b"input", "observability", b"observability"]) -> None: ...
+    def ClearField(self, field_name: typing.Literal["attempt", b"attempt", "component_id", b"component_id", "input", b"input", "observability", b"observability", "path_params", b"path_params"]) -> None: ...
 
 Global___ComponentExecuteRequest: typing_extensions.TypeAlias = ComponentExecuteRequest
 

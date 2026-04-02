@@ -44,10 +44,10 @@ data:
         queueTimeoutSecs: 300
 
     routes:
-      "/docling/{*component}":
+      "/docling":
         - plugin: docling
 
-      "/builtin/{*component}":
+      "/builtin":
         - plugin: builtin
 
     # Blob API URL exposed to workers so they can resolve $blob references.

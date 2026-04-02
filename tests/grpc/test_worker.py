@@ -27,13 +27,13 @@ from stepflow_py.worker.context import StepflowContext
 from stepflow_py.worker.main import main, server
 
 
-@server.component(name="echo")
+@server.component
 def echo(input: dict) -> dict:
     """Echo component that returns input with processed=true."""
     return {**input, "processed": True}
 
 
-@server.component(name="error_test")
+@server.component
 def error_test(input: dict) -> dict:
     """Component that raises errors based on input mode."""
     mode = input.get("mode", "success")
@@ -47,7 +47,7 @@ def error_test(input: dict) -> dict:
     return {"result": "success", "mode": mode}
 
 
-@server.component(name="blob_roundtrip")
+@server.component
 async def blob_roundtrip(input: dict, context: StepflowContext) -> dict:
     """Component that stores data as a blob and retrieves it back."""
     data = input.get("data", {})
@@ -65,7 +65,7 @@ async def blob_roundtrip(input: dict, context: StepflowContext) -> dict:
     }
 
 
-@server.component(name="transform")
+@server.component
 def transform(input: dict) -> dict:
     """Component that transforms input data."""
     text = input.get("text", "")
@@ -81,7 +81,7 @@ def transform(input: dict) -> dict:
         return {"result": text}
 
 
-@server.component(name="sub_run")
+@server.component
 async def sub_run(input: dict, context: StepflowContext) -> dict:
     """Component that submits a sub-run using context.submit_run."""
     inner_flow = {

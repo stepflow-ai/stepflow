@@ -7,11 +7,11 @@ plugins:
     queueTimeoutSecs: 3
 
 routes:
-  "/test/{*component}":
+  "/test":
     - plugin: test-worker
-  "/builtin/{*component}":
+  "/builtin":
     - plugin: builtin
-  "/{*component}":
+  "/":
     - plugin: builtin
 
 storageConfig:

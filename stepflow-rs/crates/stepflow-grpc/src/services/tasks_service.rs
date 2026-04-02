@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 
-use stepflow_plugin::StepflowEnvironment;
+use stepflow_plugin::{Plugin as _, PluginRouterExt as _, StepflowEnvironment};
 use stepflow_state::LeaseManagerExt as _;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
@@ -95,6 +95,39 @@ impl TasksService for TasksServiceImpl {
             worker_label,
             req.queue_name,
         );
+
+        // Trigger component discovery in the background so the routing trie
+        // gets rebuilt with the newly connected worker's components.
+        {
+            let env = self.env.clone();
+            let queue_name = req.queue_name.clone();
+            tokio::spawn(async move {
+                // Find the plugin for this queue and refresh its components
+                let plugin_router = env.plugin_router();
+                for (name, plugin) in plugin_router.plugins_with_names() {
+                    // Match plugin by checking if it's the one for this queue.
+                    // We try list_components on all plugins and update — only
+                    // plugins whose components changed will trigger a rebuild.
+                    match plugin.list_components().await {
+                        Ok(components) => {
+                            if let Err(e) = env.update_plugin_components(name, components) {
+                                log::warn!(
+                                    "Failed to update components for plugin \
+                                     '{name}' after worker connected to queue \
+                                     '{queue_name}': {e}"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            log::debug!(
+                                "Component discovery for plugin '{name}' \
+                                 after worker connect: {e}"
+                            );
+                        }
+                    }
+                }
+            });
+        }
 
         // Channel buffer of 1 — workers control their own concurrency via
         // a local semaphore and pull from the gRPC stream at their own pace.

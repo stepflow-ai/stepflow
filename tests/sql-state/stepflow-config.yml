@@ -21,7 +21,7 @@ plugins:
             outcome: success
             result: { result: "Testing" }
 routes:
-  "/mock/{component}":
+  "/mock":
     - plugin: mock
 
 # Use SQLite with in-memory database for testing

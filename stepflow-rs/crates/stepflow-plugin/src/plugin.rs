@@ -10,7 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use crate::{Result, RunContext, StepflowEnvironment};
 use serde::{Serialize, de::DeserializeOwned};
@@ -18,6 +18,40 @@ use stepflow_core::{
     component::ComponentInfo,
     workflow::{Component, StepId, ValueRef},
 };
+
+/// All dispatch-specific fields for a task.
+///
+/// Mirrors proto `ComponentExecuteRequest` for wire-bound fields.
+/// Additional fields (`task_id`, `route_params`) are orchestrator-internal.
+pub struct TaskRequest {
+    /// Unique task identifier (registered in TaskRegistry by the executor).
+    /// Not sent in `ComponentExecuteRequest` — it's on `TaskAssignment`.
+    pub task_id: String,
+
+    /// The component ID to execute (e.g., "foo"). Used by workers for flat lookup.
+    /// Maps to proto `ComponentExecuteRequest.component_id`.
+    pub component_id: String,
+
+    /// Parameters extracted from path pattern matching (e.g., `{path: "bar"}`).
+    /// Passed to the component function by the worker SDK.
+    /// Maps to proto `ComponentExecuteRequest.path_params`.
+    pub path_params: HashMap<String, String>,
+
+    /// The resolved input for the component.
+    /// Maps to proto `ComponentExecuteRequest.input` (converted to protobuf Value).
+    pub input: ValueRef,
+
+    /// Execution attempt number (1-based, monotonically increasing).
+    /// Maps to proto `ComponentExecuteRequest.attempt`.
+    pub attempt: u32,
+
+    /// Transport-level parameters from the matched route rule config
+    /// (e.g., `stream` for NATS, `queueName` for gRPC).
+    /// These override plugin-level defaults and are consumed by the
+    /// transport layer — they never reach the component function.
+    /// NOT sent in `ComponentExecuteRequest`.
+    pub route_params: HashMap<String, serde_json::Value>,
+}
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(pub DynPlugin = dyn Plugin)]
@@ -50,31 +84,12 @@ pub trait Plugin: Send + Sync {
     /// For queue-based plugins (gRPC pull), this dispatches to the queue and
     /// returns immediately — the worker delivers the result later.
     ///
-    /// # Arguments
-    /// * `task_id` - Unique task identifier (registered in TaskRegistry by the executor)
-    /// * `component` - The component to execute
-    /// * `run_context` - The run context with flow, environment, and subflow submission
-    /// * `step` - The step being executed (None for workflow-level operations)
-    /// * `input` - The resolved input values
-    /// * `attempt` - The execution attempt number (1-based). A monotonically
-    ///   increasing counter that increments on every re-execution of this step,
-    ///   regardless of the reason (transport error, component error, or
-    ///   orchestrator recovery).
-    /// * `route_params` - Additional parameters from the route rule (e.g.,
-    ///   `subject` for NATS, `queueName` for gRPC). These override plugin-level
-    ///   defaults. Empty for most plugins.
-    ///
     /// [`TaskRegistry`]: crate::TaskRegistry
-    #[allow(clippy::too_many_arguments)]
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &TaskRequest,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
-        input: ValueRef,
-        attempt: u32,
-        route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()>;
 
     /// Prepare the plugin for a retry after a transport error.

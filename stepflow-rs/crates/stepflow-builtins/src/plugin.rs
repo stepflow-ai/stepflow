@@ -16,10 +16,7 @@ use crate::{BuiltinComponent as _, registry};
 use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::StepId;
-use stepflow_core::{
-    component::ComponentInfo,
-    workflow::{Component, ValueRef},
-};
+use stepflow_core::{component::ComponentInfo, workflow::Component};
 use stepflow_plugin::{
     DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
     TaskRegistryExt as _,
@@ -75,20 +72,20 @@ impl Plugin for Builtins {
 
     async fn start_task(
         &self,
-        task_id: &str,
-        component: &Component,
+        request: &stepflow_plugin::TaskRequest,
         run_context: &Arc<RunContext>,
         step: Option<&StepId>,
-        input: ValueRef,
-        _attempt: u32,
-        _route_params: &std::collections::HashMap<String, serde_json::Value>,
     ) -> Result<()> {
-        let component = registry::get_component(component)?;
+        let component = Component::from_string(&request.component_id);
+        let component = registry::get_component(&component)?;
         let result = component
-            .execute(run_context, step, input)
+            .execute(run_context, step, request.input.clone())
             .await
             .change_context(PluginError::UdfExecution)?;
-        run_context.env().task_registry().complete(task_id, result);
+        run_context
+            .env()
+            .task_registry()
+            .complete(&request.task_id, result);
         Ok(())
     }
 

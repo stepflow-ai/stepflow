@@ -456,12 +456,12 @@ class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
 
 
 class RouteRule(Struct, kw_only=True):
-    plugin: Annotated[str, Meta(description='Plugin name to route to')]
+    plugin: Annotated[str, Meta(description='Plugin name to route to.')]
     conditions: (
         Annotated[
             list[InputCondition],
             Meta(
-                description='Optional input conditions that must match for this rule to apply'
+                description='Optional input conditions that must match for this rule to apply.'
             ),
         ]
         | UnsetType
@@ -470,7 +470,7 @@ class RouteRule(Struct, kw_only=True):
         Annotated[
             list[str],
             Meta(
-                description='Optional component allowlist - only these components are allowed to match this rule\n\nIf omitted, all components are allowed to match.'
+                description='Optional component allowlist — only these component IDs are allowed.\n\nIf omitted, all components are allowed.'
             ),
         ]
         | UnsetType
@@ -479,16 +479,7 @@ class RouteRule(Struct, kw_only=True):
         Annotated[
             list[str],
             Meta(
-                description='Optional component denylist - these components are blocked from matching this rule\n\nIf omitted, no components are blocked.'
-            ),
-        ]
-        | UnsetType
-    ) = UNSET
-    component: (
-        Annotated[
-            str | None,
-            Meta(
-                description='Component name to pass to the plugin.\nDefaults to `/{component}` if not specified, meaning the extracted component name is used.\n\nMay be a pattern referencing path placeholders, e.g., "{component}" or "{*component}".'
+                description='Optional component denylist — these component IDs are blocked.\n\nIf omitted, no components are blocked.'
             ),
         ]
         | UnsetType
@@ -593,7 +584,7 @@ class StepflowConfig(Struct, kw_only=True):
     routes: Annotated[
         dict[str, list[RouteRule]],
         Meta(
-            description='Path-to-routing rules mapping\n\nKeys describe paths. For example "/python/{component}" or "/openai/{component}".\nPlaceholders may match a single segment (e.g., "{component}") or multiple segments (e.g., "{*component}").\n\nValue: ordered list of routing rules to apply to that path.\n\nRoutes will be applied in the order they are listed, with the first matching rule being used.'
+            description='Prefix-to-routing rules mapping.\n\nKeys must be either "/" (catch-all) or a single-segment prefix like\n"/python", "/builtin". Multi-segment prefixes are rejected at build time.\nEach plugin\'s registered component paths are mounted under the prefix.\n\nValue: ordered list of routing rules. When multiple rules exist for a prefix,\nthey are evaluated in order — the first rule whose conditions match is used.'
         ),
     ]
     workingDirectory: (

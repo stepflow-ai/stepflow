@@ -69,8 +69,8 @@ def integration_config():
             ),
         },
         routes={
-            "/builtin/{*component}": [RouteRule(plugin="builtin")],
-            "/python/{*component}": [RouteRule(plugin="python")],
+            "/builtin": [RouteRule(plugin="builtin")],
+            "/python": [RouteRule(plugin="python")],
         },
         storageConfig=InMemoryStoreConfig(),
     )
