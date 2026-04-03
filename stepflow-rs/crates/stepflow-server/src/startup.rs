@@ -242,7 +242,7 @@ impl StepflowService {
 
     /// Forcefully stop the server and release all resources.
     ///
-    /// Unlike [`shutdown`] + [`wait`], this aborts the server task immediately
+    /// Unlike [`Self::shutdown`] + [`Self::wait`], this aborts the server task immediately
     /// rather than draining existing connections.  Awaiting the aborted task
     /// ensures it has observed cancellation and dropped any captured
     /// `Arc<StepflowEnvironment>` references before returning, making cleanup
