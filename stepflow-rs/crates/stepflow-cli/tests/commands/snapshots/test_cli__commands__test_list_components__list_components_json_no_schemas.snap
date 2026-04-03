@@ -79,6 +79,15 @@ exit_code: 0
       ]
     },
     {
+      "component": "/noop",
+      "path": "/noop",
+      "description": "No-op component that returns its input unchanged. Used for benchmarking.",
+      "plugin": "builtin",
+      "routes": [
+        "/builtin/noop"
+      ]
+    },
+    {
       "component": "/openai",
       "path": "/openai",
       "description": "Send messages to OpenAI's chat completion API and get a response",
@@ -94,6 +103,15 @@ exit_code: 0
       "plugin": "builtin",
       "routes": [
         "/builtin/put_blob"
+      ]
+    },
+    {
+      "component": "/sleep",
+      "path": "/sleep",
+      "description": "Sleeps for a specified duration then returns. Used for benchmarking concurrent flow capacity.",
+      "plugin": "builtin",
+      "routes": [
+        "/builtin/sleep"
       ]
     }
   ]

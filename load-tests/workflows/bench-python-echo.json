@@ -1,0 +1,12 @@
+{
+  "name": "Benchmark - Python Echo",
+  "description": "Single step calling a minimal Python echo component. Measures Python worker roundtrip overhead.",
+  "steps": [
+    {
+      "id": "echo",
+      "component": "/python/echo",
+      "input": { "$input": "" }
+    }
+  ],
+  "output": { "$step": "echo" }
+}

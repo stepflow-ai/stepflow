@@ -1,0 +1,12 @@
+{
+  "name": "Benchmark - Routed Noop",
+  "description": "Single step routed to /bench/noop queue. Measures full gRPC dispatch path through PullTasks/CompleteTask (requires bench worker).",
+  "steps": [
+    {
+      "id": "noop",
+      "component": "/bench/noop",
+      "input": { "$input": "" }
+    }
+  ],
+  "output": { "$step": "noop" }
+}

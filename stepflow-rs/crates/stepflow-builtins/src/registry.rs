@@ -25,7 +25,9 @@ use crate::{
     load_file::LoadFileComponent,
     map::MapComponent,
     messages::CreateMessagesComponent,
+    noop::NoopComponent,
     openai::OpenAIComponent,
+    sleep::SleepComponent,
 };
 
 #[derive(Default)]
@@ -51,6 +53,8 @@ static REGISTRY: LazyLock<Registry> = LazyLock::new(|| {
     registry.register("/map", MapComponent::new());
     registry.register("/put_blob", PutBlobComponent::new());
     registry.register("/get_blob", GetBlobComponent::new());
+    registry.register("/noop", NoopComponent);
+    registry.register("/sleep", SleepComponent);
     registry
 });
 

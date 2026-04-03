@@ -1,0 +1,35 @@
+plugins:
+  builtin:
+    type: builtin
+
+  # External bench worker connects via gRPC PullTasks.
+  # Start stepflow-bench-worker separately with --queue-name bench.
+  bench:
+    type: grpc
+    queueName: bench
+
+  # Rust worker for echo component benchmarks.
+  # Start stepflow-bench-worker echo --queue-name rust separately.
+  rust:
+    type: grpc
+    queueName: rust
+
+  # Python worker for echo component benchmarks.
+  python:
+    type: grpc
+    queueName: python
+    command: uv
+    args: ["--project", "../../sdks/python", "run", "stepflow_worker"]
+
+routes:
+  "/bench/{*component}":
+    - plugin: bench
+  "/rust/{*component}":
+    - plugin: rust
+  "/python/{*component}":
+    - plugin: python
+  "/{*component}":
+    - plugin: builtin
+
+storageConfig:
+  type: inMemory

@@ -22,6 +22,12 @@ from stepflow_py.worker.server import StepflowServer
 server = StepflowServer()
 
 
+@server.component(name="echo")
+def echo(input: dict) -> dict:
+    """Return input unchanged. Used for benchmarking worker overhead."""
+    return input
+
+
 def main():
     # Initialize observability before anything else
     # Configuration via environment variables:

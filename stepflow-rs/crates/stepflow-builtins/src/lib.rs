@@ -27,9 +27,11 @@ mod map;
 mod messages;
 #[cfg(test)]
 mod mock_context;
+mod noop;
 mod openai;
 mod plugin;
 mod registry;
+mod sleep;
 
 use error::Result;
 pub use plugin::{BuiltinPluginConfig, Builtins};
