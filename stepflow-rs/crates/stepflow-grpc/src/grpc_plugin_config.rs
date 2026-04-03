@@ -28,6 +28,7 @@ use stepflow_core::workflow::{Component, StepId};
 use stepflow_plugin::{
     DynPlugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
 };
+use stepflow_state::MetadataStoreExt as _;
 use tokio::sync::Mutex;
 
 use crate::grpc_server::StepflowGrpcServer;
@@ -350,6 +351,7 @@ impl stepflow_plugin::Plugin for GrpcPlugin {
             shared_server.pending_tasks().clone(),
             self.queue_timeout,
             self.execution_timeout,
+            self.queue_name.clone(),
         );
 
         // Set the orchestrator URL so task assignments carry the gRPC server address.
@@ -370,9 +372,43 @@ impl stepflow_plugin::Plugin for GrpcPlugin {
 
         *self.inner.lock().await = Some(inner_plugin);
 
-        // Spawn worker subprocess if command is configured
+        // Check if we already have stored component registrations from a
+        // previous run. Stored registrations are loaded into the routing trie
+        // during initialize_environment, so even if the worker takes time to
+        // connect, requests can be routed immediately.
+        let has_stored = env
+            .metadata_store()
+            .has_component_registrations(&self.queue_name)
+            .await
+            .unwrap_or(false);
+
+        // Spawn worker subprocess if command is configured.
         if self.command.is_some() {
             self.spawn_worker(&queue_registry).await?;
+        }
+
+        // Trigger initial component discovery to persist registrations.
+        // This runs after the worker connects (for subprocess mode) or
+        // opportunistically (for remote mode — may fail if no worker yet).
+        if !has_stored {
+            let inner = self.inner.lock().await;
+            if let Some(ref plugin) = *inner {
+                match plugin.list_components().await {
+                    Ok(components) => {
+                        log::info!(
+                            "Initial component discovery for queue '{}': {} components",
+                            self.queue_name,
+                            components.len()
+                        );
+                    }
+                    Err(e) => {
+                        log::debug!(
+                            "Initial component discovery for queue '{}' failed (expected for remote mode): {e}",
+                            self.queue_name
+                        );
+                    }
+                }
+            }
         }
 
         Ok(())

@@ -158,6 +158,17 @@ struct RunStatusRow {
 }
 
 #[derive(FromRow)]
+struct ComponentRegistrationRow {
+    plugin: String,
+    component_id: String,
+    path: String,
+    description: Option<String>,
+    input_schema_json: Option<String>,
+    output_schema_json: Option<String>,
+    last_updated: String,
+}
+
+#[derive(FromRow)]
 struct JournalEntryRow {
     sequence: i64,
     run_id: String,
@@ -1205,6 +1216,265 @@ impl MetadataStore for SqliteStateStore {
 
                 tokio::task::yield_now().await;
             }
+        }
+        .boxed()
+    }
+
+    fn upsert_plugin_components(
+        &self,
+        plugin: &str,
+        components: &[stepflow_core::component::ComponentInfo],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        let components = components.to_vec();
+        async move {
+            let mut tx = pool
+                .begin()
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable("failed to begin transaction for component upsert")?;
+
+            // Upsert each component. Use INSERT ... ON CONFLICT to only bump
+            // last_updated when data actually changes.
+            for info in &components {
+                let component_id = info.component.path().to_string();
+                let path = &info.path;
+                let description = info.description.as_deref();
+                let input_schema_json = info
+                    .input_schema
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to serialize input schema for component '{component_id}'"
+                        )
+                    })?;
+                let output_schema_json = info
+                    .output_schema
+                    .as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to serialize output schema for component '{component_id}'"
+                        )
+                    })?;
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO component_registrations
+                        (plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT (plugin, component_id) DO UPDATE SET
+                        path = excluded.path,
+                        description = excluded.description,
+                        input_schema_json = excluded.input_schema_json,
+                        output_schema_json = excluded.output_schema_json,
+                        last_updated = CASE
+                            WHEN component_registrations.path != excluded.path
+                              OR component_registrations.description IS NOT excluded.description
+                              OR component_registrations.input_schema_json IS NOT excluded.input_schema_json
+                              OR component_registrations.output_schema_json IS NOT excluded.output_schema_json
+                            THEN datetime('now')
+                            ELSE component_registrations.last_updated
+                        END
+                    "#,
+                )
+                .bind(&plugin)
+                .bind(&component_id)
+                .bind(path)
+                .bind(description)
+                .bind(&input_schema_json)
+                .bind(&output_schema_json)
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to upsert component '{component_id}' for plugin '{plugin}'")
+                })?;
+            }
+
+            // Remove stale entries for this plugin that are no longer reported
+            if components.is_empty() {
+                sqlx::query("DELETE FROM component_registrations WHERE plugin = ?")
+                    .bind(&plugin)
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)?;
+            } else {
+                let component_ids: Vec<String> = components
+                    .iter()
+                    .map(|c| c.component.path().to_string())
+                    .collect();
+
+                let mut qb: QueryBuilder<'_, Sqlite> = QueryBuilder::new(
+                    "DELETE FROM component_registrations WHERE plugin = ",
+                );
+                qb.push_bind(&plugin);
+                qb.push(" AND component_id NOT IN (");
+
+                let mut separated = qb.separated(", ");
+                for id in &component_ids {
+                    separated.push_bind(id);
+                }
+                separated.push_unseparated(")");
+
+                qb.build()
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)
+                    .attach_printable_lazy(|| {
+                        format!("failed to remove stale components for plugin '{plugin}'")
+                    })?;
+            }
+
+            tx.commit()
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable("failed to commit component upsert transaction")?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_registered_components(
+        &self,
+        plugin: Option<&str>,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<stepflow_state::StoredComponentRegistration>, StateError>,
+    > {
+        let pool = self.pool.clone();
+        let plugin = plugin.map(|s| s.to_string());
+        async move {
+            let rows = match &plugin {
+                Some(p) => {
+                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                        "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
+                         FROM component_registrations WHERE plugin = ? ORDER BY component_id",
+                    )
+                    .bind(p)
+                    .fetch_all(&pool)
+                    .await
+                }
+                None => {
+                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                        "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
+                         FROM component_registrations ORDER BY plugin, component_id",
+                    )
+                    .fetch_all(&pool)
+                    .await
+                }
+            }
+            .change_context(StateError::Internal)
+            .attach_printable("failed to fetch component registrations")?;
+
+            let mut results = Vec::with_capacity(rows.len());
+            for row in rows {
+                let input_schema = row
+                    .input_schema_json
+                    .as_deref()
+                    .map(serde_json::from_str)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to deserialize input schema for component '{}'",
+                            row.component_id
+                        )
+                    })?;
+                let output_schema = row
+                    .output_schema_json
+                    .as_deref()
+                    .map(serde_json::from_str)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to deserialize output schema for component '{}'",
+                            row.component_id
+                        )
+                    })?;
+                let last_updated =
+                    parse_sqlite_datetime(&row.last_updated).ok_or_else(|| {
+                        error_stack::report!(StateError::Serialization).attach_printable(
+                            format!(
+                                "unparseable last_updated for component '{}': {}",
+                                row.component_id, row.last_updated
+                            ),
+                        )
+                    })?;
+
+                results.push(stepflow_state::StoredComponentRegistration {
+                    plugin: row.plugin,
+                    info: stepflow_core::component::ComponentInfo {
+                        component: stepflow_core::workflow::Component::from_string(
+                            row.component_id,
+                        ),
+                        path: row.path,
+                        description: row.description,
+                        input_schema,
+                        output_schema,
+                    },
+                    last_updated,
+                });
+            }
+
+            Ok(results)
+        }
+        .boxed()
+    }
+
+    fn component_max_last_updated(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<chrono::DateTime<chrono::Utc>>, StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        async move {
+            let row: Option<(Option<String>,)> = sqlx::query_as(
+                "SELECT MAX(last_updated) FROM component_registrations WHERE plugin = ?",
+            )
+            .bind(&plugin)
+            .fetch_optional(&pool)
+            .await
+            .change_context(StateError::Internal)?;
+
+            let result = match row.and_then(|(ts,)| ts) {
+                Some(ts) => Some(parse_sqlite_datetime(&ts).ok_or_else(|| {
+                    error_stack::report!(StateError::Serialization).attach_printable(format!(
+                        "unparseable component_registrations.last_updated for plugin '{plugin}': {ts}"
+                    ))
+                })?),
+                None => None,
+            };
+
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn has_component_registrations(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<bool, StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        async move {
+            let row: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM component_registrations WHERE plugin = ? LIMIT 1",
+            )
+            .bind(&plugin)
+            .fetch_one(&pool)
+            .await
+            .change_context(StateError::Internal)?;
+
+            Ok(row.0 > 0)
         }
         .boxed()
     }

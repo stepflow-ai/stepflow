@@ -12,7 +12,9 @@
 
 use std::sync::Arc;
 
+use stepflow_core::component::ComponentInfo;
 use stepflow_plugin::{Plugin as _, PluginRouterExt as _, StepflowEnvironment};
+use stepflow_state::MetadataStoreExt as _;
 use tonic::{Request, Response, Status};
 
 use crate::proto::stepflow::v1::components_service_server::ComponentsService;
@@ -42,16 +44,42 @@ impl ComponentsService for ComponentsServiceImpl {
         let req = request.into_inner();
         let include_schemas = !req.exclude_schemas;
 
-        let mut all_components: Vec<(String, _)> = Vec::new();
+        let mut all_components: Vec<(String, ComponentInfo)> = Vec::new();
         let mut failed_plugins = Vec::new();
 
+        // Try reading from the metadata store first (persisted component registrations).
+        let store = self.env.metadata_store();
+        match store.get_registered_components(None).await {
+            Ok(stored) if !stored.is_empty() => {
+                // Use stored registrations as the primary source
+                for reg in stored {
+                    all_components.push((reg.plugin, reg.info));
+                }
+            }
+            _ => {
+                // Fall back to live discovery from plugins (first startup or store empty)
+            }
+        }
+
+        // For plugins with no stored registrations, fall back to live discovery
+        // and persist the results for future use.
         for (name, plugin) in self.env.plugins_with_names() {
+            let has_stored = all_components.iter().any(|(p, _)| p == &name);
+            if has_stored {
+                continue;
+            }
+
             match plugin.list_components().await {
                 Ok(mut components) => {
                     // Update the routing trie if component registrations changed
-                    // (e.g., a new gRPC worker connected since the last poll).
                     if let Err(e) = self.env.update_plugin_components(&name, components.clone()) {
                         log::warn!("Failed to update routing trie for plugin '{name}': {e}");
+                    }
+                    // Persist for future use (e.g., plugins that don't self-persist)
+                    if let Err(e) = store.upsert_plugin_components(&name, &components).await {
+                        log::warn!(
+                            "Failed to persist component registrations for plugin '{name}': {e}"
+                        );
                     }
                     if !include_schemas {
                         for c in components.iter_mut() {
@@ -68,6 +96,13 @@ impl ComponentsService for ComponentsServiceImpl {
                         error: format!("{e}"),
                     });
                 }
+            }
+        }
+
+        if !include_schemas {
+            for (_, c) in all_components.iter_mut() {
+                c.input_schema = None;
+                c.output_schema = None;
             }
         }
 

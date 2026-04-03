@@ -23,7 +23,9 @@
 
 use std::collections::HashSet;
 
+use chrono::{DateTime, Utc};
 use futures::future::{BoxFuture, FutureExt as _};
+use stepflow_core::component::ComponentInfo;
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{FlowResult, workflow::WorkflowOverrides};
 use uuid::Uuid;
@@ -34,6 +36,17 @@ use stepflow_domain::{
 };
 
 use super::state_store::CreateRunParams;
+
+/// A component registration stored in the metadata store.
+#[derive(Debug, Clone)]
+pub struct StoredComponentRegistration {
+    /// The plugin that registered this component.
+    pub plugin: String,
+    /// The component information.
+    pub info: ComponentInfo,
+    /// When this registration was last updated.
+    pub last_updated: DateTime<Utc>,
+}
 
 /// Trait for storing and retrieving run metadata and results.
 ///
@@ -294,4 +307,60 @@ pub trait MetadataStore: Send + Sync {
         &self,
         run_id: Uuid,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>>;
+
+    // =========================================================================
+    // Component Registrations
+    // =========================================================================
+
+    /// Upsert component registrations for a plugin.
+    ///
+    /// Inserts or updates entries for the given components, removes entries
+    /// for this plugin that are no longer in the provided list, and only
+    /// bumps `last_updated` if data actually changed.
+    ///
+    /// # Arguments
+    /// * `plugin` - The plugin name
+    /// * `components` - The full set of components this plugin currently provides
+    fn upsert_plugin_components(
+        &self,
+        _plugin: &str,
+        _components: &[ComponentInfo],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        async { Ok(()) }.boxed()
+    }
+
+    /// Get all registered components, optionally filtered by plugin.
+    ///
+    /// # Arguments
+    /// * `plugin` - If `Some`, only return registrations for this plugin
+    fn get_registered_components(
+        &self,
+        _plugin: Option<&str>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StoredComponentRegistration>, StateError>> {
+        async { Ok(vec![]) }.boxed()
+    }
+
+    /// Get the most recent `last_updated` timestamp for a plugin's registrations.
+    ///
+    /// Returns `None` if no registrations exist for the plugin.
+    ///
+    /// # Arguments
+    /// * `plugin` - The plugin name
+    fn component_max_last_updated(
+        &self,
+        _plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<DateTime<Utc>>, StateError>> {
+        async { Ok(None) }.boxed()
+    }
+
+    /// Check if any component registrations exist for a plugin.
+    ///
+    /// # Arguments
+    /// * `plugin` - The plugin name
+    fn has_component_registrations(
+        &self,
+        _plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<bool, StateError>> {
+        async { Ok(false) }.boxed()
+    }
 }
