@@ -57,6 +57,18 @@ impl WorkflowLoader {
         create_environment(config).await
     }
 
+    /// Create a [`StepflowService`] from a config.
+    ///
+    /// Unlike [`Self::create_executor_from_config`], this keeps the service alive
+    /// so the caller can shut it down explicitly via [`StepflowService::abort`].
+    /// The environment is accessible via [`StepflowService::environment`].
+    /// This ensures proper cleanup of the gRPC server and worker subprocesses.
+    pub async fn create_service_from_config(config: StepflowConfig) -> Result<StepflowService> {
+        StepflowService::new(config, ServiceOptions::default())
+            .await
+            .change_context(MainError::Configuration)
+    }
+
     /// Load config and create executor in one step
     pub async fn load_and_create_executor(
         flow_path: Option<&Path>,

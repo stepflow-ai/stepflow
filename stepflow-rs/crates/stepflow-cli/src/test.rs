@@ -585,10 +585,6 @@ async fn run_single_flow_test(
         }));
     };
 
-    // Set up executor from test config
-    let config = load_test_config(flow_path, config_path, &flow)?;
-    let executor = WorkflowLoader::create_executor_from_config(config).await?;
-
     // Filter test cases if specific cases requested
     let cases_to_run: Vec<_> = if options.cases.is_empty() {
         test_cases.iter().collect()
@@ -612,11 +608,26 @@ async fn run_single_flow_test(
         }));
     }
 
+    // Compute fallible values before starting the service so early-return
+    // `?` paths cannot leak the server task.
+    let flow_id = BlobId::from_flow(&flow).change_context(MainError::Configuration)?;
+    let config = load_test_config(flow_path, config_path, &flow)?;
+
+    // Set up executor from test config.
+    //
+    // Use create_service_from_config (not create_executor_from_config) so the
+    // StepflowService stays alive and can be shut down explicitly after tests
+    // complete.  Without this, the gRPC server task is detached and runs until
+    // process exit, leaking worker subprocesses and server resources across
+    // sequential test files.  When one leaked worker's process group is killed
+    // (e.g., during crash-and-restart tests), it can collaterally kill workers
+    // that other test orchestrators are still using.
+    let service = WorkflowLoader::create_service_from_config(config).await?;
+    let executor = service.environment().clone();
+
     // Run the tests
     let mut updates = HashMap::new();
     let mut execution_errors = 0;
-
-    let flow_id = BlobId::from_flow(&flow).change_context(MainError::Configuration)?;
 
     // Batch execution: collect all inputs and run as a single batch
     let inputs: Vec<_> = cases_to_run.iter().map(|tc| tc.input.clone()).collect();
@@ -648,6 +659,12 @@ async fn run_single_flow_test(
     let total_cases = cases_to_run.len();
     let failed_cases = updates.len() + execution_errors;
     let passed_cases = total_cases - failed_cases;
+
+    // Abort the service to release all resources (gRPC server, plugins,
+    // worker subprocesses).  This prevents zombie workers from previous test
+    // files from interfering with subsequent tests — see issue #877.
+    drop(executor);
+    service.abort().await;
 
     Ok(Some(WorkflowTestResult {
         file_status: FileStatus::Run,
