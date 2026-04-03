@@ -243,18 +243,22 @@ impl StepflowService {
     /// Forcefully stop the server and release all resources.
     ///
     /// Unlike [`shutdown`] + [`wait`], this aborts the server task immediately
-    /// rather than draining existing connections.  Aborting the server task
-    /// drops the `Arc<StepflowEnvironment>` references it holds, which lets
-    /// the environment (and its plugins / worker subprocesses) be cleaned up
-    /// once all other references are dropped.
+    /// rather than draining existing connections.  Awaiting the aborted task
+    /// ensures it has observed cancellation and dropped any captured
+    /// `Arc<StepflowEnvironment>` references before returning, making cleanup
+    /// of plugins and worker subprocesses deterministic.
     ///
     /// This is used by `stepflow test` to ensure each test file's worker
     /// subprocesses are killed before the next test file starts, preventing
     /// cross-test interference.
-    pub fn abort(self) {
+    pub async fn abort(self) {
         self.cancel_token.cancel();
         self.server_handle.abort();
-        // Dropping `self` releases `self.env`, the final Arc reference.
+        // Await the aborted handle so it drops its captured state (including
+        // Arc<StepflowEnvironment> clones) before we return.
+        let _ = self.server_handle.await;
+        // Dropping `self` releases this instance's `self.env` Arc reference;
+        // cleanup occurs once any other `Arc<StepflowEnvironment>` clones are also dropped.
     }
 }
 
