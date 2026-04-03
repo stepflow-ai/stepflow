@@ -566,6 +566,18 @@ impl SqlStateStore {
         })
     }
 
+    /// Execute a raw SQL statement (e.g. DDL) against the pool.
+    ///
+    /// Useful for test setup such as creating schemas.
+    pub async fn execute_raw(&self, sql: &str) -> Result<(), StateError> {
+        sqlx::query::<Any>(sql)
+            .execute(&self.pool)
+            .await
+            .change_context(StateError::Internal)
+            .attach_printable_lazy(|| format!("failed to execute: {sql}"))?;
+        Ok(())
+    }
+
     /// Create SqlStateStore directly from a database URL.
     pub async fn from_url(database_url: &str) -> Result<Self, StateError> {
         Self::new(SqlStateStoreConfig {

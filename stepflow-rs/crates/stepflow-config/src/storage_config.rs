@@ -145,7 +145,7 @@ pub enum StoreConfig {
     InMemory,
     /// SQLite-based persistent storage.
     ///
-    /// **Supported stores**: metadata, blobs, journal
+    /// **Supported stores**: metadata, blobs, journal, checkpoint
     ///
     /// Provides durable storage with automatic schema migrations.
     /// Suitable for single-instance deployments and development.
@@ -153,7 +153,7 @@ pub enum StoreConfig {
     Sqlite(SqliteStateStoreConfig),
     /// PostgreSQL-based persistent storage.
     ///
-    /// **Supported stores**: metadata, blobs, journal
+    /// **Supported stores**: metadata, blobs, journal, checkpoint
     ///
     /// Provides durable storage with automatic schema migrations.
     /// Suitable for multi-instance and production deployments.

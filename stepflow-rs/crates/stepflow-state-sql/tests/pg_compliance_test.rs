@@ -20,6 +20,8 @@
 //! Requires Docker. Automatically skipped locally when Docker is unavailable;
 //! fails loudly in CI.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use stepflow_state::blob_compliance::BlobStoreComplianceTests;
 use stepflow_state::checkpoint_compliance::CheckpointComplianceTests;
 use stepflow_state::journal_compliance::JournalComplianceTests;
@@ -57,10 +59,37 @@ async fn start_postgres() -> (ContainerAsync<GenericImage>, String) {
     (pg, url)
 }
 
-/// Create a SqlStateStore connected to the given Postgres URL.
-async fn create_pg_store(url: &str) -> SqlStateStore {
+/// Monotonic counter for generating unique schema names within a test.
+static SCHEMA_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+/// Create a SqlStateStore with an isolated PostgreSQL schema.
+///
+/// Each invocation creates a unique schema (`test_N`) and sets it as the
+/// `search_path`, so compliance test factories get a clean namespace even
+/// though they share the same database.
+async fn create_pg_store(base_url: &str) -> SqlStateStore {
+    let n = SCHEMA_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let schema = format!("test_{n}");
+
+    // Create the schema using a temporary connection.
+    let admin = SqlStateStore::new(SqlStateStoreConfig {
+        database_url: base_url.to_string(),
+        max_connections: 1,
+        auto_migrate: false,
+    })
+    .await
+    .expect("admin connection");
+
+    admin
+        .execute_raw(&format!("CREATE SCHEMA IF NOT EXISTS \"{schema}\""))
+        .await
+        .expect("create schema");
+    drop(admin);
+
+    // Connect with search_path set to the new schema.
+    let url = format!("{base_url}?options=-c search_path%3D{schema}");
     SqlStateStore::new(SqlStateStoreConfig {
-        database_url: url.to_string(),
+        database_url: url,
         max_connections: 5,
         auto_migrate: true,
     })

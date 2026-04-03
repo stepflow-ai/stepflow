@@ -841,7 +841,7 @@
     },
     "SqliteStore": {
       "title": "SqliteStore",
-      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
+      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal, checkpoint\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
       "type": "object",
       "properties": {
         "type": {
@@ -857,7 +857,7 @@
     },
     "PostgresStore": {
       "title": "PostgresStore",
-      "description": "PostgreSQL-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for multi-instance and production deployments.",
+      "description": "PostgreSQL-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal, checkpoint\n\nProvides durable storage with automatic schema migrations.\nSuitable for multi-instance and production deployments.",
       "type": "object",
       "properties": {
         "type": {
