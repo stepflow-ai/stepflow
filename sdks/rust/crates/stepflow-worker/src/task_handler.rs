@@ -507,8 +507,7 @@ mod tests {
             .unwrap()
             .connect_lazy();
         let cache = new_channel_cache();
-        let result =
-            resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel, &cache);
+        let result = resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel, &cache);
         assert!(result.is_some());
     }
 
@@ -542,13 +541,13 @@ mod tests {
         let other_url = "http://10.0.0.5:7837";
 
         // First call creates a new channel and caches it
-        let result = resolve_orch_channel("task-1", other_url, default_url, channel.clone(), &cache);
+        let result =
+            resolve_orch_channel("task-1", other_url, default_url, channel.clone(), &cache);
         assert!(result.is_some());
         assert_eq!(cache.len(), 1);
 
         // Second call with the same URL reuses the cached channel
-        let result2 =
-            resolve_orch_channel("task-2", other_url, default_url, channel, &cache);
+        let result2 = resolve_orch_channel("task-2", other_url, default_url, channel, &cache);
         assert!(result2.is_some());
         assert_eq!(cache.len(), 1);
     }
@@ -559,8 +558,13 @@ mod tests {
             .unwrap()
             .connect_lazy();
         let cache = new_channel_cache();
-        let result =
-            resolve_orch_channel("task-1", "not a url !!!", "http://127.0.0.1:7837", channel, &cache);
+        let result = resolve_orch_channel(
+            "task-1",
+            "not a url !!!",
+            "http://127.0.0.1:7837",
+            channel,
+            &cache,
+        );
         assert!(result.is_none());
     }
 }
