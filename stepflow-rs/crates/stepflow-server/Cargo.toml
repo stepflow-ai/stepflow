@@ -41,6 +41,8 @@ uuid.workspace = true
 default = ["etcd"]
 etcd = ["stepflow-config/etcd"]
 nats = ["stepflow-config/nats"]
+postgres = ["stepflow-config/postgres"]
+sqlite = ["stepflow-config/sqlite"]
 
 [dev-dependencies]
 stepflow-builtins.workspace = true

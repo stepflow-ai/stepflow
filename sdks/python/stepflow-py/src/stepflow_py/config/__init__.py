@@ -36,7 +36,7 @@ from stepflow_py.config._generated_config import (
     MockComponentBehavior,
     MockPlugin,
     RouteRule,
-    SqliteStateStoreConfig,
+    SqlStateStoreConfig,
     StorageConfig,
     StoreConfig,
     SupportedPluginConfig,
@@ -45,8 +45,14 @@ from stepflow_py.config._generated_config import (
     InMemoryStore as InMemoryStoreConfig,
 )
 from stepflow_py.config._generated_config import (
+    PostgresStore as PostgresStoreConfig,
+)
+from stepflow_py.config._generated_config import (
     SqliteStore as SqliteStoreConfig,
 )
+
+# Backward-compatible alias
+SqliteStateStoreConfig = SqlStateStoreConfig
 
 # ============================================================================
 # Plugin Config Helper Types
@@ -124,6 +130,8 @@ __all__ = [
     "StoreConfig",
     "InMemoryStoreConfig",
     "SqliteStoreConfig",
+    "PostgresStoreConfig",
+    "SqlStateStoreConfig",
     "SqliteStateStoreConfig",
     # Routing
     "RouteRule",

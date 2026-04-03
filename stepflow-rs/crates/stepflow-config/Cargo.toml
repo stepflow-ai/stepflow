@@ -40,3 +40,5 @@ schemars.workspace = true
 [features]
 etcd = ["dep:stepflow-state-etcd"]
 nats = ["dep:stepflow-nats"]
+postgres = ["stepflow-state-sql/postgres"]
+sqlite = ["stepflow-state-sql/sqlite"]

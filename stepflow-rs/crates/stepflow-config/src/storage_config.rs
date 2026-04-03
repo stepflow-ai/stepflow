@@ -19,7 +19,7 @@ use stepflow_state::{
     BlobStore, CheckpointStore, ExecutionJournal, FilesystemBlobStore, FilesystemBlobStoreConfig,
     InMemoryStateStore, InstrumentedBlobStore, MetadataStore,
 };
-use stepflow_state_sql::{SqliteStateStore, SqliteStateStoreConfig};
+use stepflow_state_sql::{SqlStateStore, SqlStateStoreConfig, SqliteStateStoreConfig};
 
 use crate::{ConfigError, Result};
 
@@ -31,7 +31,7 @@ use crate::{ConfigError, Result};
 #[derive(Clone)]
 enum ConcreteStore {
     InMemory(Arc<InMemoryStateStore>),
-    Sqlite(Arc<SqliteStateStore>),
+    Sql(Arc<SqlStateStore>),
     Filesystem(Arc<FilesystemBlobStore>),
 }
 
@@ -42,7 +42,7 @@ impl ConcreteStore {
     fn as_metadata(&self) -> Result<Arc<dyn MetadataStore>> {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
-            ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Sql(s) => Ok(s.clone()),
             ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
                 .attach_printable("Filesystem store only supports blob storage, not metadata"),
         }
@@ -54,7 +54,7 @@ impl ConcreteStore {
     fn as_blob(&self) -> Result<Arc<dyn BlobStore>> {
         let inner: Arc<dyn BlobStore> = match self {
             ConcreteStore::InMemory(s) => s.clone(),
-            ConcreteStore::Sqlite(s) => s.clone(),
+            ConcreteStore::Sql(s) => s.clone(),
             ConcreteStore::Filesystem(s) => s.clone(),
         };
         Ok(Arc::new(InstrumentedBlobStore::new(inner)))
@@ -66,7 +66,7 @@ impl ConcreteStore {
     fn as_journal(&self) -> Result<Arc<dyn ExecutionJournal>> {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
-            ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Sql(s) => Ok(s.clone()),
             ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
                 .attach_printable(
                     "Filesystem store only supports blob storage, not execution journal",
@@ -80,7 +80,7 @@ impl ConcreteStore {
     fn as_checkpoint(&self) -> Result<Arc<dyn CheckpointStore>> {
         match self {
             ConcreteStore::InMemory(s) => Ok(s.clone()),
-            ConcreteStore::Sqlite(s) => Ok(s.clone()),
+            ConcreteStore::Sql(s) => Ok(s.clone()),
             ConcreteStore::Filesystem(_) => Err(error_stack::report!(ConfigError::Configuration))
                 .attach_printable(
                     "Filesystem store only supports blob storage, not checkpoint storage",
@@ -93,11 +93,14 @@ impl ConcreteStore {
 async fn create_concrete(config: &StoreConfig) -> Result<ConcreteStore> {
     match config {
         StoreConfig::InMemory => Ok(ConcreteStore::InMemory(Arc::new(InMemoryStateStore::new()))),
-        StoreConfig::Sqlite(sqlite_config) => {
-            let store = SqliteStateStore::new(sqlite_config.clone())
+        StoreConfig::Sqlite(sql_config) | StoreConfig::Postgres(sql_config) => {
+            // SqlStateStore::new() detects the dialect from the URL and checks
+            // that the required feature (sqlite/postgres) is compiled in,
+            // returning a clear error message if not.
+            let store = SqlStateStore::new(sql_config.clone())
                 .await
                 .change_context(ConfigError::Configuration)?;
-            Ok(ConcreteStore::Sqlite(Arc::new(store)))
+            Ok(ConcreteStore::Sql(Arc::new(store)))
         }
         StoreConfig::Filesystem(fs_config) => {
             let store = match &fs_config.directory {
@@ -148,6 +151,14 @@ pub enum StoreConfig {
     /// Suitable for single-instance deployments and development.
     #[schemars(title = "SqliteStore")]
     Sqlite(SqliteStateStoreConfig),
+    /// PostgreSQL-based persistent storage.
+    ///
+    /// **Supported stores**: metadata, blobs, journal
+    ///
+    /// Provides durable storage with automatic schema migrations.
+    /// Suitable for multi-instance and production deployments.
+    #[schemars(title = "PostgresStore")]
+    Postgres(SqlStateStoreConfig),
     /// Filesystem-based blob storage.
     ///
     /// **Supported stores**: blobs only
@@ -425,5 +436,45 @@ metadata:
 
         assert_eq!(config1, config2);
         assert_ne!(config1, config3);
+    }
+
+    #[test]
+    fn test_simple_form_postgres() {
+        let yaml = r#"
+type: postgres
+databaseUrl: "postgres://user:pass@localhost/db"
+"#;
+        let config: StorageConfig = serde_yaml_ng::from_str(yaml).unwrap();
+        match config {
+            StorageConfig::Simple(StoreConfig::Postgres(c)) => {
+                assert_eq!(c.database_url, "postgres://user:pass@localhost/db");
+            }
+            _ => panic!("Expected Simple(Postgres)"),
+        }
+    }
+
+    #[test]
+    fn test_expanded_form_postgres_metadata_sqlite_blobs() {
+        let yaml = r#"
+metadata:
+  type: postgres
+  databaseUrl: "postgres://user:pass@localhost/db"
+blobs:
+  type: sqlite
+  databaseUrl: "sqlite:blobs.db"
+"#;
+        let config: StorageConfig = serde_yaml_ng::from_str(yaml).unwrap();
+        match config {
+            StorageConfig::Expanded {
+                metadata,
+                blobs,
+                journal,
+            } => {
+                assert!(matches!(metadata, StoreConfig::Postgres(_)));
+                assert!(matches!(blobs, Some(StoreConfig::Sqlite(_))));
+                assert!(journal.is_none());
+            }
+            _ => panic!("Expected Expanded"),
+        }
     }
 }

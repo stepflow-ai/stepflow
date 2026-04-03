@@ -4557,7 +4557,9 @@ dependencies = [
  "stepflow-core",
  "stepflow-domain",
  "stepflow-state",
+ "stepflow-test-utils",
  "tempfile",
+ "testcontainers",
  "tokio",
  "uuid",
 ]
