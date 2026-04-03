@@ -595,6 +595,9 @@
           "$ref": "#/$defs/SqliteStore"
         },
         {
+          "$ref": "#/$defs/PostgresStore"
+        },
+        {
           "$ref": "#/$defs/FilesystemStore"
         }
       ],
@@ -603,12 +606,13 @@
         "mapping": {
           "inMemory": "#/$defs/InMemoryStore",
           "sqlite": "#/$defs/SqliteStore",
+          "postgres": "#/$defs/PostgresStore",
           "filesystem": "#/$defs/FilesystemStore"
         }
       }
     },
-    "SqliteStateStoreConfig": {
-      "description": "Configuration for SqliteStateStore",
+    "SqlStateStoreConfig": {
+      "description": "Configuration for SqlStateStore.\n\nThe dialect (SQLite vs PostgreSQL) is detected from the `database_url` prefix.",
       "type": "object",
       "properties": {
         "databaseUrl": {
@@ -837,7 +841,7 @@
     },
     "SqliteStore": {
       "title": "SqliteStore",
-      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
+      "description": "SQLite-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal, checkpoint\n\nProvides durable storage with automatic schema migrations.\nSuitable for single-instance deployments and development.",
       "type": "object",
       "properties": {
         "type": {
@@ -846,7 +850,23 @@
           "default": "sqlite"
         }
       },
-      "$ref": "#/$defs/SqliteStateStoreConfig",
+      "$ref": "#/$defs/SqlStateStoreConfig",
+      "required": [
+        "type"
+      ]
+    },
+    "PostgresStore": {
+      "title": "PostgresStore",
+      "description": "PostgreSQL-based persistent storage.\n\n**Supported stores**: metadata, blobs, journal, checkpoint\n\nProvides durable storage with automatic schema migrations.\nSuitable for multi-instance and production deployments.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "postgres",
+          "default": "postgres"
+        }
+      },
+      "$ref": "#/$defs/SqlStateStoreConfig",
       "required": [
         "type"
       ]

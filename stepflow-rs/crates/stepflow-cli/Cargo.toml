@@ -53,6 +53,8 @@ testcontainers.workspace = true
 default = ["etcd"]
 etcd = ["stepflow-config/etcd", "stepflow-server/etcd"]
 nats = ["stepflow-config/nats"]
+postgres = ["stepflow-config/postgres", "stepflow-server/postgres"]
+sqlite = ["stepflow-config/sqlite", "stepflow-server/sqlite"]
 
 [[bin]]
 name = "stepflow"

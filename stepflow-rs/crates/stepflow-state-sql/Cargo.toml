@@ -15,6 +15,11 @@ workspace = true
 [lib]
 doctest = false
 
+[features]
+default = ["sqlite"]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
+
 [dependencies]
 async-stream.workspace = true
 bytes.workspace = true
@@ -34,3 +39,5 @@ schemars.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+testcontainers.workspace = true
+stepflow-test-utils.workspace = true

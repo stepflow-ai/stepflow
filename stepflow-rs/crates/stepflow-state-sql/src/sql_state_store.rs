@@ -10,14 +10,14 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::fmt::Write as _;
 
 use error_stack::{Result, ResultExt as _};
 use futures::future::{BoxFuture, FutureExt as _};
-use sqlx::{
-    FromRow, QueryBuilder, Sqlite, SqlitePool,
-    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
-};
+use sqlx::any::AnyPoolOptions;
+use sqlx::{Any, AnyPool, FromRow};
 use stepflow_core::status::{ExecutionStatus, StepStatus};
 use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult};
 use stepflow_domain::{
@@ -29,14 +29,102 @@ use stepflow_state::{
 };
 use uuid::Uuid;
 
-use crate::migrations;
+// =========================================================================
+// SqlDialect
+// =========================================================================
 
-/// Map u64 → i64 preserving ordering (for SQLite INTEGER columns).
+/// The SQL dialect detected from the database URL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlDialect {
+    Sqlite,
+    Postgres,
+}
+
+impl SqlDialect {
+    /// Detect dialect from a database URL.
+    pub fn from_url(url: &str) -> Result<Self, StateError> {
+        if url.starts_with("sqlite:") {
+            return Ok(SqlDialect::Sqlite);
+        }
+        if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+            return Ok(SqlDialect::Postgres);
+        }
+        Err(
+            error_stack::report!(StateError::Connection).attach_printable(format!(
+                "Unsupported database URL scheme (expected sqlite: or postgres://): {url}"
+            )),
+        )
+    }
+
+    /// Check that the required feature is compiled in for this dialect.
+    ///
+    /// Returns an error with a helpful message telling the user which Cargo
+    /// feature to enable.
+    pub fn check_feature_enabled(&self) -> Result<(), StateError> {
+        match self {
+            SqlDialect::Sqlite => {
+                #[cfg(feature = "sqlite")]
+                return Ok(());
+                #[cfg(not(feature = "sqlite"))]
+                return Err(
+                    error_stack::report!(StateError::Connection).attach_printable(
+                        "SQLite support was not compiled in. \
+                     Rebuild with the `sqlite` feature enabled to use SQLite storage.",
+                    ),
+                );
+            }
+            SqlDialect::Postgres => {
+                #[cfg(feature = "postgres")]
+                return Ok(());
+                #[cfg(not(feature = "postgres"))]
+                return Err(
+                    error_stack::report!(StateError::Connection).attach_printable(
+                        "PostgreSQL support was not compiled in. \
+                     Rebuild with the `postgres` feature enabled to use PostgreSQL storage.",
+                    ),
+                );
+            }
+        }
+    }
+}
+
+// =========================================================================
+// Placeholder rewriting
+// =========================================================================
+
+/// Rewrite `?` placeholders to `$1, $2, …` for PostgreSQL. Returns the
+/// original string borrowed for SQLite (zero-cost).
+fn rewrite_placeholders(sql: &str, dialect: SqlDialect) -> Cow<'_, str> {
+    match dialect {
+        SqlDialect::Sqlite => Cow::Borrowed(sql),
+        SqlDialect::Postgres => {
+            if !sql.contains('?') {
+                return Cow::Borrowed(sql);
+            }
+            let mut result = String::with_capacity(sql.len() + 32);
+            let mut idx = 0u32;
+            for ch in sql.chars() {
+                if ch == '?' {
+                    idx += 1;
+                    write!(result, "${idx}").unwrap();
+                } else {
+                    result.push(ch);
+                }
+            }
+            Cow::Owned(result)
+        }
+    }
+}
+
+// =========================================================================
+// Helpers
+// =========================================================================
+
+/// Map u64 → i64 preserving ordering (for SQL INTEGER/BIGINT columns).
 ///
 /// XORs the sign bit so that `0u64 → i64::MIN` and `u64::MAX → i64::MAX`.
-/// This is a bijection: every u64 maps to a unique i64 and the relative
-/// ordering of any two u64 values is preserved in the i64 domain, which
-/// means SQLite `>=` / `ORDER BY` comparisons work correctly.
+/// This is a bijection that preserves the relative ordering of any two u64
+/// values in the i64 domain, so SQL `>=` / `ORDER BY` comparisons work.
 fn u64_to_sql(v: u64) -> i64 {
     (v ^ (1u64 << 63)) as i64
 }
@@ -70,12 +158,35 @@ fn parse_execution_status(s: &str) -> ExecutionStatus {
     }
 }
 
+/// Parse a datetime string stored by either SQLite or PostgreSQL.
+///
+/// Handles:
+/// - RFC 3339 (`2025-12-24T19:26:14Z`)
+/// - SQLite CURRENT_TIMESTAMP (`2025-12-24 19:26:14`)
+/// - PostgreSQL implicit timestamptz→text (`2025-12-24 19:26:14+00`)
+/// - PostgreSQL with fractional seconds (`2025-12-24 19:26:14.123456+00`)
+fn parse_sql_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    // RFC 3339
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    // SQLite CURRENT_TIMESTAMP format
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(naive.and_utc());
+    }
+    // PostgreSQL with fractional seconds and timezone
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f%#z") {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    // PostgreSQL without fractional seconds but with timezone
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%#z") {
+        return Some(dt.with_timezone(&chrono::Utc));
+    }
+    None
+}
+
 // =========================================================================
 // FromRow structs — typed column extraction for all SQL queries.
-//
-// sqlx::FromRow derives try_get() for every field, replacing manual
-// row.get() calls that panic on decode errors. Field names must match
-// SQL column names (or use #[sqlx(rename = "...")]).
 // =========================================================================
 
 #[derive(FromRow)]
@@ -215,7 +326,7 @@ impl StepStatusRow {
         let updated_at = self
             .updated_at
             .as_deref()
-            .and_then(parse_sqlite_datetime)
+            .and_then(parse_sql_datetime)
             .unwrap_or_else(|| {
                 log::warn!(
                     "Missing or unparseable updated_at for step '{}'",
@@ -244,11 +355,11 @@ impl RunRow {
         items: ItemStatistics,
     ) -> error_stack::Result<RunSummary, StateError> {
         let flow_id = BlobId::new(self.flow_id).change_context(StateError::Internal)?;
-        let created_at = parse_sqlite_datetime(&self.created_at).ok_or_else(|| {
+        let created_at = parse_sql_datetime(&self.created_at).ok_or_else(|| {
             error_stack::report!(StateError::Internal)
                 .attach_printable(format!("unparseable created_at: {}", self.created_at))
         })?;
-        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+        let completed_at = self.completed_at.as_deref().and_then(parse_sql_datetime);
         let root_run_id = self
             .root_run_id
             .as_deref()
@@ -280,9 +391,9 @@ impl ListRunsRow {
     fn into_summary(self) -> error_stack::Result<RunSummary, StateError> {
         let run_id = Uuid::parse_str(&self.id).change_context(StateError::Internal)?;
         let flow_id = BlobId::new(self.flow_id).change_context(StateError::Internal)?;
-        let created_at = parse_sqlite_datetime(&self.created_at)
+        let created_at = parse_sql_datetime(&self.created_at)
             .ok_or_else(|| error_stack::report!(StateError::Internal))?;
-        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+        let completed_at = self.completed_at.as_deref().and_then(parse_sql_datetime);
         let root_run_id = self
             .root_run_id
             .as_deref()
@@ -329,7 +440,7 @@ impl ItemResultRow {
                     self.item_index
                 )
             })?;
-        let completed_at = self.completed_at.as_deref().and_then(parse_sqlite_datetime);
+        let completed_at = self.completed_at.as_deref().and_then(parse_sql_datetime);
 
         Ok(ItemResult {
             item_index: self.item_index as usize,
@@ -340,30 +451,18 @@ impl ItemResultRow {
     }
 }
 
-/// Parse a datetime string from SQLite.
+// =========================================================================
+// SqlStateStoreConfig
+// =========================================================================
+
+/// Configuration for SqlStateStore.
 ///
-/// SQLite's CURRENT_TIMESTAMP uses format "YYYY-MM-DD HH:MM:SS" but we also
-/// want to support RFC3339 format for compatibility.
-fn parse_sqlite_datetime(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
-    // Try RFC3339 first (e.g., "2025-12-24T19:26:14Z")
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return Some(dt.with_timezone(&chrono::Utc));
-    }
-
-    // Try SQLite's CURRENT_TIMESTAMP format (e.g., "2025-12-24 19:26:14")
-    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
-        return Some(naive.and_utc());
-    }
-
-    None
-}
-
-/// Configuration for SqliteStateStore
+/// The dialect (SQLite vs PostgreSQL) is detected from the `database_url` prefix.
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
 #[serde(rename_all = "camelCase")]
-pub struct SqliteStateStoreConfig {
+pub struct SqlStateStoreConfig {
     pub database_url: String,
     #[serde(default = "default_max_connections")]
     pub max_connections: u32,
@@ -379,72 +478,146 @@ fn default_auto_migrate() -> bool {
     true
 }
 
-/// SQLite-based MetadataStore, BlobStore, and ExecutionJournal implementation.
-pub struct SqliteStateStore {
-    pub(crate) pool: SqlitePool,
-    /// Notifier for run completion events
+/// Backward-compatible type alias.
+pub type SqliteStateStoreConfig = SqlStateStoreConfig;
+
+/// PostgreSQL configuration (same struct, dialect detected from URL).
+pub type PgStateStoreConfig = SqlStateStoreConfig;
+
+// =========================================================================
+// SqlStateStore
+// =========================================================================
+
+/// Ensure sqlx's `Any` drivers are installed exactly once.
+static INSTALL_DRIVERS: std::sync::Once = std::sync::Once::new();
+
+/// SQL-backed MetadataStore, BlobStore, ExecutionJournal, and CheckpointStore.
+///
+/// Works with both SQLite and PostgreSQL via sqlx's `Any` driver. The dialect
+/// is detected from the connection URL and controls which migration DDL is used
+/// and how placeholders are formatted.
+pub struct SqlStateStore {
+    pub(crate) pool: AnyPool,
+    pub(crate) dialect: SqlDialect,
     completion_notifier: RunCompletionNotifier,
 }
 
-impl SqliteStateStore {
-    /// Create a new SqliteStateStore with the given configuration.
+/// Backward-compatible type alias.
+pub type SqliteStateStore = SqlStateStore;
+
+/// PostgreSQL alias.
+pub type PgStateStore = SqlStateStore;
+
+impl SqlStateStore {
+    /// Create a new SqlStateStore with the given configuration.
     ///
-    /// If `auto_migrate` is true, runs all migrations (blob, metadata, journal).
-    /// For selective initialization, set `auto_migrate` to false and call the
-    /// trait-level `initialize_*` methods instead.
-    pub async fn new(config: SqliteStateStoreConfig) -> Result<Self, StateError> {
-        let connect_options = config
-            .database_url
-            .parse::<SqliteConnectOptions>()
-            .map_err(|e| {
-                error_stack::report!(StateError::Connection).attach_printable(format!(
-                    "Invalid database URL '{}': {e}",
-                    config.database_url
-                ))
-            })?;
+    /// The dialect is detected from the URL prefix (`sqlite:` or `postgres://`).
+    /// If `auto_migrate` is true, runs all migrations for the detected dialect.
+    pub async fn new(config: SqlStateStoreConfig) -> Result<Self, StateError> {
+        INSTALL_DRIVERS.call_once(sqlx::any::install_default_drivers);
 
-        let connect_options = connect_options
-            // WAL mode allows concurrent readers during writes — the facade
-            // polls for status while the execution engine writes step results.
-            .pragma("journal_mode", "WAL")
-            // Writers wait up to 5s instead of failing immediately on contention.
-            .pragma("busy_timeout", "5000")
-            // Store temporary tables and indices in memory. Without this,
-            // SQLite tries to create temp files in /tmp which fails with
-            // SQLITE_IOERR_GETTEMPPATH (6410) when the container has
-            // readOnlyRootFilesystem: true.
-            .pragma("temp_store", "MEMORY");
+        let dialect = SqlDialect::from_url(&config.database_url)?;
+        dialect.check_feature_enabled()?;
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(config.max_connections)
-            .connect_with(connect_options)
-            .await
-            .change_context(StateError::Connection)
-            .attach_printable_lazy(|| format!("Database URL: {}", config.database_url))?;
+        let pool = {
+            // SQLite in-memory databases are per-connection. When using AnyPool
+            // with `sqlite::memory:`, each pool connection would get a separate
+            // empty database. Restrict to 1 connection so migrations and queries
+            // share the same database.
+            let max_conn = if config.database_url.contains(":memory:") {
+                1
+            } else {
+                config.max_connections
+            };
+
+            let opts = AnyPoolOptions::new()
+                .max_connections(max_conn)
+                .after_connect(move |conn, _meta| {
+                    Box::pin(async move {
+                        if dialect == SqlDialect::Sqlite {
+                            sqlx::query("PRAGMA journal_mode=WAL")
+                                .execute(&mut *conn)
+                                .await?;
+                            sqlx::query("PRAGMA busy_timeout=5000")
+                                .execute(&mut *conn)
+                                .await?;
+                            sqlx::query("PRAGMA temp_store=MEMORY")
+                                .execute(&mut *conn)
+                                .await?;
+                        }
+                        Ok(())
+                    })
+                });
+
+            opts.connect(&config.database_url)
+                .await
+                .change_context(StateError::Connection)
+                .attach_printable_lazy(|| format!("Database URL: {}", config.database_url))?
+        };
 
         if config.auto_migrate {
-            migrations::run_all_migrations(&pool).await?;
+            run_all_migrations(&pool, dialect).await?;
         }
 
         Ok(Self {
             pool,
+            dialect,
             completion_notifier: RunCompletionNotifier::new(),
         })
     }
 
-    /// Create SqliteStateStore directly from a database URL.
+    /// Execute a raw SQL statement (e.g. DDL) against the pool.
+    ///
+    /// Useful for test setup such as creating schemas.
+    pub async fn execute_raw(&self, sql: &str) -> Result<(), StateError> {
+        sqlx::query::<Any>(sql)
+            .execute(&self.pool)
+            .await
+            .change_context(StateError::Internal)
+            .attach_printable_lazy(|| format!("failed to execute: {sql}"))?;
+        Ok(())
+    }
+
+    /// Create SqlStateStore directly from a database URL.
     pub async fn from_url(database_url: &str) -> Result<Self, StateError> {
-        let config = SqliteStateStoreConfig {
+        Self::new(SqlStateStoreConfig {
             database_url: database_url.to_string(),
             max_connections: default_max_connections(),
             auto_migrate: default_auto_migrate(),
-        };
-        Self::new(config).await
+        })
+        .await
     }
 
-    /// Internal helper for creating a run in the database
+    /// Ensure sqlx Any drivers are installed. Called automatically by constructors,
+    /// but useful for tests that create raw `AnyPool` instances directly.
+    pub fn ensure_drivers() {
+        INSTALL_DRIVERS.call_once(sqlx::any::install_default_drivers);
+    }
+
+    /// Create an in-memory SQLite database for testing.
+    pub async fn in_memory() -> Result<Self, StateError> {
+        Self::from_url("sqlite::memory:").await
+    }
+
+    /// Rewrite `?` placeholders to `$N` for PostgreSQL; no-op for SQLite.
+    fn sql<'a>(&self, query: &'a str) -> Cow<'a, str> {
+        rewrite_placeholders(query, self.dialect)
+    }
+
+    /// Format the current timestamp as a string for SQL binding.
+    ///
+    /// Used in UPDATE statements (e.g. `SET completed_at = ?`) instead of
+    /// relying on `CURRENT_TIMESTAMP`, which returns different types across
+    /// dialects. Binding an explicit string keeps all columns consistently
+    /// decodable as `String` via the `Any` driver.
+    fn now_str() -> String {
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string()
+    }
+
+    /// Internal helper for creating a run in the database.
     async fn create_run_sync(
-        pool: &SqlitePool,
+        pool: &AnyPool,
+        dialect: SqlDialect,
         params: stepflow_state::CreateRunParams,
     ) -> Result<(), StateError> {
         let overrides_json = if params.overrides.is_empty() {
@@ -456,13 +629,17 @@ impl SqliteStateStore {
             )
         };
 
-        // Insert run metadata (items stored separately in run_items)
-        // Use INSERT OR IGNORE for idempotent behavior - preserves existing run
-        let sql = "INSERT OR IGNORE INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id, created_at_seqno) VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)";
-
         let created_at_seqno: i64 = u64_to_sql(params.created_at_seqno.value());
 
-        sqlx::query(sql)
+        // Portable upsert: ON CONFLICT DO NOTHING works in both SQLite 3.24+ and PostgreSQL.
+        let sql = rewrite_placeholders(
+            "INSERT INTO runs (id, flow_id, flow_name, status, overrides_json, root_run_id, parent_run_id, orchestrator_id, created_at_seqno) \
+             VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?) \
+             ON CONFLICT DO NOTHING",
+            dialect,
+        );
+
+        sqlx::query::<Any>(&sql)
             .bind(params.run_id.to_string())
             .bind(params.flow_id.to_string())
             .bind(&params.workflow_name)
@@ -475,12 +652,16 @@ impl SqliteStateStore {
             .await
             .change_context(StateError::Internal)?;
 
-        // Insert each input as a run_item (also idempotent)
-        let item_sql = "INSERT OR IGNORE INTO run_items (run_id, item_index, input_json, status) VALUES (?, ?, ?, 'running')";
+        let item_sql = rewrite_placeholders(
+            "INSERT INTO run_items (run_id, item_index, input_json, status) \
+             VALUES (?, ?, ?, 'running') \
+             ON CONFLICT DO NOTHING",
+            dialect,
+        );
         for (idx, input) in params.inputs.iter().enumerate() {
             let input_json =
                 serde_json::to_string(input.as_ref()).change_context(StateError::Serialization)?;
-            sqlx::query(item_sql)
+            sqlx::query::<Any>(&item_sql)
                 .bind(params.run_id.to_string())
                 .bind(idx as i64)
                 .bind(&input_json)
@@ -491,17 +672,60 @@ impl SqliteStateStore {
 
         Ok(())
     }
-
-    /// Create an in-memory SQLite database for testing
-    pub async fn in_memory() -> Result<Self, StateError> {
-        Self::from_url("sqlite::memory:").await
-    }
 }
 
-impl BlobStore for SqliteStateStore {
+// =========================================================================
+// Migration dispatch
+// =========================================================================
+
+/// Dispatch macro for migration functions. Routes to the correct dialect module
+/// based on the `SqlDialect`, with compile-time feature gating.
+macro_rules! dispatch_migration {
+    ($pool:expr, $dialect:expr, $method:ident) => {
+        match $dialect {
+            #[cfg(feature = "sqlite")]
+            SqlDialect::Sqlite => crate::sqlite_migrations::$method($pool).await,
+            #[cfg(feature = "postgres")]
+            SqlDialect::Postgres => crate::pg_migrations::$method($pool).await,
+            // Unreachable: check_feature_enabled() in new() catches this before
+            // we ever get here. But the compiler needs exhaustive match arms when
+            // a feature is disabled.
+            #[allow(unreachable_patterns)]
+            _ => Err(error_stack::report!(StateError::Connection)
+                .attach_printable("SQL dialect not compiled in")),
+        }
+    };
+}
+
+async fn run_all_migrations(pool: &AnyPool, dialect: SqlDialect) -> Result<(), StateError> {
+    dispatch_migration!(pool, dialect, run_all_migrations)
+}
+
+async fn run_blob_migrations(pool: &AnyPool, dialect: SqlDialect) -> Result<(), StateError> {
+    dispatch_migration!(pool, dialect, run_blob_migrations)
+}
+
+async fn run_metadata_migrations(pool: &AnyPool, dialect: SqlDialect) -> Result<(), StateError> {
+    dispatch_migration!(pool, dialect, run_metadata_migrations)
+}
+
+async fn run_journal_migrations(pool: &AnyPool, dialect: SqlDialect) -> Result<(), StateError> {
+    dispatch_migration!(pool, dialect, run_journal_migrations)
+}
+
+async fn run_checkpoint_migrations(pool: &AnyPool, dialect: SqlDialect) -> Result<(), StateError> {
+    dispatch_migration!(pool, dialect, run_checkpoint_migrations)
+}
+
+// =========================================================================
+// BlobStore
+// =========================================================================
+
+impl BlobStore for SqlStateStore {
     fn initialize_blob_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        async move { migrations::run_blob_migrations(&pool).await }.boxed()
+        let dialect = self.dialect;
+        async move { run_blob_migrations(&pool, dialect).await }.boxed()
     }
 
     fn put_blob(
@@ -520,11 +744,12 @@ impl BlobStore for SqliteStateStore {
                 BlobType::Binary => "binary",
             };
 
-            // Store raw bytes directly in BLOB column
-            let sql =
-                "INSERT OR IGNORE INTO blobs (id, data, blob_type, filename) VALUES (?, ?, ?, ?)";
+            let sql = self.sql(
+                "INSERT INTO blobs (id, data, blob_type, filename) VALUES (?, ?, ?, ?) \
+                 ON CONFLICT DO NOTHING",
+            );
 
-            sqlx::query(sql)
+            sqlx::query::<Any>(&sql)
                 .bind(blob_id.as_str())
                 .bind(&content)
                 .bind(type_str)
@@ -544,9 +769,9 @@ impl BlobStore for SqliteStateStore {
     ) -> BoxFuture<'_, error_stack::Result<Option<RawBlob>, StateError>> {
         let blob_id = blob_id.clone();
         async move {
-            let sql = "SELECT data, blob_type, filename FROM blobs WHERE id = ?";
+            let sql = self.sql("SELECT data, blob_type, filename FROM blobs WHERE id = ?");
 
-            let row = sqlx::query_as::<_, BlobRow>(sql)
+            let row = sqlx::query_as::<Any, BlobRow>(&sql)
                 .bind(blob_id.as_str())
                 .fetch_optional(&self.pool)
                 .await
@@ -582,10 +807,15 @@ impl BlobStore for SqliteStateStore {
     }
 }
 
-impl MetadataStore for SqliteStateStore {
+// =========================================================================
+// MetadataStore
+// =========================================================================
+
+impl MetadataStore for SqlStateStore {
     fn initialize_metadata_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        async move { migrations::run_metadata_migrations(&pool).await }.boxed()
+        let dialect = self.dialect;
+        async move { run_metadata_migrations(&pool, dialect).await }.boxed()
     }
 
     fn create_run(
@@ -593,7 +823,8 @@ impl MetadataStore for SqliteStateStore {
         params: stepflow_state::CreateRunParams,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        async move { Self::create_run_sync(&pool, params).await }.boxed()
+        let dialect = self.dialect;
+        async move { Self::create_run_sync(&pool, dialect, params).await }.boxed()
     }
 
     fn get_run(
@@ -603,22 +834,24 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT flow_name, flow_id, status, created_at, completed_at, root_run_id, parent_run_id, orchestrator_id, created_at_seqno, finished_at_seqno FROM runs WHERE id = ?";
+            let sql = self.sql(
+                "SELECT flow_name, flow_id, status, created_at, completed_at, root_run_id, \
+                 parent_run_id, orchestrator_id, created_at_seqno, finished_at_seqno \
+                 FROM runs WHERE id = ?",
+            );
 
-            let row = sqlx::query_as::<_, RunRow>(sql)
+            let row = sqlx::query_as::<Any, RunRow>(&sql)
                 .bind(run_id.to_string())
                 .fetch_optional(&pool)
                 .await
                 .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!("failed to fetch run '{run_id}'")
-                })?;
+                .attach_printable_lazy(|| format!("failed to fetch run '{run_id}'"))?;
 
             match row {
                 Some(run_row) => {
-                    // Compute item statistics from the run_items table
-                    let items_sql = "SELECT status, COUNT(*) as cnt FROM run_items WHERE run_id = ? GROUP BY status";
-                    let stat_rows = sqlx::query_as::<_, RunStatRow>(items_sql)
+                    let items_sql =
+                        self.sql("SELECT status, COUNT(*) as cnt FROM run_items WHERE run_id = ? GROUP BY status");
+                    let stat_rows = sqlx::query_as::<Any, RunStatRow>(&items_sql)
                         .bind(run_id.to_string())
                         .fetch_all(&pool)
                         .await
@@ -654,10 +887,11 @@ impl MetadataStore for SqliteStateStore {
                     };
 
                     Ok(Some(run_row.into_summary(run_id, items)?))
-                },
+                }
                 None => Ok(None),
             }
-        }.boxed()
+        }
+        .boxed()
     }
 
     fn list_runs(
@@ -668,7 +902,9 @@ impl MetadataStore for SqliteStateStore {
         let filters = filters.clone();
 
         async move {
-            let mut qb = QueryBuilder::<Sqlite>::new(
+            // Build dynamic WHERE clause with `?` placeholders. Rewritten to
+            // `$N` for PostgreSQL by `self.sql()` at the end.
+            let mut sql = String::from(
                 r#"SELECT
                     r.id, r.flow_name, r.flow_id, r.status,
                     r.created_at, r.completed_at,
@@ -693,74 +929,84 @@ impl MetadataStore for SqliteStateStore {
                 ) i ON r.id = i.run_id WHERE 1=1"#,
             );
 
+            // Bind values in order: String or i64, tracked as an enum.
+            #[derive(Clone)]
+            enum BindValue {
+                Str(String),
+                Int(i64),
+            }
+            let mut binds: Vec<BindValue> = Vec::new();
+
             if let Some(ref status) = filters.status {
-                qb.push(" AND r.status = ");
-                qb.push_bind(status.as_str().to_string());
+                sql.push_str(" AND r.status = ?");
+                binds.push(BindValue::Str(status.as_str().to_string()));
             }
 
             if let Some(ref flow_name) = filters.flow_name {
-                qb.push(" AND r.flow_name = ");
-                qb.push_bind(flow_name.clone());
+                sql.push_str(" AND r.flow_name = ?");
+                binds.push(BindValue::Str(flow_name.clone()));
             }
 
             if let Some(root_run_id) = filters.root_run_id {
-                qb.push(" AND r.root_run_id = ");
-                qb.push_bind(root_run_id.to_string());
+                sql.push_str(" AND r.root_run_id = ?");
+                binds.push(BindValue::Str(root_run_id.to_string()));
             }
 
             if let Some(parent_run_id) = filters.parent_run_id {
-                qb.push(" AND r.parent_run_id = ");
-                qb.push_bind(parent_run_id.to_string());
+                sql.push_str(" AND r.parent_run_id = ?");
+                binds.push(BindValue::Str(parent_run_id.to_string()));
             }
 
-            // Filter for root runs only (no parent)
             if filters.roots_only == Some(true) {
-                qb.push(" AND r.parent_run_id IS NULL");
+                sql.push_str(" AND r.parent_run_id IS NULL");
             }
 
-            // Filter by orchestrator_id
             if let Some(ref orch_filter) = filters.orchestrator_id {
                 match orch_filter {
                     Some(orch_id) => {
-                        qb.push(" AND r.orchestrator_id = ");
-                        qb.push_bind(orch_id.clone());
+                        sql.push_str(" AND r.orchestrator_id = ?");
+                        binds.push(BindValue::Str(orch_id.clone()));
                     }
                     None => {
-                        qb.push(" AND r.orchestrator_id IS NULL");
+                        sql.push_str(" AND r.orchestrator_id IS NULL");
                     }
                 }
             }
 
-            // Filter by created_after_seqno (journal sequence ordering).
-            // Convert u64 → i64 via u64_to_sql (order-preserving) so the SQL >=
-            // comparison operates on the same encoding used at insert time.
             if let Some(offset_gte) = filters.created_after_seqno {
-                qb.push(" AND r.created_at_seqno >= ");
-                qb.push_bind(u64_to_sql(offset_gte));
+                sql.push_str(" AND r.created_at_seqno >= ?");
+                binds.push(BindValue::Int(u64_to_sql(offset_gte)));
             }
 
-            // Filter: runs that haven't finished before the given seqno.
-            // Semantics: still running (NULL) OR finished at/after this point.
             if let Some(seqno) = filters.not_finished_before_seqno {
-                qb.push(" AND (r.finished_at_seqno IS NULL OR r.finished_at_seqno >= ");
-                qb.push_bind(u64_to_sql(seqno));
-                qb.push(")");
+                sql.push_str(" AND (r.finished_at_seqno IS NULL OR r.finished_at_seqno >= ?)");
+                binds.push(BindValue::Int(u64_to_sql(seqno)));
             }
 
-            qb.push(" ORDER BY r.created_at DESC");
+            sql.push_str(" ORDER BY r.created_at DESC");
 
             if let Some(limit) = filters.limit {
-                qb.push(" LIMIT ");
-                qb.push_bind(limit as i64);
+                sql.push_str(" LIMIT ?");
+                binds.push(BindValue::Int(limit as i64));
 
                 if let Some(offset) = filters.offset {
-                    qb.push(" OFFSET ");
-                    qb.push_bind(offset as i64);
+                    sql.push_str(" OFFSET ?");
+                    binds.push(BindValue::Int(offset as i64));
                 }
             }
 
-            let rows = qb
-                .build_query_as::<ListRunsRow>()
+            let sql = self.sql(&sql);
+
+            // Build the query and bind all values in order.
+            let mut query = sqlx::query_as::<Any, ListRunsRow>(&sql);
+            for bind in &binds {
+                match bind {
+                    BindValue::Str(s) => query = query.bind(s.clone()),
+                    BindValue::Int(i) => query = query.bind(*i),
+                }
+            }
+
+            let rows = query
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)
@@ -780,7 +1026,7 @@ impl MetadataStore for SqliteStateStore {
         &self,
         run_id: Uuid,
         status: ExecutionStatus,
-        finished_at_seqno: Option<stepflow_state::SequenceNumber>,
+        finished_at_seqno: Option<SequenceNumber>,
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
 
@@ -793,29 +1039,33 @@ impl MetadataStore for SqliteStateStore {
                     | ExecutionStatus::RecoveryFailed
             );
 
+            let now = Self::now_str();
+
             if let Some(seqno) = finished_at_seqno.filter(|_| is_terminal) {
                 let seqno_sql = u64_to_sql(seqno.value());
-                sqlx::query(
-                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP, \
-                     finished_at_seqno = ? WHERE id = ?",
-                )
-                .bind(status.as_str())
-                .bind(seqno_sql)
-                .bind(run_id.to_string())
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
+                let sql = self.sql(
+                    "UPDATE runs SET status = ?, completed_at = ?, finished_at_seqno = ? WHERE id = ?",
+                );
+                sqlx::query::<Any>(&sql)
+                    .bind(status.as_str())
+                    .bind(&now)
+                    .bind(seqno_sql)
+                    .bind(run_id.to_string())
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
             } else if is_terminal {
-                sqlx::query(
-                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
-                )
-                .bind(status.as_str())
-                .bind(run_id.to_string())
-                .execute(&pool)
-                .await
-                .change_context(StateError::Internal)?;
+                let sql = self.sql("UPDATE runs SET status = ?, completed_at = ? WHERE id = ?");
+                sqlx::query::<Any>(&sql)
+                    .bind(status.as_str())
+                    .bind(&now)
+                    .bind(run_id.to_string())
+                    .execute(&pool)
+                    .await
+                    .change_context(StateError::Internal)?;
             } else {
-                sqlx::query("UPDATE runs SET status = ? WHERE id = ?")
+                let sql = self.sql("UPDATE runs SET status = ? WHERE id = ?");
+                sqlx::query::<Any>(&sql)
                     .bind(status.as_str())
                     .bind(run_id.to_string())
                     .execute(&pool)
@@ -863,16 +1113,18 @@ impl MetadataStore for SqliteStateStore {
             let step_statuses_json =
                 serde_json::to_string(&step_statuses).change_context(StateError::Serialization)?;
 
-            let sql = r#"
-                UPDATE run_items
-                SET status = ?, result_json = ?, step_statuses_json = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE run_id = ? AND item_index = ?
-            "#;
+            let now = Self::now_str();
+            let sql = self.sql(
+                "UPDATE run_items \
+                 SET status = ?, result_json = ?, step_statuses_json = ?, completed_at = ? \
+                 WHERE run_id = ? AND item_index = ?",
+            );
 
-            let result = sqlx::query(sql)
+            let result = sqlx::query::<Any>(&sql)
                 .bind(status)
                 .bind(&result_json)
                 .bind(&step_statuses_json)
+                .bind(&now)
                 .bind(run_id.to_string())
                 .bind(item_index as i64)
                 .execute(&pool)
@@ -883,14 +1135,14 @@ impl MetadataStore for SqliteStateStore {
                 return Err(error_stack::report!(StateError::RunNotFound { run_id }));
             }
 
-            let count_sql = r#"
-                SELECT
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ?) as total,
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status IN ('completed', 'failed')) as done,
-                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status = 'failed') as failed
-            "#;
+            let count_sql = self.sql(
+                "SELECT \
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ?) as total, \
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status IN ('completed', 'failed')) as done, \
+                    (SELECT COUNT(*) FROM run_items WHERE run_id = ? AND status = 'failed') as failed",
+            );
 
-            let counts = sqlx::query_as::<_, ItemCountsRow>(count_sql)
+            let counts = sqlx::query_as::<Any, ItemCountsRow>(&count_sql)
                 .bind(run_id.to_string())
                 .bind(run_id.to_string())
                 .bind(run_id.to_string())
@@ -901,16 +1153,17 @@ impl MetadataStore for SqliteStateStore {
                     format!("failed to fetch item counts for run '{run_id}'")
                 })?;
 
-            let total = counts.total;
-            let done = counts.done;
-            let failed = counts.failed;
-
-            if done >= total {
-                let run_status = if failed > 0 { "failed" } else { "completed" };
-                let update_sql =
-                    "UPDATE runs SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?";
-                sqlx::query(update_sql)
+            if counts.done >= counts.total {
+                let run_status = if counts.failed > 0 {
+                    "failed"
+                } else {
+                    "completed"
+                };
+                let now = Self::now_str();
+                let update_sql = self.sql("UPDATE runs SET status = ?, completed_at = ? WHERE id = ?");
+                sqlx::query::<Any>(&update_sql)
                     .bind(run_status)
+                    .bind(&now)
                     .bind(run_id.to_string())
                     .execute(&pool)
                     .await
@@ -940,12 +1193,12 @@ impl MetadataStore for SqliteStateStore {
                 }
             };
 
-            let sql = format!(
-                "SELECT item_index, status, result_json, completed_at FROM run_items WHERE run_id = ? {}",
-                order_clause
+            let sql_template = format!(
+                "SELECT item_index, status, result_json, completed_at FROM run_items WHERE run_id = ? {order_clause}",
             );
+            let sql = self.sql(&sql_template);
 
-            let rows = sqlx::query_as::<_, ItemResultRow>(&sql)
+            let rows = sqlx::query_as::<Any, ItemResultRow>(&sql)
                 .bind(&run_id_str)
                 .fetch_all(&pool)
                 .await
@@ -971,8 +1224,8 @@ impl MetadataStore for SqliteStateStore {
     ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
         async move {
-            let sql = "UPDATE runs SET orchestrator_id = ? WHERE id = ?";
-            let result = sqlx::query(sql)
+            let sql = self.sql("UPDATE runs SET orchestrator_id = ? WHERE id = ?");
+            let result = sqlx::query::<Any>(&sql)
                 .bind(&orchestrator_id)
                 .bind(run_id.to_string())
                 .execute(&pool)
@@ -998,22 +1251,28 @@ impl MetadataStore for SqliteStateStore {
         let live_ids: Vec<String> = live_orchestrator_ids.iter().cloned().collect();
         async move {
             if live_ids.is_empty() {
-                // No live orchestrators — orphan all running runs that have an orchestrator
-                let sql = "UPDATE runs SET orchestrator_id = NULL WHERE orchestrator_id IS NOT NULL AND status = 'running'";
-                let result = sqlx::query(sql)
+                let sql = "UPDATE runs SET orchestrator_id = NULL \
+                           WHERE orchestrator_id IS NOT NULL AND status = 'running'";
+                let result = sqlx::query::<Any>(sql)
                     .execute(&pool)
                     .await
                     .change_context(StateError::Internal)?;
                 return Ok(result.rows_affected() as usize);
             }
 
-            // Build a parameterized IN clause for the live IDs
-            let placeholders: Vec<&str> = live_ids.iter().map(|_| "?").collect();
-            let sql = format!(
-                "UPDATE runs SET orchestrator_id = NULL WHERE orchestrator_id IS NOT NULL AND orchestrator_id NOT IN ({}) AND status = 'running'",
-                placeholders.join(", ")
+            // Build a parameterized IN clause with dialect-correct placeholders.
+            let placeholders_str = (0..live_ids.len())
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql_template = format!(
+                "UPDATE runs SET orchestrator_id = NULL \
+                 WHERE orchestrator_id IS NOT NULL \
+                 AND orchestrator_id NOT IN ({placeholders_str}) \
+                 AND status = 'running'",
             );
-            let mut query = sqlx::query(&sql);
+            let sql = self.sql(&sql_template);
+            let mut query = sqlx::query::<Any>(&sql);
             for id in &live_ids {
                 query = query.bind(id);
             }
@@ -1049,19 +1308,20 @@ impl MetadataStore for SqliteStateStore {
                 .transpose()
                 .change_context(StateError::Serialization)?;
             let seqno_sql = u64_to_sql(journal_seqno.value());
+            let now = Self::now_str();
 
-            let sql = r#"
-                INSERT INTO step_statuses (run_id, item_index, step_id, step_index, status, component, result_json, journal_seqno)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(run_id, item_index, step_id) DO UPDATE SET
-                    status = excluded.status,
-                    component = COALESCE(excluded.component, step_statuses.component),
-                    result_json = COALESCE(excluded.result_json, step_statuses.result_json),
-                    journal_seqno = excluded.journal_seqno,
-                    updated_at = CURRENT_TIMESTAMP
-            "#;
+            let sql = self.sql(
+                "INSERT INTO step_statuses (run_id, item_index, step_id, step_index, status, component, result_json, journal_seqno) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT(run_id, item_index, step_id) DO UPDATE SET \
+                     status = excluded.status, \
+                     component = COALESCE(excluded.component, step_statuses.component), \
+                     result_json = COALESCE(excluded.result_json, step_statuses.result_json), \
+                     journal_seqno = excluded.journal_seqno, \
+                     updated_at = ?",
+            );
 
-            sqlx::query(sql)
+            sqlx::query::<Any>(&sql)
                 .bind(run_id.to_string())
                 .bind(item_index as i64)
                 .bind(&step_id)
@@ -1070,6 +1330,7 @@ impl MetadataStore for SqliteStateStore {
                 .bind(&component)
                 .bind(&result_json)
                 .bind(seqno_sql)
+                .bind(&now)
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1089,10 +1350,12 @@ impl MetadataStore for SqliteStateStore {
         let step_id = step_id.to_string();
 
         async move {
-            let sql = "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
-                        FROM step_statuses WHERE run_id = ? AND item_index = ? AND step_id = ?";
+            let sql = self.sql(
+                "SELECT step_id, step_index, item_index, status, component, result_json, journal_seqno, updated_at \
+                 FROM step_statuses WHERE run_id = ? AND item_index = ? AND step_id = ?",
+            );
 
-            let row = sqlx::query_as::<_, StepStatusRow>(sql)
+            let row = sqlx::query_as::<Any, StepStatusRow>(&sql)
                 .bind(run_id.to_string())
                 .bind(item_index as i64)
                 .bind(&step_id)
@@ -1120,27 +1383,41 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let mut qb = QueryBuilder::<Sqlite>::new(
+            let mut sql = String::from(
                 "SELECT step_id, step_index, item_index, status, component, \
                  result_json, journal_seqno, updated_at \
-                 FROM step_statuses WHERE run_id = ",
+                 FROM step_statuses WHERE run_id = ?",
             );
-            qb.push_bind(run_id.to_string());
+
+            #[derive(Clone)]
+            enum Bind {
+                Str(String),
+                Int(i64),
+            }
+            let mut binds = vec![Bind::Str(run_id.to_string())];
 
             if let Some(idx) = item_index {
-                qb.push(" AND item_index = ");
-                qb.push_bind(idx as i64);
+                sql.push_str(" AND item_index = ?");
+                binds.push(Bind::Int(idx as i64));
             }
 
             if let Some(since) = since_seqno {
-                qb.push(" AND journal_seqno > ");
-                qb.push_bind(u64_to_sql(since.value()));
+                sql.push_str(" AND journal_seqno > ?");
+                binds.push(Bind::Int(u64_to_sql(since.value())));
             }
 
-            qb.push(" ORDER BY step_index, item_index");
+            sql.push_str(" ORDER BY step_index, item_index");
 
-            let rows = qb
-                .build_query_as::<StepStatusRow>()
+            let sql = self.sql(&sql);
+            let mut query = sqlx::query_as::<Any, StepStatusRow>(&sql);
+            for bind in &binds {
+                match bind {
+                    Bind::Str(s) => query = query.bind(s.clone()),
+                    Bind::Int(i) => query = query.bind(*i),
+                }
+            }
+
+            let rows = query
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)
@@ -1167,11 +1444,11 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT status FROM runs WHERE id = ?";
+            let sql = self.sql("SELECT status FROM runs WHERE id = ?");
 
             let receiver = self.completion_notifier.subscribe();
 
-            let row = sqlx::query_as::<_, RunStatusRow>(sql)
+            let row = sqlx::query_as::<Any, RunStatusRow>(&sql)
                 .bind(run_id.to_string())
                 .fetch_optional(&pool)
                 .await
@@ -1194,7 +1471,7 @@ impl MetadataStore for SqliteStateStore {
                 .await;
 
             loop {
-                let row = sqlx::query_as::<_, RunStatusRow>(sql)
+                let row = sqlx::query_as::<Any, RunStatusRow>(&sql)
                     .bind(run_id.to_string())
                     .fetch_optional(&pool)
                     .await
@@ -1235,8 +1512,29 @@ impl MetadataStore for SqliteStateStore {
                 .change_context(StateError::Internal)
                 .attach_printable("failed to begin transaction for component upsert")?;
 
+            let now = Self::now_str();
+
             // Upsert each component. Use INSERT ... ON CONFLICT to only bump
             // last_updated when data actually changes.
+            let upsert_sql = self.sql(
+                "INSERT INTO component_registrations \
+                    (plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated) \
+                 VALUES (?, ?, ?, ?, ?, ?, ?) \
+                 ON CONFLICT (plugin, component_id) DO UPDATE SET \
+                    path = excluded.path, \
+                    description = excluded.description, \
+                    input_schema_json = excluded.input_schema_json, \
+                    output_schema_json = excluded.output_schema_json, \
+                    last_updated = CASE \
+                        WHEN component_registrations.path != excluded.path \
+                          OR component_registrations.description IS NOT excluded.description \
+                          OR component_registrations.input_schema_json IS NOT excluded.input_schema_json \
+                          OR component_registrations.output_schema_json IS NOT excluded.output_schema_json \
+                        THEN excluded.last_updated \
+                        ELSE component_registrations.last_updated \
+                    END",
+            );
+
             for info in &components {
                 let component_id = info.component.path().to_string();
                 let path = &info.path;
@@ -1264,43 +1562,28 @@ impl MetadataStore for SqliteStateStore {
                         )
                     })?;
 
-                sqlx::query(
-                    r#"
-                    INSERT INTO component_registrations
-                        (plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-                    ON CONFLICT (plugin, component_id) DO UPDATE SET
-                        path = excluded.path,
-                        description = excluded.description,
-                        input_schema_json = excluded.input_schema_json,
-                        output_schema_json = excluded.output_schema_json,
-                        last_updated = CASE
-                            WHEN component_registrations.path != excluded.path
-                              OR component_registrations.description IS NOT excluded.description
-                              OR component_registrations.input_schema_json IS NOT excluded.input_schema_json
-                              OR component_registrations.output_schema_json IS NOT excluded.output_schema_json
-                            THEN datetime('now')
-                            ELSE component_registrations.last_updated
-                        END
-                    "#,
-                )
-                .bind(&plugin)
-                .bind(&component_id)
-                .bind(path)
-                .bind(description)
-                .bind(&input_schema_json)
-                .bind(&output_schema_json)
-                .execute(&mut *tx)
-                .await
-                .change_context(StateError::Internal)
-                .attach_printable_lazy(|| {
-                    format!("failed to upsert component '{component_id}' for plugin '{plugin}'")
-                })?;
+                sqlx::query::<Any>(&upsert_sql)
+                    .bind(&plugin)
+                    .bind(&component_id)
+                    .bind(path)
+                    .bind(description)
+                    .bind(&input_schema_json)
+                    .bind(&output_schema_json)
+                    .bind(&now)
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to upsert component '{component_id}' for plugin '{plugin}'"
+                        )
+                    })?;
             }
 
             // Remove stale entries for this plugin that are no longer reported
             if components.is_empty() {
-                sqlx::query("DELETE FROM component_registrations WHERE plugin = ?")
+                let sql = self.sql("DELETE FROM component_registrations WHERE plugin = ?");
+                sqlx::query::<Any>(&sql)
                     .bind(&plugin)
                     .execute(&mut *tx)
                     .await
@@ -1311,19 +1594,18 @@ impl MetadataStore for SqliteStateStore {
                     .map(|c| c.component.path().to_string())
                     .collect();
 
-                let mut qb: QueryBuilder<'_, Sqlite> = QueryBuilder::new(
-                    "DELETE FROM component_registrations WHERE plugin = ",
+                let placeholders =
+                    (0..component_ids.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql_template = format!(
+                    "DELETE FROM component_registrations WHERE plugin = ? \
+                     AND component_id NOT IN ({placeholders})"
                 );
-                qb.push_bind(&plugin);
-                qb.push(" AND component_id NOT IN (");
-
-                let mut separated = qb.separated(", ");
+                let sql = self.sql(&sql_template);
+                let mut query = sqlx::query::<Any>(&sql).bind(&plugin);
                 for id in &component_ids {
-                    separated.push_bind(id);
+                    query = query.bind(id);
                 }
-                separated.push_unseparated(")");
-
-                qb.build()
+                query
                     .execute(&mut *tx)
                     .await
                     .change_context(StateError::Internal)
@@ -1354,16 +1636,17 @@ impl MetadataStore for SqliteStateStore {
         async move {
             let rows = match &plugin {
                 Some(p) => {
-                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                    let sql = self.sql(
                         "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
                          FROM component_registrations WHERE plugin = ? ORDER BY component_id",
-                    )
-                    .bind(p)
-                    .fetch_all(&pool)
-                    .await
+                    );
+                    sqlx::query_as::<Any, ComponentRegistrationRow>(&sql)
+                        .bind(p)
+                        .fetch_all(&pool)
+                        .await
                 }
                 None => {
-                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                    sqlx::query_as::<Any, ComponentRegistrationRow>(
                         "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
                          FROM component_registrations ORDER BY plugin, component_id",
                     )
@@ -1400,15 +1683,12 @@ impl MetadataStore for SqliteStateStore {
                             row.component_id
                         )
                     })?;
-                let last_updated =
-                    parse_sqlite_datetime(&row.last_updated).ok_or_else(|| {
-                        error_stack::report!(StateError::Serialization).attach_printable(
-                            format!(
-                                "unparseable last_updated for component '{}': {}",
-                                row.component_id, row.last_updated
-                            ),
-                        )
-                    })?;
+                let last_updated = parse_sql_datetime(&row.last_updated).ok_or_else(|| {
+                    error_stack::report!(StateError::Serialization).attach_printable(format!(
+                        "unparseable last_updated for component '{}': {}",
+                        row.component_id, row.last_updated
+                    ))
+                })?;
 
                 results.push(stepflow_state::StoredComponentRegistration {
                     plugin: row.plugin,
@@ -1437,16 +1717,17 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
         let plugin = plugin.to_string();
         async move {
-            let row: Option<(Option<String>,)> = sqlx::query_as(
+            let sql = self.sql(
                 "SELECT MAX(last_updated) FROM component_registrations WHERE plugin = ?",
-            )
-            .bind(&plugin)
-            .fetch_optional(&pool)
-            .await
-            .change_context(StateError::Internal)?;
+            );
+            let row: Option<(Option<String>,)> = sqlx::query_as(&sql)
+                .bind(&plugin)
+                .fetch_optional(&pool)
+                .await
+                .change_context(StateError::Internal)?;
 
             let result = match row.and_then(|(ts,)| ts) {
-                Some(ts) => Some(parse_sqlite_datetime(&ts).ok_or_else(|| {
+                Some(ts) => Some(parse_sql_datetime(&ts).ok_or_else(|| {
                     error_stack::report!(StateError::Serialization).attach_printable(format!(
                         "unparseable component_registrations.last_updated for plugin '{plugin}': {ts}"
                     ))
@@ -1466,13 +1747,13 @@ impl MetadataStore for SqliteStateStore {
         let pool = self.pool.clone();
         let plugin = plugin.to_string();
         async move {
-            let row: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM component_registrations WHERE plugin = ? LIMIT 1",
-            )
-            .bind(&plugin)
-            .fetch_one(&pool)
-            .await
-            .change_context(StateError::Internal)?;
+            let sql =
+                self.sql("SELECT COUNT(*) FROM component_registrations WHERE plugin = ? LIMIT 1");
+            let row: (i64,) = sqlx::query_as(&sql)
+                .bind(&plugin)
+                .fetch_one(&pool)
+                .await
+                .change_context(StateError::Internal)?;
 
             Ok(row.0 > 0)
         }
@@ -1480,10 +1761,15 @@ impl MetadataStore for SqliteStateStore {
     }
 }
 
-impl ExecutionJournal for SqliteStateStore {
+// =========================================================================
+// ExecutionJournal
+// =========================================================================
+
+impl ExecutionJournal for SqlStateStore {
     fn initialize_journal(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        async move { migrations::run_journal_migrations(&pool).await }.boxed()
+        let dialect = self.dialect;
+        async move { run_journal_migrations(&pool, dialect).await }.boxed()
     }
 
     fn write(
@@ -1494,11 +1780,10 @@ impl ExecutionJournal for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            // Get the next sequence number for this root run's journal.
-            // All events for an execution tree share the same journal keyed by root_run_id.
-            let max_seq_sql =
-                "SELECT COALESCE(MAX(sequence), -1) as max_seq FROM journal_entries WHERE root_run_id = ?";
-            let row = sqlx::query_as::<_, MaxSeqRow>(max_seq_sql)
+            let max_seq_sql = self.sql(
+                "SELECT COALESCE(MAX(sequence), -1) as max_seq FROM journal_entries WHERE root_run_id = ?",
+            );
+            let row = sqlx::query_as::<Any, MaxSeqRow>(&max_seq_sql)
                 .bind(root_run_id.to_string())
                 .fetch_one(&pool)
                 .await
@@ -1510,8 +1795,6 @@ impl ExecutionJournal for SqliteStateStore {
             let max_seq: i64 = row.max_seq.unwrap_or(-1);
             let next_seq = SequenceNumber::new((max_seq + 1) as u64);
 
-            // Extract a representative run_id for the SQL column (used for indexing/debugging).
-            // For TasksStarted with multiple runs, we use the first run's ID.
             let run_id = match &event {
                 JournalEvent::RootRunCreated { run_id, .. }
                 | JournalEvent::StepsNeeded { run_id, .. }
@@ -1541,12 +1824,12 @@ impl ExecutionJournal for SqliteStateStore {
 
             let timestamp = chrono::Utc::now().to_rfc3339();
 
-            let insert_sql = r#"
-                INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data)
-                VALUES (?, ?, ?, ?, ?, ?)
-            "#;
+            let insert_sql = self.sql(
+                "INSERT INTO journal_entries (run_id, sequence, root_run_id, timestamp, event_type, event_data) \
+                 VALUES (?, ?, ?, ?, ?, ?)",
+            );
 
-            sqlx::query(insert_sql)
+            sqlx::query::<Any>(&insert_sql)
                 .bind(run_id.to_string())
                 .bind(next_seq.value() as i64)
                 .bind(root_run_id.to_string())
@@ -1568,21 +1851,23 @@ impl ExecutionJournal for SqliteStateStore {
         from_sequence: SequenceNumber,
     ) -> stepflow_state::JournalEventStream<'_> {
         let pool = self.pool.clone();
+        let dialect = self.dialect;
         const BATCH_SIZE: i64 = 1000;
 
         Box::pin(async_stream::stream! {
             let mut cursor = from_sequence.value() as i64;
 
             loop {
-                let sql = r#"
-                    SELECT sequence, run_id, timestamp, event_data
-                    FROM journal_entries
-                    WHERE root_run_id = ? AND sequence >= ?
-                    ORDER BY sequence
-                    LIMIT ?
-                "#;
+                let sql = rewrite_placeholders(
+                    "SELECT sequence, run_id, timestamp, event_data \
+                     FROM journal_entries \
+                     WHERE root_run_id = ? AND sequence >= ? \
+                     ORDER BY sequence \
+                     LIMIT ?",
+                    dialect,
+                );
 
-                let rows = match sqlx::query_as::<_, JournalEntryRow>(sql)
+                let rows = match sqlx::query_as::<Any, JournalEntryRow>(&sql)
                     .bind(root_run_id.to_string())
                     .bind(cursor)
                     .bind(BATCH_SIZE)
@@ -1638,7 +1923,6 @@ impl ExecutionJournal for SqliteStateStore {
                     break;
                 }
 
-                // Advance cursor past the last sequence seen, handling gaps.
                 cursor = last_seq + 1;
             }
         })
@@ -1651,9 +1935,10 @@ impl ExecutionJournal for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "SELECT MAX(sequence) as max_seq FROM journal_entries WHERE root_run_id = ?";
+            let sql = self
+                .sql("SELECT MAX(sequence) as max_seq FROM journal_entries WHERE root_run_id = ?");
 
-            let row = sqlx::query_as::<_, MaxSeqRow>(sql)
+            let row = sqlx::query_as::<Any, MaxSeqRow>(&sql)
                 .bind(root_run_id.to_string())
                 .fetch_one(&pool)
                 .await
@@ -1673,8 +1958,6 @@ impl ExecutionJournal for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            // Get all root runs that have journal entries, along with their statistics.
-            // Group by root_run_id since all events for an execution tree share one journal.
             let sql = r#"
                 SELECT
                     root_run_id,
@@ -1684,7 +1967,7 @@ impl ExecutionJournal for SqliteStateStore {
                 GROUP BY root_run_id
             "#;
 
-            let rows = sqlx::query_as::<_, RootJournalRow>(sql)
+            let rows = sqlx::query_as::<Any, RootJournalRow>(sql)
                 .fetch_all(&pool)
                 .await
                 .change_context(StateError::Internal)
@@ -1708,10 +1991,15 @@ impl ExecutionJournal for SqliteStateStore {
     }
 }
 
-impl CheckpointStore for SqliteStateStore {
+// =========================================================================
+// CheckpointStore
+// =========================================================================
+
+impl CheckpointStore for SqlStateStore {
     fn initialize_checkpoint_store(&self) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
         let pool = self.pool.clone();
-        async move { migrations::run_checkpoint_migrations(&pool).await }.boxed()
+        let dialect = self.dialect;
+        async move { run_checkpoint_migrations(&pool, dialect).await }.boxed()
     }
 
     fn put_checkpoint(
@@ -1723,15 +2011,21 @@ impl CheckpointStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = r#"
-                INSERT OR REPLACE INTO checkpoints (root_run_id, sequence_number, data)
-                VALUES (?, ?, ?)
-            "#;
+            let now = Self::now_str();
+            let sql = self.sql(
+                "INSERT INTO checkpoints (root_run_id, sequence_number, data, created_at) \
+                 VALUES (?, ?, ?, ?) \
+                 ON CONFLICT (root_run_id) DO UPDATE SET \
+                     sequence_number = excluded.sequence_number, \
+                     data = excluded.data, \
+                     created_at = excluded.created_at",
+            );
 
-            sqlx::query(sql)
+            sqlx::query::<Any>(&sql)
                 .bind(root_run_id.to_string())
                 .bind(sequence.value() as i64)
                 .bind(data.as_ref())
+                .bind(&now)
                 .execute(&pool)
                 .await
                 .change_context(StateError::Internal)?;
@@ -1748,13 +2042,10 @@ impl CheckpointStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = r#"
-                SELECT sequence_number, data
-                FROM checkpoints
-                WHERE root_run_id = ?
-            "#;
+            let sql =
+                self.sql("SELECT sequence_number, data FROM checkpoints WHERE root_run_id = ?");
 
-            let row = sqlx::query_as::<_, CheckpointRow>(sql)
+            let row = sqlx::query_as::<Any, CheckpointRow>(&sql)
                 .bind(root_run_id.to_string())
                 .fetch_optional(&pool)
                 .await
@@ -1778,9 +2069,9 @@ impl CheckpointStore for SqliteStateStore {
         let pool = self.pool.clone();
 
         async move {
-            let sql = "DELETE FROM checkpoints WHERE root_run_id = ?";
+            let sql = self.sql("DELETE FROM checkpoints WHERE root_run_id = ?");
 
-            sqlx::query(sql)
+            sqlx::query::<Any>(&sql)
                 .bind(root_run_id.to_string())
                 .execute(&pool)
                 .await
@@ -1792,6 +2083,10 @@ impl CheckpointStore for SqliteStateStore {
     }
 }
 
+// =========================================================================
+// Unit tests
+// =========================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1799,20 +2094,16 @@ mod tests {
     #[test]
     fn test_u64_to_sql_roundtrip() {
         let values: Vec<u64> = vec![
-            // u64 endpoints
             0,
             1,
             u64::MAX - 1,
             u64::MAX,
-            // Near the i64 sign-bit boundary (1 << 63)
-            (1u64 << 63) - 1, // i64::MAX as u64
-            1u64 << 63,       // i64::MAX as u64 + 1
+            (1u64 << 63) - 1,
+            1u64 << 63,
             (1u64 << 63) + 1,
-            // Small values
             2,
             100,
             1000,
-            // Powers of 2
             1u64 << 16,
             1u64 << 32,
             1u64 << 48,
@@ -1828,16 +2119,13 @@ mod tests {
     #[test]
     fn test_sql_to_u64_roundtrip() {
         let values: Vec<i64> = vec![
-            // i64 endpoints
             i64::MIN,
             i64::MIN + 1,
             i64::MAX - 1,
             i64::MAX,
-            // Near zero
             -1,
             0,
             1,
-            // Other
             -100,
             100,
         ];
@@ -1851,18 +2139,14 @@ mod tests {
 
     #[test]
     fn test_u64_to_sql_preserves_ordering() {
-        // Pairs where a < b in u64; verify u64_to_sql(a) < u64_to_sql(b) in i64.
         let pairs: Vec<(u64, u64)> = vec![
             (0, 1),
             (0, u64::MAX),
             (1, u64::MAX),
-            // Across the sign-bit boundary
             ((1u64 << 63) - 1, 1u64 << 63),
             ((1u64 << 63), (1u64 << 63) + 1),
-            // Small vs large
             (0, 1u64 << 63),
             (100, u64::MAX - 100),
-            // Adjacent values at interesting points
             (i64::MAX as u64, i64::MAX as u64 + 1),
         ];
 
@@ -1878,13 +2162,67 @@ mod tests {
 
     #[test]
     fn test_u64_to_sql_known_mappings() {
-        // 0u64 should map to i64::MIN (smallest i64)
         assert_eq!(u64_to_sql(0), i64::MIN);
-        // u64::MAX should map to i64::MAX (largest i64)
         assert_eq!(u64_to_sql(u64::MAX), i64::MAX);
-        // The sign-bit boundary: 1<<63 maps to 0i64
         assert_eq!(u64_to_sql(1u64 << 63), 0i64);
-        // Just below: (1<<63)-1 maps to -1i64
         assert_eq!(u64_to_sql((1u64 << 63) - 1), -1i64);
+    }
+
+    #[test]
+    fn test_rewrite_placeholders_sqlite() {
+        let sql = "SELECT * FROM foo WHERE id = ? AND name = ?";
+        let result = rewrite_placeholders(sql, SqlDialect::Sqlite);
+        assert_eq!(result, sql);
+    }
+
+    #[test]
+    fn test_rewrite_placeholders_postgres() {
+        let sql = "SELECT * FROM foo WHERE id = ? AND name = ?";
+        let result = rewrite_placeholders(sql, SqlDialect::Postgres);
+        assert_eq!(result, "SELECT * FROM foo WHERE id = $1 AND name = $2");
+    }
+
+    #[test]
+    fn test_rewrite_placeholders_no_placeholders() {
+        let sql = "SELECT * FROM foo";
+        let result = rewrite_placeholders(sql, SqlDialect::Postgres);
+        // Should return borrowed reference (no allocation)
+        assert!(matches!(result, Cow::Borrowed(_)));
+        assert_eq!(result, sql);
+    }
+
+    #[test]
+    fn test_dialect_from_url() {
+        assert_eq!(
+            SqlDialect::from_url("sqlite::memory:").unwrap(),
+            SqlDialect::Sqlite
+        );
+        assert_eq!(
+            SqlDialect::from_url("sqlite:test.db").unwrap(),
+            SqlDialect::Sqlite
+        );
+        assert_eq!(
+            SqlDialect::from_url("postgres://user:pass@host/db").unwrap(),
+            SqlDialect::Postgres
+        );
+        assert_eq!(
+            SqlDialect::from_url("postgresql://user:pass@host/db").unwrap(),
+            SqlDialect::Postgres
+        );
+        assert!(SqlDialect::from_url("mysql://host/db").is_err());
+    }
+
+    #[test]
+    fn test_parse_sql_datetime() {
+        // RFC 3339
+        assert!(parse_sql_datetime("2025-12-24T19:26:14Z").is_some());
+        // SQLite CURRENT_TIMESTAMP
+        assert!(parse_sql_datetime("2025-12-24 19:26:14").is_some());
+        // PostgreSQL with timezone
+        assert!(parse_sql_datetime("2025-12-24 19:26:14+00").is_some());
+        // PostgreSQL with fractional seconds
+        assert!(parse_sql_datetime("2025-12-24 19:26:14.123456+00").is_some());
+        // Invalid
+        assert!(parse_sql_datetime("not-a-date").is_none());
     }
 }

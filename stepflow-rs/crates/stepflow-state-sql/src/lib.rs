@@ -10,15 +10,24 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! SQL-based StateStore implementation using sqlx
+//! SQL-based StateStore implementation using sqlx.
 //!
-//! Provides persistent storage for blobs and execution state using SQLite.
-//! Future versions will support PostgreSQL and MySQL.
+//! Provides persistent storage for blobs and execution state using SQLite and/or
+//! PostgreSQL. The unified [`SqlStateStore`] works with both databases via sqlx's
+//! `Any` driver; the dialect is detected from the connection URL.
+//!
+//! Enable features `sqlite` and/or `postgres` to include the respective drivers.
 
-pub(crate) mod migrations;
-mod sqlite_state_store;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_migrations;
+mod sql_state_store;
+#[cfg(feature = "sqlite")]
+pub(crate) mod sqlite_migrations;
 
-pub use sqlite_state_store::{SqliteStateStore, SqliteStateStoreConfig};
+pub use sql_state_store::{
+    PgStateStore, PgStateStoreConfig, SqlDialect, SqlStateStore, SqlStateStoreConfig,
+    SqliteStateStore, SqliteStateStoreConfig,
+};
 
 #[cfg(test)]
 mod tests;

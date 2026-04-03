@@ -199,7 +199,7 @@ JsonPath: TypeAlias = Annotated[
 ]
 
 
-class SqliteStateStoreConfig(Struct, kw_only=True):
+class SqlStateStoreConfig(Struct, kw_only=True):
     databaseUrl: str
     maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
     autoMigrate: bool | UnsetType = True
@@ -329,6 +329,12 @@ class SqliteStore(Struct, kw_only=True, tag_field='type', tag='sqlite'):
     autoMigrate: bool | UnsetType = True
 
 
+class PostgresStore(Struct, kw_only=True, tag_field='type', tag='postgres'):
+    databaseUrl: str
+    maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
+    autoMigrate: bool | UnsetType = True
+
+
 class FilesystemStore(Struct, kw_only=True, tag_field='type', tag='filesystem'):
     directory: (
         Annotated[
@@ -430,7 +436,7 @@ class InputCondition(Struct, kw_only=True):
 
 
 StoreConfig: TypeAlias = Annotated[
-    InMemoryStore | SqliteStore | FilesystemStore,
+    InMemoryStore | SqliteStore | PostgresStore | FilesystemStore,
     Meta(
         description='Configuration for a single storage backend.\n\nEach variant documents which store types it supports:\n- **metadata**: Flow and run metadata storage\n- **blobs**: Content-addressable blob storage\n- **journal**: Execution journal for recovery'
     ),
