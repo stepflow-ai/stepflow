@@ -21,7 +21,7 @@ use tracing::{debug, info, warn};
 
 use stepflow_proto::{PullTasksRequest, TaskAssignment, tasks_service_client::TasksServiceClient};
 
-use crate::task_handler::{ChannelCache, handle_task, new_channel_cache};
+use crate::task_handler::{ChannelCache, handle_task, new_channel_cache, normalize_url};
 use crate::{ComponentRegistry, WorkerError};
 
 /// Configuration for a [`Worker`].
@@ -195,6 +195,7 @@ impl Worker {
         // Pin shutdown so it can be used in select!
         tokio::pin!(shutdown);
 
+        let default_normalised_url = normalize_url(&orchestrator_url);
         let channel_cache = new_channel_cache();
         let mut consecutive_failures: u32 = 0;
         let mut in_flight: JoinSet<()> = JoinSet::new();
@@ -271,6 +272,7 @@ impl Worker {
                                     Arc::clone(&registry),
                                     worker_id.clone(),
                                     orchestrator_url.clone(),
+                                    default_normalised_url.clone(),
                                     config.blob_url.clone(),
                                     channel.clone(),
                                     Arc::clone(&channel_cache),
@@ -397,6 +399,7 @@ fn spawn_task(
     registry: Arc<ComponentRegistry>,
     worker_id: String,
     orchestrator_url: String,
+    default_normalised_url: String,
     blob_url: Option<String>,
     channel: tonic::transport::Channel,
     channel_cache: ChannelCache,
@@ -408,6 +411,7 @@ fn spawn_task(
             registry,
             &worker_id,
             &orchestrator_url,
+            &default_normalised_url,
             blob_url.as_deref(),
             channel,
             &channel_cache,

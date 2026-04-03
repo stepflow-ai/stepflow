@@ -48,11 +48,13 @@ use crate::{
 ///
 /// Returns `true` if the task was successfully claimed and executed (or listed),
 /// `false` if it was already claimed by another worker or if a fatal setup error occurred.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_task(
     assignment: TaskAssignment,
     registry: Arc<ComponentRegistry>,
     worker_id: &str,
     default_orchestrator_url: &str,
+    default_normalised_url: &str,
     default_blob_url: Option<&str>,
     default_orch_channel: Channel,
     channel_cache: &ChannelCache,
@@ -73,7 +75,7 @@ pub(crate) async fn handle_task(
     let Some(orch_ch) = resolve_orch_channel(
         &task_id,
         &orchestrator_url,
-        default_orchestrator_url,
+        default_normalised_url,
         default_orch_channel,
         channel_cache,
     ) else {
@@ -162,38 +164,78 @@ pub(crate) fn new_channel_cache() -> ChannelCache {
     Arc::new(HashCache::with_capacity(0, MAX_CACHED_CHANNELS))
 }
 
-/// Normalise a URL for comparison: ensure `http://` scheme, resolve `localhost` to
-/// `127.0.0.1`, and strip trailing slashes.
-fn normalize_url(url: &str) -> String {
-    let with_scheme = if url.starts_with("http://") || url.starts_with("https://") {
+/// Ensure a URL has an `http://` scheme (the orchestrator may advertise
+/// scheme-less addresses like `"127.0.0.1:7837"` in run/test mode).
+fn ensure_scheme(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
         url.to_string()
     } else {
         format!("http://{url}")
+    }
+}
+
+/// Normalise a URL for comparison and cache-key purposes only.
+///
+/// Adds an `http://` scheme if missing, strips trailing slashes, and treats
+/// `localhost` and `127.0.0.1` as equivalent. The result must NOT be used as
+/// the endpoint to connect to — use [`ensure_scheme`] for that — because
+/// rewriting `localhost` could break setups where it intentionally resolves
+/// to `::1` or a non-standard hosts entry.
+pub(crate) fn normalize_url(url: &str) -> String {
+    let with_scheme = ensure_scheme(url);
+    let trimmed = with_scheme.trim_end_matches('/');
+
+    // Extract the host from the authority to do an exact `localhost` match,
+    // avoiding false positives like `localhost.example.com`.
+    let Some(scheme_end) = trimmed.find("://") else {
+        return trimmed.to_string();
     };
-    with_scheme
-        .trim_end_matches('/')
-        .replace("://localhost:", "://127.0.0.1:")
-        .replace("://localhost", "://127.0.0.1")
+    let authority_start = scheme_end + 3;
+    let authority_end = trimmed[authority_start..]
+        .find(['/', '?', '#'])
+        .map(|offset| authority_start + offset)
+        .unwrap_or(trimmed.len());
+    let host_port = &trimmed[authority_start..authority_end];
+
+    if host_port == "localhost" {
+        format!(
+            "{}127.0.0.1{}",
+            &trimmed[..authority_start],
+            &trimmed[authority_end..]
+        )
+    } else if let Some(port) = host_port.strip_prefix("localhost:") {
+        format!(
+            "{}127.0.0.1:{}{}",
+            &trimmed[..authority_start],
+            port,
+            &trimmed[authority_end..]
+        )
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Resolve the orchestrator gRPC channel to use for this task.
 ///
-/// Reuses `default_channel` when the normalised URL matches `default_url`, then falls
-/// back to the `channel_cache` for previously-seen URLs. Only creates a new
-/// `connect_lazy()` channel when the URL has never been seen before.
+/// Reuses `default_channel` when the normalised URL matches
+/// `default_normalised_url`, then falls back to the `channel_cache` for
+/// previously-seen URLs. Only creates a new `connect_lazy()` channel when
+/// the URL has never been seen before.
+///
+/// `default_normalised_url` should be pre-computed once via [`normalize_url`]
+/// at worker startup to avoid re-allocating on every task.
 ///
 /// Returns `None` (and logs a warning) if `url` is not a valid gRPC endpoint.
 pub(crate) fn resolve_orch_channel(
     task_id: &str,
     url: &str,
-    default_url: &str,
+    default_normalised_url: &str,
     default_channel: Channel,
     channel_cache: &ChannelCache,
 ) -> Option<Channel> {
     let normalised = normalize_url(url);
-    let default_normalised = normalize_url(default_url);
 
-    if normalised == default_normalised {
+    if normalised == default_normalised_url {
         return Some(default_channel);
     }
 
@@ -202,19 +244,22 @@ pub(crate) fn resolve_orch_channel(
         return Some(ch);
     }
 
-    // Slow path: create a new channel and cache it.
-    match tonic::transport::Channel::from_shared(normalised.clone()) {
+    // Slow path: validate the URL, then insert into the cache. The channel is
+    // created inside or_put_with so that racing tasks don't each allocate a
+    // throwaway connection.
+    let with_scheme = ensure_scheme(url);
+    match tonic::transport::Channel::from_shared(with_scheme.clone()) {
         Ok(endpoint) => {
-            let ch = endpoint.connect_lazy();
-            // entry() ensures only one channel is created if two tasks race.
-            let (_evicted, occupied) = channel_cache.entry(normalised).or_put_with(|| ch);
+            let (_evicted, occupied) = channel_cache
+                .entry(normalised)
+                .or_put_with(|| endpoint.connect_lazy());
             let ch = occupied.get().clone();
             Some(ch)
         }
         Err(e) => {
             warn!(
                 task_id,
-                orchestrator_url = %normalised,
+                orchestrator_url = %with_scheme,
                 "Invalid orchestrator URL from task context, skipping task: {e}"
             );
             None
@@ -490,24 +535,37 @@ mod tests {
         assert_eq!(normalize_url("http://localhost"), "http://127.0.0.1");
     }
 
+    #[test]
+    fn test_normalize_url_does_not_rewrite_localhost_subdomain() {
+        // Must not rewrite hosts like localhost.example.com
+        assert_eq!(
+            normalize_url("http://localhost.example.com:8080"),
+            "http://localhost.example.com:8080"
+        );
+    }
+
     #[tokio::test]
     async fn test_resolve_orch_channel_reuses_default() {
         let url = "http://127.0.0.1:7837";
-        let endpoint = tonic::transport::Channel::from_shared(url).unwrap();
-        let channel = endpoint.connect_lazy();
+        let normalised = normalize_url(url);
+        let channel = tonic::transport::Channel::from_shared(url)
+            .unwrap()
+            .connect_lazy();
         let cache = new_channel_cache();
-        let result = resolve_orch_channel("task-1", url, url, channel, &cache);
+        let result = resolve_orch_channel("task-1", url, &normalised, channel, &cache);
         assert!(result.is_some());
     }
 
     #[tokio::test]
     async fn test_resolve_orch_channel_normalises_scheme() {
         let default_url = "http://127.0.0.1:7837";
+        let normalised = normalize_url(default_url);
         let channel = tonic::transport::Channel::from_shared(default_url)
             .unwrap()
             .connect_lazy();
         let cache = new_channel_cache();
-        let result = resolve_orch_channel("task-1", "127.0.0.1:7837", default_url, channel, &cache);
+        // Scheme-less variant — normalises to match default.
+        let result = resolve_orch_channel("task-1", "127.0.0.1:7837", &normalised, channel, &cache);
         assert!(result.is_some());
     }
 
@@ -515,6 +573,7 @@ mod tests {
     async fn test_resolve_orch_channel_localhost_matches_ip() {
         // The core bug: localhost:PORT should match 127.0.0.1:PORT
         let default_url = "http://localhost:7837";
+        let normalised = normalize_url(default_url);
         let channel = tonic::transport::Channel::from_shared(default_url)
             .unwrap()
             .connect_lazy();
@@ -522,7 +581,7 @@ mod tests {
         let result = resolve_orch_channel(
             "task-1",
             "http://127.0.0.1:7837",
-            default_url,
+            &normalised,
             channel,
             &cache,
         );
@@ -534,6 +593,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_orch_channel_caches_new_url() {
         let default_url = "http://127.0.0.1:7837";
+        let normalised = normalize_url(default_url);
         let channel = tonic::transport::Channel::from_shared(default_url)
             .unwrap()
             .connect_lazy();
@@ -542,29 +602,24 @@ mod tests {
 
         // First call creates a new channel and caches it
         let result =
-            resolve_orch_channel("task-1", other_url, default_url, channel.clone(), &cache);
+            resolve_orch_channel("task-1", other_url, &normalised, channel.clone(), &cache);
         assert!(result.is_some());
         assert_eq!(cache.len(), 1);
 
         // Second call with the same URL reuses the cached channel
-        let result2 = resolve_orch_channel("task-2", other_url, default_url, channel, &cache);
+        let result2 = resolve_orch_channel("task-2", other_url, &normalised, channel, &cache);
         assert!(result2.is_some());
         assert_eq!(cache.len(), 1);
     }
 
     #[tokio::test]
     async fn test_resolve_orch_channel_invalid_url() {
+        let normalised = normalize_url("http://127.0.0.1:7837");
         let channel = tonic::transport::Channel::from_shared("http://127.0.0.1:7837")
             .unwrap()
             .connect_lazy();
         let cache = new_channel_cache();
-        let result = resolve_orch_channel(
-            "task-1",
-            "not a url !!!",
-            "http://127.0.0.1:7837",
-            channel,
-            &cache,
-        );
+        let result = resolve_orch_channel("task-1", "not a url !!!", &normalised, channel, &cache);
         assert!(result.is_none());
     }
 }
