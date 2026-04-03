@@ -22,9 +22,12 @@ use bytes::Bytes;
 use crate::{
     BlobStore, CheckpointStore, ExecutionJournal, JournalEntry, JournalEvent, MetadataStore,
     RawBlob, RootJournalInfo, RunCompletionNotifier, SequenceNumber, StoredCheckpoint,
-    state_store::CreateRunParams,
+    StoredComponentRegistration, state_store::CreateRunParams,
 };
-use stepflow_core::{BlobId, BlobMetadata, BlobType, FlowResult, workflow::WorkflowOverrides};
+use stepflow_core::{
+    BlobId, BlobMetadata, BlobType, FlowResult, component::ComponentInfo,
+    workflow::WorkflowOverrides,
+};
 use stepflow_domain::{
     ItemResult, ItemStatistics, ResultOrder, RunFilters, RunSummary, StepStatusEntry,
 };
@@ -88,6 +91,8 @@ pub struct InMemoryStateStore {
     checkpoint_put_count: AtomicUsize,
     /// Step status entries keyed by (run_id, item_index, step_id).
     step_statuses: DashMap<(Uuid, usize, String), StepStatusEntry>,
+    /// Component registrations keyed by (plugin_name, component_id).
+    component_registrations: DashMap<(String, String), StoredComponentRegistration>,
 }
 
 impl InMemoryStateStore {
@@ -101,6 +106,7 @@ impl InMemoryStateStore {
             checkpoints: DashMap::new(),
             checkpoint_put_count: AtomicUsize::new(0),
             step_statuses: DashMap::new(),
+            component_registrations: DashMap::new(),
         }
     }
 
@@ -638,6 +644,109 @@ impl MetadataStore for InMemoryStateStore {
         }
         .boxed()
     }
+
+    fn upsert_plugin_components(
+        &self,
+        plugin: &str,
+        components: &[ComponentInfo],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let plugin = plugin.to_string();
+        let components = components.to_vec();
+        async move {
+            let now = chrono::Utc::now();
+
+            // Build set of component IDs being upserted
+            let new_ids: HashSet<String> = components
+                .iter()
+                .map(|c| c.component.path().to_string())
+                .collect();
+
+            // Remove stale entries for this plugin
+            self.component_registrations
+                .retain(|key, _| key.0 != plugin || new_ids.contains(&key.1));
+
+            // Insert or update entries
+            for info in components {
+                let component_id = info.component.path().to_string();
+                let key = (plugin.clone(), component_id);
+                let mut changed = true;
+
+                // Only bump timestamp if data actually changed
+                if let Some(existing) = self.component_registrations.get(&key) {
+                    changed = existing.info.description != info.description
+                        || existing.info.path != info.path
+                        || existing.info.input_schema != info.input_schema
+                        || existing.info.output_schema != info.output_schema;
+                }
+
+                if changed {
+                    self.component_registrations.insert(
+                        key,
+                        StoredComponentRegistration {
+                            plugin: plugin.clone(),
+                            info,
+                            last_updated: now,
+                        },
+                    );
+                }
+            }
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_registered_components(
+        &self,
+        plugin: Option<&str>,
+    ) -> BoxFuture<'_, error_stack::Result<Vec<StoredComponentRegistration>, StateError>> {
+        let plugin = plugin.map(|s| s.to_string());
+        async move {
+            let results: Vec<StoredComponentRegistration> = self
+                .component_registrations
+                .iter()
+                .filter(|entry| match &plugin {
+                    Some(p) => entry.key().0 == *p,
+                    None => true,
+                })
+                .map(|entry| entry.value().clone())
+                .collect();
+            Ok(results)
+        }
+        .boxed()
+    }
+
+    fn component_max_last_updated(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<chrono::DateTime<chrono::Utc>>, StateError>> {
+        let plugin = plugin.to_string();
+        async move {
+            let max = self
+                .component_registrations
+                .iter()
+                .filter(|entry| entry.key().0 == plugin)
+                .map(|entry| entry.value().last_updated)
+                .max();
+            Ok(max)
+        }
+        .boxed()
+    }
+
+    fn has_component_registrations(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<bool, StateError>> {
+        let plugin = plugin.to_string();
+        async move {
+            let has = self
+                .component_registrations
+                .iter()
+                .any(|entry| entry.key().0 == plugin);
+            Ok(has)
+        }
+        .boxed()
+    }
 }
 
 impl CheckpointStore for InMemoryStateStore {
@@ -852,6 +961,20 @@ mod tests {
         use crate::checkpoint_compliance::CheckpointComplianceTests;
 
         CheckpointComplianceTests::run_all_isolated(|| async { InMemoryStateStore::new() }).await;
+    }
+
+    // =========================================================================
+    // Component Registration Compliance Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn in_memory_component_registration_compliance() {
+        use crate::component_registration_compliance::ComponentRegistrationComplianceTests;
+
+        ComponentRegistrationComplianceTests::run_all_isolated(|| async {
+            InMemoryStateStore::new()
+        })
+        .await;
     }
 
     #[tokio::test]

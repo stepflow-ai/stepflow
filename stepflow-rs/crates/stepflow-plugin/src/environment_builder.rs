@@ -20,7 +20,7 @@ use error_stack::ResultExt as _;
 use stepflow_core::StepflowEnvironment;
 use stepflow_state::{
     ActiveExecutions, ActiveRecoveries, CheckpointStore, ExecutionJournal, InMemoryStateStore,
-    LeaseManager, NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
+    LeaseManager, MetadataStoreExt as _, NoOpCheckpointStore, NoOpJournal, NoOpLeaseManager,
 };
 
 use crate::routing::PluginRouter;
@@ -186,6 +186,46 @@ pub async fn initialize_environment(env: &Arc<StepflowEnvironment>) -> Result<()
             .ensure_initialized(env)
             .await
             .change_context(PluginError::Initializing)?;
+    }
+
+    // Load stored component registrations into the routing trie.
+    // This populates the trie from the metadata store so that after an
+    // orchestrator restart, the trie is immediately usable without waiting
+    // for workers to reconnect and report their components.
+    let store = env.metadata_store();
+    match store.get_registered_components(None).await {
+        Ok(registrations) if !registrations.is_empty() => {
+            // Group by plugin
+            let mut by_plugin: std::collections::HashMap<String, Vec<_>> =
+                std::collections::HashMap::new();
+            for reg in registrations {
+                by_plugin
+                    .entry(reg.plugin.clone())
+                    .or_default()
+                    .push(reg.info);
+            }
+
+            let router = env.plugin_router();
+            for (plugin_name, components) in by_plugin {
+                match router.update_plugin_components(&plugin_name, components) {
+                    Ok(true) => {
+                        log::info!(
+                            "Loaded stored component registrations for plugin '{plugin_name}'"
+                        );
+                    }
+                    Ok(false) => {}
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to load stored components for plugin '{plugin_name}': {e}"
+                        );
+                    }
+                }
+            }
+        }
+        Ok(_) => {} // No stored registrations
+        Err(e) => {
+            log::warn!("Failed to load stored component registrations: {e}");
+        }
     }
 
     Ok(())

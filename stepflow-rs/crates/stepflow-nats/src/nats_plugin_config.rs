@@ -302,6 +302,7 @@ impl stepflow_plugin::Plugin for NatsPlugin {
             shared_server.pending_tasks().clone(),
             self.queue_timeout,
             self.execution_timeout,
+            self.consumer.clone(),
         );
 
         // Set the orchestrator URL for task assignments

@@ -158,6 +158,17 @@ struct RunStatusRow {
 }
 
 #[derive(FromRow)]
+struct ComponentRegistrationRow {
+    plugin: String,
+    component_id: String,
+    path: String,
+    description: Option<String>,
+    input_schema_json: Option<String>,
+    output_schema_json: Option<String>,
+    last_updated: String,
+}
+
+#[derive(FromRow)]
 struct JournalEntryRow {
     sequence: i64,
     run_id: String,
@@ -1205,6 +1216,230 @@ impl MetadataStore for SqliteStateStore {
 
                 tokio::task::yield_now().await;
             }
+        }
+        .boxed()
+    }
+
+    fn upsert_plugin_components(
+        &self,
+        plugin: &str,
+        components: &[stepflow_core::component::ComponentInfo],
+    ) -> BoxFuture<'_, error_stack::Result<(), StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        let components = components.to_vec();
+        async move {
+            let mut tx = pool
+                .begin()
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable("failed to begin transaction for component upsert")?;
+
+            // Upsert each component. Use INSERT ... ON CONFLICT to only bump
+            // last_updated when data actually changes.
+            for info in &components {
+                let component_id = info.component.path().to_string();
+                let path = &info.path;
+                let description = info.description.as_deref();
+                let input_schema_json = info
+                    .input_schema
+                    .as_ref()
+                    .and_then(|s| serde_json::to_string(s).ok());
+                let output_schema_json = info
+                    .output_schema
+                    .as_ref()
+                    .and_then(|s| serde_json::to_string(s).ok());
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO component_registrations
+                        (plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT (plugin, component_id) DO UPDATE SET
+                        path = excluded.path,
+                        description = excluded.description,
+                        input_schema_json = excluded.input_schema_json,
+                        output_schema_json = excluded.output_schema_json,
+                        last_updated = CASE
+                            WHEN component_registrations.path != excluded.path
+                              OR component_registrations.description IS NOT excluded.description
+                              OR component_registrations.input_schema_json IS NOT excluded.input_schema_json
+                              OR component_registrations.output_schema_json IS NOT excluded.output_schema_json
+                            THEN datetime('now')
+                            ELSE component_registrations.last_updated
+                        END
+                    "#,
+                )
+                .bind(&plugin)
+                .bind(&component_id)
+                .bind(path)
+                .bind(description)
+                .bind(&input_schema_json)
+                .bind(&output_schema_json)
+                .execute(&mut *tx)
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable_lazy(|| {
+                    format!("failed to upsert component '{component_id}' for plugin '{plugin}'")
+                })?;
+            }
+
+            // Remove stale entries for this plugin that are no longer reported
+            if components.is_empty() {
+                sqlx::query("DELETE FROM component_registrations WHERE plugin = ?")
+                    .bind(&plugin)
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)?;
+            } else {
+                let component_ids: Vec<String> = components
+                    .iter()
+                    .map(|c| c.component.path().to_string())
+                    .collect();
+
+                let mut qb: QueryBuilder<'_, Sqlite> = QueryBuilder::new(
+                    "DELETE FROM component_registrations WHERE plugin = ",
+                );
+                qb.push_bind(&plugin);
+                qb.push(" AND component_id NOT IN (");
+
+                let mut separated = qb.separated(", ");
+                for id in &component_ids {
+                    separated.push_bind(id);
+                }
+                separated.push_unseparated(")");
+
+                qb.build()
+                    .execute(&mut *tx)
+                    .await
+                    .change_context(StateError::Internal)
+                    .attach_printable_lazy(|| {
+                        format!("failed to remove stale components for plugin '{plugin}'")
+                    })?;
+            }
+
+            tx.commit()
+                .await
+                .change_context(StateError::Internal)
+                .attach_printable("failed to commit component upsert transaction")?;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
+    fn get_registered_components(
+        &self,
+        plugin: Option<&str>,
+    ) -> BoxFuture<
+        '_,
+        error_stack::Result<Vec<stepflow_state::StoredComponentRegistration>, StateError>,
+    > {
+        let pool = self.pool.clone();
+        let plugin = plugin.map(|s| s.to_string());
+        async move {
+            let rows = match &plugin {
+                Some(p) => {
+                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                        "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
+                         FROM component_registrations WHERE plugin = ? ORDER BY component_id",
+                    )
+                    .bind(p)
+                    .fetch_all(&pool)
+                    .await
+                }
+                None => {
+                    sqlx::query_as::<_, ComponentRegistrationRow>(
+                        "SELECT plugin, component_id, path, description, input_schema_json, output_schema_json, last_updated \
+                         FROM component_registrations ORDER BY plugin, component_id",
+                    )
+                    .fetch_all(&pool)
+                    .await
+                }
+            }
+            .change_context(StateError::Internal)
+            .attach_printable("failed to fetch component registrations")?;
+
+            let results = rows
+                .into_iter()
+                .map(|row| {
+                    let input_schema = row
+                        .input_schema_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let output_schema = row
+                        .output_schema_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let last_updated = chrono::NaiveDateTime::parse_from_str(
+                        &row.last_updated,
+                        "%Y-%m-%d %H:%M:%S",
+                    )
+                    .unwrap_or_default()
+                    .and_utc();
+
+                    stepflow_state::StoredComponentRegistration {
+                        plugin: row.plugin,
+                        info: stepflow_core::component::ComponentInfo {
+                            component: stepflow_core::workflow::Component::from_string(
+                                row.component_id,
+                            ),
+                            path: row.path,
+                            description: row.description,
+                            input_schema,
+                            output_schema,
+                        },
+                        last_updated,
+                    }
+                })
+                .collect();
+
+            Ok(results)
+        }
+        .boxed()
+    }
+
+    fn component_max_last_updated(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<Option<chrono::DateTime<chrono::Utc>>, StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        async move {
+            let row: Option<(Option<String>,)> = sqlx::query_as(
+                "SELECT MAX(last_updated) FROM component_registrations WHERE plugin = ?",
+            )
+            .bind(&plugin)
+            .fetch_optional(&pool)
+            .await
+            .change_context(StateError::Internal)?;
+
+            let result = row
+                .and_then(|(ts,)| ts)
+                .and_then(|ts| chrono::NaiveDateTime::parse_from_str(&ts, "%Y-%m-%d %H:%M:%S").ok())
+                .map(|ndt| ndt.and_utc());
+
+            Ok(result)
+        }
+        .boxed()
+    }
+
+    fn has_component_registrations(
+        &self,
+        plugin: &str,
+    ) -> BoxFuture<'_, error_stack::Result<bool, StateError>> {
+        let pool = self.pool.clone();
+        let plugin = plugin.to_string();
+        async move {
+            let row: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM component_registrations WHERE plugin = ? LIMIT 1",
+            )
+            .bind(&plugin)
+            .fetch_one(&pool)
+            .await
+            .change_context(StateError::Internal)?;
+
+            Ok(row.0 > 0)
         }
         .boxed()
     }

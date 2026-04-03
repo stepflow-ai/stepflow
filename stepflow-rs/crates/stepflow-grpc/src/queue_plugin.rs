@@ -30,6 +30,7 @@ use stepflow_core::workflow::{Component, StepId, ValueRef};
 use stepflow_plugin::{
     OrchestratorServiceUrl, PluginError, Result, RunContext, StepflowEnvironment,
 };
+use stepflow_state::MetadataStoreExt as _;
 
 /// Monotonic counter for generating unique discovery task IDs.
 static DISCOVERY_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -61,6 +62,10 @@ pub struct StepflowQueuePlugin {
     /// Maximum time from first heartbeat to CompleteTask. `None` means no
     /// execution timeout (heartbeat-only crash detection).
     execution_timeout: Option<Duration>,
+    /// The plugin name, used to persist component registrations.
+    plugin_name: String,
+    /// Environment reference, set during `ensure_initialized`.
+    env: std::sync::OnceLock<Arc<StepflowEnvironment>>,
 }
 
 impl StepflowQueuePlugin {
@@ -74,6 +79,7 @@ impl StepflowQueuePlugin {
         registry: Arc<PendingTasks>,
         queue_timeout: Duration,
         execution_timeout: Option<Duration>,
+        plugin_name: String,
     ) -> Self {
         Self {
             transport,
@@ -81,6 +87,8 @@ impl StepflowQueuePlugin {
             orchestrator_url_override: std::sync::RwLock::new(None),
             queue_timeout,
             execution_timeout,
+            plugin_name,
+            env: std::sync::OnceLock::new(),
         }
     }
 
@@ -111,9 +119,9 @@ const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
 const DISCOVERY_COMPONENT: &str = "__stepflow/list_components";
 
 impl stepflow_plugin::Plugin for StepflowQueuePlugin {
-    async fn ensure_initialized(&self, _env: &Arc<StepflowEnvironment>) -> Result<()> {
-        // Queue transports don't need stateful initialization.
-        // Workers connect independently and register their components.
+    async fn ensure_initialized(&self, env: &Arc<StepflowEnvironment>) -> Result<()> {
+        // Store the environment reference for persisting component registrations.
+        let _ = self.env.set(env.clone());
         Ok(())
     }
 
@@ -168,7 +176,23 @@ impl stepflow_plugin::Plugin for StepflowQueuePlugin {
         match tokio::time::timeout(DISCOVERY_TIMEOUT, rx).await {
             Ok(Ok(stepflow_core::FlowResult::Success(value))) => {
                 // Parse the JSON-wrapped component list
-                parse_discovery_result(&value)
+                let components = parse_discovery_result(&value)?;
+
+                // Persist to metadata store for multi-orchestrator visibility
+                if let Some(env) = self.env.get() {
+                    let store = env.metadata_store();
+                    if let Err(e) = store
+                        .upsert_plugin_components(&self.plugin_name, &components)
+                        .await
+                    {
+                        log::warn!(
+                            "Failed to persist component registrations for plugin '{}': {e}",
+                            self.plugin_name
+                        );
+                    }
+                }
+
+                Ok(components)
             }
             Ok(Ok(stepflow_core::FlowResult::Failed(e))) => {
                 Err(error_stack::report!(PluginError::ComponentInfo)

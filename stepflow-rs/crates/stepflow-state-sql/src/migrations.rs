@@ -83,6 +83,12 @@ pub async fn run_metadata_migrations(pool: &SqlitePool) -> Result<(), StateError
         create_step_statuses_table,
     )
     .await?;
+    run_migration(
+        pool,
+        "008_create_component_registrations_table",
+        create_component_registrations_table,
+    )
+    .await?;
 
     Ok(())
 }
@@ -484,6 +490,42 @@ async fn create_step_statuses_table(conn: &mut SqliteConnection) -> Result<(), S
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_step_statuses_journal_seqno \
          ON step_statuses(run_id, journal_seqno)",
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    Ok(())
+}
+
+/// Create the component_registrations table for persistent component metadata.
+///
+/// Stores component registrations reported by workers, keyed by (plugin, component_id).
+/// This enables multi-orchestrator deployments where all orchestrators share
+/// the same component registrations, and fast restarts from stored data.
+async fn create_component_registrations_table(
+    conn: &mut SqliteConnection,
+) -> Result<(), StateError> {
+    sqlx::query(
+        r#"
+            CREATE TABLE IF NOT EXISTS component_registrations (
+                plugin TEXT NOT NULL,
+                component_id TEXT NOT NULL,
+                path TEXT NOT NULL DEFAULT '',
+                description TEXT,
+                input_schema_json TEXT,
+                output_schema_json TEXT,
+                last_updated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (plugin, component_id)
+            )
+        "#,
+    )
+    .execute(&mut *conn)
+    .await
+    .change_context(StateError::Initialization)?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_comp_reg_plugin ON component_registrations(plugin)",
     )
     .execute(&mut *conn)
     .await

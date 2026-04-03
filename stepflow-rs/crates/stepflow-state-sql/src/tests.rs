@@ -422,6 +422,20 @@ async fn sqlite_metadata_compliance() {
 }
 
 // =========================================================================
+// Component Registration Compliance Tests
+// =========================================================================
+
+#[tokio::test]
+async fn sqlite_component_registration_compliance() {
+    use stepflow_state::component_registration_compliance::ComponentRegistrationComplianceTests;
+
+    ComponentRegistrationComplianceTests::run_all_isolated(|| async {
+        SqliteStateStore::in_memory().await.unwrap()
+    })
+    .await;
+}
+
+// =========================================================================
 // BlobStore Compliance Tests
 // =========================================================================
 
