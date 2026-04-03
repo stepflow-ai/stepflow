@@ -179,7 +179,7 @@ pub async fn recover_orphaned_runs(
     for (root_run_id, root_info) in &trees {
         log::info!("Recovering execution tree rooted at {}", root_run_id);
 
-        // Mark as recovering so OrchestratorService returns NOT_READY
+        // Mark as recovering so OrchestratorService returns UNAVAILABLE
         // instead of NOT_FOUND for tasks belonging to this run.
         active_recoveries.insert(*root_run_id);
 
@@ -190,6 +190,11 @@ pub async fn recover_orphaned_runs(
                     root_run_id
                 );
                 result.record_success(root_info.root_run_id);
+                // Don't remove from active_recoveries here — the spawned
+                // executor hasn't registered recovered task_ids in the
+                // TaskRegistry yet.  The executor removes the entry after
+                // its first dispatch cycle so workers get UNAVAILABLE (not
+                // NOT_FOUND) until the task_ids are actually registered.
             }
             Err(e) => {
                 log::error!(
@@ -211,12 +216,11 @@ pub async fn recover_orphaned_runs(
                         update_err
                     );
                 }
+
+                // Failed recovery — remove immediately so workers get NOT_FOUND.
+                active_recoveries.remove(root_run_id);
             }
         }
-
-        // Recovery complete (success or failure) — remove from active set
-        // so subsequent CompleteTask calls get NOT_FOUND instead of NOT_READY.
-        active_recoveries.remove(root_run_id);
     }
 
     log::info!(

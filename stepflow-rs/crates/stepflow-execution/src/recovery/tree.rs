@@ -21,8 +21,8 @@ use error_stack::ResultExt as _;
 use stepflow_core::workflow::apply_overrides;
 use stepflow_plugin::StepflowEnvironment;
 use stepflow_state::{
-    ActiveExecutionsExt as _, BlobStoreExt as _, CheckpointStoreExt as _, ExecutionJournal,
-    MetadataStoreExt as _,
+    ActiveExecutionsExt as _, ActiveRecoveriesExt as _, BlobStoreExt as _, CheckpointStoreExt as _,
+    ExecutionJournal, MetadataStoreExt as _,
 };
 
 use super::restore::{Recovery, sync_run_state_to_metadata};
@@ -168,10 +168,16 @@ pub(super) async fn recover_execution_tree(
         builder = builder.with_recovered_task_ids(recovered.recovered_task_ids);
     }
 
-    let flow_executor = builder
+    let mut flow_executor = builder
         .build()
         .await
         .change_context(ExecutionError::RecoveryFailed)?;
+
+    // Set the recovery gate: the spawned executor will remove the run from
+    // ActiveRecoveries after its first dispatch cycle, when recovered task_ids
+    // have been registered in the TaskRegistry. This prevents workers from
+    // receiving NOT_FOUND during the window between spawn and registration.
+    flow_executor.set_recovery_gate(env.active_recoveries());
 
     // Spawn and track the recovered execution tree
     flow_executor.spawn(&env.active_executions());

@@ -262,6 +262,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             Ok(Response::new(CompleteTaskResponse {}))
         } else if self.is_run_recovering(&req.run_id) {
             Err(Status::unavailable("run is being recovered"))
+        } else if self.env.active_recoveries().is_startup_pending() {
+            Err(Status::unavailable("startup recovery in progress"))
         } else {
             Err(grpc_err::not_found("task", &req.task_id))
         }
@@ -291,6 +293,8 @@ impl OrchestratorService for OrchestratorServiceImpl {
             HeartbeatResult::NotFound => {
                 if self.is_run_recovering(&req.run_id) {
                     Err(Status::unavailable("run is being recovered"))
+                } else if self.env.active_recoveries().is_startup_pending() {
+                    Err(Status::unavailable("startup recovery in progress"))
                 } else {
                     Err(grpc_err::not_found("task", &req.task_id))
                 }
@@ -304,7 +308,7 @@ impl OrchestratorServiceImpl {
     ///
     /// If `root_run_id` is `None`, the check is skipped (backwards compatibility).
     /// Returns `Ok(())` if the run is active, or a gRPC error:
-    /// - `UNAVAILABLE` if the run is being recovered
+    /// - `UNAVAILABLE` if the run is being recovered or startup recovery is pending
     /// - `NOT_FOUND` if the run is not on this orchestrator
     fn check_run_ownership(&self, root_run_id: &Option<String>) -> Result<(), Status> {
         let Some(id_str) = root_run_id.as_deref() else {
@@ -318,6 +322,9 @@ impl OrchestratorServiceImpl {
         }
         if self.env.active_recoveries().contains(&id) {
             return Err(Status::unavailable("run is being recovered"));
+        }
+        if self.env.active_recoveries().is_startup_pending() {
+            return Err(Status::unavailable("startup recovery in progress"));
         }
         Err(grpc_err::not_found("run", id_str))
     }

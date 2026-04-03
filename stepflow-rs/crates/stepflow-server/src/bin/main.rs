@@ -22,7 +22,7 @@ use stepflow_observability::{ObservabilityConfig, init_observability};
 use stepflow_server::{
     ServiceOptions, StepflowService, heartbeat_loop, orphan_claiming_loop, shutdown_signal,
 };
-use stepflow_state::{LeaseManagerExt as _, OrchestratorId};
+use stepflow_state::{ActiveRecoveriesExt as _, LeaseManagerExt as _, OrchestratorId};
 use thiserror::Error;
 use tokio_util::sync::CancellationToken;
 
@@ -130,6 +130,7 @@ async fn main() {
 
         // Build the unified service
         info!("Creating Stepflow service from configuration");
+        let startup_recovery_pending = recovery_config.max_startup_recovery > 0;
         let service = StepflowService::new(
             config,
             ServiceOptions {
@@ -138,6 +139,7 @@ async fn main() {
                 orchestrator_id: Some(orchestrator_id.clone()),
                 include_cors: true,
                 announce_port: true,
+                startup_recovery_pending,
                 ..Default::default()
             },
         )
@@ -150,8 +152,11 @@ async fn main() {
         // Set up cancellation token for graceful shutdown
         let cancel_token = CancellationToken::new();
 
-        // Recover pending runs on startup
-        if recovery_config.max_startup_recovery > 0 {
+        // Recover pending runs on startup.
+        // The startup_recovery_pending flag (set in ServiceOptions above) causes
+        // gRPC services to return UNAVAILABLE for unknown tasks until cleared,
+        // preventing workers from receiving NOT_FOUND during the recovery window.
+        if startup_recovery_pending {
             info!(
                 "Recovering pending runs with orchestrator_id={}",
                 orchestrator_id.as_str()
@@ -172,6 +177,10 @@ async fn main() {
                 );
             }
         }
+
+        // Startup recovery is done (or was not configured). Clear the gate
+        // so gRPC services return NOT_FOUND for genuinely unknown tasks.
+        env.active_recoveries().set_startup_pending(false);
 
         // Start background heartbeat + stale orchestrator detection loop
         let heartbeat_task = tokio::spawn(heartbeat_loop(
