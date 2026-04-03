@@ -373,33 +373,18 @@ impl stepflow_plugin::Plugin for GrpcPlugin {
         *self.inner.lock().await = Some(inner_plugin);
 
         // Check if we already have stored component registrations from a
-        // previous run. If so, we can skip blocking on the worker connection
-        // and serve from the store immediately.
+        // previous run. Stored registrations are loaded into the routing trie
+        // during initialize_environment, so even if the worker takes time to
+        // connect, requests can be routed immediately.
         let has_stored = env
             .metadata_store()
             .has_component_registrations(&self.queue_name)
             .await
             .unwrap_or(false);
 
-        // Spawn worker subprocess if command is configured
+        // Spawn worker subprocess if command is configured.
         if self.command.is_some() {
-            if has_stored {
-                // We have stored registrations — spawn in background without
-                // blocking initialization. The worker will reconnect and
-                // refresh registrations asynchronously.
-                log::info!(
-                    "Plugin '{}' has stored component registrations — spawning worker in background",
-                    self.queue_name
-                );
-                let queue_registry_bg = queue_registry.clone();
-                // We need a reference to self for spawn_worker, but self isn't Send.
-                // Instead, spawn the worker synchronously but with a shorter timeout tolerance.
-                // For now, still spawn synchronously — the readiness benefit is that
-                // the *routing trie* is populated from the store, not that we skip spawning.
-                self.spawn_worker(&queue_registry_bg).await?;
-            } else {
-                self.spawn_worker(&queue_registry).await?;
-            }
+            self.spawn_worker(&queue_registry).await?;
         }
 
         // Trigger initial component discovery to persist registrations.

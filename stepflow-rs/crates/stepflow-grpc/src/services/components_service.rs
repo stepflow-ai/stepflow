@@ -75,6 +75,12 @@ impl ComponentsService for ComponentsServiceImpl {
                     if let Err(e) = self.env.update_plugin_components(&name, components.clone()) {
                         log::warn!("Failed to update routing trie for plugin '{name}': {e}");
                     }
+                    // Persist for future use (e.g., plugins that don't self-persist)
+                    if let Err(e) = store.upsert_plugin_components(&name, &components).await {
+                        log::warn!(
+                            "Failed to persist component registrations for plugin '{name}': {e}"
+                        );
+                    }
                     if !include_schemas {
                         for c in components.iter_mut() {
                             c.input_schema = None;

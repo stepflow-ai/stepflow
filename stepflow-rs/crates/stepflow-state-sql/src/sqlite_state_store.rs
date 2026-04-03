@@ -1244,11 +1244,25 @@ impl MetadataStore for SqliteStateStore {
                 let input_schema_json = info
                     .input_schema
                     .as_ref()
-                    .and_then(|s| serde_json::to_string(s).ok());
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to serialize input schema for component '{component_id}'"
+                        )
+                    })?;
                 let output_schema_json = info
                     .output_schema
                     .as_ref()
-                    .and_then(|s| serde_json::to_string(s).ok());
+                    .map(serde_json::to_string)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to serialize output schema for component '{component_id}'"
+                        )
+                    })?;
 
                 sqlx::query(
                     r#"
@@ -1360,39 +1374,56 @@ impl MetadataStore for SqliteStateStore {
             .change_context(StateError::Internal)
             .attach_printable("failed to fetch component registrations")?;
 
-            let results = rows
-                .into_iter()
-                .map(|row| {
-                    let input_schema = row
-                        .input_schema_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let output_schema = row
-                        .output_schema_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let last_updated = chrono::NaiveDateTime::parse_from_str(
-                        &row.last_updated,
-                        "%Y-%m-%d %H:%M:%S",
-                    )
-                    .unwrap_or_default()
-                    .and_utc();
-
-                    stepflow_state::StoredComponentRegistration {
-                        plugin: row.plugin,
-                        info: stepflow_core::component::ComponentInfo {
-                            component: stepflow_core::workflow::Component::from_string(
-                                row.component_id,
+            let mut results = Vec::with_capacity(rows.len());
+            for row in rows {
+                let input_schema = row
+                    .input_schema_json
+                    .as_deref()
+                    .map(serde_json::from_str)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to deserialize input schema for component '{}'",
+                            row.component_id
+                        )
+                    })?;
+                let output_schema = row
+                    .output_schema_json
+                    .as_deref()
+                    .map(serde_json::from_str)
+                    .transpose()
+                    .change_context(StateError::Serialization)
+                    .attach_printable_lazy(|| {
+                        format!(
+                            "failed to deserialize output schema for component '{}'",
+                            row.component_id
+                        )
+                    })?;
+                let last_updated =
+                    parse_sqlite_datetime(&row.last_updated).ok_or_else(|| {
+                        error_stack::report!(StateError::Serialization).attach_printable(
+                            format!(
+                                "unparseable last_updated for component '{}': {}",
+                                row.component_id, row.last_updated
                             ),
-                            path: row.path,
-                            description: row.description,
-                            input_schema,
-                            output_schema,
-                        },
-                        last_updated,
-                    }
-                })
-                .collect();
+                        )
+                    })?;
+
+                results.push(stepflow_state::StoredComponentRegistration {
+                    plugin: row.plugin,
+                    info: stepflow_core::component::ComponentInfo {
+                        component: stepflow_core::workflow::Component::from_string(
+                            row.component_id,
+                        ),
+                        path: row.path,
+                        description: row.description,
+                        input_schema,
+                        output_schema,
+                    },
+                    last_updated,
+                });
+            }
 
             Ok(results)
         }
@@ -1414,10 +1445,14 @@ impl MetadataStore for SqliteStateStore {
             .await
             .change_context(StateError::Internal)?;
 
-            let result = row
-                .and_then(|(ts,)| ts)
-                .and_then(|ts| chrono::NaiveDateTime::parse_from_str(&ts, "%Y-%m-%d %H:%M:%S").ok())
-                .map(|ndt| ndt.and_utc());
+            let result = match row.and_then(|(ts,)| ts) {
+                Some(ts) => Some(parse_sqlite_datetime(&ts).ok_or_else(|| {
+                    error_stack::report!(StateError::Serialization).attach_printable(format!(
+                        "unparseable component_registrations.last_updated for plugin '{plugin}': {ts}"
+                    ))
+                })?),
+                None => None,
+            };
 
             Ok(result)
         }
