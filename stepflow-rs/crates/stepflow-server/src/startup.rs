@@ -20,7 +20,7 @@ use stepflow_grpc::{
     ComponentsServiceImpl, FlowsServiceImpl, HealthServiceImpl, RunsServiceImpl, StepflowGrpcServer,
 };
 use stepflow_plugin::StepflowEnvironment;
-use stepflow_state::OrchestratorId;
+use stepflow_state::{ActiveRecoveries, ActiveRecoveriesExt as _, OrchestratorId};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -40,6 +40,13 @@ pub struct ServiceOptions {
     pub include_cors: bool,
     /// Print JSON port announcement (`{"port":N}`) to stdout.
     pub announce_port: bool,
+    /// If `true`, the gRPC services will return `UNAVAILABLE` for unknown
+    /// tasks until [`ActiveRecoveries::set_startup_pending`] is called with `false`.
+    ///
+    /// Set this when the server will perform startup recovery so that workers
+    /// don't receive `NOT_FOUND` during the window between server start and
+    /// recovery completion.
+    pub startup_recovery_pending: bool,
 }
 
 impl Default for ServiceOptions {
@@ -51,6 +58,7 @@ impl Default for ServiceOptions {
             include_grpc: true,
             include_cors: false,
             announce_port: false,
+            startup_recovery_pending: false,
         }
     }
 }
@@ -118,6 +126,21 @@ impl StepflowService {
             None
         };
         let env = create_environment(config, &listener, orchestrator_id, grpc_address).await?;
+
+        // Set the startup recovery gate BEFORE building routes / starting the
+        // server.  While this flag is set, gRPC services return UNAVAILABLE
+        // for unknown tasks instead of NOT_FOUND, giving the startup recovery
+        // pass time to re-register in-flight tasks.  The caller (main.rs)
+        // clears this after recovery completes.
+        //
+        // ActiveRecoveries must be installed early (before plugin init) so it
+        // is available when the gRPC server starts accepting connections.
+        if options.startup_recovery_pending {
+            if !env.contains::<ActiveRecoveries>() {
+                env.insert(ActiveRecoveries::new());
+            }
+            env.active_recoveries().set_startup_pending(true);
+        }
 
         // Build the combined HTTP + gRPC router served by tonic.
         // Tonic's transport server handles both HTTP/1.1 (REST) and HTTP/2

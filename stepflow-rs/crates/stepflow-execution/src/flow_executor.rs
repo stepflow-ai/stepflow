@@ -26,7 +26,7 @@ use stepflow_core::FlowResult;
 use stepflow_core::workflow::StepId;
 use stepflow_observability::RunInfoGuard;
 use stepflow_state::{
-    CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEvent,
+    ActiveRecoveries, CreateRunParams, ExecutionJournal, ExecutionJournalExt as _, JournalEvent,
     LeaseManagerExt as _, MetadataStore, OrchestratorIdExt as _, RunTaskAttempts, TaskAttempt,
 };
 use uuid::Uuid;
@@ -116,6 +116,10 @@ pub struct FlowExecutor {
     in_flight_task_ids: HashMap<(Uuid, u32, usize), String>,
     /// Periodic checkpoint creator for execution state.
     checkpointer: Checkpointer,
+    /// When set, this run was recovered from a crash and should be removed
+    /// from `ActiveRecoveries` once the initial task dispatch is complete
+    /// (i.e., task_ids are registered in the TaskRegistry).
+    recovery_gate: Option<ActiveRecoveries>,
 }
 
 impl FlowExecutor {
@@ -156,12 +160,21 @@ impl FlowExecutor {
             recovered_task_ids,
             in_flight_task_ids: HashMap::new(),
             checkpointer,
+            recovery_gate: None,
         }
     }
 
     /// Get the root run ID for this execution tree.
     pub fn root_run_id(&self) -> Uuid {
         self.root_run_id
+    }
+
+    /// Set a recovery gate: the executor will remove the root_run_id from
+    /// `ActiveRecoveries` after its first task dispatch cycle, ensuring
+    /// workers get `UNAVAILABLE` (not `NOT_FOUND`) until the recovered
+    /// task_ids are registered in the TaskRegistry.
+    pub fn set_recovery_gate(&mut self, active_recoveries: ActiveRecoveries) {
+        self.recovery_gate = Some(active_recoveries);
     }
 
     /// Spawn this executor in the background and track it in active executions.
@@ -189,6 +202,13 @@ impl FlowExecutor {
         let future = async move {
             if let Err(e) = self.execute_to_completion().await {
                 log::error!("Run {} failed: {:?}", run_id, e);
+            }
+
+            // Safety net: ensure the recovery gate is always cleared, even if
+            // execute_to_completion returned early with an error before the
+            // normal clearing points in run_internal were reached.
+            if let Some(ar) = self.recovery_gate.take() {
+                ar.remove(&self.root_run_id);
             }
 
             // Release lease after completion (best-effort, root runs only)
@@ -461,6 +481,10 @@ impl FlowExecutor {
 
             // If no tasks in flight and no subflows could be submitted, we're done
             if in_flight.is_empty() {
+                // Clear recovery gate — nothing to dispatch.
+                if let Some(ar) = self.recovery_gate.take() {
+                    ar.remove(&self.root_run_id);
+                }
                 return Ok(());
             }
 
@@ -468,6 +492,14 @@ impl FlowExecutor {
             tokio::select! {
                 // Handle task completion
                 Some(task_result) = in_flight.next() => {
+                    // Clear the recovery gate once the executor is actively
+                    // processing tasks. While the gate is set, the per-run
+                    // active_recoveries entry causes the gRPC service to
+                    // return UNAVAILABLE for this run's unknown task_ids.
+                    if let Some(ar) = self.recovery_gate.take() {
+                        ar.remove(&self.root_run_id);
+                    }
+
                     if let Some(retry_future) = self.complete_task(task_result).await? {
                         in_flight.push(retry_future);
                     } else if let Some(r) = &mut remaining {
@@ -478,6 +510,10 @@ impl FlowExecutor {
                 }
                 // Handle subflow submission
                 Some(submit_request) = self.submit_receiver.recv() => {
+                    // Clear recovery gate (same reasoning as task_result branch).
+                    if let Some(ar) = self.recovery_gate.take() {
+                        ar.remove(&self.root_run_id);
+                    }
                     self.handle_submit_request(submit_request).await?;
                 }
             }
