@@ -15,8 +15,8 @@ routes:
     - plugin: builtin
 
 storageConfig:
-  type: sqlite
-  databaseUrl: "sqlite:data/workflow_state.db?mode=rwc"
+  type: postgres
+  databaseUrl: "postgres://stepflow:stepflow@postgres:5432/stepflow"
   autoMigrate: true
   maxConnections: 5
 

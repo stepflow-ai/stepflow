@@ -81,15 +81,15 @@ if [ "$USE_PREBUILT" = true ]; then
 
         print_step "Build server"
         echo ""
-        echo "    Running: cd stepflow-rs && cargo build -p stepflow-server"
-        if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server); then
+        echo "    Running: cd stepflow-rs && cargo build -p stepflow-server --features postgres"
+        if (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --features postgres); then
             print_step "Build server"
             print_pass
         else
             print_step "Build server"
             print_fail
             FAILED_CHECKS+=("Build server")
-            FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build -p stepflow-server")
+            FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build -p stepflow-server --features postgres")
             print_fix "Fix build errors"
         fi
     else
@@ -97,7 +97,7 @@ if [ "$USE_PREBUILT" = true ]; then
         (cd "$RECOVERY_DIR" && uv sync) > "$_LIB_TMPDIR/python.txt" 2>&1 &
         PYTHON_PID=$!
 
-        (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
+        (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --features postgres) > "$_LIB_TMPDIR/cargo.txt" 2>&1 &
         CARGO_PID=$!
 
         print_step "Python deps"
@@ -117,7 +117,7 @@ if [ "$USE_PREBUILT" = true ]; then
         else
             print_fail
             FAILED_CHECKS+=("Build server")
-            FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build -p stepflow-server")
+            FAILED_CHECK_CMDS+=("cd stepflow-rs && cargo build -p stepflow-server --features postgres")
             echo "    Output:"
             sed 's/^/      /' "$_LIB_TMPDIR/cargo.txt" | head -50
             print_fix "Fix build errors"
@@ -129,7 +129,7 @@ if [ "$USE_PREBUILT" = true ]; then
 
     export COMPOSE_OVERRIDE=docker-compose.ci.yml
 else
-    # macOS/other: install Python deps only; Docker builds from source
+    # macOS/other: install Python deps only; Docker builds from source.
     if [ "$VERBOSE" = true ]; then
         print_step "Python deps"
         echo ""

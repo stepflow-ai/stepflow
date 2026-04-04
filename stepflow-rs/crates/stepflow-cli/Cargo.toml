@@ -50,7 +50,7 @@ tempfile.workspace = true
 testcontainers.workspace = true
 
 [features]
-default = ["etcd"]
+default = ["etcd", "sqlite"]
 etcd = ["stepflow-config/etcd", "stepflow-server/etcd"]
 nats = ["stepflow-config/nats"]
 postgres = ["stepflow-config/postgres", "stepflow-server/postgres"]

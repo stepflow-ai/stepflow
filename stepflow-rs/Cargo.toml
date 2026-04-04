@@ -116,7 +116,7 @@ stepflow-proto = { path = "./crates/stepflow-proto" }
 stepflow-server = { path = "./crates/stepflow-server", default-features = false }
 stepflow-state = { path = "./crates/stepflow-state" }
 stepflow-state-etcd = { path = "./crates/stepflow-state-etcd" }
-stepflow-state-sql = { path = "./crates/stepflow-state-sql" }
+stepflow-state-sql = { path = "./crates/stepflow-state-sql", default-features = false }
 stepflow-test-utils = { path = "./crates/stepflow-test-utils" }
 stepflow-typecheck = { path = "./crates/stepflow-typecheck" }
 tempfile = "3.8"

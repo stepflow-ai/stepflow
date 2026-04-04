@@ -14,10 +14,25 @@ services:
       retries: 10
       start_period: 5s
 
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: stepflow
+      POSTGRES_PASSWORD: stepflow
+      POSTGRES_DB: stepflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stepflow"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+
   orchestrator-1:
     build:
       context: ../..
       dockerfile: docker/Dockerfile.server
+      args:
+        CARGO_PROFILE: ${CARGO_PROFILE:-release}
     command:
       - stepflow-server
       - --port
@@ -33,10 +48,11 @@ services:
       # can reach this orchestrator for StartTask/CompleteTask RPCs.
       STEPFLOW_ORCHESTRATOR_URL: "orchestrator-1:7841"
     volumes:
-      - shared-db:/app/data
       - ./stepflow-config.yml:/app/config/stepflow-config.yml:ro
     depends_on:
       etcd:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7841/api/v1/health"]
@@ -49,6 +65,8 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile.server
+      args:
+        CARGO_PROFILE: ${CARGO_PROFILE:-release}
     command:
       - stepflow-server
       - --port
@@ -62,14 +80,11 @@ services:
     environment:
       STEPFLOW_ORCHESTRATOR_URL: "orchestrator-2:7842"
     volumes:
-      - shared-db:/app/data
       - ./stepflow-config.yml:/app/config/stepflow-config.yml:ro
     depends_on:
       etcd:
         condition: service_healthy
-      # Start after orchestrator-1 is healthy so SQLite migrations complete
-      # before the second orchestrator tries to access the shared database.
-      orchestrator-1:
+      postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7842/api/v1/health"]
@@ -102,5 +117,4 @@ services:
       start_period: 5s
 
 volumes:
-  shared-db:
   shared-tracker:
