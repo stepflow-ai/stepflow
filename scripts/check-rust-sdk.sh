@@ -51,7 +51,7 @@ run_check "Tests" cargo test --all-features || true
 # Build it if STEPFLOW_DEV_BINARY is not already set.
 if [ -z "${STEPFLOW_DEV_BINARY:-}" ]; then
     echo "  Building orchestrator binary for integration tests..."
-    (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --no-default-features) 2>&1 | \
+    (cd "$PROJECT_ROOT/stepflow-rs" && cargo build -p stepflow-server --no-default-features --features sqlite) 2>&1 | \
         if [ "$VERBOSE" = true ]; then cat; else cat > /dev/null; fi
     export STEPFLOW_DEV_BINARY="$PROJECT_ROOT/stepflow-rs/target/debug/stepflow-server"
 fi

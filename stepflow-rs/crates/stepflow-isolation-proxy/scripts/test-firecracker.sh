@@ -234,7 +234,7 @@ ok "Kernel and rootfs ready"
 step "Building Rust binaries (incremental)"
 
 info "Building stepflow-server..."
-if ! run_cmd "cd $STEPFLOW_RS_DIR && source ~/.cargo/env 2>/dev/null; cargo build -p stepflow-server --no-default-features"; then
+if ! run_cmd "cd $STEPFLOW_RS_DIR && source ~/.cargo/env 2>/dev/null; cargo build -p stepflow-server --no-default-features --features sqlite"; then
     fail "stepflow-server build failed"
     exit 1
 fi
