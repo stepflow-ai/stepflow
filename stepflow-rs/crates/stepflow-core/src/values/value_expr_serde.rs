@@ -101,7 +101,7 @@ impl<'de> Deserialize<'de> for ValueExpr {
 /// Parse a serde_json::Value into a ValueExpr
 ///
 /// Detection order:
-/// 1. Check for $ prefixed keys ($step, $input, $variable, $literal)
+/// 1. Check for $ prefixed keys ($literal, $if, $coalesce, $from [rejected], $step, $input, $variable)
 /// 2. Recursively parse arrays/objects
 /// 3. Fall through to Literal for primitives
 fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
@@ -158,7 +158,9 @@ fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
                 "Legacy '$from' syntax is no longer supported. \
                  Migrate to the new syntax: use {\"$step\": \"step_id\", \"path\": \"...\"} \
                  instead of {\"$from\": {\"step\": \"step_id\"}, \"path\": \"...\"}, \
-                 and {\"$input\": \"field\"} instead of {\"$from\": {\"workflow\": \"input\"}, \"path\": \"field\"}"
+                 and {\"$input\": \"field\"} instead of {\"$from\": {\"workflow\": \"input\"}, \"path\": \"field\"}. \
+                 If you need a literal object containing a \"$from\" key, wrap it in \
+                 $literal: {\"$literal\": {\"$from\": ...}}"
                     .to_string(),
             )
         }
