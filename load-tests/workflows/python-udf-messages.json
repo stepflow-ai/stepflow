@@ -43,23 +43,15 @@
       "component": "/python/udf",
       "input": {
         "blob_id": {
-          "$from": {
-            "step": "create_message_udf_blob"
-          },
+          "$step": "create_message_udf_blob",
           "path": "blob_id"
         },
         "input": {
           "prompt": {
-            "$from": {
-              "workflow": "input"
-            },
-            "path": "prompt"
+            "$input": "prompt"
           },
           "system_message": {
-            "$from": {
-              "workflow": "input"
-            },
-            "path": "system_message"
+            "$input": "system_message"
           }
         }
       }
@@ -67,27 +59,19 @@
   ],
   "output": {
     "messages": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "messages"
     },
     "message_count": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "message_count"
     },
     "total_length": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "total_length"
     },
     "word_count": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "word_count"
     }
   }

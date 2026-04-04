@@ -176,7 +176,7 @@ class Value:
     - Literal values (using Value.literal() or Value())
     - References to steps (using Value.step())
     - References to workflow input (using Value.input())
-    - Expressions using $literal and $from syntax
+    - Expressions using $literal, $step, and $input syntax
     """
 
     # Class attribute for input path builder (set at module level)
@@ -228,7 +228,7 @@ class Value:
     def step(step_id: str, path: str | None = None) -> Value:
         """Create a reference to a step's output.
 
-        This is equivalent to using $from with a step reference.
+        This is equivalent to using $step in the workflow definition.
         """
         json_path = JsonPath()
         if path is not None and path != "$":
