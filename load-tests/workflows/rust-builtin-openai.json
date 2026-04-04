@@ -24,16 +24,10 @@
       "component": "/create_messages",
       "input": {
         "system_instructions": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "system_message"
+          "$input": "system_message"
         },
         "user_prompt": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "prompt"
+          "$input": "prompt"
         }
       }
     },
@@ -42,9 +36,7 @@
       "component": "/openai",
       "input": {
         "messages": {
-          "$from": {
-            "step": "create_messages"
-          },
+          "$step": "create_messages",
           "path": "messages"
         },
         "model": "gpt-4o-mini",
@@ -55,9 +47,7 @@
   ],
   "output": {
     "response": {
-      "$from": {
-        "step": "call_openai"
-      },
+      "$step": "call_openai",
       "path": "response"
     }
   }

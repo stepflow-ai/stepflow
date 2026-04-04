@@ -24,16 +24,10 @@
       "component": "/custom/openai_chat",
       "input": {
         "prompt": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "prompt"
+          "$input": "prompt"
         },
         "system_message": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "system_message"
+          "$input": "system_message"
         },
         "max_tokens": 150,
         "temperature": 0.7
@@ -42,9 +36,7 @@
   ],
   "output": {
     "response": {
-      "$from": {
-        "step": "call_openai"
-      },
+      "$step": "call_openai",
       "path": "response"
     }
   }

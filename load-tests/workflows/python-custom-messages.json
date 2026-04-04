@@ -22,37 +22,25 @@
       "component": "/custom/create_messages",
       "input": {
         "prompt": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "prompt"
+          "$input": "prompt"
         },
         "system_message": {
-          "$from": {
-            "workflow": "input"
-          },
-          "path": "system_message"
+          "$input": "system_message"
         }
       }
     }
   ],
   "output": {
     "messages": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "messages"
     },
     "message_count": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "message_count"
     },
     "total_length": {
-      "$from": {
-        "step": "create_messages"
-      },
+      "$step": "create_messages",
       "path": "total_length"
     }
   }

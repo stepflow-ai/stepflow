@@ -151,6 +151,17 @@ fn parse_value_expr(value: Value) -> Result<ValueExpr, String> {
 
             Ok(ValueExpr::Coalesce { values })
         }
+        Value::Object(ref obj) if obj.contains_key("$from") => {
+            // Legacy syntax: {"$from": {"step": "id"}, "path": "..."} or {"$from": {"workflow": "input"}, "path": "..."}
+            // was replaced by $step/$input in the new syntax.
+            Err(
+                "Legacy '$from' syntax is no longer supported. \
+                 Migrate to the new syntax: use {\"$step\": \"step_id\", \"path\": \"...\"} \
+                 instead of {\"$from\": {\"step\": \"step_id\"}, \"path\": \"...\"}, \
+                 and {\"$input\": \"field\"} instead of {\"$from\": {\"workflow\": \"input\"}, \"path\": \"field\"}"
+                    .to_string(),
+            )
+        }
         Value::Object(ref obj) if obj.contains_key("$step") => {
             // Step reference - extract step and optional path
             let step = obj
@@ -412,6 +423,30 @@ mod tests {
     fn test_parse_error_invalid_step() {
         // Missing required field
         let json_str = r#"{"$step": 123}"#; // step must be string
+        let result: Result<ValueExpr, _> = serde_json::from_str(json_str);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_legacy_from_syntax() {
+        // Legacy $from syntax should produce a clear error
+        let json_str = r#"{"$from": {"step": "my_step"}, "path": "result"}"#;
+        let result: Result<ValueExpr, _> = serde_json::from_str(json_str);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("$from"),
+            "Error should mention $from: {}",
+            err_msg
+        );
+        assert!(
+            err_msg.contains("no longer supported"),
+            "Error should say no longer supported: {}",
+            err_msg
+        );
+
+        // Also test the workflow input variant
+        let json_str = r#"{"$from": {"workflow": "input"}, "path": "name"}"#;
         let result: Result<ValueExpr, _> = serde_json::from_str(json_str);
         assert!(result.is_err());
     }

@@ -48,23 +48,15 @@
       "component": "/python/udf",
       "input": {
         "blob_id": {
-          "$from": {
-            "step": "create_openai_udf_blob"
-          },
+          "$step": "create_openai_udf_blob",
           "path": "blob_id"
         },
         "input": {
           "prompt": {
-            "$from": {
-              "workflow": "input"
-            },
-            "path": "prompt"
+            "$input": "prompt"
           },
           "system_message": {
-            "$from": {
-              "workflow": "input"
-            },
-            "path": "system_message"
+            "$input": "system_message"
           }
         }
       }
@@ -72,9 +64,7 @@
   ],
   "output": {
     "response": {
-      "$from": {
-        "step": "call_openai"
-      },
+      "$step": "call_openai",
       "path": "response"
     }
   }
