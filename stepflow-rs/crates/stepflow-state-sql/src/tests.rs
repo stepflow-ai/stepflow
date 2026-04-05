@@ -465,6 +465,82 @@ async fn test_migrations_sequential_stores() {
     assert!(blob.is_some(), "Blob written by first store should persist");
 }
 
+/// Two separate pools connected to the same file-based SQLite database must
+/// both be able to run migrations without conflict. This simulates two
+/// orchestrators starting concurrently against a shared database (HA with
+/// a shared PersistentVolumeClaim).
+#[tokio::test]
+async fn test_migrations_concurrent_pools() {
+    use tempfile::NamedTempFile;
+
+    crate::sql_state_store::SqlStateStore::ensure_drivers();
+
+    let tmp = NamedTempFile::new().unwrap();
+    let url = format!("sqlite:{}?mode=rwc", tmp.path().display());
+
+    let pool1 = sqlx::any::AnyPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .unwrap();
+    let pool2 = sqlx::any::AnyPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .unwrap();
+
+    // Enable WAL mode on both (mirrors production setup)
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool1)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA busy_timeout=5000")
+        .execute(&pool1)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool2)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA busy_timeout=5000")
+        .execute(&pool2)
+        .await
+        .unwrap();
+
+    // Run migrations from both pools concurrently
+    let (r1, r2) = tokio::join!(
+        crate::sqlite_migrations::run_all_migrations(&pool1),
+        crate::sqlite_migrations::run_all_migrations(&pool2),
+    );
+
+    r1.expect("pool1 migrations should succeed");
+    r2.expect("pool2 migrations should succeed");
+
+    // Drop the raw pools before opening a store (which takes its own connection)
+    drop(pool1);
+    drop(pool2);
+
+    // Verify the database is usable after concurrent migrations
+    let store = SqliteStateStore::new(crate::SqliteStateStoreConfig {
+        database_url: url.clone(),
+        max_connections: 1,
+        auto_migrate: false,
+    })
+    .await
+    .unwrap();
+
+    let test_data = serde_json::json!({"test": "concurrent"});
+    let blob_bytes = serde_json::to_vec(&test_data).unwrap();
+    store
+        .put_blob(
+            &blob_bytes,
+            stepflow_core::BlobType::Data,
+            Default::default(),
+        )
+        .await
+        .unwrap();
+}
+
 // =========================================================================
 // Selective Migration Tests
 // =========================================================================
