@@ -58,7 +58,7 @@ pub(crate) async fn run_nats_loop(
     let worker_id = format!("rust-worker-{}", uuid::Uuid::new_v4());
 
     info!(
-        nats_url = %config.nats_url,
+        nats_url = %redact_url_credentials(&config.nats_url),
         stream = %config.nats_stream,
         consumer = %config.nats_consumer,
         worker_id = %worker_id,
@@ -96,7 +96,16 @@ pub(crate) async fn run_nats_loop(
                     _ = tokio::time::sleep(Duration::from_secs(2)) => continue 'outer,
                 }
             }
-            Ok(FetchOutcome::Disconnected) => {
+            Ok(FetchOutcome::DisconnectedAfterSuccess) => {
+                // Had a successful session — reset failure counter before reconnecting.
+                consecutive_failures = 0;
+                warn!("NATS connection lost after successful session, reconnecting");
+                tokio::select! {
+                    _ = &mut shutdown => break 'outer,
+                    _ = tokio::time::sleep(Duration::from_secs(2)) => continue 'outer,
+                }
+            }
+            Ok(FetchOutcome::DisconnectedBeforeSuccess) => {
                 consecutive_failures += 1;
                 if consecutive_failures >= config.max_retries {
                     return Err(WorkerError::MaxRetriesExceeded {
@@ -107,7 +116,7 @@ pub(crate) async fn run_nats_loop(
                 warn!(
                     consecutive_failures,
                     max_retries = config.max_retries,
-                    "NATS connection lost, reconnecting in {}s",
+                    "NATS connection failed, reconnecting in {}s",
                     backoff.as_secs()
                 );
                 tokio::select! {
@@ -158,8 +167,11 @@ enum FetchOutcome {
     Shutdown,
     /// The JetStream stream does not exist yet.
     StreamNotFound,
-    /// NATS connection was closed or lost.
-    Disconnected,
+    /// Successfully connected and processed tasks, then lost the connection.
+    /// The outer loop should reset the consecutive failure counter.
+    DisconnectedAfterSuccess,
+    /// Failed to connect or bind the consumer (never processed any tasks).
+    DisconnectedBeforeSuccess,
 }
 
 /// A single NATS session: connect, subscribe, fetch and process tasks.
@@ -232,12 +244,28 @@ async fn fetch_loop(
         "NATS worker connected and listening for tasks"
     );
 
+    // Successfully connected — any disconnect from here is "after success".
+    let connected = true;
+
     // Resolve orchestrator URL for task callbacks
     let orchestrator_url = config
         .orchestrator_url
         .clone()
         .unwrap_or_else(|| config.tasks_url.clone());
     let default_normalised_url = normalize_url(&orchestrator_url);
+
+    // Create a single default gRPC channel for orchestrator callbacks.
+    // This is cloned (cheap — tonic channels are backed by a shared connection
+    // pool) into each task, avoiding per-task connection overhead.
+    let default_orch_channel = match make_lazy_channel(&orchestrator_url) {
+        Some(ch) => ch,
+        None => {
+            return Err(WorkerError::Config(format!(
+                "Invalid orchestrator URL '{}' for gRPC callbacks",
+                orchestrator_url
+            )));
+        }
+    };
 
     // Concurrency limiter — acquire BEFORE pulling from NATS so we only
     // pull tasks we can immediately process (natural backpressure).
@@ -273,7 +301,11 @@ async fn fetch_loop(
                     Some(Err(e)) => {
                         drop(permit);
                         warn!("NATS message error: {e}");
-                        return Ok(FetchOutcome::Disconnected);
+                        return Ok(if connected {
+                            FetchOutcome::DisconnectedAfterSuccess
+                        } else {
+                            FetchOutcome::DisconnectedBeforeSuccess
+                        });
                     }
                     None => {
                         // Batch exhausted (timeout) — release slot and retry
@@ -309,6 +341,7 @@ async fn fetch_loop(
             let registry = Arc::clone(registry);
             let orch_url = orchestrator_url.clone();
             let default_norm = default_normalised_url.clone();
+            let channel = default_orch_channel.clone();
             let cache = Arc::clone(channel_cache);
             in_flight.spawn(async move {
                 handle_list_components_nats(
@@ -316,6 +349,7 @@ async fn fetch_loop(
                     &registry,
                     &orch_url,
                     &default_norm,
+                    channel,
                     &cache,
                 )
                 .await;
@@ -333,30 +367,11 @@ async fn fetch_loop(
         let default_norm = default_normalised_url.clone();
         let blob_url = config.blob_url.clone();
         let blob_threshold = config.blob_threshold_bytes;
+        let channel = default_orch_channel.clone();
         let cache = Arc::clone(channel_cache);
         let wid = worker_id.to_string();
 
         in_flight.spawn(async move {
-            // Build a lazy gRPC channel for the orchestrator.
-            // The task handler needs a default channel — we create a lazy one
-            // since NATS transport doesn't maintain a persistent gRPC connection
-            // for task pulling.
-            let task_context = assignment.context.clone().unwrap_or_default();
-            let orch_target = if task_context.orchestrator_service_url.is_empty() {
-                orch_url.clone()
-            } else {
-                task_context.orchestrator_service_url.clone()
-            };
-
-            let channel = match make_lazy_channel(&orch_target) {
-                Some(ch) => ch,
-                None => {
-                    warn!(task_id, "Invalid orchestrator URL, skipping task");
-                    drop(permit);
-                    return;
-                }
-            };
-
             handle_task(
                 assignment,
                 registry,
@@ -383,6 +398,7 @@ async fn handle_list_components_nats(
     registry: &ComponentRegistry,
     orchestrator_url: &str,
     default_normalised_url: &str,
+    default_channel: tonic::transport::Channel,
     channel_cache: &ChannelCache,
 ) {
     let task_id = assignment.task_id.clone();
@@ -407,16 +423,6 @@ async fn handle_list_components_nats(
     };
 
     // Send CompleteTask via gRPC
-    let default_channel = match make_lazy_channel(&orch_url) {
-        Some(ch) => ch,
-        None => {
-            warn!(
-                task_id,
-                orch_url, "Invalid orchestrator URL for list_components, skipping"
-            );
-            return;
-        }
-    };
     let channel = match crate::task_handler::resolve_orch_channel(
         &task_id,
         &orch_url,
@@ -448,6 +454,33 @@ async fn handle_list_components_nats(
         warn!(task_id, "Failed to complete list_components task: {e}");
     } else {
         debug!(task_id, "Completed list_components discovery task");
+    }
+}
+
+/// Redact userinfo (credentials) from a URL for safe logging.
+///
+/// `nats://user:pass@host:4222` → `nats://***@host:4222`
+fn redact_url_credentials(url: &str) -> String {
+    // Find "://" then check for "@" before the next "/"
+    let Some(scheme_end) = url.find("://") else {
+        return url.to_string();
+    };
+    let after_scheme = scheme_end + 3;
+    let authority_end = url[after_scheme..]
+        .find('/')
+        .map(|i| after_scheme + i)
+        .unwrap_or(url.len());
+    let authority = &url[after_scheme..authority_end];
+
+    if let Some(at_pos) = authority.find('@') {
+        format!(
+            "{}***@{}{}",
+            &url[..after_scheme],
+            &authority[at_pos + 1..],
+            &url[authority_end..]
+        )
+    } else {
+        url.to_string()
     }
 }
 

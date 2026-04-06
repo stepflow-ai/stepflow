@@ -216,6 +216,7 @@ impl Worker {
         shutdown: impl std::future::Future<Output = ()>,
     ) -> Result<(), WorkerError> {
         match self.config.transport.as_str() {
+            "grpc" => self.run_grpc(shutdown).await,
             #[cfg(feature = "nats")]
             "nats" => self.run_nats(shutdown).await,
             #[cfg(not(feature = "nats"))]
@@ -224,7 +225,9 @@ impl Worker {
                  Rebuild with `--features nats`."
                     .to_string(),
             )),
-            _ => self.run_grpc(shutdown).await,
+            other => Err(WorkerError::Config(format!(
+                "Unknown transport '{other}'. Valid values: 'grpc', 'nats'."
+            ))),
         }
     }
 
