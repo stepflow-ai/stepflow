@@ -1000,6 +1000,30 @@ mod tests {
         assert!(needs.contains(2), "Should need fallback now");
     }
 
+    /// Regression test for #866: integer literals in step inputs must survive
+    /// value resolution without being coerced to floats.
+    #[test]
+    fn test_resolve_object_preserves_integer_types() {
+        let ctx = MockStepContext::new(vec![]);
+
+        // Simulate a step input like: { "duration_ms": 10, "name": "test" }
+        let expr = ValueExpr::Object(vec![
+            ("duration_ms".to_string(), ValueExpr::Literal(json!(10))),
+            ("name".to_string(), ValueExpr::Literal(json!("test"))),
+        ]);
+
+        let result = expr.resolve(&ctx);
+        let value = result.success().unwrap();
+        let duration = value.as_ref().get("duration_ms").unwrap();
+
+        assert!(
+            duration.is_u64(),
+            "Integer literal should remain u64 after resolution, got {:?}",
+            duration
+        );
+        assert_eq!(duration.as_u64(), Some(10));
+    }
+
     #[test]
     fn test_resolve_literal() {
         let ctx = MockStepContext::new(vec![]);

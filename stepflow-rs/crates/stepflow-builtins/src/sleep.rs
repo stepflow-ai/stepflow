@@ -33,7 +33,7 @@ pub struct SleepComponent;
 #[derive(Serialize, Deserialize, schemars::JsonSchema, Default)]
 struct SleepInput {
     /// Duration to sleep in milliseconds.
-    duration_ms: f64,
+    duration_ms: u64,
 
     /// Optional data to pass through unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -43,7 +43,7 @@ struct SleepInput {
 #[derive(Serialize, Deserialize, schemars::JsonSchema, Default)]
 struct SleepOutput {
     /// The duration that was slept, in milliseconds.
-    duration_ms: f64,
+    duration_ms: u64,
 
     /// The passthrough data, if any was provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -79,7 +79,7 @@ impl BuiltinComponent for SleepComponent {
         } = serde_json::from_value(input.as_ref().clone())
             .change_context(BuiltinError::InvalidInput)?;
 
-        tokio::time::sleep(Duration::from_millis(duration_ms as u64)).await;
+        tokio::time::sleep(Duration::from_millis(duration_ms)).await;
 
         let result = SleepOutput {
             duration_ms,
@@ -99,7 +99,7 @@ mod tests {
     async fn test_sleep_returns_duration_and_passthrough() {
         let component = SleepComponent;
         let input = SleepInput {
-            duration_ms: 10.0,
+            duration_ms: 10,
             passthrough: Some(serde_json::json!({"data": "hello"})),
         };
         let input = serde_json::to_value(input).unwrap();
@@ -109,7 +109,7 @@ mod tests {
             .await
             .unwrap();
         let result: SleepOutput = output.success().unwrap().deserialize().unwrap();
-        assert_eq!(result.duration_ms, 10.0);
+        assert_eq!(result.duration_ms, 10);
         assert_eq!(
             result.passthrough,
             Some(serde_json::json!({"data": "hello"}))
@@ -119,21 +119,42 @@ mod tests {
     #[tokio::test]
     async fn test_sleep_without_passthrough() {
         let component = SleepComponent;
-        let input = serde_json::json!({"duration_ms": 1.0});
+        let input = serde_json::json!({"duration_ms": 1});
         let mock = MockContext::new().await;
         let output = component
             .execute(&mock.run_context(), None, input.into())
             .await
             .unwrap();
         let result: SleepOutput = output.success().unwrap().deserialize().unwrap();
-        assert_eq!(result.duration_ms, 1.0);
+        assert_eq!(result.duration_ms, 1);
         assert_eq!(result.passthrough, None);
+    }
+
+    /// Regression test for #866: integer inputs should not be coerced to floats.
+    /// `duration_ms` is `u64`, and passing `json!(10)` (integer) must work.
+    #[tokio::test]
+    async fn test_sleep_accepts_integer_input() {
+        let component = SleepComponent;
+        // Pass integer (not float) - this is what workflows produce from `"duration_ms": 10`
+        let input = serde_json::json!({"duration_ms": 10});
+        assert!(
+            input["duration_ms"].is_u64(),
+            "Precondition: input should be integer, got {:?}",
+            input["duration_ms"]
+        );
+        let mock = MockContext::new().await;
+        let output = component
+            .execute(&mock.run_context(), None, input.into())
+            .await
+            .unwrap();
+        let result: SleepOutput = output.success().unwrap().deserialize().unwrap();
+        assert_eq!(result.duration_ms, 10);
     }
 
     #[tokio::test]
     async fn test_sleep_actually_delays() {
         let component = SleepComponent;
-        let input = serde_json::json!({"duration_ms": 50.0});
+        let input = serde_json::json!({"duration_ms": 50});
         let mock = MockContext::new().await;
         let start = std::time::Instant::now();
         component

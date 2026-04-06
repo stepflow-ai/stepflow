@@ -128,33 +128,33 @@ impl RunsService for RunsServiceImpl {
 
         let inputs: Vec<ValueRef> = req
             .input
-            .into_iter()
-            .map(|v| {
-                let json: serde_json::Value = serde_json::to_value(&v)
-                    .map_err(|e| grpc_err::internal(format!("failed to convert input: {e}")))?;
-                Ok(ValueRef::new(json))
-            })
-            .collect::<Result<Vec<_>, Status>>()?;
+            .iter()
+            .map(|v| ValueRef::new(crate::conversions::proto_value_to_json(v)))
+            .collect();
 
         let variables = if req.variables.is_empty() {
             None
         } else {
             let vars = req
                 .variables
-                .into_iter()
+                .iter()
                 .map(|(k, v)| {
-                    let json: serde_json::Value = serde_json::to_value(&v).map_err(|e| {
-                        grpc_err::internal(format!("failed to convert variable: {e}"))
-                    })?;
-                    Ok((k, ValueRef::new(json)))
+                    (
+                        k.clone(),
+                        ValueRef::new(crate::conversions::proto_value_to_json(v)),
+                    )
                 })
-                .collect::<Result<std::collections::HashMap<_, _>, Status>>()?;
+                .collect::<std::collections::HashMap<_, _>>();
             Some(vars)
         };
 
         let overrides = if let Some(overrides_struct) = req.overrides {
-            let json: serde_json::Value = serde_json::to_value(&overrides_struct)
-                .map_err(|e| grpc_err::internal(format!("failed to convert overrides: {e}")))?;
+            // Wrap the Struct in a Value so we can use proto_value_to_json for
+            // integer recovery (protobuf numbers are always f64).
+            let proto_val = prost_wkt_types::Value {
+                kind: Some(prost_wkt_types::value::Kind::StructValue(overrides_struct)),
+            };
+            let json = crate::conversions::proto_value_to_json(&proto_val);
             serde_json::from_value(json).map_err(|e| {
                 grpc_err::invalid_field("overrides", format!("invalid overrides: {e}"))
             })?

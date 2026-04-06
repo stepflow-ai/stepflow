@@ -144,6 +144,19 @@ pub fn proto_value_to_json(value: &prost_wkt_types::Value) -> serde_json::Value 
     }
 }
 
+/// Convert a [`serde_json::Value`] to [`prost_wkt_types::Value`].
+///
+/// This is the inverse of [`proto_value_to_json`]. The protobuf `number_value`
+/// is always f64, so integer type information is lost during this conversion.
+/// Use [`proto_value_to_json`] on the receiving end to recover integers.
+pub fn json_to_proto_value(
+    value: &serde_json::Value,
+) -> Result<prost_wkt_types::Value, serde_json::Error> {
+    // serde_json::Value → prost_wkt_types::Value via serde roundtrip.
+    let json = serde_json::to_value(value)?;
+    serde_json::from_value(json)
+}
+
 /// Convert a domain `ItemResult` to proto.
 pub fn item_result_to_proto(r: &stepflow_domain::ItemResult) -> proto::ItemResult {
     let (output, error_message, error_code) = match &r.result {
@@ -168,5 +181,108 @@ pub fn item_result_to_proto(r: &stepflow_domain::ItemResult) -> proto::ItemResul
         error_message,
         error_code,
         completed_at: r.completed_at.map(chrono_to_timestamp),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Regression test for #866: integers must survive JSON→proto→JSON roundtrip.
+    #[test]
+    fn test_proto_value_roundtrip_preserves_integers() {
+        let original = json!({"duration_ms": 10, "count": 42, "name": "test"});
+
+        // JSON → proto (integers become f64)
+        let proto = json_to_proto_value(&original).unwrap();
+
+        // proto → JSON (integers should be recovered)
+        let recovered = proto_value_to_json(&proto);
+
+        assert_eq!(recovered, original);
+        assert!(
+            recovered["duration_ms"].is_u64(),
+            "Expected integer, got {:?}",
+            recovered["duration_ms"]
+        );
+        assert_eq!(recovered["duration_ms"].as_u64(), Some(10));
+        assert_eq!(recovered["count"].as_u64(), Some(42));
+    }
+
+    #[test]
+    fn test_proto_value_roundtrip_preserves_floats() {
+        let original = json!({"temperature": 0.7, "pi": 3.14159});
+        let proto = json_to_proto_value(&original).unwrap();
+        let recovered = proto_value_to_json(&proto);
+
+        assert!(recovered["temperature"].is_f64());
+        assert_eq!(recovered["temperature"].as_f64(), Some(0.7));
+        assert!(recovered["pi"].is_f64());
+    }
+
+    #[test]
+    fn test_proto_value_roundtrip_negative_integers() {
+        let original = json!({"value": -5});
+        let proto = json_to_proto_value(&original).unwrap();
+        let recovered = proto_value_to_json(&proto);
+
+        assert!(
+            recovered["value"].is_i64(),
+            "Negative integer should be recovered as i64, got {:?}",
+            recovered["value"]
+        );
+        assert_eq!(recovered["value"].as_i64(), Some(-5));
+    }
+
+    #[test]
+    fn test_proto_value_roundtrip_nested_integers() {
+        let original = json!({
+            "config": {"max_retries": 3, "timeout_ms": 5000},
+            "items": [1, 2, 3]
+        });
+        let proto = json_to_proto_value(&original).unwrap();
+        let recovered = proto_value_to_json(&proto);
+
+        // Nested integers should also be recovered
+        assert!(recovered["config"]["max_retries"].is_u64());
+        assert_eq!(recovered["config"]["max_retries"].as_u64(), Some(3));
+        assert!(recovered["items"][0].is_i64() || recovered["items"][0].is_u64());
+    }
+
+    #[test]
+    fn test_proto_value_roundtrip_zero() {
+        let original = json!({"value": 0});
+        let proto = json_to_proto_value(&original).unwrap();
+        let recovered = proto_value_to_json(&proto);
+
+        assert!(
+            recovered["value"].is_i64() || recovered["value"].is_u64(),
+            "Zero should be recovered as integer, got {:?}",
+            recovered["value"]
+        );
+    }
+
+    #[test]
+    fn test_proto_value_roundtrip_all_types() {
+        let original = json!({
+            "null_val": null,
+            "bool_val": true,
+            "int_val": 42,
+            "float_val": 3.14,
+            "string_val": "hello",
+            "array_val": [1, "two", null],
+            "object_val": {"nested": true}
+        });
+        let proto = json_to_proto_value(&original).unwrap();
+        let recovered = proto_value_to_json(&proto);
+
+        assert!(recovered["null_val"].is_null());
+        assert_eq!(recovered["bool_val"].as_bool(), Some(true));
+        assert!(recovered["int_val"].is_i64() || recovered["int_val"].is_u64());
+        assert!(recovered["float_val"].is_f64());
+        assert_eq!(recovered["string_val"].as_str(), Some("hello"));
+        assert!(recovered["array_val"].is_array());
+        assert!(recovered["object_val"].is_object());
     }
 }
