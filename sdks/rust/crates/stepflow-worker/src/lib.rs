@@ -55,6 +55,7 @@
 //!
 //! | Variable | Default | Description |
 //! |---|---|---|
+//! | `STEPFLOW_TRANSPORT` | `grpc` | Transport type: `grpc` or `nats` |
 //! | `STEPFLOW_TASKS_URL` | `http://127.0.0.1:7837` | Tasks gRPC service URL |
 //! | `STEPFLOW_QUEUE_NAME` | `default` | Worker queue name |
 //! | `STEPFLOW_MAX_CONCURRENT` | `10` | Max concurrent tasks |
@@ -63,10 +64,15 @@
 //! | `STEPFLOW_BLOB_URL` | *(none)* | Blob API URL override |
 //! | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | OrchestratorService URL override |
 //! | `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold (0 = disabled) |
+//! | `STEPFLOW_NATS_URL` | `nats://localhost:4222` | NATS server URL (requires `nats` feature) |
+//! | `STEPFLOW_NATS_STREAM` | `STEPFLOW_TASKS` | NATS JetStream stream name |
+//! | `STEPFLOW_NATS_CONSUMER` | `stepflow-default` | NATS durable consumer name |
 
 pub(crate) mod blob_ref;
 pub mod context;
 pub mod error;
+#[cfg(feature = "nats")]
+pub(crate) mod nats_worker;
 pub mod registry;
 pub mod task_handler;
 pub mod vsock;
