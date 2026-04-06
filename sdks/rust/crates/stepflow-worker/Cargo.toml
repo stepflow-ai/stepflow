@@ -8,8 +8,13 @@ repository.workspace = true
 homepage.workspace = true
 description = "Rust worker SDK for implementing Stepflow components"
 
+[features]
+default = []
+nats = ["dep:async-nats"]
+
 [dependencies]
 stepflow-proto = { path = "../../../../stepflow-rs/crates/stepflow-proto" }
+async-nats = { version = "0.46", optional = true }
 prost = "0.14"
 tokio = { version = "1", features = ["full", "signal"] }
 tonic = { version = "0.14", features = ["transport"] }
@@ -29,6 +34,7 @@ uuid = { version = "1", features = ["v4"] }
 stepflow-client = { path = "../stepflow-client", features = ["local-server"] }
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+testcontainers = "0.27.2"
 
 [[example]]
 name = "hello_world"
@@ -36,3 +42,8 @@ name = "hello_world"
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
+
+[[test]]
+name = "nats_integration"
+path = "tests/nats_integration.rs"
+required-features = ["nats"]

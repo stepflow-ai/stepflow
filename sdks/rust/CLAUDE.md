@@ -59,21 +59,50 @@ When `stepflow-proto` is published to crates.io, switch the path dep to a versio
 stepflow-proto = "0.12"
 ```
 
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| `nats` | Enables NATS JetStream transport (`async-nats` dependency) |
+
+```bash
+# Build with NATS support
+cargo build --features nats
+```
+
 ## Environment variables
 
 `WorkerConfig` reads all fields from environment variables via clap's `env` feature.
 No code changes needed to configure workers in different environments.
 
+### Common
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STEPFLOW_TASKS_URL` | `http://127.0.0.1:7837` | Tasks gRPC service URL |
-| `STEPFLOW_QUEUE_NAME` | `default` | Worker queue name |
+| `STEPFLOW_TRANSPORT` | `grpc` | Transport type: `grpc` or `nats` |
 | `STEPFLOW_MAX_CONCURRENT` | `10` | Max concurrent tasks |
 | `STEPFLOW_MAX_RETRIES` | `10` | Max reconnect attempts |
 | `STEPFLOW_SHUTDOWN_GRACE_SECS` | `30` | Graceful shutdown timeout |
 | `STEPFLOW_BLOB_URL` | *(none)* | Blob API URL override |
 | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | OrchestratorService URL override |
 | `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold in bytes (0 = disabled) |
+
+### gRPC transport
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPFLOW_TASKS_URL` | `http://127.0.0.1:7837` | Tasks gRPC service URL |
+| `STEPFLOW_QUEUE_NAME` | `default` | Worker queue name |
+
+### NATS transport (requires `nats` feature)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `STEPFLOW_NATS_URL` | `nats://localhost:4222` | NATS server URL |
+| `STEPFLOW_NATS_STREAM` | `STEPFLOW_TASKS` | JetStream stream name |
+| `STEPFLOW_NATS_CONSUMER` | `stepflow-default` | Durable consumer name |
+
+These match the Python SDK's NATS environment variables for cross-SDK parity.
 
 ## Integration tests
 
@@ -95,6 +124,25 @@ STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow-server \
 
 `check-rust-sdk.sh` automatically runs integration tests when `STEPFLOW_DEV_BINARY`
 is set in the environment.
+
+### NATS integration tests
+
+NATS tests live in `crates/stepflow-worker/tests/nats_integration.rs` and require
+the `nats` feature, `STEPFLOW_DEV_BINARY` (built with `--features nats`), and Docker.
+
+```bash
+# Build the orchestrator binary with NATS support
+cd ../../stepflow-rs
+cargo build -p stepflow-server --features nats
+
+# Run NATS integration tests from sdks/rust/
+cd ../sdks/rust
+STEPFLOW_DEV_BINARY=../../stepflow-rs/target/debug/stepflow-server \
+  cargo test --test nats_integration --features nats -- --include-ignored
+```
+
+These tests spin up a NATS server via `testcontainers`, configure the orchestrator
+with a NATS plugin, and run the Rust worker using NATS transport end-to-end.
 
 ### LocalOrchestrator API (stepflow-client)
 

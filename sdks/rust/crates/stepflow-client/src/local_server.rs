@@ -92,6 +92,8 @@ pub enum PluginConfig {
     Builtin,
     /// gRPC worker plugin — tasks are delivered via the PullTasks queue.
     Grpc(GrpcPluginConfig),
+    /// NATS JetStream worker plugin — tasks are delivered via JetStream.
+    Nats(NatsPluginConfig),
 }
 
 /// gRPC plugin configuration.
@@ -111,6 +113,36 @@ pub struct GrpcPluginConfig {
     /// Environment variables for the subprocess.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub env: HashMap<String, String>,
+}
+
+/// NATS JetStream plugin configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NatsPluginConfig {
+    /// NATS server URL (e.g., "nats://localhost:4222").
+    pub url: String,
+    /// Default JetStream stream name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<String>,
+    /// Durable consumer name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumer: Option<String>,
+    /// Optional subprocess command to launch the worker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Arguments for the subprocess command.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    /// Environment variables for the subprocess.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
+    /// Max time (seconds) a task waits for first heartbeat.
+    #[serde(default = "default_queue_timeout_secs")]
+    pub queue_timeout_secs: u64,
+}
+
+fn default_queue_timeout_secs() -> u64 {
+    30
 }
 
 /// A single route rule that maps a component path pattern to a plugin.

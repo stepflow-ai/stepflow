@@ -33,6 +33,7 @@ use crate::{ComponentRegistry, WorkerError};
 ///
 /// | Variable | Default | Description |
 /// |---|---|---|
+/// | `STEPFLOW_TRANSPORT` | `grpc` | Transport type: `grpc` or `nats` |
 /// | `STEPFLOW_TASKS_URL` | `http://127.0.0.1:7837` | URL of the Stepflow tasks gRPC service |
 /// | `STEPFLOW_QUEUE_NAME` | `default` | Worker queue name for task routing |
 /// | `STEPFLOW_MAX_CONCURRENT` | `10` | Maximum number of tasks executed concurrently (≥ 1) |
@@ -41,8 +42,15 @@ use crate::{ComponentRegistry, WorkerError};
 /// | `STEPFLOW_BLOB_URL` | *(none)* | Override URL for blob storage API |
 /// | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | Override URL for OrchestratorService callbacks |
 /// | `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold (0 = disabled) |
+/// | `STEPFLOW_NATS_URL` | `nats://localhost:4222` | NATS server URL (requires `nats` feature) |
+/// | `STEPFLOW_NATS_STREAM` | `STEPFLOW_TASKS` | NATS JetStream stream name |
+/// | `STEPFLOW_NATS_CONSUMER` | `stepflow-default` | NATS durable consumer name |
 #[derive(Debug, Clone, clap::Args)]
 pub struct WorkerConfig {
+    /// Transport type: `grpc` or `nats`.
+    #[arg(long, env = "STEPFLOW_TRANSPORT", default_value = "grpc")]
+    pub transport: String,
+
     /// URL of the Stepflow tasks gRPC service.
     #[arg(
         long,
@@ -86,11 +94,32 @@ pub struct WorkerConfig {
     /// Set to 0 (default) to disable auto-blobification.
     #[arg(long, env = "STEPFLOW_BLOB_THRESHOLD_BYTES", default_value_t = 0)]
     pub blob_threshold_bytes: usize,
+
+    /// NATS server URL (requires `nats` feature).
+    #[arg(
+        long,
+        env = "STEPFLOW_NATS_URL",
+        default_value = "nats://localhost:4222"
+    )]
+    pub nats_url: String,
+
+    /// NATS JetStream stream name.
+    #[arg(long, env = "STEPFLOW_NATS_STREAM", default_value = "STEPFLOW_TASKS")]
+    pub nats_stream: String,
+
+    /// NATS durable consumer name.
+    #[arg(
+        long,
+        env = "STEPFLOW_NATS_CONSUMER",
+        default_value = "stepflow-default"
+    )]
+    pub nats_consumer: String,
 }
 
 impl Default for WorkerConfig {
     fn default() -> Self {
         Self {
+            transport: "grpc".to_string(),
             tasks_url: "http://127.0.0.1:7837".to_string(),
             queue_name: "default".to_string(),
             max_concurrent: 10,
@@ -99,6 +128,9 @@ impl Default for WorkerConfig {
             blob_url: None,
             orchestrator_url: None,
             blob_threshold_bytes: 0,
+            nats_url: "nats://localhost:4222".to_string(),
+            nats_stream: "STEPFLOW_TASKS".to_string(),
+            nats_consumer: "stepflow-default".to_string(),
         }
     }
 }
@@ -183,6 +215,24 @@ impl Worker {
         self,
         shutdown: impl std::future::Future<Output = ()>,
     ) -> Result<(), WorkerError> {
+        match self.config.transport.as_str() {
+            #[cfg(feature = "nats")]
+            "nats" => self.run_nats(shutdown).await,
+            #[cfg(not(feature = "nats"))]
+            "nats" => Err(WorkerError::Config(
+                "NATS transport requested but the 'nats' feature is not enabled. \
+                 Rebuild with `--features nats`."
+                    .to_string(),
+            )),
+            _ => self.run_grpc(shutdown).await,
+        }
+    }
+
+    /// Run the gRPC pull-based transport loop.
+    async fn run_grpc(
+        self,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> Result<(), WorkerError> {
         let config = self.config;
         let registry = self.registry;
 
@@ -198,7 +248,7 @@ impl Worker {
             tasks_url = %config.tasks_url,
             queue_name = %config.queue_name,
             worker_id = %worker_id,
-            "Starting Stepflow worker"
+            "Starting Stepflow worker (gRPC transport)"
         );
 
         // Pin shutdown so it can be used in select!
@@ -310,6 +360,15 @@ impl Worker {
 
         info!("Worker shut down cleanly");
         Ok(())
+    }
+
+    /// Run the NATS JetStream transport loop.
+    #[cfg(feature = "nats")]
+    async fn run_nats(
+        self,
+        shutdown: impl std::future::Future<Output = ()>,
+    ) -> Result<(), WorkerError> {
+        crate::nats_worker::run_nats_loop(self.registry, self.config, shutdown).await
     }
 }
 
@@ -439,6 +498,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = WorkerConfig::default();
+        assert_eq!(config.transport, "grpc");
         assert_eq!(config.tasks_url, "http://127.0.0.1:7837");
         assert_eq!(config.queue_name, "default");
         assert_eq!(config.max_concurrent, 10);
@@ -447,5 +507,8 @@ mod tests {
         assert_eq!(config.shutdown_grace_secs, 30);
         assert!(config.blob_url.is_none());
         assert!(config.orchestrator_url.is_none());
+        assert_eq!(config.nats_url, "nats://localhost:4222");
+        assert_eq!(config.nats_stream, "STEPFLOW_TASKS");
+        assert_eq!(config.nats_consumer, "stepflow-default");
     }
 }
