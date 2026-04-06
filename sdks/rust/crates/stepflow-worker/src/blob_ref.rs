@@ -90,9 +90,11 @@ fn replace_blob_refs(value: Value, resolved: &std::collections::HashMap<String, 
                 .collect();
             Value::Object(new_obj)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(|v| replace_blob_refs(v, resolved)).collect())
-        }
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| replace_blob_refs(v, resolved))
+                .collect(),
+        ),
         other => other,
     }
 }

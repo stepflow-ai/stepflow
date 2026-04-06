@@ -410,7 +410,9 @@ async fn test_auto_blobification() {
 
     // Large field should be a blob ref (object with $blob key)
     let echo_val = result_obj.get("echo").expect("Expected 'echo' field");
-    let blob_ref = echo_val.as_object().expect("Expected 'echo' to be a blob ref object");
+    let blob_ref = echo_val
+        .as_object()
+        .expect("Expected 'echo' to be a blob ref object");
     let blob_id = blob_ref
         .get("$blob")
         .and_then(|v| v.as_str())
