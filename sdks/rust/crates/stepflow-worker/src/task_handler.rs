@@ -56,6 +56,7 @@ pub(crate) async fn handle_task(
     default_orchestrator_url: &str,
     default_normalised_url: &str,
     default_blob_url: Option<&str>,
+    blob_threshold_bytes: usize,
     default_orch_channel: Channel,
     channel_cache: &ChannelCache,
 ) -> bool {
@@ -107,6 +108,7 @@ pub(crate) async fn handle_task(
         &task_id,
         registry,
         default_blob_url,
+        blob_threshold_bytes,
         task_context,
         orch_ch.clone(),
     )
@@ -337,6 +339,7 @@ async fn dispatch_task(
     task_id: &str,
     registry: Arc<ComponentRegistry>,
     blob_url: Option<&str>,
+    blob_threshold_bytes: usize,
     task_context: stepflow_proto::TaskContext,
     orch_channel: Channel,
 ) -> Result<TaskResult, ComponentError> {
@@ -347,6 +350,7 @@ async fn dispatch_task(
                 task_id,
                 registry,
                 blob_url,
+                blob_threshold_bytes,
                 task_context,
                 orch_channel,
             )
@@ -372,6 +376,7 @@ async fn execute_component(
     task_id: &str,
     registry: Arc<ComponentRegistry>,
     blob_url: Option<&str>,
+    blob_threshold_bytes: usize,
     task_context: stepflow_proto::TaskContext,
     orch_channel: Channel,
 ) -> Result<TaskResult, ComponentError> {
@@ -402,9 +407,27 @@ async fn execute_component(
         orch_channel,
     );
 
+    // Resolve blob refs in input if auto-blobification is enabled
+    let input_json = if blob_threshold_bytes > 0 {
+        crate::blob_ref::resolve_blob_refs(input_json, &ctx)
+            .await
+            .map_err(|e| ComponentError::WorkerError(format!("Failed to resolve blob refs: {e}")))?
+    } else {
+        input_json
+    };
+
     debug!(task_id, component_id, "Executing component");
 
     let output_json = component.execute(input_json, &ctx).await?;
+
+    // Blobify large output fields if auto-blobification is enabled
+    let output_json = if blob_threshold_bytes > 0 {
+        crate::blob_ref::blobify_output(output_json, blob_threshold_bytes, &ctx)
+            .await
+            .map_err(|e| ComponentError::WorkerError(format!("Failed to blobify output: {e}")))?
+    } else {
+        output_json
+    };
 
     let output_proto = json_to_proto_value(output_json);
 

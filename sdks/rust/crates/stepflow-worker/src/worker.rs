@@ -40,6 +40,7 @@ use crate::{ComponentRegistry, WorkerError};
 /// | `STEPFLOW_SHUTDOWN_GRACE_SECS` | `30` | Seconds to wait for in-flight tasks during shutdown |
 /// | `STEPFLOW_BLOB_URL` | *(none)* | Override URL for blob storage API |
 /// | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | Override URL for OrchestratorService callbacks |
+/// | `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold (0 = disabled) |
 #[derive(Debug, Clone, clap::Args)]
 pub struct WorkerConfig {
     /// URL of the Stepflow tasks gRPC service.
@@ -78,6 +79,13 @@ pub struct WorkerConfig {
     /// URL for OrchestratorService callbacks (overrides the URL in `TaskContext`).
     #[arg(long, env = "STEPFLOW_ORCHESTRATOR_URL")]
     pub orchestrator_url: Option<String>,
+
+    /// Byte size threshold for auto-blobification. When set to a value > 0,
+    /// large input fields are automatically resolved from blob refs before
+    /// execution, and large output fields are stored as blobs after execution.
+    /// Set to 0 (default) to disable auto-blobification.
+    #[arg(long, env = "STEPFLOW_BLOB_THRESHOLD_BYTES", default_value_t = 0)]
+    pub blob_threshold_bytes: usize,
 }
 
 impl Default for WorkerConfig {
@@ -90,6 +98,7 @@ impl Default for WorkerConfig {
             shutdown_grace_secs: 30,
             blob_url: None,
             orchestrator_url: None,
+            blob_threshold_bytes: 0,
         }
     }
 }
@@ -274,6 +283,7 @@ impl Worker {
                                     orchestrator_url.clone(),
                                     default_normalised_url.clone(),
                                     config.blob_url.clone(),
+                                    config.blob_threshold_bytes,
                                     channel.clone(),
                                     Arc::clone(&channel_cache),
                                     &mut in_flight,
@@ -401,6 +411,7 @@ fn spawn_task(
     orchestrator_url: String,
     default_normalised_url: String,
     blob_url: Option<String>,
+    blob_threshold_bytes: usize,
     channel: tonic::transport::Channel,
     channel_cache: ChannelCache,
     in_flight: &mut JoinSet<()>,
@@ -413,6 +424,7 @@ fn spawn_task(
             &orchestrator_url,
             &default_normalised_url,
             blob_url.as_deref(),
+            blob_threshold_bytes,
             channel,
             &channel_cache,
         )
