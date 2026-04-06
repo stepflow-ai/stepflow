@@ -73,6 +73,7 @@ No code changes needed to configure workers in different environments.
 | `STEPFLOW_SHUTDOWN_GRACE_SECS` | `30` | Graceful shutdown timeout |
 | `STEPFLOW_BLOB_URL` | *(none)* | Blob API URL override |
 | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | OrchestratorService URL override |
+| `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold in bytes (0 = disabled) |
 
 ## Integration tests
 

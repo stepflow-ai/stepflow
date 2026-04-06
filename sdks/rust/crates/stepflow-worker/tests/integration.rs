@@ -318,3 +318,123 @@ async fn test_chained_steps() {
     let _ = stop_tx.send(());
     let _ = worker_handle.await;
 }
+
+// ---------------------------------------------------------------------------
+// Test: auto-blobification of large outputs
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct BlobInput {
+    data: String,
+}
+
+#[derive(Serialize)]
+struct BlobOutput {
+    echo: String,
+    small: String,
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires STEPFLOW_DEV_BINARY — run with --include-ignored"]
+async fn test_auto_blobification() {
+    init_tracing();
+    const QUEUE: &str = "test-blob";
+
+    let orch = LocalOrchestrator::start(make_config(QUEUE))
+        .await
+        .expect("Failed to start local orchestrator");
+
+    let mut registry = ComponentRegistry::new();
+
+    // Component echoes its input data back, plus a small field.
+    // With a low threshold, the "echo" field should be blobified
+    // in the response, while "small" stays inline.
+    registry.register_fn("blob_echo", |input: BlobInput, _ctx| async move {
+        Ok(BlobOutput {
+            echo: input.data,
+            small: "tiny".to_string(),
+        })
+    });
+
+    // Set a low blob threshold (256 bytes) so the large field triggers blobification
+    let worker_config = WorkerConfig {
+        tasks_url: orch.tasks_url().to_string(),
+        queue_name: QUEUE.to_string(),
+        max_retries: 3,
+        shutdown_grace_secs: 5,
+        blob_threshold_bytes: 256,
+        ..Default::default()
+    };
+
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let worker_handle = tokio::spawn(async move {
+        Worker::new(registry, worker_config)
+            .run_until(async move {
+                let _ = stop_rx.await;
+            })
+            .await
+    });
+
+    let mut client = StepflowClient::connect(orch.url())
+        .await
+        .expect("Failed to connect");
+    wait_for_component(&mut client, "blob_echo", Duration::from_secs(60)).await;
+
+    // Build a flow that sends a large input and returns the output
+    let mut builder = FlowBuilder::new();
+    builder.add_step(
+        "blob_echo",
+        "/test/blob_echo",
+        stepflow_client::ValueExpr::input(None),
+    );
+    let flow = builder
+        .output(FlowBuilder::step("blob_echo"))
+        .build()
+        .expect("Failed to build flow");
+
+    let flow_id = client
+        .store_flow(&flow)
+        .await
+        .expect("Failed to store flow");
+
+    // Create a large input string (> 256 bytes threshold)
+    let large_data = "x".repeat(1024);
+    let result = client
+        .run(&flow_id, serde_json::json!({"data": large_data}))
+        .await
+        .expect("Failed to run flow");
+
+    // The worker blobifies the large "echo" field and returns a blob ref.
+    // The orchestrator passes blob refs through to the client as-is.
+    let result_obj = result.as_object().expect("Expected object result");
+
+    // Large field should be a blob ref (object with $blob key)
+    let echo_val = result_obj.get("echo").expect("Expected 'echo' field");
+    let blob_ref = echo_val
+        .as_object()
+        .expect("Expected 'echo' to be a blob ref object");
+    let blob_id = blob_ref
+        .get("$blob")
+        .and_then(|v| v.as_str())
+        .expect("Expected '$blob' key with string value");
+    assert_eq!(blob_id.len(), 64, "Blob ID should be a 64-char SHA-256 hex");
+    assert_eq!(
+        blob_ref.get("blobType").and_then(|v| v.as_str()),
+        Some("data"),
+        "Blob ref should have blobType 'data'"
+    );
+    assert!(
+        blob_ref.get("size").and_then(|v| v.as_u64()).unwrap_or(0) > 256,
+        "Blob ref should record the original size"
+    );
+
+    // Small field should pass through inline (not blobified)
+    assert_eq!(
+        result_obj.get("small").and_then(|v| v.as_str()),
+        Some("tiny"),
+        "Small field should pass through unchanged"
+    );
+
+    let _ = stop_tx.send(());
+    let _ = worker_handle.await;
+}
