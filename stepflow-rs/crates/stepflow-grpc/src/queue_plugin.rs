@@ -24,7 +24,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use error_stack::ResultExt as _;
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, StepId, ValueRef};
 use stepflow_plugin::{
@@ -373,11 +372,5 @@ fn extract_trace_context() -> (Option<String>, Option<String>) {
 }
 
 fn value_ref_to_proto(value: &ValueRef) -> Result<prost_wkt_types::Value> {
-    let json = serde_json::to_value(value.as_ref())
-        .change_context(PluginError::Execution)
-        .attach_printable("Failed to serialize input to JSON")?;
-    let proto_value: prost_wkt_types::Value = serde_json::from_value(json)
-        .change_context(PluginError::Execution)
-        .attach_printable("Failed to convert JSON to proto Value")?;
-    Ok(proto_value)
+    Ok(crate::conversions::json_to_proto_value(value.as_ref()))
 }

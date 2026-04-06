@@ -707,6 +707,35 @@ mod tests {
     }
 
     #[test]
+    fn test_yaml_integer_preserved_in_value_expr() {
+        // Verify that YAML integers survive deserialization as integers, not floats.
+        // Regression test for #866: ensures the YAML→ValueExpr path preserves types.
+        let yaml = r#"
+            duration_ms: 10
+            name: test
+        "#;
+        let expr: ValueExpr = serde_yaml_ng::from_str(yaml).unwrap();
+        match &expr {
+            ValueExpr::Object(fields) => {
+                let duration = fields.iter().find(|(k, _)| k == "duration_ms").unwrap();
+                match &duration.1 {
+                    ValueExpr::Literal(val) => {
+                        assert!(
+                            val.is_i64() || val.is_u64(),
+                            "Expected integer, got {:?} (is_f64={})",
+                            val,
+                            val.is_f64()
+                        );
+                        assert_eq!(val.as_i64(), Some(10));
+                    }
+                    other => panic!("Expected Literal, got {:?}", other),
+                }
+            }
+            other => panic!("Expected Object, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_mixed_literal_and_expression_with_nested_objects() {
         // More complex mixed pattern with nested objects
         let json_str = r#"{

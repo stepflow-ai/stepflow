@@ -473,8 +473,9 @@ exit_code: 0
         "properties": {
           "duration_ms": {
             "description": "Duration to sleep in milliseconds.",
-            "type": "number",
-            "format": "double"
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
           },
           "passthrough": {
             "description": "Optional data to pass through unchanged."
@@ -491,8 +492,9 @@ exit_code: 0
         "properties": {
           "duration_ms": {
             "description": "The duration that was slept, in milliseconds.",
-            "type": "number",
-            "format": "double"
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
           },
           "passthrough": {
             "description": "The passthrough data, if any was provided."
