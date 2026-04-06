@@ -54,7 +54,7 @@ WORKFLOWS = Path(__file__).parent / "workflows"
 @pytest.mark.asyncio
 async def test_dual_failure_recovery(compose_env):
     """Kill both orchestrators, restart both, verify both runs recover."""
-    # 1. Upload workflows — store on whichever orch, both share SQLite
+    # 1. Upload workflows — store on whichever orch, both share Postgres
     seq_flow_id = await store_flow(
         ORCH1_URL, str(WORKFLOWS / "sequential_delay.yaml")
     )

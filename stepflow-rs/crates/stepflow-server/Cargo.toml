@@ -38,7 +38,7 @@ stepflow-observability.workspace = true
 uuid.workspace = true
 
 [features]
-default = ["etcd"]
+default = ["etcd", "sqlite"]
 etcd = ["stepflow-config/etcd"]
 nats = ["stepflow-config/nats"]
 postgres = ["stepflow-config/postgres"]

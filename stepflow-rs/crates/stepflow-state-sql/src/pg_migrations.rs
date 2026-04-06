@@ -116,8 +116,29 @@ pub async fn run_all_migrations(pool: &AnyPool) -> Result<(), StateError> {
 }
 
 /// Create the migrations tracking table.
+///
+/// Uses a session-level advisory lock to prevent two orchestrators from racing
+/// on `CREATE TABLE IF NOT EXISTS` against a fresh database. Without the lock,
+/// Postgres can raise `duplicate key value violates unique constraint
+/// "pg_type_typname_nsp_index"` when both processes try to create the implicit
+/// composite row-type for the table concurrently.
 async fn create_migrations_table(pool: &AnyPool) -> Result<(), StateError> {
-    sqlx::query(
+    // Fixed lock key for the migrations bootstrap step.
+    const BOOTSTRAP_LOCK_KEY: i64 = 0x5354_4550_464C_4F57_u64 as i64; // "STEPFLOW"
+
+    let mut conn = pool
+        .acquire()
+        .await
+        .change_context(StateError::Initialization)?;
+
+    // Session-level lock so it persists across the implicit transaction.
+    sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(BOOTSTRAP_LOCK_KEY)
+        .execute(&mut *conn)
+        .await
+        .change_context(StateError::Initialization)?;
+
+    let result = sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS _stepflow_migrations (
             name TEXT PRIMARY KEY,
@@ -125,9 +146,17 @@ async fn create_migrations_table(pool: &AnyPool) -> Result<(), StateError> {
         )
     "#,
     )
-    .execute(pool)
+    .execute(&mut *conn)
     .await
-    .change_context(StateError::Initialization)?;
+    .change_context(StateError::Initialization);
+
+    // Always release the lock, even on error.
+    let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(BOOTSTRAP_LOCK_KEY)
+        .execute(&mut *conn)
+        .await;
+
+    result?;
     Ok(())
 }
 

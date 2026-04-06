@@ -213,9 +213,37 @@ def compose_down():
     _compose("down", "-v", "--timeout", "5", check=False)
 
 
-def compose_up():
-    """Build and start all services."""
-    _compose("up", "-d", "--build", "--wait", check=True)
+def compose_up(retries: int = 1):
+    """Start all services from pre-built images.
+
+    Images must be built beforehand (e.g. via ``docker compose build`` in
+    check-recovery.sh).  This only creates/starts containers and waits for
+    health checks.
+
+    Retries with a full teardown between attempts to handle transient Docker
+    health-check races (e.g. a service reports unhealthy before Postgres
+    accepts connections).
+    """
+    for attempt in range(1 + retries):
+        result = _compose(
+            "up", "-d", "--force-recreate",
+            "--wait", "--wait-timeout", "60",
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+        # Log stderr so CI/local runs can see why startup failed.
+        msg = f"[compose_up] attempt {attempt + 1} failed (rc={result.returncode})"
+        if result.stderr:
+            msg += f"\n[compose_up] stderr:\n{result.stderr[-2000:]}"
+        print(msg, flush=True)
+        if attempt < retries:
+            print("[compose_up] retrying after full teardown...", flush=True)
+            compose_down()
+    # Final attempt failed — raise so the test reports an error.
+    raise subprocess.CalledProcessError(
+        result.returncode, result.args, result.stdout, result.stderr,
+    )
 
 
 def wait_for_health(url: str, timeout: float = 60):

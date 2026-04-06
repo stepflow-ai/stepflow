@@ -18,6 +18,9 @@
 # Build stage
 FROM rust:1.90-bookworm AS builder
 
+ARG CARGO_PROFILE=release
+ARG CARGO_FEATURES=postgres,etcd
+
 WORKDIR /build
 
 # Install protobuf compiler (needed by etcd-client crate)
@@ -30,12 +33,18 @@ COPY stepflow-rs/crates ./crates
 # Copy proto definitions (needed by stepflow-proto build.rs)
 COPY stepflow-rs/proto ./proto
 
-# Build release binary
-RUN cargo build --release --bin stepflow-server
+# Build binary with selected profile and features (no SQLite by default to reduce build time/memory)
+RUN if [ "$CARGO_PROFILE" = "release" ]; then \
+      cargo build --release --bin stepflow-server --no-default-features --features "$CARGO_FEATURES"; \
+    else \
+      cargo build --bin stepflow-server --no-default-features --features "$CARGO_FEATURES"; \
+    fi
 
 
 # Runtime stage
 FROM debian:bookworm-slim
+
+ARG CARGO_PROFILE=release
 
 # Install runtime dependencies
 RUN apt-get update && \
@@ -46,7 +55,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/stepflow-server /usr/local/bin/stepflow-server
+COPY --from=builder /build/target/${CARGO_PROFILE}/stepflow-server /usr/local/bin/stepflow-server
 
 # Create app user
 RUN useradd -m -u 1000 stepflow

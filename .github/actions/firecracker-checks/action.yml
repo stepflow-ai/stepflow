@@ -40,7 +40,7 @@ runs:
       shell: bash
       run: |
         cd stepflow-rs
-        cargo build -p stepflow-server --no-default-features
+        cargo build -p stepflow-server --no-default-features --features sqlite
         # stepflow-isolation-proxy temporarily excluded from workspace (see #860)
         # cargo build -p stepflow-isolation-proxy
 

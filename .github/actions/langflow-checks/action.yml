@@ -46,7 +46,7 @@ runs:
 
     - name: Build Stepflow binary (needed for integration tests)
       shell: bash
-      run: cargo build -p stepflow-server --no-default-features
+      run: cargo build -p stepflow-server --no-default-features --features sqlite
       working-directory: stepflow-rs
 
     # Run Langflow integration checks using the shared script
