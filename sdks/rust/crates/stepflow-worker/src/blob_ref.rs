@@ -154,11 +154,10 @@ fn resolve_blob_refs_inner<'a>(
             })
             .collect();
 
-        let resolved: std::collections::HashMap<String, Value> =
-            stream::iter(futures)
-                .buffer_unordered(MAX_CONCURRENT_FETCHES)
-                .try_collect()
-                .await?;
+        let resolved: std::collections::HashMap<String, Value> = stream::iter(futures)
+            .buffer_unordered(MAX_CONCURRENT_FETCHES)
+            .try_collect()
+            .await?;
 
         // Replace refs with fetched data
         let result = replace_blob_refs(value, &resolved);
