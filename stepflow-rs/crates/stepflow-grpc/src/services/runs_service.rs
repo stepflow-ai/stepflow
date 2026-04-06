@@ -138,7 +138,12 @@ impl RunsService for RunsServiceImpl {
             let vars = req
                 .variables
                 .iter()
-                .map(|(k, v)| (k.clone(), ValueRef::new(crate::conversions::proto_value_to_json(v))))
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        ValueRef::new(crate::conversions::proto_value_to_json(v)),
+                    )
+                })
                 .collect::<std::collections::HashMap<_, _>>();
             Some(vars)
         };
