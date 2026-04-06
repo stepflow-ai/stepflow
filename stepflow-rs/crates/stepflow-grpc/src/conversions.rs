@@ -149,11 +149,12 @@ pub fn proto_value_to_json(value: &prost_wkt_types::Value) -> serde_json::Value 
 /// This is the inverse of [`proto_value_to_json`]. The protobuf `number_value`
 /// is always f64, so integer type information is lost during this conversion.
 /// Use [`proto_value_to_json`] on the receiving end to recover integers.
-pub fn json_to_proto_value(value: &serde_json::Value) -> prost_wkt_types::Value {
+pub fn json_to_proto_value(
+    value: &serde_json::Value,
+) -> Result<prost_wkt_types::Value, serde_json::Error> {
     // serde_json::Value → prost_wkt_types::Value via serde roundtrip.
-    // This is safe because prost_wkt_types::Value implements Deserialize.
-    let json = serde_json::to_value(value).expect("serde_json::Value always serializes");
-    serde_json::from_value(json).expect("prost_wkt_types::Value deserializes from any JSON value")
+    let json = serde_json::to_value(value)?;
+    serde_json::from_value(json)
 }
 
 /// Convert a domain `ItemResult` to proto.
@@ -194,7 +195,7 @@ mod tests {
         let original = json!({"duration_ms": 10, "count": 42, "name": "test"});
 
         // JSON → proto (integers become f64)
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
 
         // proto → JSON (integers should be recovered)
         let recovered = proto_value_to_json(&proto);
@@ -212,7 +213,7 @@ mod tests {
     #[test]
     fn test_proto_value_roundtrip_preserves_floats() {
         let original = json!({"temperature": 0.7, "pi": 3.14159});
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
         let recovered = proto_value_to_json(&proto);
 
         assert!(recovered["temperature"].is_f64());
@@ -223,7 +224,7 @@ mod tests {
     #[test]
     fn test_proto_value_roundtrip_negative_integers() {
         let original = json!({"value": -5});
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
         let recovered = proto_value_to_json(&proto);
 
         assert!(
@@ -240,7 +241,7 @@ mod tests {
             "config": {"max_retries": 3, "timeout_ms": 5000},
             "items": [1, 2, 3]
         });
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
         let recovered = proto_value_to_json(&proto);
 
         // Nested integers should also be recovered
@@ -252,7 +253,7 @@ mod tests {
     #[test]
     fn test_proto_value_roundtrip_zero() {
         let original = json!({"value": 0});
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
         let recovered = proto_value_to_json(&proto);
 
         assert!(
@@ -273,7 +274,7 @@ mod tests {
             "array_val": [1, "two", null],
             "object_val": {"nested": true}
         });
-        let proto = json_to_proto_value(&original);
+        let proto = json_to_proto_value(&original).unwrap();
         let recovered = proto_value_to_json(&proto);
 
         assert!(recovered["null_val"].is_null());

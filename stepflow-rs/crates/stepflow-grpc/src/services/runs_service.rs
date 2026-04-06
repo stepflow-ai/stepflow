@@ -128,23 +128,18 @@ impl RunsService for RunsServiceImpl {
 
         let inputs: Vec<ValueRef> = req
             .input
-            .into_iter()
-            .map(|v| Ok(ValueRef::new(crate::conversions::proto_value_to_json(&v))))
-            .collect::<Result<Vec<_>, Status>>()?;
+            .iter()
+            .map(|v| ValueRef::new(crate::conversions::proto_value_to_json(v)))
+            .collect();
 
         let variables = if req.variables.is_empty() {
             None
         } else {
             let vars = req
                 .variables
-                .into_iter()
-                .map(|(k, v)| {
-                    Ok((
-                        k,
-                        ValueRef::new(crate::conversions::proto_value_to_json(&v)),
-                    ))
-                })
-                .collect::<Result<std::collections::HashMap<_, _>, Status>>()?;
+                .iter()
+                .map(|(k, v)| (k.clone(), ValueRef::new(crate::conversions::proto_value_to_json(v))))
+                .collect::<std::collections::HashMap<_, _>>();
             Some(vars)
         };
 

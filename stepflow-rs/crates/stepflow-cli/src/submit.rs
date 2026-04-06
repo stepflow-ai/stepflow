@@ -113,11 +113,15 @@ fn proto_value_to_json(value: &prost_wkt_types::Value) -> serde_json::Value {
         }
         Some(Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
         Some(Kind::StructValue(s)) => {
-            let map: serde_json::Map<String, serde_json::Value> = s
+            // Sort keys for deterministic output. Proto Struct uses HashMap
+            // internally, so iteration order is non-deterministic.
+            let mut entries: Vec<_> = s
                 .fields
                 .iter()
                 .map(|(k, v)| (k.clone(), proto_value_to_json(v)))
                 .collect();
+            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            let map: serde_json::Map<String, serde_json::Value> = entries.into_iter().collect();
             serde_json::Value::Object(map)
         }
         Some(Kind::ListValue(l)) => {
