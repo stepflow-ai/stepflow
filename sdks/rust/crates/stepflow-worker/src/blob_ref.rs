@@ -26,6 +26,7 @@
 //! {"$blob": "<64-char-sha256-hex>", "blobType": "data", "size": 12345}
 //! ```
 
+use futures::stream::{self, StreamExt, TryStreamExt};
 use serde_json::{Map, Value};
 use tracing::debug;
 
@@ -39,10 +40,18 @@ const BLOB_REF_KEY: &str = "$blob";
 /// if resolved data itself contains blob refs).
 const MAX_RESOLVE_DEPTH: usize = 8;
 
+/// Maximum number of concurrent blob fetches when resolving blob refs.
+const MAX_CONCURRENT_FETCHES: usize = 16;
+
 /// Check whether a JSON value is a blob ref (object with `$blob` key containing
-/// a 64-character hex string).
+/// a 64-character string).
 fn is_blob_ref(value: &Value) -> Option<&str> {
     let obj = value.as_object()?;
+    is_blob_ref_map(obj)
+}
+
+/// Check whether a JSON map is a blob ref.
+fn is_blob_ref_map(obj: &Map<String, Value>) -> Option<&str> {
     let blob_id = obj.get(BLOB_REF_KEY)?.as_str()?;
     if blob_id.len() == 64 {
         Some(blob_id)
@@ -55,7 +64,7 @@ fn is_blob_ref(value: &Value) -> Option<&str> {
 fn collect_blob_ids(value: &Value, ids: &mut Vec<String>) {
     match value {
         Value::Object(obj) => {
-            if let Some(blob_id) = is_blob_ref(&Value::Object(obj.clone())) {
+            if let Some(blob_id) = is_blob_ref_map(obj) {
                 ids.push(blob_id.to_string());
             } else {
                 for v in obj.values() {
@@ -133,12 +142,11 @@ fn resolve_blob_refs_inner<'a>(
 
         debug!(count = ids.len(), depth, "Resolving blob refs in parallel");
 
-        // Fetch all blobs in parallel
-        let fetches: Vec<_> = ids
-            .iter()
+        // Fetch all blobs with bounded concurrency
+        let futures: Vec<_> = ids
+            .into_iter()
             .map(|id| {
                 let ctx = ctx.clone();
-                let id = id.clone();
                 async move {
                     let data = ctx.get_blob(&id).await?;
                     Ok::<_, ContextError>((id, data))
@@ -146,8 +154,11 @@ fn resolve_blob_refs_inner<'a>(
             })
             .collect();
 
-        let results = futures::future::try_join_all(fetches).await?;
-        let resolved: std::collections::HashMap<String, Value> = results.into_iter().collect();
+        let resolved: std::collections::HashMap<String, Value> =
+            stream::iter(futures)
+                .buffer_unordered(MAX_CONCURRENT_FETCHES)
+                .try_collect()
+                .await?;
 
         // Replace refs with fetched data
         let result = replace_blob_refs(value, &resolved);
@@ -199,7 +210,7 @@ pub(crate) async fn blobify_output(
 
         if size > threshold {
             let blob_id = ctx.put_blob(value).await?;
-            debug!(field = %key, size, blob_id = %&blob_id[..12], "Blobified output field");
+            debug!(field = %key, size, blob_id = %&blob_id[..blob_id.len().min(12)], "Blobified output field");
 
             let mut ref_obj = Map::new();
             ref_obj.insert(BLOB_REF_KEY.to_string(), Value::String(blob_id));

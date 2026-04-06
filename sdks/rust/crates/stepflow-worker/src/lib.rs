@@ -64,7 +64,7 @@
 //! | `STEPFLOW_ORCHESTRATOR_URL` | *(none)* | OrchestratorService URL override |
 //! | `STEPFLOW_BLOB_THRESHOLD_BYTES` | `0` | Auto-blobification threshold (0 = disabled) |
 
-pub mod blob_ref;
+pub(crate) mod blob_ref;
 pub mod context;
 pub mod error;
 pub mod registry;
