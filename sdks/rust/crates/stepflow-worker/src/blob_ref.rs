@@ -15,9 +15,9 @@
 //! A blob ref is a JSON object with a `$blob` key indicating the value is stored
 //! in the blob store. This module provides:
 //!
-//! - **Input de-blobification**: [`resolve_blob_refs`] recursively walks a JSON tree,
+//! - **Input de-blobification**: `resolve_blob_refs` recursively walks a JSON tree,
 //!   finds blob refs, fetches their data in parallel, and replaces them inline.
-//! - **Output blobification**: [`blobify_output`] checks each top-level field of an
+//! - **Output blobification**: `blobify_output` checks each top-level field of an
 //!   output object and stores large fields as blobs, replacing them with blob refs.
 //!
 //! # Blob ref format
