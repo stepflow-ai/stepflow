@@ -17,11 +17,11 @@ doctest = false
 
 [dependencies]
 # Core Stepflow dependencies
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-plugin.workspace = true
 
 # Serialization
-serde.workspace = true
 serde_json.workspace = true
 
 # Error handling
@@ -35,9 +35,8 @@ rust-mcp-schema = "0.7.0"
 tokio.workspace = true
 
 # Utilities
-indexmap.workspace = true
 subst.workspace = true
-schemars.workspace = true
 
 [dev-dependencies]
+indexmap.workspace = true
 uuid.workspace = true

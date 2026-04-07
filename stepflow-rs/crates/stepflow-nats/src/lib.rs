@@ -25,5 +25,5 @@ pub mod nats_plugin_config;
 pub mod nats_transport;
 
 pub use nats_journal::NatsJournal;
-pub use nats_plugin_config::NatsPluginConfig;
+pub use nats_plugin_config::{NatsPluginConfig, NatsPluginFactory};
 pub use nats_transport::NatsTaskTransport;

@@ -15,4 +15,4 @@ mod plugin;
 mod protocol;
 mod schema;
 
-pub use plugin::{McpPlugin, McpPluginConfig};
+pub use plugin::{McpPlugin, McpPluginConfig, McpPluginFactory};

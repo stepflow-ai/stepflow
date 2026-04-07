@@ -62,7 +62,7 @@ pub mod rest {
 
 // Re-export commonly used types at the crate root.
 pub use component_health::ComponentHealthTracker;
-pub use grpc_plugin_config::GrpcPluginConfig;
+pub use grpc_plugin_config::{GrpcPluginConfig, GrpcPluginFactory};
 pub use grpc_server::StepflowGrpcServer;
 pub use in_memory_transport::InMemoryTaskTransport;
 pub use pending_tasks::PendingTasks;

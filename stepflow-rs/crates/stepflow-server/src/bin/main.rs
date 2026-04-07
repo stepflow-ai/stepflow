@@ -83,9 +83,7 @@ async fn load_config(config_path: Option<PathBuf>, config_stdin: bool) -> Result
             .attach_printable("Failed to read configuration from stdin")?;
         StepflowConfig::load_from_json(&buffer).change_context(ServerError::ConfigError)
     } else if let Some(path) = config_path {
-        StepflowConfig::load_from_file(&path)
-            .await
-            .change_context(ServerError::ConfigError)
+        StepflowConfig::load_from_file(&path).change_context(ServerError::ConfigError)
     } else {
         Ok(StepflowConfig::default())
     }

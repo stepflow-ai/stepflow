@@ -12,4 +12,5 @@
 
 mod mock_plugin;
 
+// Re-export everything from mock_plugin, including the MockPluginFactory.
 pub use mock_plugin::*;

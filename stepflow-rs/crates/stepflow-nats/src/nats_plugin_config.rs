@@ -21,12 +21,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use serde::{Deserialize, Serialize};
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, StepId};
-use stepflow_plugin::{
-    DynPlugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
-};
+use stepflow_plugin::{DynPlugin, PluginError, Result, RunContext, StepflowEnvironment};
 use tokio::sync::Mutex;
 
 use stepflow_grpc::StepflowGrpcServer;
@@ -34,89 +31,24 @@ use stepflow_grpc::queue_plugin::StepflowQueuePlugin;
 
 use crate::nats_transport::NatsTaskTransport;
 
-/// Configuration for a NATS JetStream transport plugin.
-///
-/// Each route (or the plugin default) maps to a JetStream **stream** with
-/// WorkQueue retention. The stream is the unit of isolation — one per
-/// worker pool. Within each stream, tasks are published to a fixed
-/// internal subject (`tasks`).
-///
-/// # Config example
-///
-/// ```yaml
-/// plugins:
-///   nats:
-///     type: nats
-///     url: "nats://localhost:4222"
-///     stream: PYTHON_TASKS
-///     consumer: python-workers
-///     queueTimeoutSecs: 30
-///
-/// routes:
-///   "/python/foo":
-///     - plugin: nats
-///       stream: FOO_TASKS          # separate worker pool
-///   "/python":
-///     - plugin: nats               # uses default stream
-/// ```
-#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct NatsPluginConfig {
-    /// NATS server URL (e.g., "nats://localhost:4222").
-    pub url: String,
+pub use stepflow_config::NatsPluginConfig;
 
-    /// Default JetStream stream name. Can be overridden per-route via
-    /// the `stream` route param. At least one of plugin-level or
-    /// route-level `stream` must be set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stream: Option<String>,
+/// Factory for creating NATS JetStream transport plugins.
+pub struct NatsPluginFactory;
 
-    /// Durable consumer name for NATS JetStream. Required — workers use
-    /// this to create/resume a durable pull consumer within the stream.
-    #[serde(default)]
-    pub consumer: Option<String>,
+impl stepflow_plugin::PluginFactory for NatsPluginFactory {
+    type Config = NatsPluginConfig;
 
-    /// Command to launch the worker subprocess.
-    /// If not set, the plugin expects an external worker to connect.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub command: Option<String>,
-
-    /// Arguments for the worker subprocess command.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub args: Vec<String>,
-
-    /// Environment variables for the worker subprocess.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub env: HashMap<String, String>,
-
-    /// Maximum time (in seconds) a task can wait in the queue for a
-    /// worker to send its first heartbeat. Defaults to 30 seconds.
-    #[serde(default = "default_queue_timeout_secs")]
-    #[schemars(range(min = 1))]
-    pub queue_timeout_secs: u64,
-
-    /// Maximum time (in seconds) from first heartbeat to `CompleteTask`.
-    /// Defaults to `null` (no execution timeout).
-    #[serde(default)]
-    pub execution_timeout_secs: Option<u64>,
-}
-
-fn default_queue_timeout_secs() -> u64 {
-    30
-}
-
-impl PluginConfig for NatsPluginConfig {
-    type Error = PluginError;
-
-    async fn create_plugin(
-        self,
+    /// Create a NATS JetStream transport plugin from configuration.
+    async fn create_dyn(
+        config: NatsPluginConfig,
         working_directory: &Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, PluginError> {
-        if self.queue_timeout_secs == 0 {
+        if config.queue_timeout_secs == 0 {
             return Err(error_stack::report!(PluginError::Initializing)
                 .attach_printable("queue_timeout_secs must be greater than 0"));
         }
-        let consumer = self.consumer.ok_or_else(|| {
+        let consumer = config.consumer.ok_or_else(|| {
             error_stack::report!(PluginError::Initializing).attach_printable(
                 "consumer is required for NATS plugins — it identifies the \
                  durable consumer name for workers",
@@ -125,14 +57,14 @@ impl PluginConfig for NatsPluginConfig {
 
         let plugin = NatsPlugin {
             inner: Mutex::new(None),
-            url: self.url,
-            default_stream: self.stream,
-            command: self.command,
-            args: self.args,
-            env: self.env,
+            url: config.url,
+            default_stream: config.stream,
+            command: config.command,
+            args: config.args,
+            env: config.env,
             consumer,
-            queue_timeout: std::time::Duration::from_secs(self.queue_timeout_secs),
-            execution_timeout: self
+            queue_timeout: std::time::Duration::from_secs(config.queue_timeout_secs),
+            execution_timeout: config
                 .execution_timeout_secs
                 .map(std::time::Duration::from_secs),
             working_directory: working_directory.to_path_buf(),
@@ -359,7 +291,7 @@ impl stepflow_plugin::Plugin for NatsPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_plugin::PluginConfig;
+    use stepflow_plugin::PluginFactory as _;
 
     /// Full config with all fields deserializes correctly.
     #[test]
@@ -407,7 +339,7 @@ mod tests {
         assert!(config.execution_timeout_secs.is_none());
     }
 
-    /// Config without `consumer` fails create_plugin with a descriptive error.
+    /// Config without `consumer` fails create with a descriptive error.
     #[tokio::test]
     async fn test_config_consumer_required() {
         let json = serde_json::json!({
@@ -415,10 +347,10 @@ mod tests {
         });
 
         let config: NatsPluginConfig = serde_json::from_value(json).unwrap();
-        let result = config.create_plugin(Path::new("/tmp")).await;
+        let result = NatsPluginFactory::create_dyn(config, Path::new("/tmp")).await;
 
         match result {
-            Ok(_) => panic!("create_plugin should fail without consumer"),
+            Ok(_) => panic!("NatsPluginFactory::create should fail without consumer"),
             Err(err) => {
                 let msg = format!("{err:?}");
                 assert!(
@@ -429,7 +361,7 @@ mod tests {
         }
     }
 
-    /// queueTimeoutSecs: 0 is rejected by create_plugin.
+    /// queueTimeoutSecs: 0 is rejected by NatsPluginFactory::create.
     #[tokio::test]
     async fn test_config_queue_timeout_zero_rejected() {
         let json = serde_json::json!({
@@ -439,10 +371,10 @@ mod tests {
         });
 
         let config: NatsPluginConfig = serde_json::from_value(json).unwrap();
-        let result = config.create_plugin(Path::new("/tmp")).await;
+        let result = NatsPluginFactory::create_dyn(config, Path::new("/tmp")).await;
 
         match result {
-            Ok(_) => panic!("create_plugin should fail with queue_timeout_secs=0"),
+            Ok(_) => panic!("NatsPluginFactory::create should fail with queue_timeout_secs=0"),
             Err(err) => {
                 let msg = format!("{err:?}");
                 assert!(

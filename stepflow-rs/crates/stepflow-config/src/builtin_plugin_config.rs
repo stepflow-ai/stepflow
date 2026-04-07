@@ -10,19 +10,8 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Stepflow HTTP server library
-//!
-//! This crate provides the core HTTP server functionality for Stepflow.
-//! It contains all the API endpoints, request/response types, and server startup logic.
+use serde::{Deserialize, Serialize};
 
-mod environment;
-mod orphan_recovery;
-mod shutdown;
-mod startup;
-
-// Startup configuration
-pub use startup::{ServiceOptions, StepflowService};
-
-// Server lifecycle
-pub use orphan_recovery::{heartbeat_loop, orphan_claiming_loop};
-pub use shutdown::shutdown_signal;
+/// Configuration for the built-in plugin.
+#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
+pub struct BuiltinPluginConfig;

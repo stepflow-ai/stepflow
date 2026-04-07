@@ -22,12 +22,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use serde::{Deserialize, Serialize};
 use stepflow_core::component::ComponentInfo;
 use stepflow_core::workflow::{Component, StepId};
-use stepflow_plugin::{
-    DynPlugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
-};
+use stepflow_plugin::{DynPlugin, PluginError, Result, RunContext, StepflowEnvironment};
 use stepflow_state::MetadataStoreExt as _;
 use tokio::sync::Mutex;
 
@@ -35,80 +32,28 @@ use crate::grpc_server::StepflowGrpcServer;
 use crate::in_memory_transport::InMemoryTaskTransport;
 use crate::queue_plugin::StepflowQueuePlugin;
 
-/// Configuration for a gRPC transport plugin.
-///
-/// When instantiated, creates a [`StepflowQueuePlugin`] backed by an in-memory
-/// task queue. During `ensure_initialized`, registers its queue with the
-/// orchestrator's [`StepflowGrpcServer`] and optionally spawns a worker
-/// subprocess.
-///
-/// # Config example
-///
-/// ```yaml
-/// plugins:
-///   python:
-///     type: grpc
-///     command: uv
-///     args: ["--project", "../sdks/python/stepflow-py", "run", "stepflow_py", "--grpc"]
-///     queueName: python
-/// ```
-#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GrpcPluginConfig {
-    /// Command to launch the worker subprocess.
-    /// If not set, the plugin expects an external worker to connect.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub command: Option<String>,
+pub use stepflow_config::GrpcPluginConfig;
 
-    /// Arguments for the worker subprocess command.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub args: Vec<String>,
+/// Factory for creating gRPC transport plugins.
+pub struct GrpcPluginFactory;
 
-    /// Environment variables for the worker subprocess.
-    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub env: std::collections::HashMap<String, String>,
+impl stepflow_plugin::PluginFactory for GrpcPluginFactory {
+    type Config = GrpcPluginConfig;
 
-    /// Queue name the worker uses to receive tasks. Required — must match
-    /// `STEPFLOW_QUEUE_NAME` in the worker's environment.
-    #[serde(default)]
-    pub queue_name: Option<String>,
-
-    /// Maximum time (in seconds) a task can wait in the queue for a
-    /// worker to send its first heartbeat. If no worker picks up the task
-    /// within this window, it is treated as failed. Must be greater than 0.
+    /// Create a gRPC transport plugin from configuration.
     ///
-    /// Defaults to 30 seconds.
-    #[serde(default = "default_queue_timeout_secs")]
-    #[schemars(range(min = 1))]
-    pub queue_timeout_secs: u64,
-
-    /// Maximum time (in seconds) from first heartbeat to `CompleteTask`.
-    /// If the worker does not complete within this window, the task is
-    /// treated as failed. Heartbeat-based crash detection (5s timeout)
-    /// provides faster detection of hard worker crashes.
-    ///
-    /// Defaults to `null` (no execution timeout — relies on heartbeat
-    /// crash detection only).
-    #[serde(default)]
-    pub execution_timeout_secs: Option<u64>,
-}
-
-fn default_queue_timeout_secs() -> u64 {
-    30
-}
-
-impl PluginConfig for GrpcPluginConfig {
-    type Error = PluginError;
-
-    async fn create_plugin(
-        self,
+    /// Creates a [`StepflowQueuePlugin`] backed by an in-memory task queue.
+    /// During `ensure_initialized`, registers its queue with the orchestrator's
+    /// [`StepflowGrpcServer`] and optionally spawns a worker subprocess.
+    async fn create_dyn(
+        config: GrpcPluginConfig,
         working_directory: &Path,
     ) -> error_stack::Result<Box<DynPlugin<'static>>, PluginError> {
-        if self.queue_timeout_secs == 0 {
+        if config.queue_timeout_secs == 0 {
             return Err(error_stack::report!(PluginError::Initializing)
                 .attach_printable("queue_timeout_secs must be greater than 0"));
         }
-        let queue_name = self.queue_name.ok_or_else(|| {
+        let queue_name = config.queue_name.ok_or_else(|| {
             error_stack::report!(PluginError::Initializing).attach_printable(
                 "queueName is required for gRPC plugins — it identifies the default queue \
                  for workers. Can be overridden per-route via the queueName route param.",
@@ -117,12 +62,12 @@ impl PluginConfig for GrpcPluginConfig {
 
         let plugin = GrpcPlugin {
             inner: Mutex::new(None),
-            command: self.command,
-            args: self.args,
-            env: self.env,
+            command: config.command,
+            args: config.args,
+            env: config.env,
             queue_name,
-            queue_timeout: std::time::Duration::from_secs(self.queue_timeout_secs),
-            execution_timeout: self
+            queue_timeout: std::time::Duration::from_secs(config.queue_timeout_secs),
+            execution_timeout: config
                 .execution_timeout_secs
                 .map(std::time::Duration::from_secs),
             working_directory: working_directory.to_path_buf(),

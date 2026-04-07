@@ -33,10 +33,10 @@
 //! builder.add_step(
 //!     "process",
 //!     "/python/my_func",
-//!     ValueExpr::object([("data", FlowBuilder::input().into())]),
+//!     ValueExpr::object(vec![("data".to_string(), ValueExpr::workflow_input(Default::default()))]),
 //! );
 //! let flow = builder
-//!     .output(FlowBuilder::step("process").field("result"))
+//!     .output(ValueExpr::step_output("process"))
 //!     .build()?;
 //!
 //! let flow_id = client.store_flow(&flow).await?;
@@ -56,6 +56,10 @@ pub use client::{
     ComponentInfo, FlowVariable, ListComponentsResult, RunStatus, StatusEventStream, StepflowClient,
 };
 pub use error::{BuilderError, ClientError};
-pub use flow::{ErrorAction, Flow, FlowBuilder, InputRef, Step, StepHandle, StepRef, ValueExpr};
+pub use flow::{Flow, FlowBuilder, Step, ValueExpr};
+
+// Re-export stepflow-flow so users can access all types.
+pub use stepflow_flow;
+
 // Re-export StatusEvent so callers don't need to depend on stepflow-proto directly.
 pub use stepflow_proto::StatusEvent;

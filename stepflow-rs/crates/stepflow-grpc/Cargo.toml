@@ -16,11 +16,11 @@ fastrace.workspace = true
 futures.workspace = true
 log.workspace = true
 prost-wkt-types = "0.7"
-schemars.workspace = true
-serde = { version = "1", features = ["derive"] }
 dashmap.workspace = true
+serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
 stepflow-analysis.workspace = true
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-proto.workspace = true
 stepflow-observability.workspace = true

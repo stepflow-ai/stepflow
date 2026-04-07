@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use tonic::transport::Channel;
 
 use crate::error::{ClientError, ClientResult};
-use crate::flow::Flow;
+use stepflow_flow::workflow::Flow;
 
 use stepflow_proto::{
     CreateRunRequest, GetRunEventsRequest, GetRunItemsRequest, GetRunRequest, HealthCheckRequest,
@@ -114,8 +114,8 @@ pub type StatusEventStream = tonic::codec::Streaming<stepflow_proto::StatusEvent
 /// let mut client = StepflowClient::connect("http://localhost:7840").await?;
 ///
 /// let mut builder = FlowBuilder::new();
-/// builder.add_step("hello", "/builtin/eval", ValueExpr::input(None));
-/// let flow = builder.output(stepflow_client::FlowBuilder::step("hello")).build()?;
+/// builder.add_step("hello", "/builtin/eval", ValueExpr::null());
+/// let flow = builder.output(ValueExpr::step_output("hello")).build()?;
 ///
 /// let flow_id = client.store_flow(&flow).await?;
 /// let output = client.run(&flow_id, serde_json::json!({"name": "world"})).await?;
@@ -161,7 +161,7 @@ impl StepflowClient {
     /// The returned flow ID can be passed to [`run`](Self::run) or
     /// [`submit`](Self::submit).
     pub async fn store_flow(&mut self, flow: &Flow) -> ClientResult<String> {
-        let flow_json = flow.to_json()?;
+        let flow_json = serde_json::to_value(flow)?;
         let flow_value = json_to_proto_value(flow_json);
         let flow_struct = match flow_value.kind {
             Some(prost_wkt_types::value::Kind::StructValue(s)) => s,

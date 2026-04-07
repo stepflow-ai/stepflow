@@ -21,8 +21,8 @@ dynosaur.workspace = true
 error-stack.workspace = true
 indexmap.workspace = true
 matchit.workspace = true
-serde.workspace = true
 serde_json.workspace = true
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-domain.workspace = true
 stepflow-state.workspace = true
@@ -31,7 +31,6 @@ tokio = { workspace = true, features = ["sync"] }
 trait-variant.workspace = true
 log.workspace = true
 uuid.workspace = true
-schemars.workspace = true
 
 [dev-dependencies]
 serde_yaml_ng.workspace = true

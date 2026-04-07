@@ -107,6 +107,7 @@ stepflow-config = { path = "./crates/stepflow-config" }
 stepflow-core = { path = "./crates/stepflow-core" }
 stepflow-domain = { path = "./crates/stepflow-domain" }
 stepflow-execution = { path = "./crates/stepflow-execution" }
+stepflow-flow = { path = "./crates/stepflow-flow" }
 stepflow-grpc = { path = "./crates/stepflow-grpc" }
 stepflow-mock = { path = "./crates/stepflow-mock" }
 stepflow-nats = { path = "./crates/stepflow-nats" }

@@ -1,35 +1,49 @@
 ---
-source: crates/stepflow-core/src/discriminator_schema.rs
+source: crates/stepflow-flow/src/discriminator_schema.rs
 expression: value
 ---
 $schema: "https://json-schema.org/draft/2020-12/schema"
-title: TitledVariantsEnum
+title: PipelineEnum
 oneOf:
-  - title: Fail
+  - $ref: "#/$defs/Fail"
+  - $ref: "#/$defs/UseDefault"
+  - $ref: "#/$defs/Retry"
+discriminator:
+  propertyName: action
+  mapping:
+    fail: "#/$defs/Fail"
+    useDefault: "#/$defs/UseDefault"
+    retry: "#/$defs/Retry"
+$defs:
+  Fail:
+    title: Fail
     type: object
     properties:
       action:
         type: string
         const: fail
+        default: fail
     required:
       - action
-  - title: UseDefault
+  UseDefault:
+    title: UseDefault
     type: object
     properties:
       default_value: true
       action:
         type: string
         const: useDefault
+        default: useDefault
     required:
       - action
       - default_value
-  - title: Retry
+  Retry:
+    title: Retry
     type: object
     properties:
       action:
         type: string
         const: retry
+        default: retry
     required:
       - action
-discriminator:
-  propertyName: action

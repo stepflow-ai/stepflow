@@ -10,19 +10,19 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Stepflow HTTP server library
-//!
-//! This crate provides the core HTTP server functionality for Stepflow.
-//! It contains all the API endpoints, request/response types, and server startup logic.
+use serde::{Deserialize, Serialize};
 
-mod environment;
-mod orphan_recovery;
-mod shutdown;
-mod startup;
+/// Configuration for the etcd lease manager.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EtcdLeaseManagerConfig {
+    /// etcd endpoints (e.g., `["http://localhost:2379"]`).
+    pub endpoints: Vec<String>,
 
-// Startup configuration
-pub use startup::{ServiceOptions, StepflowService};
+    /// Key prefix for all stepflow lease keys.
+    #[serde(default = "default_key_prefix")]
+    pub key_prefix: String,
+}
 
-// Server lifecycle
-pub use orphan_recovery::{heartbeat_loop, orphan_claiming_loop};
-pub use shutdown::shutdown_signal;
+fn default_key_prefix() -> String {
+    "/stepflow/leases".to_string()
+}

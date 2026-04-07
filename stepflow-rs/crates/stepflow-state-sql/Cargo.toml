@@ -26,16 +26,15 @@ bytes.workspace = true
 chrono.workspace = true
 error-stack.workspace = true
 futures.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-domain.workspace = true
 stepflow-state.workspace = true
 tokio.workspace = true
 log.workspace = true
 uuid.workspace = true
-schemars.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

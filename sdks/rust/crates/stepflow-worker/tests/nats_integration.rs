@@ -224,10 +224,10 @@ async fn test_nats_double_component() {
     builder.add_step(
         "/test/double",
         "/test/double",
-        stepflow_client::ValueExpr::input(None),
+        stepflow_client::ValueExpr::workflow_input(Default::default()),
     );
     let flow = builder
-        .output(FlowBuilder::step("/test/double"))
+        .output(stepflow_client::ValueExpr::step_output("/test/double"))
         .build()
         .expect("Failed to build flow");
 
@@ -335,18 +335,29 @@ async fn test_nats_chained_steps() {
     builder.add_step(
         "greet",
         "/test/greet",
-        stepflow_client::ValueExpr::object([("name", FlowBuilder::input().field("name").into())]),
+        stepflow_client::ValueExpr::object(vec![(
+            "name".to_string(),
+            stepflow_client::ValueExpr::workflow_input(
+                stepflow_flow::values::JsonPath::parse("$.name").unwrap(),
+            ),
+        )]),
     );
     builder.add_step(
         "shout",
         "/test/shout",
-        stepflow_client::ValueExpr::object([(
-            "message",
-            FlowBuilder::step("greet").field("message").into(),
+        stepflow_client::ValueExpr::object(vec![(
+            "message".to_string(),
+            stepflow_client::ValueExpr::step(
+                "greet",
+                stepflow_flow::values::JsonPath::parse("$.message").unwrap(),
+            ),
         )]),
     );
     let flow = builder
-        .output(FlowBuilder::step("shout").field("loud"))
+        .output(stepflow_client::ValueExpr::step(
+            "shout",
+            stepflow_flow::values::JsonPath::parse("$.loud").unwrap(),
+        ))
         .build()
         .expect("Failed to build flow");
 

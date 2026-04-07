@@ -10,96 +10,16 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-use std::collections::HashMap;
-use stepflow_core::values::ValueRef;
-use stepflow_core::workflow::JsonPath;
+// Re-export routing config types from stepflow-config.
+// These types are defined in stepflow-config for publishability.
+pub use stepflow_config::{InputCondition, RouteMatch, RouteRule, RoutingConfig};
 
-/// Prefix-keyed routing configuration.
-///
-/// Keys are single-segment path prefixes (e.g., "/python", "/builtin") or the
-/// root catch-all "/". Multi-segment prefixes (e.g., "/python/core") are not
-/// allowed. Each plugin's registered component paths are mounted under the
-/// prefix. The orchestrator builds a per-plugin trie from the plugin's
-/// component registrations.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RoutingConfig {
-    /// Prefix-to-routing rules mapping.
-    ///
-    /// Keys must be either "/" (catch-all) or a single-segment prefix like
-    /// "/python", "/builtin". Multi-segment prefixes are rejected at build time.
-    /// Each plugin's registered component paths are mounted under the prefix.
-    ///
-    /// Value: ordered list of routing rules. When multiple rules exist for a prefix,
-    /// they are evaluated in order — the first rule whose conditions match is used.
-    pub routes: HashMap<String, Vec<RouteRule>>,
-}
-
-/// A single routing rule mapping a prefix to a plugin.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RouteRule {
-    /// Optional input conditions that must match for this rule to apply.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub conditions: Vec<InputCondition>,
-
-    /// Optional component allowlist — only these component IDs are allowed.
-    ///
-    /// If omitted, all components are allowed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<Vec<String>>")]
-    pub component_allow: Option<Vec<Cow<'static, str>>>,
-
-    /// Optional component denylist — these component IDs are blocked.
-    ///
-    /// If omitted, no components are blocked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(with = "Option<Vec<String>>")]
-    pub component_deny: Option<Vec<Cow<'static, str>>>,
-
-    /// Plugin name to route to.
-    #[schemars(with = "String")]
-    pub plugin: Cow<'static, str>,
-
-    /// Additional parameters passed to the plugin at task dispatch time.
-    ///
-    /// These are transport-specific overrides (e.g., `stream` for NATS,
-    /// `queueName` for gRPC) that the plugin merges with its own defaults.
-    /// Unknown fields in route rules are captured here via `#[serde(flatten)]`.
-    #[serde(flatten)]
-    #[schemars(with = "std::collections::HashMap<String, serde_json::Value>")]
-    pub params: std::collections::HashMap<String, serde_json::Value>,
-}
-
-/// JSON path condition for matching specific parts of input data
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct InputCondition {
-    /// JSON path expression (e.g., "$.model", "$.config.temperature")
-    pub path: JsonPath,
-
-    /// Value to match against (equality comparison)
-    pub value: ValueRef,
-}
-
-/// Information about a route match for reverse routing
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RouteMatch {
-    /// The path pattern that matches this route (e.g., "/builtin")
-    pub path_pattern: String,
-    /// The resolved path for this specific component (e.g., "/builtin/eval")
-    pub resolved_path: String,
-    /// Input conditions that must be met for this route to be available
-    pub conditions: Vec<InputCondition>,
-    /// Whether this route is conditional (derived from conditions.is_empty())
-    pub is_conditional: bool,
-}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use stepflow_core::values::ValueRef;
+    use stepflow_core::workflow::JsonPath;
 
     #[test]
     fn test_routing_config_serialization() {

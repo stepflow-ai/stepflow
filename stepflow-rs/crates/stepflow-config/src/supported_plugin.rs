@@ -10,61 +10,33 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use std::path::Path;
-
-use error_stack::ResultExt as _;
 use serde::{Deserialize, Serialize};
-use stepflow_builtins::BuiltinPluginConfig;
-use stepflow_components_mcp::McpPluginConfig;
-use stepflow_grpc::GrpcPluginConfig;
-use stepflow_mock::MockPlugin;
-use stepflow_plugin::{DynPlugin, PluginConfig};
 
-use crate::{ConfigError, Result};
+use crate::{BuiltinPluginConfig, GrpcPluginConfig, McpPluginConfig, NatsPluginConfig};
 
 #[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
-#[schemars(transform = stepflow_core::discriminator_schema::AddDiscriminator::new("type"))]
+#[schemars(transform = stepflow_flow::discriminator_schema::AddDiscriminator::new("type"))]
 pub enum SupportedPlugin {
     #[schemars(title = "BuiltinPluginConfig")]
     Builtin(BuiltinPluginConfig),
-    #[schemars(title = "MockPlugin")]
-    Mock(MockPlugin),
+    /// Mock plugin configuration (opaque — deserialized by the server).
+    ///
+    /// Uses `serde_yaml_ng::Value` because mock configs can contain non-string
+    /// map keys (e.g., `{input: "a"}` as behavior keys) which `serde_json::Value`
+    /// cannot represent.
+    #[schemars(title = "MockPlugin", with = "serde_json::Value")]
+    Mock(serde_yaml_ng::Value),
     #[schemars(title = "McpPluginConfig")]
     Mcp(McpPluginConfig),
     #[schemars(title = "GrpcPluginConfig")]
     Grpc(GrpcPluginConfig),
-    #[cfg(feature = "nats")]
     #[schemars(title = "NatsPluginConfig")]
-    Nats(stepflow_nats::NatsPluginConfig),
+    Nats(NatsPluginConfig),
 }
 
 #[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
 pub struct SupportedPluginConfig {
     #[serde(flatten)]
     pub plugin: SupportedPlugin,
-}
-
-async fn create_plugin<P: PluginConfig>(
-    plugin: P,
-    working_directory: &Path,
-) -> Result<Box<DynPlugin<'static>>> {
-    plugin
-        .create_plugin(working_directory)
-        .await
-        .change_context(ConfigError::Configuration)
-}
-
-impl SupportedPluginConfig {
-    pub async fn instantiate(self, working_directory: &Path) -> Result<Box<DynPlugin<'static>>> {
-        let plugin = match self.plugin {
-            SupportedPlugin::Builtin(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mock(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Mcp(plugin) => create_plugin(plugin, working_directory).await?,
-            SupportedPlugin::Grpc(plugin) => create_plugin(plugin, working_directory).await?,
-            #[cfg(feature = "nats")]
-            SupportedPlugin::Nats(plugin) => create_plugin(plugin, working_directory).await?,
-        };
-        Ok(plugin)
-    }
 }
