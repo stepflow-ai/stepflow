@@ -169,6 +169,7 @@ async fn test_double_component() {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let worker_handle = tokio::spawn(async move {
         Worker::new(registry, worker_config)
+            .expect("Failed to create worker")
             .run_until(async move {
                 let _ = stop_rx.await;
             })
@@ -271,6 +272,7 @@ async fn test_chained_steps() {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let worker_handle = tokio::spawn(async move {
         Worker::new(registry, worker_config)
+            .expect("Failed to create worker")
             .run_until(async move {
                 let _ = stop_rx.await;
             })
@@ -380,6 +382,7 @@ async fn test_auto_blobification() {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let worker_handle = tokio::spawn(async move {
         Worker::new(registry, worker_config)
+            .expect("Failed to create worker")
             .run_until(async move {
                 let _ = stop_rx.await;
             })

@@ -13,6 +13,7 @@
 //! Proxy configuration — CLI args and environment variables.
 
 use clap::{Parser, Subcommand};
+use stepflow_worker::WorkerConfig;
 
 /// Stepflow isolation proxy — dispatches tasks to sandboxed workers via vsock.
 ///
@@ -20,21 +21,13 @@ use clap::{Parser, Subcommand};
 /// using a pluggable backend (subprocess, Firecracker, etc.). The worker
 /// receives tasks over vsock/Unix socket and handles the full task lifecycle
 /// (claim, heartbeat, execute, complete) by talking directly to the orchestrator.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "stepflow-isolation-proxy")]
 #[command(about = "Dispatch Stepflow tasks to isolated sandboxed workers")]
 pub struct ProxyConfig {
-    /// Tasks gRPC service URL (PullTasks endpoint).
-    #[arg(
-        long,
-        env = "STEPFLOW_TASKS_URL",
-        default_value = "http://127.0.0.1:7837"
-    )]
-    pub tasks_url: String,
-
-    /// Queue name to pull tasks for.
-    #[arg(long, env = "STEPFLOW_QUEUE_NAME", default_value = "default")]
-    pub queue_name: String,
+    /// Worker transport and connection settings (tasks URL, queue, retries, etc.).
+    #[command(flatten)]
+    pub worker: WorkerConfig,
 
     /// Blob API URL passed to workers.
     #[arg(long, env = "STEPFLOW_BLOB_URL", default_value = "")]
@@ -44,17 +37,13 @@ pub struct ProxyConfig {
     #[arg(long, env = "OTEL_EXPORTER_OTLP_ENDPOINT", default_value = "")]
     pub otel_endpoint: String,
 
-    /// Maximum number of concurrent tasks / sandboxes.
-    #[arg(long, env = "STEPFLOW_MAX_CONCURRENT", default_value = "4")]
-    pub max_concurrent: usize,
-
     /// Isolation backend to use.
     #[command(subcommand)]
     pub backend: Backend,
 }
 
 /// Isolation backend — how tasks are dispatched to workers.
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Backend {
     /// Subprocess isolation: spawn a Python worker per task, communicate via Unix socket.
     /// Works on all platforms. Good for development, testing, and lightweight isolation.

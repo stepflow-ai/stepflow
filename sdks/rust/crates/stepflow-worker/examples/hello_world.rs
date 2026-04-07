@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Registered components: /greet");
     println!("Press Ctrl-C to stop.");
 
-    Worker::new(registry, config).run().await?;
+    Worker::new(registry, config)?.run().await?;
 
     Ok(())
 }

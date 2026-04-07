@@ -40,7 +40,7 @@ stepflow-isolation-proxy \
 Firecracker requires Linux with KVM. On macOS, use Lima with VZ backend (M3+ chip, macOS 15+):
 
 ```bash
-cd stepflow-rs/crates/stepflow-isolation-proxy
+cd sdks/rust/crates/stepflow-isolation-proxy
 
 # Start Lima VM (installs Firecracker, Rust, uv)
 ./scripts/start-lima.sh
@@ -117,7 +117,7 @@ STEPFLOW_DEV_BINARY=$(pwd)/target/debug/stepflow-server \
 ### Firecracker (requires Linux with KVM)
 
 ```bash
-cd stepflow-rs/crates/stepflow-isolation-proxy
+cd sdks/rust/crates/stepflow-isolation-proxy
 
 # First run (builds rootfs, creates snapshot — takes ~2 min):
 ./scripts/test-firecracker.sh

@@ -13,28 +13,27 @@ default = []
 nats = ["dep:async-nats"]
 
 [dependencies]
-stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
+stepflow-proto = { workspace = true, features = ["tokio"] }
 async-nats = { version = "0.46", optional = true }
-prost = "0.14"
-tokio = { version = "1", features = ["full", "signal"] }
-tonic = { version = "0.14", features = ["transport"] }
-prost-wkt-types = "0.7"
-serde = { version = "1", features = ["derive"] }
+prost.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+tonic.workspace = true
+prost-wkt-types.workspace = true
+serde.workspace = true
 indexmap = "2"
 scc = "2"
-serde_json = "1"
-thiserror = "2"
-async-trait = "0.1"
-futures = "0.3"
-tracing = "0.1"
-clap = { version = "4.5", features = ["derive", "env"] }
-uuid = { version = "1", features = ["v4"] }
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+tracing.workspace = true
+clap.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-stepflow-client = { path = "../stepflow-client", features = ["local-server"] }
-stepflow-flow = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-flow" }
-tokio = { version = "1", features = ["full"] }
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+stepflow-client = { workspace = true, features = ["local-server"] }
+stepflow-flow.workspace = true
+tracing-subscriber.workspace = true
 testcontainers = "0.27.2"
 
 [[example]]

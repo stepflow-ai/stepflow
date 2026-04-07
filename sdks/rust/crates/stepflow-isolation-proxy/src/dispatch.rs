@@ -10,18 +10,17 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Task dispatch loop — pulls tasks and forwards them to sandboxed workers.
+//! Task dispatch — forwards tasks to sandboxed workers via vsock.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use log::{error, info};
-use stepflow_proto::tasks_service_client::TasksServiceClient;
-use stepflow_proto::{PullTasksRequest, TaskAssignment, VsockTaskEnvelope};
+use stepflow_proto::{TaskAssignment, VsockTaskEnvelope};
+use stepflow_worker::{TaskExecutor, Worker};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::Semaphore;
-use tonic::codec::Streaming;
 
 use crate::config::{Backend, ProxyConfig};
 use crate::subprocess;
@@ -30,17 +29,36 @@ use crate::vm::pool::VmPool;
 use crate::vsock::protocol::write_message;
 use crate::vsock::transport::VsockConnection;
 
-/// Run the main dispatch loop.
+/// Task executor that forwards assignments to sandboxed workers via vsock.
+///
+/// The sandboxed worker handles the full task lifecycle (claim, heartbeat,
+/// execute, complete) by talking directly to the orchestrator. The proxy
+/// only dispatches the assignment and waits for the sandbox to exit.
+struct ForwardingExecutor {
+    config: Arc<ProxyConfig>,
+    vm_pool: Option<Arc<VmPool>>,
+}
+
+#[async_trait]
+impl TaskExecutor for ForwardingExecutor {
+    async fn execute_task(&self, assignment: TaskAssignment) {
+        let task_id = assignment.task_id.clone();
+        let task_received = std::time::Instant::now();
+
+        if let Err(e) = dispatch_task(&self.config, assignment, self.vm_pool.as_deref()).await {
+            error!("Task {task_id} dispatch failed: {e}");
+        }
+
+        info!(
+            "TIMING: task_id={task_id} e2e_proxy={:?} (received → worker done)",
+            task_received.elapsed()
+        );
+    }
+}
+
+/// Run the isolation proxy using the Worker transport loop.
 pub async fn run(config: ProxyConfig) -> Result<(), Box<dyn std::error::Error>> {
-    let worker_id = format!("stepflow-proxy-{}", uuid::Uuid::new_v4());
-    info!(
-        "Starting proxy worker_id={worker_id} backend={}",
-        backend_name(&config.backend)
-    );
-    info!(
-        "Connecting to tasks service at {} queue={}",
-        config.tasks_url, config.queue_name
-    );
+    info!("Starting proxy backend={}", backend_name(&config.backend));
 
     // Initialize the Firecracker VM pool if using that backend.
     let vm_pool = match &config.backend {
@@ -71,49 +89,14 @@ pub async fn run(config: ProxyConfig) -> Result<(), Box<dyn std::error::Error>> 
         _ => None,
     };
 
-    let mut stream = open_task_stream(&config.tasks_url, &config.queue_name, &worker_id).await?;
+    let executor: Arc<dyn TaskExecutor> = Arc::new(ForwardingExecutor {
+        config: Arc::new(config.clone()),
+        vm_pool,
+    });
 
-    info!("Connected. Waiting for tasks...");
-
-    let semaphore = Arc::new(Semaphore::new(config.max_concurrent));
-    let config = Arc::new(config);
-
-    loop {
-        let assignment = match stream.message().await {
-            Ok(Some(assignment)) => assignment,
-            Ok(None) => {
-                info!("Task stream ended (orchestrator closed)");
-                break;
-            }
-            Err(e) => {
-                error!("Task stream error: {e}");
-                break;
-            }
-        };
-
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore closed");
-        let config = Arc::clone(&config);
-        let vm_pool = vm_pool.clone();
-
-        tokio::spawn(async move {
-            let task_id = assignment.task_id.clone();
-            let task_received = std::time::Instant::now();
-
-            if let Err(e) = dispatch_task(&config, assignment, vm_pool.as_deref()).await {
-                error!("Task {task_id} dispatch failed: {e}");
-            }
-            info!(
-                "TIMING: task_id={task_id} e2e_proxy={:?} (received → worker done)",
-                task_received.elapsed()
-            );
-
-            drop(permit);
-        });
-    }
+    Worker::with_executor(executor, config.worker.clone())
+        .run()
+        .await?;
 
     Ok(())
 }
@@ -127,7 +110,7 @@ async fn dispatch_task(
     let envelope = VsockTaskEnvelope {
         assignment: Some(assignment),
         blob_url: config.blob_url.clone(),
-        tasks_url: config.tasks_url.clone(),
+        tasks_url: config.worker.tasks_url.clone(),
         otel_endpoint: config.otel_endpoint.clone(),
     };
 
@@ -207,10 +190,6 @@ async fn dispatch_firecracker(
 }
 
 /// Rewrite localhost URLs in the envelope to be reachable from inside the VM.
-///
-/// The VM uses its veth default route to reach the host. Traffic to the
-/// host-side veth IP (10.0.0.1) exits the namespace and reaches host services.
-/// We can't use the TAP IP (192.168.241.1) because that's local to the namespace.
 fn rewrite_urls_for_vm(envelope: &VsockTaskEnvelope, host_ip: &str) -> VsockTaskEnvelope {
     let rewrite = |url: &str| -> String {
         url.replace("127.0.0.1", host_ip)
@@ -233,10 +212,6 @@ fn rewrite_urls_for_vm(envelope: &VsockTaskEnvelope, host_ip: &str) -> VsockTask
 }
 
 /// Send a task envelope to a pre-warmed Firecracker VM worker via vsock.
-///
-/// The VM is already listening (readiness verified during pool warming).
-/// Sends the envelope, then waits for the worker to close its end of the
-/// connection (indicating CompleteTask was sent to the orchestrator).
 async fn dispatch_to_vsock_vm(
     vsock_uds_path: &str,
     guest_port: u32,
@@ -246,7 +221,6 @@ async fn dispatch_to_vsock_vm(
 
     let t0 = std::time::Instant::now();
 
-    // The VM is pre-warmed by the pool — guest worker should already be listening.
     let mut conn = VsockConnection::connect_vsock(vsock_uds_path, guest_port).await?;
     let t_connect = t0.elapsed();
 
@@ -281,28 +255,4 @@ fn backend_name(backend: &Backend) -> &'static str {
         Backend::Subprocess { .. } => "subprocess",
         Backend::Firecracker { .. } => "firecracker",
     }
-}
-
-/// Connect to the tasks service and open a `PullTasks` stream.
-async fn open_task_stream(
-    tasks_url: &str,
-    queue_name: &str,
-    worker_id: &str,
-) -> Result<Streaming<TaskAssignment>, Box<dyn std::error::Error>> {
-    let channel = tonic::transport::Channel::from_shared(tasks_url.to_string())
-        .map_err(|e| format!("invalid tasks URL '{tasks_url}': {e}"))?
-        .connect()
-        .await
-        .map_err(|e| format!("failed to connect to tasks service at '{tasks_url}': {e}"))?;
-
-    let stream = TasksServiceClient::new(channel)
-        .pull_tasks(PullTasksRequest {
-            queue_name: queue_name.to_string(),
-            worker_id: worker_id.to_string(),
-        })
-        .await
-        .map_err(|e| format!("failed to open PullTasks stream: {e}"))?
-        .into_inner();
-
-    Ok(stream)
 }

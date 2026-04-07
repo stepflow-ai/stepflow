@@ -37,7 +37,7 @@
 //!     });
 //!
 //!     // Configuration is read from STEPFLOW_TASKS_URL etc. or CLI args.
-//!     Worker::new(registry, WorkerConfig::default())
+//!     Worker::new(registry, WorkerConfig::default())?
 //!         .run()
 //!         .await?;
 //!     Ok(())
@@ -71,13 +71,16 @@
 pub(crate) mod blob_ref;
 pub mod context;
 pub mod error;
+pub mod executor;
 #[cfg(feature = "nats")]
 pub(crate) mod nats_worker;
 pub mod registry;
 pub mod task_handler;
+pub mod vsock;
 pub mod worker;
 
 pub use context::{ComponentContext, RunStatus};
 pub use error::{ComponentError, ContextError, WorkerError};
+pub use executor::{LocalExecutor, TaskExecutor};
 pub use registry::{Component, ComponentRegistry};
 pub use worker::{Worker, WorkerConfig, open_task_stream};

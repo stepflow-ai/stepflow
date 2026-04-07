@@ -21,7 +21,7 @@ use tracing::{debug, info, warn};
 
 use stepflow_proto::{PullTasksRequest, TaskAssignment, tasks_service_client::TasksServiceClient};
 
-use crate::task_handler::{ChannelCache, handle_task, new_channel_cache, normalize_url};
+use crate::executor::{LocalExecutor, TaskExecutor};
 use crate::{ComponentRegistry, WorkerError};
 
 /// Configuration for a [`Worker`].
@@ -155,23 +155,49 @@ impl Default for WorkerConfig {
 ///     Ok(Output { doubled: input.value * 2 })
 /// });
 ///
-/// Worker::new(registry, WorkerConfig::default())
+/// Worker::new(registry, WorkerConfig::default())?
 ///     .run()
 ///     .await?;
 /// # Ok(())
 /// # }
 /// ```
 pub struct Worker {
-    registry: Arc<ComponentRegistry>,
+    executor: Arc<dyn TaskExecutor>,
     config: WorkerConfig,
+    worker_id: String,
 }
 
 impl Worker {
     /// Create a new worker with the given registry and configuration.
-    pub fn new(registry: ComponentRegistry, config: WorkerConfig) -> Self {
-        Self {
-            registry: Arc::new(registry),
+    ///
+    /// This creates a [`LocalExecutor`] internally that executes components
+    /// from the registry. For custom execution strategies (e.g., forwarding
+    /// to sandboxed workers), use [`Worker::with_executor`] instead.
+    pub fn new(registry: ComponentRegistry, config: WorkerConfig) -> Result<Self, WorkerError> {
+        let worker_id = format!("rust-worker-{}", uuid::Uuid::new_v4());
+        let executor = Arc::new(LocalExecutor::new(
+            Arc::new(registry),
+            &config,
+            worker_id.clone(),
+        )?);
+        Ok(Self {
+            executor,
             config,
+            worker_id,
+        })
+    }
+
+    /// Create a worker with a custom [`TaskExecutor`].
+    ///
+    /// Use this for proxies or other custom dispatch strategies that need
+    /// the Worker's transport loop (gRPC/NATS, reconnect, graceful shutdown)
+    /// without local component execution.
+    pub fn with_executor(executor: Arc<dyn TaskExecutor>, config: WorkerConfig) -> Self {
+        let worker_id = format!("proxy-worker-{}", uuid::Uuid::new_v4());
+        Self {
+            executor,
+            config,
+            worker_id,
         }
     }
 
@@ -218,7 +244,15 @@ impl Worker {
         match self.config.transport.as_str() {
             "grpc" => self.run_grpc(shutdown).await,
             #[cfg(feature = "nats")]
-            "nats" => self.run_nats(shutdown).await,
+            "nats" => {
+                crate::nats_worker::run_nats_loop(
+                    self.executor,
+                    self.config,
+                    &self.worker_id,
+                    shutdown,
+                )
+                .await
+            }
             #[cfg(not(feature = "nats"))]
             "nats" => Err(WorkerError::Config(
                 "NATS transport requested but the 'nats' feature is not enabled. \
@@ -237,15 +271,8 @@ impl Worker {
         shutdown: impl std::future::Future<Output = ()>,
     ) -> Result<(), WorkerError> {
         let config = self.config;
-        let registry = self.registry;
-
-        // Resolve the effective orchestrator URL for task callbacks
-        let orchestrator_url = config
-            .orchestrator_url
-            .clone()
-            .unwrap_or_else(|| config.tasks_url.clone());
-
-        let worker_id = format!("rust-worker-{}", uuid::Uuid::new_v4());
+        let executor = self.executor;
+        let worker_id = self.worker_id;
 
         info!(
             tasks_url = %config.tasks_url,
@@ -257,14 +284,12 @@ impl Worker {
         // Pin shutdown so it can be used in select!
         tokio::pin!(shutdown);
 
-        let default_normalised_url = normalize_url(&orchestrator_url);
-        let channel_cache = new_channel_cache();
         let mut consecutive_failures: u32 = 0;
         let mut in_flight: JoinSet<()> = JoinSet::new();
 
         'outer: loop {
             // --- Open a stream (connect + pull_tasks) ---
-            let (channel, stream) = match open_stream(&config, &worker_id).await {
+            let (_channel, stream) = match open_stream(&config, &worker_id).await {
                 Ok(pair) => {
                     consecutive_failures = 0;
                     pair
@@ -329,18 +354,10 @@ impl Worker {
                             }
                             Some(Ok(assignment)) => {
                                 consecutive_failures = 0;
-                                spawn_task(
-                                    assignment,
-                                    Arc::clone(&registry),
-                                    worker_id.clone(),
-                                    orchestrator_url.clone(),
-                                    default_normalised_url.clone(),
-                                    config.blob_url.clone(),
-                                    config.blob_threshold_bytes,
-                                    channel.clone(),
-                                    Arc::clone(&channel_cache),
-                                    &mut in_flight,
-                                );
+                                let executor = Arc::clone(&executor);
+                                in_flight.spawn(async move {
+                                    executor.execute_task(assignment).await;
+                                });
                             }
                         }
                     }
@@ -363,15 +380,6 @@ impl Worker {
 
         info!("Worker shut down cleanly");
         Ok(())
-    }
-
-    /// Run the NATS JetStream transport loop.
-    #[cfg(feature = "nats")]
-    async fn run_nats(
-        self,
-        shutdown: impl std::future::Future<Output = ()>,
-    ) -> Result<(), WorkerError> {
-        crate::nats_worker::run_nats_loop(self.registry, self.config, shutdown).await
     }
 }
 
@@ -462,36 +470,6 @@ async fn open_stream(
     WorkerError,
 > {
     open_task_stream(&config.tasks_url, &config.queue_name, worker_id).await
-}
-
-/// Spawn a task handler into the in-flight set.
-#[allow(clippy::too_many_arguments)]
-fn spawn_task(
-    assignment: TaskAssignment,
-    registry: Arc<ComponentRegistry>,
-    worker_id: String,
-    orchestrator_url: String,
-    default_normalised_url: String,
-    blob_url: Option<String>,
-    blob_threshold_bytes: usize,
-    channel: tonic::transport::Channel,
-    channel_cache: ChannelCache,
-    in_flight: &mut JoinSet<()>,
-) {
-    in_flight.spawn(async move {
-        handle_task(
-            assignment,
-            registry,
-            &worker_id,
-            &orchestrator_url,
-            &default_normalised_url,
-            blob_url.as_deref(),
-            blob_threshold_bytes,
-            channel,
-            &channel_cache,
-        )
-        .await;
-    });
 }
 
 #[cfg(test)]

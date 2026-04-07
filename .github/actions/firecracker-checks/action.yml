@@ -68,18 +68,18 @@ runs:
 
     # - name: Setup Firecracker
     #   shell: bash
-    #   run: sudo ./stepflow-rs/crates/stepflow-isolation-proxy/scripts/setup-firecracker-ci.sh
+    #   run: sudo ./sdks/rust/crates/stepflow-isolation-proxy/scripts/setup-firecracker-ci.sh
 
     # - name: Build rootfs
     #   shell: bash
     #   run: |
-    #     cd stepflow-rs/crates/stepflow-isolation-proxy
+    #     cd sdks/rust/crates/stepflow-isolation-proxy
     #     sudo ./scripts/build-rootfs.sh
 
     # - name: "Test: Firecracker backend"
     #   shell: bash
     #   run: |
-    #     cd stepflow-rs/crates/stepflow-isolation-proxy
+    #     cd sdks/rust/crates/stepflow-isolation-proxy
     #     echo "=== Firecracker Backend Test ==="
     #     ./scripts/test-firecracker.sh 2>&1 | tee /tmp/firecracker-test.log
     #     # Collect timing data from both test output and proxy log
