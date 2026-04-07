@@ -95,11 +95,7 @@ jobs:
               fi
               ;;
             rust-sdk)
-              if [[ -n "${{ inputs.message }}" ]]; then
-                ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
-              else
-                ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr
-              fi
+              ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr
               ;;
             *)
               echo "❌ Unsupported package: ${{ inputs.package }}"

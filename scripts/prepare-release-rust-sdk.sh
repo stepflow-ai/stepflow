@@ -25,27 +25,24 @@ NC='\033[0m' # No Color
 # Default values
 BUMP_TYPE=""
 CREATE_PR=false
-TAG_MESSAGE=""
 
 # Help function
 show_help() {
     cat << EOF
 Usage: $0 [OPTIONS] <major|minor|patch>
 
-Prepare a Rust SDK release by bumping version and generating changelog.
+Prepare a Rust SDK release by bumping version.
 
 ARGUMENTS:
     <major|minor|patch>     Type of version bump to perform
 
 OPTIONS:
     --pr                   Create PR after preparing changes (requires clean git state)
-    --message "text"       Add a custom message to the changelog entry
     -h, --help             Show this help message
 
 EXAMPLES:
     $0 patch               # Bump patch version locally (safe to run)
     $0 minor --pr          # Bump minor version and create PR
-    $0 patch --pr --message "Bug fixes and improvements"
 
 BEHAVIOR:
     By default, this script only updates local files:
@@ -83,15 +80,6 @@ while [[ $# -gt 0 ]]; do
         --pr)
             CREATE_PR=true
             shift
-            ;;
-        --message)
-            if [[ -n "${2-}" ]] && [[ ! "$2" =~ ^-- ]]; then
-                TAG_MESSAGE="$2"
-                shift 2
-            else
-                echo -e "${RED}Error: --message requires a value${NC}" >&2
-                exit 1
-            fi
             ;;
         -h|--help)
             show_help

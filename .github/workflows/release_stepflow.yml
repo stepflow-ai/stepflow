@@ -161,7 +161,7 @@ jobs:
   publish-crates:
     name: Publish Crates to crates.io
     runs-on: ubuntu-22.04
-    needs: [determine-version]
+    needs: [determine-version, build-binaries]
     if: needs.determine-version.outputs.skip_tag == 'false'
     environment:
       name: crates-io
@@ -172,6 +172,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify version matches Cargo.toml
+        working-directory: stepflow-rs
+        run: |
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [ "$CARGO_VERSION" != "${{ needs.determine-version.outputs.version }}" ]; then
+            echo "::error::Version mismatch: Cargo.toml has $CARGO_VERSION but release is for ${{ needs.determine-version.outputs.version }}"
+            exit 1
+          fi
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -180,54 +189,23 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cargo-workspaces
+        run: cargo install cargo-workspaces
+
       - name: Authenticate with crates.io
         uses: rust-lang/crates-io-auth-action@v1
         id: crates-io-auth
 
-      - name: Publish stepflow-flow
+      - name: Publish crates
         working-directory: stepflow-rs
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
         run: |
-          cargo publish -p stepflow-flow || {
-            ERR=$?
-            if cargo search stepflow-flow --limit 1 | grep -q "\"${{ needs.determine-version.outputs.version }}\""; then
-              echo "Version already published, skipping"
-            else
-              exit $ERR
-            fi
-          }
-
-      - name: Publish stepflow-proto
-        working-directory: stepflow-rs
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
-        run: |
-          cargo publish -p stepflow-proto || {
-            ERR=$?
-            if cargo search stepflow-proto --limit 1 | grep -q "\"${{ needs.determine-version.outputs.version }}\""; then
-              echo "Version already published, skipping"
-            else
-              exit $ERR
-            fi
-          }
-
-      - name: Wait for crates.io index update
-        run: sleep 30
-
-      - name: Publish stepflow-config
-        working-directory: stepflow-rs
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
-        run: |
-          cargo publish -p stepflow-config || {
-            ERR=$?
-            if cargo search stepflow-config --limit 1 | grep -q "\"${{ needs.determine-version.outputs.version }}\""; then
-              echo "Version already published, skipping"
-            else
-              exit $ERR
-            fi
-          }
+          cargo workspaces publish \
+            --publish-as-is \
+            --skip-published \
+            --publish-interval 15 \
+            --yes
 
   build-docker:
     name: Build and Push Docker Images
