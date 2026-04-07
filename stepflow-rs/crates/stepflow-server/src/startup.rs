@@ -343,14 +343,14 @@ pub(crate) async fn create_environment(
         url
     });
 
-    config
-        .create_environment(
-            orchestrator_id,
-            Some(orchestrator_url),
-            grpc_address,
-            true, // skip plugin init — server must be accepting first
-        )
-        .await
+    crate::environment::create_environment_from_config(
+        config,
+        orchestrator_id,
+        Some(orchestrator_url),
+        grpc_address,
+        true, // skip plugin init — server must be accepting first
+    )
+    .await
 }
 
 /// Create an Axum router with proto-generated REST routes backed by gRPC

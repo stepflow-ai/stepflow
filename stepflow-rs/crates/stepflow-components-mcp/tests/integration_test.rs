@@ -13,13 +13,13 @@
 use indexmap::IndexMap;
 use serde_json::json;
 use std::sync::Arc;
-use stepflow_components_mcp::McpPluginConfig;
+use stepflow_components_mcp::{McpPluginConfig, McpPluginFactory};
 use stepflow_core::{
     BlobId, FlowResult,
     workflow::{Flow, ValueRef},
 };
 use stepflow_plugin::{
-    Plugin as _, PluginConfig as _, RunContext, StepflowEnvironment, TaskRegistryExt as _,
+    Plugin as _, PluginFactory as _, RunContext, StepflowEnvironment, TaskRegistryExt as _,
     build_in_memory_environment,
 };
 use uuid::Uuid;
@@ -43,7 +43,9 @@ async fn test_mcp_plugin_initialization() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir).await.unwrap();
+    let plugin = McpPluginFactory::create_dyn(config, &working_dir)
+        .await
+        .unwrap();
 
     let (_, run_context) = create_test_context().await;
     plugin.ensure_initialized(run_context.env()).await.unwrap();
@@ -70,7 +72,9 @@ async fn test_mcp_tool_execution() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir).await.unwrap();
+    let plugin = McpPluginFactory::create_dyn(config, &working_dir)
+        .await
+        .unwrap();
 
     let (_, run_context) = create_test_context().await;
     plugin.ensure_initialized(run_context.env()).await.unwrap();
@@ -154,7 +158,9 @@ async fn test_mcp_error_handling() {
     };
 
     let working_dir = std::env::current_dir().unwrap();
-    let plugin = config.create_plugin(&working_dir).await.unwrap();
+    let plugin = McpPluginFactory::create_dyn(config, &working_dir)
+        .await
+        .unwrap();
 
     let (_, run_context) = create_test_context().await;
     plugin.ensure_initialized(run_context.env()).await.unwrap();

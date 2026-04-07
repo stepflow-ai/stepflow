@@ -555,9 +555,9 @@ mod tests {
 
     #[test]
     fn test_generate_json_schema_has_required_fields() {
-        use crate::blob::BlobId;
+        use crate::schema::SchemaRef;
 
-        let schema = generate_json_schema::<BlobId>();
+        let schema = generate_json_schema::<SchemaRef>();
 
         // Should have $schema declaration
         assert_eq!(

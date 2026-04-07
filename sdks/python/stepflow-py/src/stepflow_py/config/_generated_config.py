@@ -18,50 +18,9 @@
 
 from __future__ import annotations
 
-import sys
-
-if sys.version_info >= (3, 11):
-    from enum import StrEnum
-else:
-    from enum import Enum
-
-    class StrEnum(str, Enum):
-        def __str__(self) -> str:
-            return self.value  # type: ignore[no-any-return]
-
 from typing import Annotated, Any, TypeAlias
 
 from msgspec import UNSET, Meta, Struct, UnsetType, convert, field
-
-
-class Schema(Struct, kw_only=True):
-    pass
-
-
-class MockComponentError(Struct, kw_only=True):
-    error: str
-
-
-Value: TypeAlias = Annotated[
-    Any,
-    Meta(
-        description='Any JSON value (object, array, string, number, boolean, or null)'
-    ),
-]
-
-
-class TaskErrorCode(StrEnum):
-    UNSPECIFIED = 'UNSPECIFIED'
-    TIMEOUT = 'TIMEOUT'
-    INVALID_INPUT = 'INVALID_INPUT'
-    COMPONENT_FAILED = 'COMPONENT_FAILED'
-    CANCELLED = 'CANCELLED'
-    UNREACHABLE = 'UNREACHABLE'
-    COMPONENT_NOT_FOUND = 'COMPONENT_NOT_FOUND'
-    RESOURCE_UNAVAILABLE = 'RESOURCE_UNAVAILABLE'
-    EXPRESSION_FAILURE = 'EXPRESSION_FAILURE'
-    ORCHESTRATOR_ERROR = 'ORCHESTRATOR_ERROR'
-    WORKER_ERROR = 'WORKER_ERROR'
 
 
 class McpPluginConfig(Struct, kw_only=True, tag_field='type', tag='mcp'):
@@ -199,6 +158,14 @@ JsonPath: TypeAlias = Annotated[
 ]
 
 
+Value: TypeAlias = Annotated[
+    Any,
+    Meta(
+        description='Any JSON value (object, array, string, number, boolean, or null)'
+    ),
+]
+
+
 class SqlStateStoreConfig(Struct, kw_only=True):
     databaseUrl: str
     maxConnections: Annotated[int, Meta(ge=0)] | UnsetType = 10
@@ -319,6 +286,10 @@ class BuiltinPluginConfig(Struct, kw_only=True, tag_field='type', tag='builtin')
     pass
 
 
+class MockPlugin(Struct, kw_only=True, tag_field='type', tag='mock'):
+    pass
+
+
 class InMemoryStore(Struct, kw_only=True, tag_field='type', tag='inMemory'):
     pass
 
@@ -413,14 +384,13 @@ class BackoffConfigFibonacci(Struct, kw_only=True, tag_field='type', tag='fibona
     ) = 10000
 
 
-class FlowResultSuccess(Struct, kw_only=True, tag_field='outcome', tag='success'):
-    result: Value
-
-
-class FlowError(Struct, kw_only=True):
-    code: TaskErrorCode
-    message: str
-    data: Value | None | UnsetType = UNSET
+SupportedPluginConfig: TypeAlias = (
+    BuiltinPluginConfig
+    | MockPlugin
+    | McpPluginConfig
+    | GrpcPluginConfig
+    | NatsPluginConfig
+)
 
 
 class InputCondition(Struct, kw_only=True):
@@ -455,10 +425,6 @@ BackoffConfig: TypeAlias = Annotated[
     BackoffConfigConstant | BackoffConfigExponential | BackoffConfigFibonacci,
     Meta(description='Backoff strategy for retry delays.'),
 ]
-
-
-class FlowResultFailed(Struct, kw_only=True, tag_field='outcome', tag='failed'):
-    error: FlowError
 
 
 class RouteRule(Struct, kw_only=True):
@@ -519,7 +485,7 @@ class ExpandedStorageConfig(Struct, kw_only=True):
 StorageConfig: TypeAlias = Annotated[
     ExpandedStorageConfig | StoreConfig,
     Meta(
-        description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```\n\nWhen multiple stores have identical configurations, they will share\na single backend instance (smart deduplication).'
+        description='Storage configuration supporting both simple and expanded forms.\n\n# Simple form (all stores share one backend)\n```yaml\nstorageConfig:\n  type: sqlite\n  databaseUrl: "sqlite:workflow_state.db"\n```\n\n# Expanded form (individual configs per store)\n```yaml\nstorageConfig:\n  metadata:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  blobs:\n    type: sqlite\n    databaseUrl: "sqlite:workflow_state.db"\n  journal:\n    type: inMemory\n```'
     ),
 ]
 
@@ -549,40 +515,6 @@ class RetryConfig(Struct, kw_only=True):
             'maxDelayMs': 10000,
         }
     )
-
-
-MockComponentResult: TypeAlias = Annotated[
-    FlowResultSuccess | FlowResultFailed,
-    Meta(
-        description='Return the given result (success or flow-error).',
-        title='MockComponentResult',
-    ),
-]
-
-
-MockComponentBehavior: TypeAlias = Annotated[
-    MockComponentError | MockComponentResult,
-    Meta(description='Enumeration of behaviors for the mock components.'),
-]
-
-
-class MockComponent(Struct, kw_only=True):
-    input_schema: Schema
-    output_schema: Schema
-    behaviors: dict[str, MockComponentBehavior]
-
-
-class MockPlugin(Struct, kw_only=True, tag_field='type', tag='mock'):
-    components: dict[str, MockComponent]
-
-
-SupportedPluginConfig: TypeAlias = (
-    BuiltinPluginConfig
-    | MockPlugin
-    | McpPluginConfig
-    | GrpcPluginConfig
-    | NatsPluginConfig
-)
 
 
 class StepflowConfig(Struct, kw_only=True):

@@ -14,28 +14,29 @@ use std::sync::Arc;
 
 use crate::{BuiltinComponent as _, registry};
 use error_stack::ResultExt as _;
-use serde::{Deserialize, Serialize};
 use stepflow_core::workflow::StepId;
 use stepflow_core::{component::ComponentInfo, workflow::Component};
 use stepflow_plugin::{
-    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
-    TaskRegistryExt as _,
+    DynPlugin, Plugin, PluginError, Result, RunContext, StepflowEnvironment, TaskRegistryExt as _,
 };
+
+pub use stepflow_config::BuiltinPluginConfig;
+use stepflow_plugin::PluginFactory;
 
 /// The struct that implements the `Plugin` trait.
 #[derive(Default)]
 pub struct Builtins;
 
-#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
-pub struct BuiltinPluginConfig;
+/// Factory for creating builtin plugins.
+pub struct BuiltinPluginFactory;
 
-impl PluginConfig for BuiltinPluginConfig {
-    type Error = PluginError;
+impl PluginFactory for BuiltinPluginFactory {
+    type Config = BuiltinPluginConfig;
 
-    async fn create_plugin(
-        self,
+    async fn create_dyn(
+        _config: BuiltinPluginConfig,
         _working_directory: &std::path::Path,
-    ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
+    ) -> error_stack::Result<Box<DynPlugin<'static>>, PluginError> {
         Ok(DynPlugin::boxed(Builtins::new()))
     }
 }

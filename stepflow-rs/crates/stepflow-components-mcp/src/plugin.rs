@@ -14,8 +14,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use error_stack::ResultExt as _;
-use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use stepflow_core::workflow::StepId;
 use stepflow_core::{
@@ -24,8 +22,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
-    TaskRegistryExt as _,
+    DynPlugin, Plugin, PluginError, Result, RunContext, StepflowEnvironment, TaskRegistryExt as _,
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -36,26 +33,20 @@ use crate::error::{McpError, Result as McpResult};
 use crate::protocol::{Implementation, ServerCapabilities, Tool};
 use crate::schema::{component_path_to_tool_name, mcp_tool_to_component_info};
 
-#[derive(Serialize, Deserialize, Debug, schemars::JsonSchema)]
-pub struct McpPluginConfig {
-    pub command: String,
-    pub args: Vec<String>,
-    /// Environment variables to pass to the MCP server process.
-    /// Values can contain environment variable references like ${HOME} or ${USER:-default}.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    #[schemars(with = "std::collections::HashMap<String, String>")]
-    pub env: IndexMap<String, String>,
-}
+pub use stepflow_config::McpPluginConfig;
 
-impl PluginConfig for McpPluginConfig {
-    type Error = McpError;
+/// Factory for creating MCP plugins.
+pub struct McpPluginFactory;
 
-    async fn create_plugin(
-        self,
+impl stepflow_plugin::PluginFactory for McpPluginFactory {
+    type Config = McpPluginConfig;
+
+    async fn create_dyn(
+        config: McpPluginConfig,
         working_directory: &std::path::Path,
-    ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
+    ) -> error_stack::Result<Box<DynPlugin<'static>>, PluginError> {
         Ok(DynPlugin::boxed(McpPlugin::new(
-            self,
+            config,
             working_directory.to_owned(),
         )))
     }

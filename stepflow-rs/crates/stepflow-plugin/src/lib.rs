@@ -29,7 +29,7 @@ pub use environment_builder::{
 pub use environment_ext::PluginRouterExt;
 pub use error::{PluginError, Result};
 pub use execution_config::ExecutionConfig;
-pub use plugin::{DynPlugin, Plugin, PluginConfig, TaskRequest};
+pub use plugin::{DynPlugin, Plugin, PluginFactory, TaskRequest};
 pub use subflow::{
     SubflowReceiver, SubflowRequest, SubflowSubmitError, SubflowSubmitter, subflow_channel,
 };

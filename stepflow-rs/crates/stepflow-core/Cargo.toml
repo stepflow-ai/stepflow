@@ -18,23 +18,15 @@ doctest = false
 [dependencies]
 base64.workspace = true
 dashmap.workspace = true
-bit-set.workspace = true
 error-stack.workspace = true
 hex.workspace = true
-indexmap.workspace = true
-json-patch.workspace = true
-safer_owning_ref.workspace = true
 serde_json.workspace = true
-serde_yaml_ng.workspace = true
 serde.workspace = true
-serde_with.workspace = true
 sha2.workspace = true
+stepflow-config.workspace = true
+stepflow-flow.workspace = true
 stepflow-proto.workspace = true
 thiserror.workspace = true
 log.workspace = true
 schemars.workspace = true
 strum.workspace = true
-
-[dev-dependencies]
-insta.workspace = true
-similar-asserts.workspace = true

@@ -257,14 +257,7 @@ impl crate::BlobStore for FilesystemBlobStore {
     }
 }
 
-/// Configuration for the filesystem blob store.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, schemars::JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct FilesystemBlobStoreConfig {
-    /// Directory path for storing blobs. If not specified, a temporary directory is used.
-    #[serde(default)]
-    pub directory: Option<String>,
-}
+pub use stepflow_config::FilesystemBlobStoreConfig;
 
 #[cfg(test)]
 mod tests {

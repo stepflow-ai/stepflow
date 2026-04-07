@@ -20,12 +20,17 @@ axum.workspace = true
 clap.workspace = true
 error-stack.workspace = true
 serde_json.workspace = true
+serde_yaml_ng.workspace = true
+stepflow-builtins.workspace = true
+stepflow-components-mcp.workspace = true
 stepflow-config.workspace = true
 stepflow-grpc.workspace = true
 stepflow-core.workspace = true
 stepflow-execution.workspace = true
+stepflow-mock.workspace = true
 stepflow-plugin.workspace = true
 stepflow-state.workspace = true
+stepflow-state-sql.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
@@ -37,18 +42,19 @@ log.workspace = true
 stepflow-observability.workspace = true
 uuid.workspace = true
 
+# Optional transport/storage dependencies behind feature gates
+stepflow-nats = { workspace = true, optional = true }
+stepflow-state-etcd = { workspace = true, optional = true }
+
 [features]
 default = ["etcd", "sqlite"]
-etcd = ["stepflow-config/etcd"]
-nats = ["stepflow-config/nats"]
-postgres = ["stepflow-config/postgres"]
-sqlite = ["stepflow-config/sqlite"]
+etcd = ["dep:stepflow-state-etcd"]
+nats = ["dep:stepflow-nats"]
+postgres = ["stepflow-state-sql/postgres"]
+sqlite = ["stepflow-state-sql/sqlite"]
 
 [dev-dependencies]
-stepflow-builtins.workspace = true
-stepflow-mock.workspace = true
 tower.workspace = true
-uuid.workspace = true
 
 [[bin]]
 name = "stepflow-server"

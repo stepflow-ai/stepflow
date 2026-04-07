@@ -1,6 +1,6 @@
 [package]
-name = "stepflow-config"
-description = "Stepflow configuration types — plugin configs, routing rules, storage, and retry."
+name = "stepflow-flow"
+description = "Stepflow workflow definition types — Flow, Step, ValueExpr, and related types."
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -15,12 +15,19 @@ workspace = true
 doctest = false
 
 [dependencies]
-error-stack.workspace = true
+bit-set.workspace = true
 indexmap.workspace = true
+error-stack.workspace = true
+json-patch.workspace = true
+log.workspace = true
+safer_owning_ref.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_with.workspace = true
 serde_yaml_ng.workspace = true
-stepflow-flow.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+similar-asserts.workspace = true

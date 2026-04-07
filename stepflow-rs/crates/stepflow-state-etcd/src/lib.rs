@@ -40,20 +40,7 @@ use stepflow_state::{
 };
 use uuid::Uuid;
 
-/// Configuration for the etcd lease manager.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct EtcdLeaseManagerConfig {
-    /// etcd endpoints (e.g., `["http://localhost:2379"]`).
-    pub endpoints: Vec<String>,
-
-    /// Key prefix for all stepflow lease keys.
-    #[serde(default = "default_key_prefix")]
-    pub key_prefix: String,
-}
-
-fn default_key_prefix() -> String {
-    "/stepflow/leases".to_string()
-}
+pub use stepflow_config::EtcdLeaseManagerConfig;
 
 /// Value stored in etcd for each run lease key.
 #[derive(Debug, Serialize, Deserialize)]
@@ -639,7 +626,9 @@ mod tests {
 
     #[test]
     fn test_default_key_prefix() {
-        assert_eq!(default_key_prefix(), "/stepflow/leases");
+        let config: EtcdLeaseManagerConfig =
+            serde_json::from_str(r#"{"endpoints":["http://localhost:2379"]}"#).unwrap();
+        assert_eq!(config.key_prefix, "/stepflow/leases");
     }
 
     #[test]

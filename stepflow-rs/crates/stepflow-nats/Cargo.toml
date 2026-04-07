@@ -18,9 +18,9 @@ error-stack.workspace = true
 futures.workspace = true
 log.workspace = true
 prost = "0.14"
-schemars.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
+stepflow-config.workspace = true
 stepflow-core.workspace = true
 stepflow-grpc.workspace = true
 stepflow-plugin.workspace = true

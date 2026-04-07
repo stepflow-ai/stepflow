@@ -34,7 +34,7 @@ mod registry;
 mod sleep;
 
 use error::Result;
-pub use plugin::{BuiltinPluginConfig, Builtins};
+pub use plugin::{BuiltinPluginConfig, BuiltinPluginFactory, Builtins};
 
 #[trait_variant::make(Send)]
 #[dynosaur::dynosaur(DynBuiltinComponent = dyn BuiltinComponent)]

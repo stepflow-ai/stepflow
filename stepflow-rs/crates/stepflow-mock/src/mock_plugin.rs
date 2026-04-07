@@ -22,8 +22,7 @@ use stepflow_core::{
     workflow::{Component, ValueRef},
 };
 use stepflow_plugin::{
-    DynPlugin, Plugin, PluginConfig, PluginError, Result, RunContext, StepflowEnvironment,
-    TaskRegistryExt as _,
+    DynPlugin, Plugin, PluginError, Result, RunContext, StepflowEnvironment, TaskRegistryExt as _,
 };
 use tokio::sync::Mutex;
 
@@ -34,14 +33,17 @@ pub type WaitSignal = tokio::sync::oneshot::Receiver<()>;
 /// Type alias for the sender side of a wait signal.
 pub type SignalSender = tokio::sync::oneshot::Sender<()>;
 
-impl PluginConfig for MockPlugin {
-    type Error = PluginError;
+/// Factory for creating mock plugins.
+pub struct MockPluginFactory;
 
-    async fn create_plugin(
-        self,
+impl stepflow_plugin::PluginFactory for MockPluginFactory {
+    type Config = MockPlugin;
+
+    async fn create_dyn(
+        config: MockPlugin,
         _working_directory: &std::path::Path,
-    ) -> error_stack::Result<Box<DynPlugin<'static>>, Self::Error> {
-        Ok(DynPlugin::boxed(self))
+    ) -> error_stack::Result<Box<DynPlugin<'static>>, PluginError> {
+        Ok(DynPlugin::boxed(config))
     }
 }
 

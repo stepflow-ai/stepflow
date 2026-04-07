@@ -24,17 +24,15 @@ combine the transport/plugin fields with their discriminator tags.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from msgspec import Struct
 
 from stepflow_py.config._generated_config import (
+    BuiltinPluginConfig,
     GrpcPluginConfig,
     InputCondition,
     McpPluginConfig,
-    MockComponent,
-    MockComponentBehavior,
     MockPlugin,
+    NatsPluginConfig,
     RouteRule,
     SqlStateStoreConfig,
     StorageConfig,
@@ -54,39 +52,13 @@ from stepflow_py.config._generated_config import (
 # Backward-compatible alias
 SqliteStateStoreConfig = SqlStateStoreConfig
 
-# ============================================================================
-# Plugin Config Helper Types
-# ============================================================================
-# These types properly combine transport/plugin fields with discriminator tags.
-# The code generator creates empty classes for allOf references, so we define
-# proper types here with all required fields.
-
-
-class BuiltinPluginConfig(Struct, kw_only=True):
-    """Built-in plugin configuration."""
-
-    type: Literal["builtin"] = "builtin"
-
-
-class McpPluginConfigTagged(Struct, kw_only=True):
-    """MCP (Model Context Protocol) plugin configuration."""
-
-    type: Literal["mcp"] = "mcp"
-    command: str
-    args: list[str]
-    env: dict[str, str] | None = None
-
-
-class MockPluginConfig(Struct, kw_only=True):
-    """Mock plugin configuration (for testing)."""
-
-    type: Literal["mock"] = "mock"
-    components: dict[str, MockComponent]
-
-
 # Type alias for all plugin configs that can be used in StepflowConfig.plugins
 PluginConfig = (
-    GrpcPluginConfig | BuiltinPluginConfig | McpPluginConfigTagged | MockPluginConfig
+    GrpcPluginConfig
+    | BuiltinPluginConfig
+    | McpPluginConfig
+    | MockPlugin
+    | NatsPluginConfig
 )
 
 
@@ -136,17 +108,13 @@ __all__ = [
     # Routing
     "RouteRule",
     "InputCondition",
-    # Plugins (helper types with proper fields)
+    # Plugins
     "PluginConfig",
     "GrpcPluginConfig",
     "BuiltinPluginConfig",
-    "McpPluginConfigTagged",
-    "MockPluginConfig",
+    "McpPluginConfig",
+    "MockPlugin",
+    "NatsPluginConfig",
     # Lower-level types (from generated code)
     "SupportedPluginConfig",
-    "McpPluginConfig",
-    # Mock
-    "MockPlugin",
-    "MockComponent",
-    "MockComponentBehavior",
 ]

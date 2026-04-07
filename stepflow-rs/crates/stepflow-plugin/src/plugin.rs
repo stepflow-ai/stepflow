@@ -12,8 +12,7 @@
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
-use crate::{Result, RunContext, StepflowEnvironment};
-use serde::{Serialize, de::DeserializeOwned};
+use crate::{PluginError, Result, RunContext, StepflowEnvironment};
 use stepflow_core::{
     component::ComponentInfo,
     workflow::{Component, StepId, ValueRef},
@@ -100,12 +99,18 @@ pub trait Plugin: Send + Sync {
     async fn prepare_for_retry(&self) -> Result<()>;
 }
 
-/// Trait implemented by a deserializable plugin configuration.
-pub trait PluginConfig: Serialize + DeserializeOwned {
-    type Error: error_stack::Context;
+/// Trait for stateless plugin factory types.
+///
+/// Each plugin crate provides a unit struct implementing this trait, allowing
+/// uniform `Factory::create_dyn(config, working_directory)` construction.
+///
+/// Named `create_dyn` to leave room for a typed `create` method returning
+/// the concrete plugin type in the future.
+pub trait PluginFactory {
+    type Config;
 
-    fn create_plugin(
-        self,
+    fn create_dyn(
+        config: Self::Config,
         working_directory: &Path,
-    ) -> impl Future<Output = error_stack::Result<Box<DynPlugin<'static>>, Self::Error>>;
+    ) -> impl Future<Output = error_stack::Result<Box<DynPlugin<'static>>, PluginError>>;
 }

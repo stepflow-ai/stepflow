@@ -455,34 +455,7 @@ impl ItemResultRow {
 // SqlStateStoreConfig
 // =========================================================================
 
-/// Configuration for SqlStateStore.
-///
-/// The dialect (SQLite vs PostgreSQL) is detected from the `database_url` prefix.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
-)]
-#[serde(rename_all = "camelCase")]
-pub struct SqlStateStoreConfig {
-    pub database_url: String,
-    #[serde(default = "default_max_connections")]
-    pub max_connections: u32,
-    #[serde(default = "default_auto_migrate")]
-    pub auto_migrate: bool,
-}
-
-fn default_max_connections() -> u32 {
-    10
-}
-
-fn default_auto_migrate() -> bool {
-    true
-}
-
-/// Backward-compatible type alias.
-pub type SqliteStateStoreConfig = SqlStateStoreConfig;
-
-/// PostgreSQL configuration (same struct, dialect detected from URL).
-pub type PgStateStoreConfig = SqlStateStoreConfig;
+pub use stepflow_config::{PgStateStoreConfig, SqlStateStoreConfig, SqliteStateStoreConfig};
 
 // =========================================================================
 // SqlStateStore
@@ -580,12 +553,7 @@ impl SqlStateStore {
 
     /// Create SqlStateStore directly from a database URL.
     pub async fn from_url(database_url: &str) -> Result<Self, StateError> {
-        Self::new(SqlStateStoreConfig {
-            database_url: database_url.to_string(),
-            max_connections: default_max_connections(),
-            auto_migrate: default_auto_migrate(),
-        })
-        .await
+        Self::new(SqlStateStoreConfig::from_url(database_url)).await
     }
 
     /// Ensure sqlx Any drivers are installed. Called automatically by constructors,

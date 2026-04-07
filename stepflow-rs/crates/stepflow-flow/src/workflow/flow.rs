@@ -606,7 +606,8 @@ mod tests {
         let generated_schema_str = serde_json::to_string_pretty(&generated_json).unwrap();
 
         let flow_schema_path = format!("{}/../../../schemas/flow.json", env!("CARGO_MANIFEST_DIR"));
-
+        // Note: same relative path works for both stepflow-core and stepflow-flow
+        // since both are in crates/*/
         // Check if we should overwrite the reference schema or if it doesn't exist
         if env::var("STEPFLOW_OVERWRITE_SCHEMA").is_ok() {
             // Ensure the directory exists
