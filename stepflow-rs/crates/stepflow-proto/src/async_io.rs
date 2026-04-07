@@ -10,10 +10,10 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Length-delimited protobuf framing for vsock/Unix socket transport.
+//! Length-delimited protobuf framing for async byte streams.
 //!
-//! This module provides generic read/write functions for sending protobuf
-//! messages over any async byte stream (vsock, Unix socket, TCP, etc.).
+//! Provides generic read/write functions for sending protobuf messages over
+//! any async byte stream (vsock, Unix socket, TCP, etc.).
 //!
 //! Wire format: `[4-byte big-endian length][protobuf bytes]`
 //!
@@ -23,13 +23,13 @@
 //! # Usage
 //!
 //! Used by isolation proxies (Firecracker, gVisor, WASM) to dispatch
-//! [`VsockTaskEnvelope`](stepflow_proto::VsockTaskEnvelope) messages to
+//! [`VsockTaskEnvelope`](crate::VsockTaskEnvelope) messages to
 //! workers running inside sandboxed environments. The worker reads
 //! envelopes, executes tasks, and talks directly to the orchestrator
 //! via gRPC for heartbeats, completion, and blob access.
 
 use prost::Message;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 
 /// Maximum message size (16 MiB). Prevents OOM from malformed length prefixes.
 const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
@@ -86,12 +86,12 @@ pub async fn read_message<R: AsyncRead + Unpin, M: Message + Default>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stepflow_proto::VsockTaskEnvelope;
+    use crate::VsockTaskEnvelope;
 
     #[tokio::test]
     async fn round_trip() {
         let envelope = VsockTaskEnvelope {
-            assignment: Some(stepflow_proto::TaskAssignment {
+            assignment: Some(crate::TaskAssignment {
                 task_id: "task-123".to_string(),
                 heartbeat_interval_secs: 5,
                 ..Default::default()
@@ -129,7 +129,7 @@ mod tests {
         let mut buf = Vec::new();
         for i in 0..3 {
             let envelope = VsockTaskEnvelope {
-                assignment: Some(stepflow_proto::TaskAssignment {
+                assignment: Some(crate::TaskAssignment {
                     task_id: format!("task-{i}"),
                     ..Default::default()
                 }),

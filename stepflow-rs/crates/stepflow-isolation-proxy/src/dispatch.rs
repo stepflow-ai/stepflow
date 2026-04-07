@@ -17,9 +17,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use log::{error, info};
-use stepflow_proto::{TaskAssignment, VsockTaskEnvelope};
+use stepflow_proto::tasks_service_client::TasksServiceClient;
+use stepflow_proto::{PullTasksRequest, TaskAssignment, VsockTaskEnvelope};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
+use tonic::codec::Streaming;
 
 use crate::config::{Backend, ProxyConfig};
 use crate::subprocess;
@@ -69,9 +71,7 @@ pub async fn run(config: ProxyConfig) -> Result<(), Box<dyn std::error::Error>> 
         _ => None,
     };
 
-    let (_channel, mut stream) =
-        stepflow_worker::open_task_stream(&config.tasks_url, &config.queue_name, &worker_id)
-            .await?;
+    let mut stream = open_task_stream(&config.tasks_url, &config.queue_name, &worker_id).await?;
 
     info!("Connected. Waiting for tasks...");
 
@@ -281,4 +281,28 @@ fn backend_name(backend: &Backend) -> &'static str {
         Backend::Subprocess { .. } => "subprocess",
         Backend::Firecracker { .. } => "firecracker",
     }
+}
+
+/// Connect to the tasks service and open a `PullTasks` stream.
+async fn open_task_stream(
+    tasks_url: &str,
+    queue_name: &str,
+    worker_id: &str,
+) -> Result<Streaming<TaskAssignment>, Box<dyn std::error::Error>> {
+    let channel = tonic::transport::Channel::from_shared(tasks_url.to_string())
+        .map_err(|e| format!("invalid tasks URL '{tasks_url}': {e}"))?
+        .connect()
+        .await
+        .map_err(|e| format!("failed to connect to tasks service at '{tasks_url}': {e}"))?;
+
+    let stream = TasksServiceClient::new(channel)
+        .pull_tasks(PullTasksRequest {
+            queue_name: queue_name.to_string(),
+            worker_id: worker_id.to_string(),
+        })
+        .await
+        .map_err(|e| format!("failed to open PullTasks stream: {e}"))?
+        .into_inner();
+
+    Ok(stream)
 }

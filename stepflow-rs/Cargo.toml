@@ -9,7 +9,6 @@ repository = "https://github.com/stepflow-ai/stepflow"
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-exclude = ["crates/stepflow-isolation-proxy"]
 
 [workspace.dependencies]
 anyhow = "1.0"

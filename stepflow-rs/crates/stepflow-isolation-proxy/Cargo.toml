@@ -14,8 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Stepflow
-stepflow-worker = { path = "../../../sdks/rust/crates/stepflow-worker" }
-stepflow-proto.workspace = true
+stepflow-proto = { workspace = true, features = ["tokio"] }
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
@@ -27,6 +26,9 @@ clap.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true
+
+# gRPC
+tonic.workspace = true
 
 # Serialization
 serde_json.workspace = true
@@ -41,10 +43,7 @@ thiserror.workspace = true
 # Utilities
 uuid = { workspace = true, features = ["v4"] }
 
-[dev-dependencies]
-stepflow-client = { path = "../../../sdks/rust/crates/stepflow-client", features = ["local-server"] }
-tracing-subscriber.workspace = true
-
-[[test]]
-name = "integration"
-path = "tests/integration.rs"
+# NOTE: The integration test (disabled-tests/integration.rs) depends on
+# stepflow-client and stepflow-worker from sdks/rust/, which live in a
+# separate workspace. It is kept in disabled-tests/ to avoid cargo
+# auto-discovery. See .github/actions/firecracker-checks/action.yml.
