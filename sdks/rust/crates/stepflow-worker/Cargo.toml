@@ -13,7 +13,7 @@ default = []
 nats = ["dep:async-nats"]
 
 [dependencies]
-stepflow-proto = { path = "../../../../stepflow-rs/crates/stepflow-proto" }
+stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
 async-nats = { version = "0.46", optional = true }
 prost = "0.14"
 tokio = { version = "1", features = ["full", "signal"] }
@@ -32,7 +32,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 stepflow-client = { path = "../stepflow-client", features = ["local-server"] }
-stepflow-flow = { path = "../../../../stepflow-rs/crates/stepflow-flow" }
+stepflow-flow = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-flow" }
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 testcontainers = "0.27.2"

@@ -138,6 +138,46 @@ jobs:
           echo "4. Publish to PyPI using Trusted Publishing" >> $GITHUB_STEP_SUMMARY
           echo "5. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
 
+  dispatch-rust-sdk-release:
+    name: Dispatch Rust SDK Release
+    runs-on: ubuntu-22.04
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release:rust-sdk')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Extract version from Cargo.toml
+        id: version
+        working-directory: sdks/rust
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=rust-sdk-$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Dispatch Rust SDK release build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run "Release - Rust SDK" \
+            --field version="${{ steps.version.outputs.version }}" \
+            --field skip_tag_creation=false
+
+      - name: Summary
+        run: |
+          echo "## Rust SDK Release Build Dispatched" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Dispatched release build for **Rust SDK v${{ steps.version.outputs.version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Rust SDK release workflow will:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Publish stepflow-worker and stepflow-client to crates.io" >> $GITHUB_STEP_SUMMARY
+          echo "2. Create git tag and GitHub release" >> $GITHUB_STEP_SUMMARY
+
   dispatch-docling-release:
     name: Dispatch Docling Proto Step Worker Release
     runs-on: ubuntu-22.04

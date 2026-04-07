@@ -112,7 +112,7 @@ jobs:
               - 'scripts/check-proto.sh'
               - 'scripts/generate-python-proto.sh'
               - 'scripts/_lib.sh'
-              - 'stepflow-rs/proto/**'
+              - 'stepflow-rs/crates/stepflow-proto/proto/**'
               - 'sdks/python/stepflow-py/src/stepflow_py/proto/**'
               - 'schemas/openapi.yaml'
               - '.redocly.yaml'

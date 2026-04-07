@@ -32,7 +32,7 @@ show_help() {
     cat << EOF
 Usage: $0 [OPTIONS] <major|minor|patch>
 
-Prepare a release by bumping version and generating changelog.
+Prepare a Rust SDK release by bumping version and generating changelog.
 
 ARGUMENTS:
     <major|minor|patch>     Type of version bump to perform
@@ -45,16 +45,12 @@ OPTIONS:
 EXAMPLES:
     $0 patch               # Bump patch version locally (safe to run)
     $0 minor --pr          # Bump minor version and create PR
-    $0 major --message "Major refactor with breaking changes"  # Add custom message
-    $0 patch --pr --message "Bug fixes and improvements"       # Create PR with message
+    $0 patch --pr --message "Bug fixes and improvements"
 
 BEHAVIOR:
     By default, this script only updates local files:
-    - Updates version in stepflow-rs/Cargo.toml
-    - Updates version in sdks/python/stepflow-orchestrator/pyproject.toml
+    - Updates version in sdks/rust/Cargo.toml
     - Updates Cargo.lock
-    - Regenerates JSON schemas (schemas/flow.json, schemas/stepflow-config.json)
-    - Generates/updates CHANGELOG.md
 
     With --pr flag, it also:
     - Creates release branch
@@ -62,10 +58,13 @@ BEHAVIOR:
     - Pushes branch and creates PR
 
 REQUIREMENTS:
-    - git-cliff (for changelog generation)
-    - protoc (for protobuf compilation)
     - gh CLI (only needed with --pr flag)
     - Clean git working directory (only needed with --pr flag)
+
+NOTE:
+    The SDK version is independent of the orchestrator version.
+    Dependencies on orchestrator crates (stepflow-flow, stepflow-proto)
+    are pinned separately and not affected by SDK version bumps.
 
 EOF
 }
@@ -113,34 +112,12 @@ if [[ -z "$BUMP_TYPE" ]]; then
     exit 1
 fi
 
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Check dependencies
-echo -e "${BLUE}Checking dependencies...${NC}"
-if ! command_exists git-cliff; then
-    echo -e "${RED}Error: git-cliff is not installed${NC}" >&2
-    echo "Install with: cargo install git-cliff" >&2
-    exit 1
-fi
-
-if [[ "$CREATE_PR" == true ]] && ! command_exists gh; then
-    echo -e "${RED}Error: gh CLI is not installed (required for --pr flag)${NC}" >&2
-    echo "Install from: https://cli.github.com/" >&2
-    exit 1
-fi
-
 # Ensure we're in the project root directory
-if [[ ! -d "stepflow-rs" ]] || [[ ! -f "stepflow-rs/Cargo.toml" ]]; then
+if [[ ! -d "sdks/rust" ]] || [[ ! -f "sdks/rust/Cargo.toml" ]]; then
     echo -e "${RED}Error: Must be run from project root directory${NC}" >&2
-    echo "Expected to find stepflow-rs/Cargo.toml" >&2
+    echo "Expected to find sdks/rust/Cargo.toml" >&2
     exit 1
 fi
-
-# Change to stepflow-rs directory for operations
-cd stepflow-rs
 
 # Check git status only if creating PR
 if [[ "$CREATE_PR" == true ]] && [[ -n "$(git status --porcelain)" ]]; then
@@ -148,6 +125,15 @@ if [[ "$CREATE_PR" == true ]] && [[ -n "$(git status --porcelain)" ]]; then
     echo "Please commit or stash your changes first, or run without --pr to prepare changes locally." >&2
     exit 1
 fi
+
+if [[ "$CREATE_PR" == true ]] && ! command -v gh >/dev/null 2>&1; then
+    echo -e "${RED}Error: gh CLI is not installed (required for --pr flag)${NC}" >&2
+    echo "Install from: https://cli.github.com/" >&2
+    exit 1
+fi
+
+# Change to sdks/rust directory for operations
+cd sdks/rust
 
 # Get current version
 CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
@@ -176,79 +162,19 @@ echo -e "${BLUE}New version: ${GREEN}$NEW_VERSION${NC}"
 # Update version in Cargo.toml
 echo -e "${BLUE}Updating version in Cargo.toml...${NC}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
     sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
 else
-    # Linux
     sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
 fi
 
-# Update workspace dependency versions for publishable crates
-echo -e "${BLUE}Updating workspace dependency versions for publishable crates...${NC}"
-for crate in stepflow-flow stepflow-config stepflow-proto; do
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s/${crate} = { version = \"${CURRENT_VERSION}\"/${crate} = { version = \"${NEW_VERSION}\"/" Cargo.toml
-    else
-        sed -i "s/${crate} = { version = \"${CURRENT_VERSION}\"/${crate} = { version = \"${NEW_VERSION}\"/" Cargo.toml
-    fi
-done
-
-# Update version in stepflow-orchestrator Python package
-echo -e "${BLUE}Updating version in stepflow-orchestrator/pyproject.toml...${NC}"
-ORCHESTRATOR_PYPROJECT="../sdks/python/stepflow-orchestrator/pyproject.toml"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$ORCHESTRATOR_PYPROJECT"
-else
-    sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" "$ORCHESTRATOR_PYPROJECT"
-fi
-
-# Update Cargo.lock (workspace members only to avoid pulling in breaking dep updates)
+# Update Cargo.lock (workspace members only)
 echo -e "${BLUE}Updating Cargo.lock...${NC}"
 cargo update -w > /dev/null
 
-# Regenerate JSON schemas (flow + config)
-echo -e "${BLUE}Regenerating JSON schemas...${NC}"
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-core test_schema_comparison_with_flow_json --quiet || {
-    echo -e "${RED}Error: Failed to regenerate flow JSON schema${NC}" >&2
-    exit 1
-}
-STEPFLOW_OVERWRITE_SCHEMA=1 cargo test -p stepflow-config test_schema_generation --all-features --quiet || {
-    echo -e "${RED}Error: Failed to regenerate config JSON schema${NC}" >&2
-    exit 1
-}
-
-# Generate changelog
-echo -e "${BLUE}Generating changelog...${NC}"
-
-# Check if CHANGELOG.md exists, create if not
-if [[ ! -f "CHANGELOG.md" ]]; then
-    echo -e "${YELLOW}Creating new CHANGELOG.md${NC}"
-    cat > CHANGELOG.md << EOF
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-## [Unreleased]
-
-EOF
-fi
-
-# Generate changelog with git-cliff
-echo -e "${BLUE}Generating changelog (stepflow changes only)${NC}"
-if [[ -n "$TAG_MESSAGE" ]]; then
-    echo -e "${BLUE}Including custom message: ${GREEN}$TAG_MESSAGE${NC}"
-    git-cliff -v -v --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md --with-tag-message "$TAG_MESSAGE"
-else
-    git-cliff -v -v --config cliff.toml --tag "$NEW_VERSION" -u --prepend CHANGELOG.md
-fi
-
-echo -e "${GREEN}✅ Release preparation complete!${NC}"
+echo -e "${GREEN}Release preparation complete!${NC}"
 echo -e "${BLUE}Changes made:${NC}"
-echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml"
-echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in stepflow-orchestrator/pyproject.toml"
+echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in sdks/rust/Cargo.toml"
 echo "  - Updated Cargo.lock"
-echo "  - Regenerated JSON schemas (flow.json, stepflow-config.json)"
-echo "  - Generated/updated CHANGELOG.md"
 
 if [[ "$CREATE_PR" == false ]]; then
     echo ""
@@ -264,8 +190,11 @@ echo ""
 echo -e "${BLUE}Creating pull request...${NC}"
 
 # Create release branch
-RELEASE_BRANCH="release/stepflow-$NEW_VERSION"
+RELEASE_BRANCH="release/rust-sdk-$NEW_VERSION"
 echo -e "${BLUE}Creating release branch: $RELEASE_BRANCH${NC}"
+
+# Go back to repo root for git operations
+cd ../..
 
 # Check if release branch already exists
 if git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH"; then
@@ -273,55 +202,46 @@ if git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH"; then
     git branch -D "$RELEASE_BRANCH"
 fi
 
-# Check if release branch exists on remote
-if git show-ref --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH"; then
-    echo -e "${YELLOW}Release branch $RELEASE_BRANCH already exists on remote. It will be overwritten...${NC}"
-fi
-
 git checkout -b "$RELEASE_BRANCH"
 
 # Commit changes
 echo -e "${BLUE}Committing changes...${NC}"
-git add Cargo.toml Cargo.lock CHANGELOG.md "$ORCHESTRATOR_PYPROJECT"
-git add ../schemas/flow.json ../schemas/stepflow-config.json
-git commit -m "chore: release stepflow v$NEW_VERSION
+git add sdks/rust/Cargo.toml sdks/rust/Cargo.lock
+git commit -m "chore: release rust-sdk v$NEW_VERSION
 
-- Bump version from $CURRENT_VERSION to $NEW_VERSION
-- Update stepflow-orchestrator Python package version
-- Regenerate JSON schemas
-- Update CHANGELOG.md with release notes"
+- Bump version from $CURRENT_VERSION to $NEW_VERSION"
 
 # Push branch
 echo -e "${BLUE}Pushing release branch...${NC}"
 git push -u origin "$RELEASE_BRANCH" --force
 
 # Create PR
-PR_BODY="## Release Stepflow v$NEW_VERSION
+PR_BODY="## Release Rust SDK v$NEW_VERSION
 
-This PR prepares the release of Stepflow v$NEW_VERSION.
+This PR prepares the release of Rust SDK v$NEW_VERSION.
 
 ### Changes
-- Version bump from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml
-- Version bump in stepflow-orchestrator Python package
-- Regenerated JSON schemas
-- Updated CHANGELOG.md with release notes
+- Version bump from $CURRENT_VERSION to $NEW_VERSION in sdks/rust/Cargo.toml
+- Updated Cargo.lock
+
+### Crates
+- \`stepflow-client\` v$NEW_VERSION
+- \`stepflow-worker\` v$NEW_VERSION
 
 ### Next Steps
-1. Review the changelog entries
-2. Merge this PR
-3. The release will be automatically tagged and built
-4. Python wheels will be published to PyPI"
+1. Merge this PR
+2. The release will be automatically tagged and published to crates.io"
 
 PR_URL=$(gh pr create \
-    --title "chore: release stepflow v$NEW_VERSION" \
+    --title "chore: release rust-sdk v$NEW_VERSION" \
     --body "$PR_BODY" \
     --label "release" \
-    --label "release:stepflow")
+    --label "release:rust-sdk")
 
-echo -e "${GREEN}✅ Release PR created successfully!${NC}"
+echo -e "${GREEN}Release PR created successfully!${NC}"
 echo -e "${BLUE}PR URL: $PR_URL${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Review the PR and changelog"
+echo "1. Review the PR"
 echo "2. Merge the PR when ready"
-echo "3. The release will be automatically tagged and built"
+echo "3. The release will be automatically tagged and published to crates.io"

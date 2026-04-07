@@ -51,12 +51,13 @@ STEPFLOW_TASKS_URL=http://127.0.0.1:7837 cargo run --example hello_world
 
 `stepflow-proto` is a path dependency pointing to
 `../../stepflow-rs/crates/stepflow-proto`. This crate:
-- Compiles the `.proto` files from `stepflow-rs/proto/` during `cargo build`
+- Compiles the `.proto` files from `stepflow-rs/crates/stepflow-proto/proto/` during `cargo build`
 - Exports all generated Rust types at the crate root
+- Published to crates.io (proto files are included in the package)
 
-When `stepflow-proto` is published to crates.io, switch the path dep to a version dep:
+Path + version deps allow local development while also enabling `cargo publish`:
 ```toml
-stepflow-proto = "0.12"
+stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
 ```
 
 ## Features

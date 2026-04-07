@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let descriptor_path = format!("{out_dir}/stepflow_descriptor.bin");
 
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
-    let proto_root = manifest_dir.join("../../proto");
+    let proto_root = manifest_dir.join("../stepflow-proto/proto");
     // Use dunce::canonicalize to avoid \\?\ UNC prefix on Windows,
     // which protoc cannot handle as an include path.
     let proto_root = dunce::canonicalize(&proto_root).expect("proto directory should exist");

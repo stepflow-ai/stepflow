@@ -7,6 +7,8 @@ authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+# Include proto files for crates.io consumers (build.rs compiles them).
+include = ["src/**", "build.rs", "proto/**", "Cargo.toml", "LICENSE*", "README*"]
 
 [dependencies]
 prost = "0.14"

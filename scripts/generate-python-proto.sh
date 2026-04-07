@@ -31,7 +31,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROTO_DIR="$ROOT_DIR/stepflow-rs/proto"
+PROTO_DIR="$ROOT_DIR/stepflow-rs/crates/stepflow-proto/proto"
 OUT_DIR="$ROOT_DIR/sdks/python/stepflow-py/src/stepflow_py/proto"
 
 echo "Generating Python gRPC stubs..."

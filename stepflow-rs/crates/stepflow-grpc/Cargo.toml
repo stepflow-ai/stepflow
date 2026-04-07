@@ -1,5 +1,6 @@
 [package]
 name = "stepflow-grpc"
+publish = false
 description = "gRPC protocol definitions and services for Stepflow"
 version.workspace = true
 edition.workspace = true

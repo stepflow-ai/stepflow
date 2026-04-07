@@ -12,6 +12,7 @@ on:
           - stepflow-py
           - stepflow-langflow
           - docling
+          - rust-sdk
         default: 'stepflow'
       bump_type:
         description: 'Type of version bump'
@@ -91,6 +92,13 @@ jobs:
                 ./scripts/prepare-release-docling.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
               else
                 ./scripts/prepare-release-docling.sh ${{ inputs.bump_type }} --pr
+              fi
+              ;;
+            rust-sdk)
+              if [[ -n "${{ inputs.message }}" ]]; then
+                ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr --message "${{ inputs.message }}"
+              else
+                ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr
               fi
               ;;
             *)

@@ -54,7 +54,7 @@ uv run python generate.py --check
 
 ### Proto / gRPC Stub Generation
 
-Proto files live in `stepflow-rs/proto/stepflow/v1/`. Generated Python stubs live in `stepflow-py/src/stepflow_py/proto/`.
+Proto files live in `stepflow-rs/crates/stepflow-proto/proto/stepflow/v1/`. Generated Python stubs live in `stepflow-py/src/stepflow_py/proto/`.
 
 ```bash
 # Regenerate Python gRPC stubs after modifying any .proto file
