@@ -183,6 +183,16 @@ else
     sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
 fi
 
+# Update workspace dependency versions for publishable crates
+echo -e "${BLUE}Updating workspace dependency versions for publishable crates...${NC}"
+for crate in stepflow-flow stepflow-config stepflow-proto; do
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/${crate} = { version = \"${CURRENT_VERSION}\"/${crate} = { version = \"${NEW_VERSION}\"/" Cargo.toml
+    else
+        sed -i "s/${crate} = { version = \"${CURRENT_VERSION}\"/${crate} = { version = \"${NEW_VERSION}\"/" Cargo.toml
+    fi
+done
+
 # Update version in stepflow-orchestrator Python package
 echo -e "${BLUE}Updating version in stepflow-orchestrator/pyproject.toml...${NC}"
 ORCHESTRATOR_PYPROJECT="../sdks/python/stepflow-orchestrator/pyproject.toml"

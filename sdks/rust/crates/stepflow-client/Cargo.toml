@@ -14,8 +14,8 @@ description = "Rust client SDK for the Stepflow orchestrator — flow authoring 
 local-server = []
 
 [dependencies]
-stepflow-flow = { path = "../../../../stepflow-rs/crates/stepflow-flow" }
-stepflow-proto = { path = "../../../../stepflow-rs/crates/stepflow-proto" }
+stepflow-flow = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-flow" }
+stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
 tokio = { version = "1", features = ["full"] }
 tonic = { version = "0.14", features = ["transport"] }
 prost-wkt-types = "0.7"

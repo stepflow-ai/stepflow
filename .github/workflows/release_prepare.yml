@@ -12,6 +12,7 @@ on:
           - stepflow-py
           - stepflow-langflow
           - docling
+          - rust-sdk
         default: 'stepflow'
       bump_type:
         description: 'Type of version bump'
@@ -92,6 +93,9 @@ jobs:
               else
                 ./scripts/prepare-release-docling.sh ${{ inputs.bump_type }} --pr
               fi
+              ;;
+            rust-sdk)
+              ./scripts/prepare-release-rust-sdk.sh ${{ inputs.bump_type }} --pr
               ;;
             *)
               echo "❌ Unsupported package: ${{ inputs.package }}"

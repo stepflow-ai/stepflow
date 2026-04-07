@@ -35,7 +35,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROTO_DIR="$PROJECT_ROOT/stepflow-rs/proto"
+PROTO_DIR="$PROJECT_ROOT/stepflow-rs/crates/stepflow-proto/proto"
 OUTPUT_PATH="${1:-$PROJECT_ROOT/schemas/openapi.yaml}"
 OUTPUT_DIR="$(dirname "$OUTPUT_PATH")"
 

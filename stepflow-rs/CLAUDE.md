@@ -136,7 +136,7 @@ uv run python generate.py --check
 
 ### Proto / gRPC Code Generation
 
-Proto files live in `stepflow-rs/proto/stepflow/v1/`. Rust and Python stubs are generated separately:
+Proto files live in `stepflow-rs/crates/stepflow-proto/proto/stepflow/v1/`. Rust and Python stubs are generated separately:
 
 ```bash
 # Rust: prost auto-generates from proto during cargo build.

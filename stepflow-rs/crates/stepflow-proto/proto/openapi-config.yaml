@@ -1,6 +1,6 @@
 # tonic-rest-openapi configuration for Stepflow API
 #
-# Used by: tonic-rest-openapi generate --config stepflow-rs/proto/openapi-config.yaml
+# Used by: tonic-rest-openapi generate --config stepflow-rs/crates/stepflow-proto/proto/openapi-config.yaml
 # See: https://github.com/zs-dima/tonic-rest
 
 # Schema reference for structured error responses

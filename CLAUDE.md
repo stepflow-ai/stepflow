@@ -27,7 +27,7 @@ Stepflow is an orchestration engine for AI workflows with a flexible plugin arch
 
 - **`tests/`**: End-to-end test workflows used for integration testing
 
-- **`stepflow-rs/proto/`**: Protocol Buffer definitions for gRPC services
+- **`stepflow-rs/crates/stepflow-proto/proto/`**: Protocol Buffer definitions for gRPC services
   - `stepflow/v1/tasks.proto`: TaskAssignment, PullTasks, worker task dispatch
   - `stepflow/v1/orchestrator.proto`: CompleteTask, TaskHeartbeat, worker callbacks
   - `stepflow/v1/components.proto`: ComponentsService (public component listing API)
