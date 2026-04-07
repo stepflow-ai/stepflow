@@ -207,6 +207,7 @@ async fn test_nats_double_component() {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let worker_handle = tokio::spawn(async move {
         Worker::new(registry, worker_config)
+            .expect("Failed to create worker")
             .run_until(async move {
                 let _ = stop_rx.await;
             })
@@ -319,6 +320,7 @@ async fn test_nats_chained_steps() {
     let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
     let worker_handle = tokio::spawn(async move {
         Worker::new(registry, worker_config)
+            .expect("Failed to create worker")
             .run_until(async move {
                 let _ = stop_rx.await;
             })

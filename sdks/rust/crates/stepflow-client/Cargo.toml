@@ -14,13 +14,13 @@ description = "Rust client SDK for the Stepflow orchestrator — flow authoring 
 local-server = []
 
 [dependencies]
-stepflow-flow = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-flow" }
-stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
-tokio = { version = "1", features = ["full"] }
-tonic = { version = "0.14", features = ["transport"] }
-prost-wkt-types = "0.7"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-thiserror = "2"
-futures = "0.3"
-tracing = "0.1"
+stepflow-flow.workspace = true
+stepflow-proto.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+prost-wkt-types.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+thiserror.workspace = true
+futures.workspace = true
+tracing.workspace = true

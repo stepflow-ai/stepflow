@@ -93,7 +93,7 @@ fn test_worker_script() -> String {
 
 fn stepflow_py_project_dir() -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    format!("{manifest_dir}/../../../sdks/python/stepflow-py")
+    format!("{manifest_dir}/../../../python/stepflow-py")
 }
 
 // ---------------------------------------------------------------------------
@@ -169,9 +169,13 @@ async fn test_dev_mode_double() {
         .expect("Failed to connect to orchestrator");
 
     let mut builder = FlowBuilder::new();
-    builder.add_step("double", "/fc/double", ValueExpr::input(None));
+    builder.add_step(
+        "double",
+        "/fc/double",
+        ValueExpr::workflow_input(Default::default()),
+    );
     let flow = builder
-        .output(FlowBuilder::step("double"))
+        .output(ValueExpr::step_output("double"))
         .build()
         .expect("Failed to build flow");
 

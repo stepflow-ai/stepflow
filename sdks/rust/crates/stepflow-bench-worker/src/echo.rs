@@ -59,7 +59,7 @@ pub async fn run(args: EchoArgs) -> Result<(), Box<dyn std::error::Error>> {
         ..WorkerConfig::default()
     };
 
-    Worker::new(registry, config).run().await?;
+    Worker::new(registry, config)?.run().await?;
 
     Ok(())
 }

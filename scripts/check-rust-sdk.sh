@@ -57,7 +57,7 @@ if [ -z "${STEPFLOW_DEV_BINARY:-}" ]; then
 fi
 
 run_check "Integration tests" \
-    cargo test --test integration -- --include-ignored || true
+    cargo test -p stepflow-worker --test integration -- --include-ignored || true
 
 run_check "Clippy" --fix "cargo clippy --fix  # add --allow-dirty if needed" cargo clippy -- -D warnings || true
 

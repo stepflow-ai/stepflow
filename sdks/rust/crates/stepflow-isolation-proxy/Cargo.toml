@@ -1,0 +1,53 @@
+[package]
+name = "stepflow-isolation-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Stepflow isolation proxy — dispatches tasks to sandboxed workers via vsock"
+
+[[bin]]
+name = "stepflow-isolation-proxy"
+path = "src/main.rs"
+
+[dependencies]
+# Stepflow
+stepflow-worker.workspace = true
+stepflow-proto.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+# CLI
+clap.workspace = true
+
+# HTTP client (for Firecracker API over Unix socket)
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+# Async
+async-trait.workspace = true
+
+# Serialization
+serde_json.workspace = true
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+thiserror.workspace = true
+
+# Utilities
+uuid.workspace = true
+
+[dev-dependencies]
+stepflow-client = { workspace = true, features = ["local-server"] }
+tracing-subscriber.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration.rs"

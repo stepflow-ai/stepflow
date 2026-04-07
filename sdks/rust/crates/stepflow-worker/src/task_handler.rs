@@ -217,6 +217,16 @@ pub(crate) fn normalize_url(url: &str) -> String {
     }
 }
 
+/// Create a lazily-connecting gRPC channel for the given URL.
+///
+/// Returns `None` if the URL is not a valid URI.
+pub(crate) fn make_lazy_channel(url: &str) -> Option<tonic::transport::Channel> {
+    let with_scheme = ensure_scheme(url);
+    tonic::transport::Channel::from_shared(with_scheme)
+        .ok()
+        .map(|endpoint| endpoint.connect_lazy())
+}
+
 /// Resolve the orchestrator gRPC channel to use for this task.
 ///
 /// Reuses `default_channel` when the normalised URL matches

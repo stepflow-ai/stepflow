@@ -32,13 +32,11 @@ use prost::Message as _;
 use tokio::task::JoinSet;
 use tracing::{debug, info, warn};
 
-use stepflow_proto::{CompleteTaskRequest, TaskAssignment, task_assignment::Task};
+use stepflow_proto::TaskAssignment;
 
-use crate::task_handler::{
-    ChannelCache, handle_task, list_components_response, new_channel_cache, normalize_url,
-};
+use crate::WorkerError;
+use crate::executor::TaskExecutor;
 use crate::worker::WorkerConfig;
-use crate::{ComponentRegistry, WorkerError};
 
 /// Run the NATS JetStream transport loop.
 ///
@@ -51,12 +49,11 @@ use crate::{ComponentRegistry, WorkerError};
 /// delivery mechanism. The orchestrator is the single source of truth for
 /// task lifecycle (heartbeat timeouts, retry budgets, attempt counting).
 pub(crate) async fn run_nats_loop(
-    registry: Arc<ComponentRegistry>,
+    executor: Arc<dyn TaskExecutor>,
     config: WorkerConfig,
+    worker_id: &str,
     shutdown: impl std::future::Future<Output = ()>,
 ) -> Result<(), WorkerError> {
-    let worker_id = format!("rust-worker-{}", uuid::Uuid::new_v4());
-
     info!(
         nats_url = %redact_url_credentials(&config.nats_url),
         stream = %config.nats_stream,
@@ -68,21 +65,11 @@ pub(crate) async fn run_nats_loop(
 
     tokio::pin!(shutdown);
 
-    let channel_cache = new_channel_cache();
     let mut consecutive_failures: u32 = 0;
     let mut in_flight: JoinSet<()> = JoinSet::new();
 
     'outer: loop {
-        match fetch_loop(
-            &registry,
-            &config,
-            &worker_id,
-            &channel_cache,
-            &mut in_flight,
-            &mut shutdown,
-        )
-        .await
-        {
+        match fetch_loop(&executor, &config, &mut in_flight, &mut shutdown).await {
             Ok(FetchOutcome::Shutdown) => break 'outer,
             Ok(FetchOutcome::StreamNotFound) => {
                 // Stream not yet created by orchestrator — retry without
@@ -178,10 +165,8 @@ enum FetchOutcome {
 ///
 /// Returns when the connection drops, the stream disappears, or shutdown fires.
 async fn fetch_loop(
-    registry: &Arc<ComponentRegistry>,
+    executor: &Arc<dyn TaskExecutor>,
     config: &WorkerConfig,
-    worker_id: &str,
-    channel_cache: &ChannelCache,
     in_flight: &mut JoinSet<()>,
     shutdown: &mut (impl std::future::Future<Output = ()> + Unpin),
 ) -> Result<FetchOutcome, WorkerError> {
@@ -246,26 +231,6 @@ async fn fetch_loop(
 
     // Successfully connected — any disconnect from here is "after success".
     let connected = true;
-
-    // Resolve orchestrator URL for task callbacks
-    let orchestrator_url = config
-        .orchestrator_url
-        .clone()
-        .unwrap_or_else(|| config.tasks_url.clone());
-    let default_normalised_url = normalize_url(&orchestrator_url);
-
-    // Create a single default gRPC channel for orchestrator callbacks.
-    // This is cloned (cheap — tonic channels are backed by a shared connection
-    // pool) into each task, avoiding per-task connection overhead.
-    let default_orch_channel = match make_lazy_channel(&orchestrator_url) {
-        Some(ch) => ch,
-        None => {
-            return Err(WorkerError::Config(format!(
-                "Invalid orchestrator URL '{}' for gRPC callbacks",
-                orchestrator_url
-            )));
-        }
-    };
 
     // Concurrency limiter — acquire BEFORE pulling from NATS so we only
     // pull tasks we can immediately process (natural backpressure).
@@ -332,128 +297,16 @@ async fn fetch_loop(
             }
         };
 
-        let task_id = assignment.task_id.clone();
+        debug!(task_id = assignment.task_id, "Received task via NATS");
 
-        // Handle ListComponents inline (lightweight — release concurrency slot)
-        if matches!(&assignment.task, Some(Task::ListComponents(_))) {
-            debug!(task_id, "Received list_components discovery task via NATS");
-            drop(permit);
-            let registry = Arc::clone(registry);
-            let orch_url = orchestrator_url.clone();
-            let default_norm = default_normalised_url.clone();
-            let channel = default_orch_channel.clone();
-            let cache = Arc::clone(channel_cache);
-            in_flight.spawn(async move {
-                handle_list_components_nats(
-                    assignment,
-                    &registry,
-                    &orch_url,
-                    &default_norm,
-                    channel,
-                    &cache,
-                )
-                .await;
-            });
-            continue;
-        }
-
-        debug!(task_id, "Received execute task via NATS");
-
-        // Spawn the full task handler (claim via heartbeat, execute, complete).
-        // The permit is moved into the task and dropped when it completes,
-        // releasing the concurrency slot.
-        let registry = Arc::clone(registry);
-        let orch_url = orchestrator_url.clone();
-        let default_norm = default_normalised_url.clone();
-        let blob_url = config.blob_url.clone();
-        let blob_threshold = config.blob_threshold_bytes;
-        let channel = default_orch_channel.clone();
-        let cache = Arc::clone(channel_cache);
-        let wid = worker_id.to_string();
+        // Spawn the executor. The permit is moved into the task and dropped
+        // when it completes, releasing the concurrency slot.
+        let executor = Arc::clone(executor);
 
         in_flight.spawn(async move {
-            handle_task(
-                assignment,
-                registry,
-                &wid,
-                &orch_url,
-                &default_norm,
-                blob_url.as_deref(),
-                blob_threshold,
-                channel,
-                &cache,
-            )
-            .await;
-
+            executor.execute_task(assignment).await;
             drop(permit);
         });
-    }
-}
-
-/// Handle a `ListComponentsRequest` task received via NATS.
-///
-/// Responds via gRPC `CompleteTask` with the worker's available components.
-async fn handle_list_components_nats(
-    assignment: TaskAssignment,
-    registry: &ComponentRegistry,
-    orchestrator_url: &str,
-    default_normalised_url: &str,
-    default_channel: tonic::transport::Channel,
-    channel_cache: &ChannelCache,
-) {
-    let task_id = assignment.task_id.clone();
-    let task_context = assignment.context.unwrap_or_default();
-
-    let orch_url = if task_context.orchestrator_service_url.is_empty() {
-        orchestrator_url.to_string()
-    } else {
-        task_context.orchestrator_service_url.clone()
-    };
-
-    // Build the ListComponents result from the registry
-    let result = match assignment.task {
-        Some(Task::ListComponents(req)) => match list_components_response(registry, req) {
-            Ok(r) => r,
-            Err(e) => {
-                warn!(task_id, "Failed to build component list: {e}");
-                return;
-            }
-        },
-        _ => return,
-    };
-
-    // Send CompleteTask via gRPC
-    let channel = match crate::task_handler::resolve_orch_channel(
-        &task_id,
-        &orch_url,
-        default_normalised_url,
-        default_channel,
-        channel_cache,
-    ) {
-        Some(ch) => ch,
-        None => {
-            warn!(
-                task_id,
-                "Cannot resolve orchestrator channel for list_components"
-            );
-            return;
-        }
-    };
-
-    let mut client =
-        stepflow_proto::orchestrator_service_client::OrchestratorServiceClient::new(channel);
-
-    if let Err(e) = client
-        .complete_task(CompleteTaskRequest {
-            task_id: task_id.clone(),
-            result: Some(result),
-            run_id: None,
-        })
-        .await
-    {
-        warn!(task_id, "Failed to complete list_components task: {e}");
-    } else {
-        debug!(task_id, "Completed list_components discovery task");
     }
 }
 
@@ -482,19 +335,4 @@ fn redact_url_credentials(url: &str) -> String {
     } else {
         url.to_string()
     }
-}
-
-/// Create a lazily-connecting gRPC channel for the given URL.
-///
-/// Returns `None` if the URL is invalid.
-fn make_lazy_channel(url: &str) -> Option<tonic::transport::Channel> {
-    let with_scheme = if url.starts_with("http://") || url.starts_with("https://") {
-        url.to_string()
-    } else {
-        format!("http://{url}")
-    };
-
-    tonic::transport::Channel::from_shared(with_scheme)
-        .ok()
-        .map(|endpoint| endpoint.connect_lazy())
 }

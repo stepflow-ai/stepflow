@@ -104,7 +104,7 @@ jobs:
               - 'integrations/docling-proto-step-worker/**'
             firecracker:
               - '.github/actions/firecracker-checks/**'
-              - 'stepflow-rs/crates/stepflow-isolation-proxy/**'
+              - 'sdks/rust/crates/stepflow-isolation-proxy/**'
               - 'sdks/python/stepflow-py/src/stepflow_py/worker/vsock_worker.py'
               - 'sdks/rust/crates/stepflow-worker/src/vsock.rs'
             proto:
