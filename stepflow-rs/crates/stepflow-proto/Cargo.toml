@@ -8,14 +8,22 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+tokio = ["dep:tokio"]
+
 [dependencies]
 prost = "0.14"
 prost-types = "0.14"
 prost-wkt-types = "0.7"
 schemars.workspace = true
 serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["io-util"], optional = true }
 tonic = { version = "0.14", features = ["transport"] }
 tonic-prost = "0.14"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [build-dependencies]
 dunce = "1"
@@ -30,4 +38,4 @@ workspace = true
 # prost/prost-types/prost-wkt-types/tonic-prost/schemars/serde: used in protobuf-generated
 #   code loaded via include!() — machete cannot see through macros.
 # prost-build/tonic-prost-build/tonic-rest-build/dunce: build-time deps used in build.rs.
-ignored = ["prost", "prost-types", "prost-wkt-types", "tonic-prost", "schemars", "serde", "prost-build", "tonic-prost-build", "tonic-rest-build", "dunce",]
+ignored = ["prost", "prost-types", "prost-wkt-types", "tonic-prost", "schemars", "serde", "tokio", "prost-build", "tonic-prost-build", "tonic-rest-build", "dunce",]

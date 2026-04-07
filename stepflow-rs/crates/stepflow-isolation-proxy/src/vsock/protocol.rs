@@ -10,9 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-//! Re-export vsock protocol from stepflow-worker.
-//!
-//! The general-purpose length-delimited protobuf framing lives in
-//! `stepflow_worker::vsock`. This module re-exports it for convenience.
+//! Re-export length-delimited protobuf I/O from stepflow-proto.
 
-pub use stepflow_worker::vsock::write_message;
+pub use stepflow_proto::async_io::write_message;

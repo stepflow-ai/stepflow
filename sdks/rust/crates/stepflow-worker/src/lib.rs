@@ -75,7 +75,6 @@ pub mod error;
 pub(crate) mod nats_worker;
 pub mod registry;
 pub mod task_handler;
-pub mod vsock;
 pub mod worker;
 
 pub use context::{ComponentContext, RunStatus};

@@ -31,3 +31,6 @@ pub mod google {
 
 // Re-export commonly used types at the crate root.
 pub use stepflow::v1::*;
+
+#[cfg(feature = "tokio")]
+pub mod async_io;
