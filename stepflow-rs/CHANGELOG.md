@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.13.0"></a> [Stepflow 0.13.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.13.0) - 2026-04-07
+### Bug Fixes
+
+- Resolve SQLite storage backend read failures ([#849](https://github.com/stepflow-ai/stepflow/pull/849)) ([#852](https://github.com/stepflow-ai/stepflow/pull/852))
+- Replace manual row.get() with sqlx::FromRow across SQLite store … ([#856](https://github.com/stepflow-ai/stepflow/pull/856))
+- Exclude stepflow-isolation-proxy from workspace for cross-compilation ([#861](https://github.com/stepflow-ai/stepflow/pull/861))
+- Update CI to target docling-proto-step-worker ([#863](https://github.com/stepflow-ai/stepflow/pull/863))
+- Return UNAVAILABLE instead of NOT_FOUND during recovery window ([#881](https://github.com/stepflow-ai/stepflow/pull/881))
+- Properly shut down test services to prevent worker subprocess leaks ([#880](https://github.com/stepflow-ai/stepflow/pull/880))
+- Migrate load-test workflows from legacy $from syntax ([#867](https://github.com/stepflow-ai/stepflow/pull/867)) ([#882](https://github.com/stepflow-ai/stepflow/pull/882))
+- Preserve integer types through proto Value roundtrip ([#885](https://github.com/stepflow-ai/stepflow/pull/885))
+- Re-enable isolation proxy compilation in stepflow-rs workspace ([#889](https://github.com/stepflow-ai/stepflow/pull/889))
+
+### Features
+
+- Add Rust SDK (stepflow-client + stepflow-worker) ([#836](https://github.com/stepflow-ai/stepflow/pull/836))
+- Add stepflow-isolation-proxy with vsock transport and pluggable backends ([#850](https://github.com/stepflow-ai/stepflow/pull/850))
+- Add stepflow-isolation-proxy with Firecracker backend ([#854](https://github.com/stepflow-ai/stepflow/pull/854))
+- Add NATS JetStream ExecutionJournal implementation ([#859](https://github.com/stepflow-ai/stepflow/pull/859))
+- Centralize component routing in the orchestrator ([#862](https://github.com/stepflow-ai/stepflow/pull/862)) ([#868](https://github.com/stepflow-ai/stepflow/pull/868))
+- Add benchmark suite for orchestrator and worker throughput (#846, #847, #848) ([#864](https://github.com/stepflow-ai/stepflow/pull/864))
+- Store component registrations in metadata store for multi-orchestrator routing ([#875](https://github.com/stepflow-ai/stepflow/pull/875))
+- Add PostgreSQL support for SQL state store ([#878](https://github.com/stepflow-ai/stepflow/pull/878))
+- Switch recovery tests from SQLite to PostgreSQL ([#883](https://github.com/stepflow-ai/stepflow/pull/883))
+- Extract stepflow-flow and stepflow-config as publishable crates ([#840](https://github.com/stepflow-ai/stepflow/pull/840)) ([#888](https://github.com/stepflow-ai/stepflow/pull/888))
+- Add crates.io publishing to release workflows ([#891](https://github.com/stepflow-ai/stepflow/pull/891))
+- Move isolation proxy to sdks/rust and extract TaskExecutor trait ([#890](https://github.com/stepflow-ai/stepflow/pull/890))
+
+### Miscellaneous Tasks
+
+- Remove deprecated stepflow-docling example and load balancer references ([#870](https://github.com/stepflow-ai/stepflow/pull/870))
+
+### Testing
+
+- Restore concurrent WAL migration test for HA scenario ([#855](https://github.com/stepflow-ai/stepflow/pull/855)) ([#884](https://github.com/stepflow-ai/stepflow/pull/884))
+
 ## <a id="0.12.0"></a> [Stepflow 0.12.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-0.12.0) - 2026-03-23
 
 This release replaces the old JSON-RPC over HTTP protocol with queues (gRPC and NATS initially supported) and gRPC callbacks.
