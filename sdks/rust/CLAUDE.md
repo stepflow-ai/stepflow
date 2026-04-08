@@ -57,7 +57,7 @@ STEPFLOW_TASKS_URL=http://127.0.0.1:7837 cargo run --example hello_world
 
 Path + version deps allow local development while also enabling `cargo publish`:
 ```toml
-stepflow-proto = { version = "0.12", path = "../../../../stepflow-rs/crates/stepflow-proto" }
+stepflow-proto = { version = "0.13", path = "../../stepflow-rs/crates/stepflow-proto" }
 ```
 
 ## Features
