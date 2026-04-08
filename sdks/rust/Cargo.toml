@@ -14,8 +14,8 @@ homepage = "https://stepflow.org"
 # Stepflow crates
 stepflow-proto = { version = "0.13", path = "../../stepflow-rs/crates/stepflow-proto" }
 stepflow-flow = { version = "0.13", path = "../../stepflow-rs/crates/stepflow-flow" }
-stepflow-worker = { path = "crates/stepflow-worker" }
-stepflow-client = { path = "crates/stepflow-client" }
+stepflow-worker = { version = "0.2", path = "crates/stepflow-worker" }
+stepflow-client = { version = "0.2", path = "crates/stepflow-client" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
