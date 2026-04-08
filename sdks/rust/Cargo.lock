@@ -2533,7 +2533,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stepflow-bench-worker"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "futures",
@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "futures",
  "prost-wkt-types",
@@ -2583,7 +2583,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-isolation-proxy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -2622,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-worker"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-nats",
  "async-trait",
