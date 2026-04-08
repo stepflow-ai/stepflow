@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-flow"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -2604,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-proto"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "dunce",
  "prost",

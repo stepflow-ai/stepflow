@@ -12,8 +12,8 @@ homepage = "https://stepflow.org"
 
 [workspace.dependencies]
 # Stepflow crates
-stepflow-proto = { version = "0.12", path = "../../stepflow-rs/crates/stepflow-proto" }
-stepflow-flow = { version = "0.12", path = "../../stepflow-rs/crates/stepflow-flow" }
+stepflow-proto = { version = "0.13", path = "../../stepflow-rs/crates/stepflow-proto" }
+stepflow-flow = { version = "0.13", path = "../../stepflow-rs/crates/stepflow-flow" }
 stepflow-worker = { path = "crates/stepflow-worker" }
 stepflow-client = { path = "crates/stepflow-client" }
 

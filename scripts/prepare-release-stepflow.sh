@@ -193,6 +193,17 @@ for crate in stepflow-flow stepflow-config stepflow-proto; do
     fi
 done
 
+# Update dependency pins in sdks/rust/Cargo.toml
+echo -e "${BLUE}Updating stepflow dependency pins in sdks/rust/Cargo.toml...${NC}"
+SDK_RUST_CARGO="../sdks/rust/Cargo.toml"
+for crate in stepflow-flow stepflow-proto; do
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/${crate} = { version = \"[0-9][0-9]*\.[0-9][0-9]*\"/${crate} = { version = \"${NEW_VERSION}\"/" "$SDK_RUST_CARGO"
+    else
+        sed -i "s/${crate} = { version = \"[0-9][0-9]*\.[0-9][0-9]*\"/${crate} = { version = \"${NEW_VERSION}\"/" "$SDK_RUST_CARGO"
+    fi
+done
+
 # Update version in stepflow-orchestrator Python package
 echo -e "${BLUE}Updating version in stepflow-orchestrator/pyproject.toml...${NC}"
 ORCHESTRATOR_PYPROJECT="../sdks/python/stepflow-orchestrator/pyproject.toml"
@@ -246,6 +257,7 @@ echo -e "${GREEN}✅ Release preparation complete!${NC}"
 echo -e "${BLUE}Changes made:${NC}"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml"
 echo "  - Version bumped from $CURRENT_VERSION to $NEW_VERSION in stepflow-orchestrator/pyproject.toml"
+echo "  - Updated stepflow dependency pins in sdks/rust/Cargo.toml"
 echo "  - Updated Cargo.lock"
 echo "  - Regenerated JSON schemas (flow.json, stepflow-config.json)"
 echo "  - Generated/updated CHANGELOG.md"
@@ -284,10 +296,12 @@ git checkout -b "$RELEASE_BRANCH"
 echo -e "${BLUE}Committing changes...${NC}"
 git add Cargo.toml Cargo.lock CHANGELOG.md "$ORCHESTRATOR_PYPROJECT"
 git add ../schemas/flow.json ../schemas/stepflow-config.json
+git add "$SDK_RUST_CARGO"
 git commit -m "chore: release stepflow v$NEW_VERSION
 
 - Bump version from $CURRENT_VERSION to $NEW_VERSION
 - Update stepflow-orchestrator Python package version
+- Update stepflow dependency pins in sdks/rust/Cargo.toml
 - Regenerate JSON schemas
 - Update CHANGELOG.md with release notes"
 
@@ -303,6 +317,7 @@ This PR prepares the release of Stepflow v$NEW_VERSION.
 ### Changes
 - Version bump from $CURRENT_VERSION to $NEW_VERSION in Cargo.toml
 - Version bump in stepflow-orchestrator Python package
+- Updated stepflow dependency pins in sdks/rust/Cargo.toml
 - Regenerated JSON schemas
 - Updated CHANGELOG.md with release notes
 
