@@ -4155,7 +4155,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stepflow-analysis"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "error-stack",
  "indexmap 2.13.0",
@@ -4171,7 +4171,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-builtins"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "dynosaur",
  "error-stack",
@@ -4195,7 +4195,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-cli"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "clap",
  "clap-markdown",
@@ -4231,7 +4231,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-components-mcp"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "error-stack",
  "indexmap 2.13.0",
@@ -4248,7 +4248,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-config"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "error-stack",
  "indexmap 2.13.0",
@@ -4263,7 +4263,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "base64 0.22.1",
  "dashmap",
@@ -4283,7 +4283,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-domain"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "chrono",
  "serde",
@@ -4293,7 +4293,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-execution"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bit-set",
  "bytes",
@@ -4318,7 +4318,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-flow"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "bit-set",
  "error-stack",
@@ -4338,7 +4338,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-grpc"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "axum",
  "built",
@@ -4374,7 +4374,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-mock"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "error-stack",
  "log",
@@ -4388,7 +4388,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-nats"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-nats",
  "async-stream",
@@ -4415,7 +4415,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-observability"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "clap",
  "error-stack",
@@ -4435,7 +4435,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-plugin"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "dashmap",
  "dynosaur",
@@ -4457,7 +4457,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-proto"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "dunce",
  "prost",
@@ -4475,7 +4475,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-server"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "axum",
  "clap",
@@ -4508,7 +4508,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-stream",
  "bytes",
@@ -4531,7 +4531,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state-etcd"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "chrono",
  "error-stack",
@@ -4550,7 +4550,7 @@ dependencies = [
 
 [[package]]
 name = "stepflow-state-sql"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-stream",
  "bytes",
@@ -4573,11 +4573,11 @@ dependencies = [
 
 [[package]]
 name = "stepflow-test-utils"
-version = "0.12.0"
+version = "0.13.0"
 
 [[package]]
 name = "stepflow-typecheck"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "indexmap 2.13.0",
  "serde_json",
