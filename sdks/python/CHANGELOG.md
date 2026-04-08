@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## <a id="0.13.0"></a> [stepflow-py 0.13.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.13.0) - 2026-04-08
+### Bug Fixes
+
+- Migrate load-test workflows from legacy $from syntax ([#867](https://github.com/stepflow-ai/stepflow/pull/867)) ([#882](https://github.com/stepflow-ai/stepflow/pull/882))
+
+### Features
+
+- Add stepflow-isolation-proxy with vsock transport and pluggable backends ([#850](https://github.com/stepflow-ai/stepflow/pull/850))
+- Add stepflow-isolation-proxy with Firecracker backend ([#854](https://github.com/stepflow-ai/stepflow/pull/854))
+- Centralize component routing in the orchestrator ([#862](https://github.com/stepflow-ai/stepflow/pull/862)) ([#868](https://github.com/stepflow-ai/stepflow/pull/868))
+- Add benchmark suite for orchestrator and worker throughput (#846, #847, #848) ([#864](https://github.com/stepflow-ai/stepflow/pull/864))
+- Add PostgreSQL support for SQL state store ([#878](https://github.com/stepflow-ai/stepflow/pull/878))
+- Extract stepflow-flow and stepflow-config as publishable crates ([#840](https://github.com/stepflow-ai/stepflow/pull/840)) ([#888](https://github.com/stepflow-ai/stepflow/pull/888))
+
 ## <a id="0.12.0"></a> [stepflow-py 0.12.0](https://github.com/stepflow-ai/stepflow/releases/tag/stepflow-py-0.12.0) - 2026-03-24
 ### Bug Fixes
 
