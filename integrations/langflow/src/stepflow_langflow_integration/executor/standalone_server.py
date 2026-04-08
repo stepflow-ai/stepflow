@@ -18,6 +18,7 @@
 This script can be run directly and handles imports properly.
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,10 @@ from typing import Any
 # Add the package root to the path before importing project modules
 package_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(package_root))
+
+logger = logging.getLogger(__name__)
+
+READY_SENTINEL = Path("/tmp/worker-ready")
 
 from stepflow_py.worker import StepflowContext, StepflowServer
 
@@ -136,6 +141,10 @@ def main():
         help="Max concurrent tasks (env: STEPFLOW_MAX_CONCURRENT)",
     )
     args = parser.parse_args()
+
+    # Write ready sentinel for K8s probes before entering the pull loop
+    READY_SENTINEL.touch()
+    logger.info("Ready sentinel written to %s", READY_SENTINEL)
 
     from stepflow_py.worker.grpc_worker import run_grpc_worker
 

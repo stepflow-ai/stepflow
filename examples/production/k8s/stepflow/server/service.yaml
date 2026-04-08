@@ -25,7 +25,7 @@ spec:
   selector:
     app: stepflow-server
   ports:
-  - name: http
+  - name: http-grpc
     port: 7840
     targetPort: http
     protocol: TCP
