@@ -43,39 +43,3 @@ pub use error_code::ErrorCode;
 pub use run_params::{DEFAULT_WAIT_TIMEOUT_SECS, GetRunParams, ResultOrder, SubmitRunParams};
 pub use transport_retry::RetryConfig;
 
-// Re-export the proto TaskErrorCode for code that needs it directly.
-pub use stepflow_proto::TaskErrorCode as ProtoTaskErrorCode;
-
-/// Convert a proto [`ProtoTaskErrorCode`] to the flow-level [`TaskErrorCode`].
-pub fn task_error_code_from_proto(proto: stepflow_proto::TaskErrorCode) -> TaskErrorCode {
-    match proto {
-        stepflow_proto::TaskErrorCode::Unspecified => TaskErrorCode::Unspecified,
-        stepflow_proto::TaskErrorCode::Timeout => TaskErrorCode::Timeout,
-        stepflow_proto::TaskErrorCode::InvalidInput => TaskErrorCode::InvalidInput,
-        stepflow_proto::TaskErrorCode::ComponentFailed => TaskErrorCode::ComponentFailed,
-        stepflow_proto::TaskErrorCode::Cancelled => TaskErrorCode::Cancelled,
-        stepflow_proto::TaskErrorCode::Unreachable => TaskErrorCode::Unreachable,
-        stepflow_proto::TaskErrorCode::ComponentNotFound => TaskErrorCode::ComponentNotFound,
-        stepflow_proto::TaskErrorCode::ResourceUnavailable => TaskErrorCode::ResourceUnavailable,
-        stepflow_proto::TaskErrorCode::ExpressionFailure => TaskErrorCode::ExpressionFailure,
-        stepflow_proto::TaskErrorCode::OrchestratorError => TaskErrorCode::OrchestratorError,
-        stepflow_proto::TaskErrorCode::WorkerError => TaskErrorCode::WorkerError,
-    }
-}
-
-/// Convert a flow-level [`TaskErrorCode`] to the proto [`ProtoTaskErrorCode`].
-pub fn task_error_code_to_proto(code: TaskErrorCode) -> stepflow_proto::TaskErrorCode {
-    match code {
-        TaskErrorCode::Unspecified => stepflow_proto::TaskErrorCode::Unspecified,
-        TaskErrorCode::Timeout => stepflow_proto::TaskErrorCode::Timeout,
-        TaskErrorCode::InvalidInput => stepflow_proto::TaskErrorCode::InvalidInput,
-        TaskErrorCode::ComponentFailed => stepflow_proto::TaskErrorCode::ComponentFailed,
-        TaskErrorCode::Cancelled => stepflow_proto::TaskErrorCode::Cancelled,
-        TaskErrorCode::Unreachable => stepflow_proto::TaskErrorCode::Unreachable,
-        TaskErrorCode::ComponentNotFound => stepflow_proto::TaskErrorCode::ComponentNotFound,
-        TaskErrorCode::ResourceUnavailable => stepflow_proto::TaskErrorCode::ResourceUnavailable,
-        TaskErrorCode::ExpressionFailure => stepflow_proto::TaskErrorCode::ExpressionFailure,
-        TaskErrorCode::OrchestratorError => stepflow_proto::TaskErrorCode::OrchestratorError,
-        TaskErrorCode::WorkerError => stepflow_proto::TaskErrorCode::WorkerError,
-    }
-}

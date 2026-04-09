@@ -151,11 +151,6 @@ impl ItemState {
         &self.flow
     }
 
-    /// Get the step index for this item.
-    pub fn step_index_map(&self) -> &Arc<StepIndex> {
-        &self.step_index
-    }
-
     /// Get the number of steps in this item's flow.
     pub fn num_steps(&self) -> usize {
         self.step_index.num_steps()

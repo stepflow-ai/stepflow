@@ -118,15 +118,6 @@ impl InMemoryStateStore {
         self.checkpoint_put_count.load(Ordering::Relaxed)
     }
 
-    /// Remove all state for a specific execution.
-    /// This is useful for cleanup after workflow completion.
-    ///
-    /// Note: This is a concrete implementation method, not part of the StateStore trait.
-    /// Eviction strategies may evolve to be more nuanced (partial eviction, etc.).
-    pub fn evict_execution(&self, run_id: Uuid) {
-        self.runs.remove(&run_id);
-    }
-
     /// Synchronous version of create_run for use in queue_write.
     fn create_run_sync(&self, params: CreateRunParams) {
         let now = chrono::Utc::now();
