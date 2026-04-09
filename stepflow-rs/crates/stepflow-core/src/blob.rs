@@ -156,30 +156,6 @@ impl BlobData {
     pub fn data(&self) -> ValueRef {
         self.value.to_value_ref()
     }
-
-    /// Get a reference to the typed value
-    pub fn as_flow(&self) -> Option<&Arc<Flow>> {
-        match &self.value {
-            BlobValue::Flow(flow) => Some(flow),
-            _ => None,
-        }
-    }
-
-    /// Get a reference to the JSON data
-    pub fn as_json(&self) -> Option<&ValueRef> {
-        match &self.value {
-            BlobValue::Json(data) => Some(data),
-            _ => None,
-        }
-    }
-
-    /// Get a reference to the binary data
-    pub fn as_binary(&self) -> Option<&[u8]> {
-        match &self.value {
-            BlobValue::Binary(data) => Some(data),
-            _ => None,
-        }
-    }
 }
 
 /// Type of blob stored in the blob store.

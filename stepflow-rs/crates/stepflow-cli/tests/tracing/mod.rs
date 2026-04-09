@@ -25,8 +25,6 @@
 //! - Proper trace filtering by run_id
 
 mod collector;
-mod log_analysis;
-mod otlp_log_types;
 mod otlp_types;
 mod trace_analysis;
 

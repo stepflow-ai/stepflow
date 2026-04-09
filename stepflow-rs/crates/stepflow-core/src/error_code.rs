@@ -10,37 +10,6 @@
 // or implied. See the License for the specific language governing permissions and limitations under
 // the License.
 
-use stepflow_proto::TaskErrorCode;
-
-/// Convert a legacy JSON-RPC error code to the new [`TaskErrorCode`] enum.
-///
-/// Used at the JSON-RPC transport boundary where workers report errors as i64
-/// codes. Maps each error code range to the appropriate `TaskErrorCode` variant.
-pub fn task_error_code_from_legacy(code: i64) -> TaskErrorCode {
-    match code {
-        // Transport errors → Unreachable (worker never reached)
-        c if ErrorCode::is_transport(c) => TaskErrorCode::Unreachable,
-
-        // Component execution errors
-        c if c == ErrorCode::COMPONENT_RESOURCE_UNAVAILABLE => TaskErrorCode::ResourceUnavailable,
-        c if c == ErrorCode::COMPONENT_BAD_REQUEST => TaskErrorCode::InvalidInput,
-        c if ErrorCode::is_component_execution(c) => TaskErrorCode::ComponentFailed,
-
-        // Specific worker errors
-        c if c == ErrorCode::COMPONENT_NOT_FOUND => TaskErrorCode::ComponentNotFound,
-        c if c == ErrorCode::INVALID_INPUT_SCHEMA => TaskErrorCode::InvalidInput,
-
-        // Orchestrator errors
-        c if c == ErrorCode::UNDEFINED_FIELD || c == ErrorCode::ENTITY_NOT_FOUND => {
-            TaskErrorCode::ExpressionFailure
-        }
-        c if c == ErrorCode::INTERNAL_ERROR => TaskErrorCode::OrchestratorError,
-
-        // All other worker / JSON-RPC errors
-        _ => TaskErrorCode::WorkerError,
-    }
-}
-
 /// Unified error codes for the Stepflow platform.
 ///
 /// All error codes use JSON-RPC negative ranges, organized into sub-ranges by

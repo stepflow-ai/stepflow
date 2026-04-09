@@ -188,21 +188,6 @@ impl ItemsState {
         self.incomplete_count
     }
 
-    /// Check if a specific item has completed execution.
-    pub fn is_item_complete(&self, item_index: u32) -> bool {
-        self.item(item_index).is_complete()
-    }
-
-    /// Check if there are any ready tasks across all items.
-    ///
-    /// Used for deadlock detection: if not complete and no ready tasks
-    /// (and nothing in-flight), we have a deadlock.
-    pub fn has_ready_tasks(&self) -> bool {
-        self.items
-            .iter()
-            .any(|item| !item.schedulable_steps().is_empty())
-    }
-
     /// Get all ready tasks across all items.
     ///
     /// Returns tasks for all steps that are ready to execute.
@@ -299,28 +284,6 @@ impl ItemsState {
             tasks.extend(self.initialize_item(item_index));
         }
         tasks
-    }
-
-    /// Add a step to the needed set for an item.
-    ///
-    /// This is for debug mode's "task addition control" where steps are
-    /// added incrementally rather than all at once via `initialize_item`.
-    ///
-    /// Properly tracks the incomplete count for O(1) completion checks.
-    /// Returns the newly needed step indices (including dependencies).
-    pub fn add_needed(&mut self, item_index: u32, step_index: usize) -> Vec<usize> {
-        let item = self.item_mut(item_index);
-        let was_complete = item.is_complete();
-
-        // Add the step and discover dependencies
-        let newly_needed = item.add_or_update_needed(step_index);
-
-        // Update incomplete count if item became incomplete
-        if was_complete && !item.is_complete() {
-            self.incomplete_count += 1;
-        }
-
-        newly_needed.iter().collect()
     }
 
     /// Get step status information for a specific item.
