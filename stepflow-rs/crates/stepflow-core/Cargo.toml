@@ -25,7 +25,6 @@ serde.workspace = true
 sha2.workspace = true
 stepflow-config.workspace = true
 stepflow-flow.workspace = true
-stepflow-proto.workspace = true
 thiserror.workspace = true
 log.workspace = true
 schemars.workspace = true

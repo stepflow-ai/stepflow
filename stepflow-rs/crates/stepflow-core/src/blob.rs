@@ -156,7 +156,6 @@ impl BlobData {
     pub fn data(&self) -> ValueRef {
         self.value.to_value_ref()
     }
-
 }
 
 /// Type of blob stored in the blob store.

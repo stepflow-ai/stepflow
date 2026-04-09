@@ -4276,7 +4276,6 @@ dependencies = [
  "sha2",
  "stepflow-config",
  "stepflow-flow",
- "stepflow-proto",
  "strum",
  "thiserror 2.0.18",
 ]
