@@ -12,6 +12,8 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+import datetime
+
 import msgspec
 import pytest
 
@@ -694,3 +696,69 @@ def test_new_object_oriented_api():
 
     assert len(input_refs) == 1  # input().data_source
     assert len(step_refs) == 2  # Two step references in step2 input and flow output
+
+
+def test_auto_convert_datetime_input():
+    """datetime objects in step input are converted to ISO 8601 strings."""
+    builder = FlowBuilder(name="datetime_flow")
+
+    dt = datetime.datetime(2025, 6, 15, 10, 30, 0, tzinfo=datetime.timezone.utc)
+    d = datetime.date(2025, 6, 15)
+    t = datetime.time(10, 30, 0)
+
+    step = builder.add_step(
+        id="step1",
+        component="test",
+        input_data={
+            "timestamp": dt,
+            "date": d,
+            "time": t,
+            "nested": {"created_at": dt},
+            "list_of_dates": [d, d],
+        },
+    )
+    builder.set_output(Value.step(step.id))
+
+    flow = builder.build()
+    data = msgspec.to_builtins(flow)
+    step_input = data["steps"][0]["input"]
+
+    assert step_input["timestamp"] == "2025-06-15T10:30:00+00:00"
+    assert step_input["date"] == "2025-06-15"
+    assert step_input["time"] == "10:30:00"
+    assert step_input["nested"]["created_at"] == "2025-06-15T10:30:00+00:00"
+    assert step_input["list_of_dates"] == ["2025-06-15", "2025-06-15"]
+
+
+def test_custom_enc_hook():
+    """Users can provide a custom enc_hook to handle additional types."""
+    from stepflow_py.worker.encoding import default_enc_hook
+
+    class MyCustomType:
+        def __init__(self, value: str):
+            self.value = value
+
+    def my_hook(obj):
+        if isinstance(obj, MyCustomType):
+            return f"custom:{obj.value}"
+        return default_enc_hook(obj)
+
+    builder = FlowBuilder(name="custom_hook_flow", enc_hook=my_hook)
+
+    dt = datetime.datetime(2025, 6, 15, 10, 30, 0, tzinfo=datetime.timezone.utc)
+    step = builder.add_step(
+        id="step1",
+        component="test",
+        input_data={
+            "custom": MyCustomType("hello"),
+            "timestamp": dt,
+        },
+    )
+    builder.set_output(Value.step(step.id))
+
+    flow = builder.build()
+    data = msgspec.to_builtins(flow)
+    step_input = data["steps"][0]["input"]
+
+    assert step_input["custom"] == "custom:hello"
+    assert step_input["timestamp"] == "2025-06-15T10:30:00+00:00"

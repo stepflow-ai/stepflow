@@ -21,12 +21,14 @@ for JSON/YAML or the ``store_flow`` API.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, is_dataclass
-from typing import Any
+from typing import Any, cast
 
 import msgspec
 from typing_extensions import assert_never
 
+from .encoding import default_enc_hook
 from .generated_flow import (
     ErrorAction,
     Flow,
@@ -119,6 +121,7 @@ class FlowBuilder:
         description: str | None = None,
         version: str | None = None,
         metadata: dict[str, Any] | None = None,
+        enc_hook: Callable[[Any], Any] | None = None,
     ):
         self.name = name
         self.description = description
@@ -131,6 +134,7 @@ class FlowBuilder:
         self._step_handles: dict[str, StepHandle] = {}
         self._output: Any | None = None
         self._output_fields: dict[str, Valuable] = {}  # For incremental output building
+        self._enc_hook = enc_hook or default_enc_hook
 
     @classmethod
     def load(cls, flow: Flow | dict[str, Any]) -> FlowBuilder:
@@ -364,6 +368,12 @@ class FlowBuilder:
 
         if isinstance(input_data, list):
             return [self._auto_convert_input(item) for item in input_data]
+
+        # Try the enc_hook for non-JSON-native types (e.g. datetime)
+        try:
+            return cast("Valuable", self._enc_hook(input_data))
+        except TypeError:
+            pass
 
         assert_never(input_data)
 

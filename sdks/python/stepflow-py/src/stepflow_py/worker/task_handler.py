@@ -30,6 +30,7 @@ report completion via gRPC ``OrchestratorService`` using the
 from __future__ import annotations
 
 import asyncio
+import datetime
 import inspect
 import logging
 import math
@@ -827,6 +828,8 @@ def python_to_proto_value(obj: Any) -> struct_pb2.Value:
         for item in obj:
             list_value.values.append(python_to_proto_value(item))
         value.list_value.CopyFrom(list_value)
+    elif isinstance(obj, datetime.datetime | datetime.date | datetime.time):
+        value.string_value = obj.isoformat()
     else:
         # Fallback: try to convert to dict
         import json

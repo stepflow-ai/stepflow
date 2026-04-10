@@ -14,6 +14,7 @@
 
 from . import blob_ref, blob_store, execution_context
 from .context import StepflowContext
+from .encoding import default_enc_hook
 from .expressions import ValueExpr
 from .flow_builder import Component, FlowBuilder, StepHandle
 from .generated_flow import (
@@ -55,6 +56,8 @@ __all__ = [
     "OnErrorFail",
     "OnErrorDefault",
     "OnErrorRetry",
+    # Encoding hooks
+    "default_enc_hook",
 ]
 
 # Add LangChain exports if available
