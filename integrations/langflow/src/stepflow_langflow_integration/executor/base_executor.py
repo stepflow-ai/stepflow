@@ -283,6 +283,16 @@ class BaseExecutor(ABC):
         # Override with raw runtime inputs (no deserialization — handlers do it)
         parameters.update(runtime_inputs)
 
+        # Backward compatibility: synthesize the `model` list for pre-1.8.x
+        # Langflow workflows. lfx 0.3.x changed LanguageModelComponent and
+        # AgentComponent to require a `model` field (list of dicts) instead of
+        # separate `model_name` + `provider`/`agent_llm` fields.
+        if "model" not in parameters and "model_name" in parameters:
+            model_name = parameters["model_name"]
+            provider = parameters.get("provider") or parameters.get("agent_llm")
+            if model_name and provider:
+                parameters["model"] = [{"name": model_name, "provider": provider}]
+
         return parameters
 
     def _determine_execution_method(
