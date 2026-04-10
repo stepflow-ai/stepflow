@@ -337,11 +337,13 @@ fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
     for c in components_json {
         let name = c
             .get("component_id")
+            .or_else(|| c.get("name"))
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         let path = c
             .get("path")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or(name)
             .to_string();
         let description = c
