@@ -26,7 +26,6 @@ from dataclasses import dataclass, is_dataclass
 from typing import Any, cast
 
 import msgspec
-from typing_extensions import assert_never
 
 from .encoding import default_enc_hook
 from .generated_flow import (
@@ -372,10 +371,11 @@ class FlowBuilder:
         # Try the enc_hook for non-JSON-native types (e.g. datetime)
         try:
             return cast("Valuable", self._enc_hook(input_data))
-        except TypeError:
-            pass
-
-        assert_never(input_data)
+        except TypeError as exc:
+            raise TypeError(
+                f"Unsupported input type for auto conversion: "
+                f"{type(input_data).__name__}"
+            ) from exc
 
     def build(self) -> Flow:
         """Build the Flow as a msgspec Struct.
