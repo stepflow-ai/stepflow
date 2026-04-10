@@ -36,13 +36,13 @@ spec:
         runAsUser: 1000
       containers:
       - name: stepflow-server
-        image: ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.9.0
+        image: ghcr.io/stepflow-ai/stepflow/stepflow-server:alpine-0.13.0
         imagePullPolicy: IfNotPresent
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
-        args:
-        - "--config=/app/config/stepflow-config.yml"
+        command: ["stepflow-server"]
+        args: ["--port", "7840", "--config", "/app/config/stepflow-config.yml"]
         ports:
         - name: http
           containerPort: 7840
@@ -74,6 +74,8 @@ spec:
         - name: config
           mountPath: /app/config
           readOnly: true
+        - name: stepflow-data
+          mountPath: /data
         env:
         # Stepflow logging configuration
         - name: STEPFLOW_LOG_LEVEL
@@ -105,6 +107,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        # Advertised URL for workers to call back (pod IP, not service DNS,
+        # so callbacks reach the specific pod that dispatched the task)
+        - name: STEPFLOW_ORCHESTRATOR_URL
+          value: "$(POD_IP):7840"
         # OpenTelemetry resource attributes for Grafana correlation
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=kubernetes,service.namespace=stepflow,service.instance.id=$(POD_NAME),k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(POD_NAMESPACE)"
@@ -136,3 +142,5 @@ spec:
       - name: config
         configMap:
           name: stepflow-server-config
+      - name: stepflow-data
+        emptyDir: {}

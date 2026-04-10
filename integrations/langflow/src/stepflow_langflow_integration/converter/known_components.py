@@ -59,10 +59,12 @@ KNOWN_COMPONENTS: dict[str, KnownComponent] = {
         description="Chat Output component",
     ),
     # LanguageModelComponent (lfx)
+    # Moved from lfx.components.models to lfx.components.models_and_agents in lfx 0.3.x
     "bb5f8714781b": KnownComponent(
         code_hash="bb5f8714781b",
-        module="lfx.components.models.language_model.LanguageModelComponent",
+        module="lfx.components.models_and_agents.language_model.LanguageModelComponent",
         description="Language Model component",
+        aliases=("lfx.components.models.language_model.LanguageModelComponent",),
     ),
     # Note: PromptComponent (langflow.components.prompts.prompt) is NOT included
     # because the module doesn't exist in the lfx package - it must be compiled

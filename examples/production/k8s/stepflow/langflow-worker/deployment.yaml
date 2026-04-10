@@ -12,6 +12,13 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
+# Langflow Worker Deployment — gRPC Pull-Based
+# Single-container pod that connects to the orchestrator's TasksService and
+# pulls tasks from the "langflow" queue. No exposed ports — worker is a client.
+#
+# Architecture:
+#   langflow-worker ──gRPC PullTasks──▶ stepflow-server:7840
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,39 +42,29 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
       containers:
-      - name: worker
+      - name: langflow-worker
         image: localhost/langflow-worker:latest
         imagePullPolicy: Never  # Use local image loaded into Kind
         securityContext:
           allowPrivilegeEscalation: false
-        ports:
-        - name: http
-          containerPort: 8080
-          protocol: TCP
-        resources:
-          requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 15
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: http
-          initialDelaySeconds: 10
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+        # No ports — gRPC worker is a client
         env:
+        # Transport selection
+        - name: STEPFLOW_TRANSPORT
+          value: "grpc"
+        # gRPC TasksService address (v0.13.0: HTTP+gRPC share port 7840)
+        - name: STEPFLOW_TASKS_URL
+          value: "stepflow-server:7840"
+        # Queue name matching orchestrator plugin config
+        - name: STEPFLOW_QUEUE_NAME
+          value: "langflow"
+        # Max concurrent task executions per pod
+        - name: STEPFLOW_MAX_CONCURRENT
+          value: "4"
+        # Blob store — explicit URL so workers can resolve $blob refs
+        - name: STEPFLOW_BLOB_API_URL
+          value: "http://stepflow-server:7840/api/v1/blobs"
+        # Pod metadata
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -80,12 +77,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        - name: SERVER_HOST
-          value: "0.0.0.0"
-        - name: SERVER_PORT
-          value: "8080"
-        - name: SERVER_WORKERS
-          value: "3"
         # API keys from secrets
         - name: OPENAI_API_KEY
           valueFrom:
@@ -116,7 +107,6 @@ spec:
               name: stepflow-secrets
               key: opensearch-password
               optional: true
-        # OpenSearch connection pool - increase for parallel workloads
         - name: OPENSEARCH_MAX_CONNECTIONS
           value: "20"
         - name: PYTHONUNBUFFERED
@@ -124,16 +114,15 @@ spec:
         # Stepflow logging configuration
         - name: STEPFLOW_LOG_LEVEL
           value: "debug"
-        - name: STEPFLOW_SERVICE_NAME
-          value: "langflow-worker"
-        # Stepflow OpenTelemetry configuration
-        - name: STEPFLOW_OTLP_ENDPOINT
-          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
-        - name: STEPFLOW_TRACE_ENABLED
-          value: "true"
         - name: STEPFLOW_LOG_DESTINATION
           value: "stderr,otlp"
-        # Standard OTEL variables for compatibility
+        - name: STEPFLOW_SERVICE_NAME
+          value: "langflow-worker"
+        - name: STEPFLOW_TRACE_ENABLED
+          value: "true"
+        # OpenTelemetry configuration
+        - name: STEPFLOW_OTLP_ENDPOINT
+          value: "http://otel-collector.stepflow-o11y.svc.cluster.local:4317"
         - name: OTEL_SERVICE_NAME
           value: "langflow-worker"
         - name: OTEL_RESOURCE_ATTRIBUTES
@@ -149,3 +138,26 @@ spec:
           value: "Stepflow Demo"
         - name: OWNER_EMAIL
           value: "demo@stepflow.ai"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        # File-based probes — gRPC worker has no HTTP server.
+        # standalone_server.py touches /tmp/worker-ready after initialization.
+        startupProbe:
+          exec:
+            command: ["test", "-f", "/tmp/worker-ready"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          failureThreshold: 30
+        livenessProbe:
+          exec:
+            command: ["test", "-f", "/tmp/worker-ready"]
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command: ["test", "-f", "/tmp/worker-ready"]
+          periodSeconds: 10
