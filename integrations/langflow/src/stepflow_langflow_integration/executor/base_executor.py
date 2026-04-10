@@ -285,13 +285,29 @@ class BaseExecutor(ABC):
 
         # Backward compatibility: synthesize the `model` list for pre-1.8.x
         # Langflow workflows. lfx 0.3.x changed LanguageModelComponent and
-        # AgentComponent to require a `model` field (list of dicts) instead of
-        # separate `model_name` + `provider`/`agent_llm` fields.
+        # AgentComponent to require a `model` field (list of dicts with
+        # metadata) instead of separate `model_name` + `provider`/`agent_llm`
+        # fields. The metadata must include `model_class` (e.g. "ChatOpenAI")
+        # and `model_name_param` for get_llm() to instantiate the model.
         if "model" not in parameters and "model_name" in parameters:
             model_name = parameters["model_name"]
             provider = parameters.get("provider") or parameters.get("agent_llm")
             if model_name and provider:
-                parameters["model"] = [{"name": model_name, "provider": provider}]
+                metadata = {}
+                try:
+                    from lfx.base.models.unified_models import MODEL_PROVIDER_METADATA
+
+                    provider_meta = MODEL_PROVIDER_METADATA.get(provider, {})
+                    mapping = provider_meta.get("mapping", {})
+                    if mapping:
+                        metadata["model_class"] = mapping.get("model_class")
+                        metadata["model_name_param"] = mapping.get("model_param")
+                        metadata["api_key_param"] = "api_key"
+                except ImportError:
+                    pass
+                parameters["model"] = [
+                    {"name": model_name, "provider": provider, "metadata": metadata}
+                ]
 
         return parameters
 
