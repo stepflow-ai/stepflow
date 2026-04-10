@@ -342,6 +342,7 @@ fn parse_discovery_result(value: &ValueRef) -> Result<Vec<ComponentInfo>> {
         let path = c
             .get("path")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or(name)
             .to_string();
         let description = c
