@@ -587,7 +587,9 @@ def _display_run_result(result: dict) -> None:
     status = result.get("status", 0)
     run_id = result.get("run_id", "unknown")
 
-    run_id_short = run_id[:8] if isinstance(run_id, str) and len(run_id) >= 8 else run_id
+    run_id_short = (
+        run_id[:8] if isinstance(run_id, str) and len(run_id) >= 8 else run_id
+    )  # noqa: E501
     click.echo(f"\n📋 Run {run_id_short}... — status: {status}")
 
     results = result.get("results", [])
