@@ -415,7 +415,6 @@ class CustomCodeExecutor(BaseExecutor):
                     if (
                         param_name not in component_parameters
                         and default_value is not None
-                        and default_value != ""
                     ):
                         component_parameters[param_name] = default_value
 

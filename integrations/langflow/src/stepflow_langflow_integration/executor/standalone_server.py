@@ -140,6 +140,12 @@ def main():
         default=int(os.environ.get("STEPFLOW_MAX_CONCURRENT", "4")),
         help="Max concurrent tasks (env: STEPFLOW_MAX_CONCURRENT)",
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=int(os.environ.get("STEPFLOW_MAX_RETRIES", "15")),
+        help="Max gRPC reconnect attempts before giving up (env: STEPFLOW_MAX_RETRIES)",
+    )
     args = parser.parse_args()
 
     # Write ready sentinel for K8s probes before entering the pull loop
@@ -154,6 +160,7 @@ def main():
             tasks_url=args.tasks_url,
             queue_name=args.queue_name,
             max_concurrent=args.max_concurrent,
+            max_retries=args.max_retries,
         )
     )
 

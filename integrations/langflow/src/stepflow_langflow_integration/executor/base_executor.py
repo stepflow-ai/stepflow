@@ -370,7 +370,7 @@ class BaseExecutor(ABC):
             # Only set default if not already in parameters
             if field_name not in result:
                 default_value = getattr(input_def, "value", None)
-                if default_value is not None and default_value != "":
+                if default_value is not None:
                     result[field_name] = default_value
 
         return result

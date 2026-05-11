@@ -528,7 +528,8 @@ async def _run_local(
     integration_dir = current_file.parent.parent.parent.parent
 
     langflow_plugin: dict = {
-        "type": "stepflow",
+        "type": "grpc",
+        "queueName": "langflow",
         "command": "uv",
         "args": [
             "--project",
@@ -578,31 +579,31 @@ async def _run_remote(
         )
 
 
+_EXECUTION_STATUS_COMPLETED = 2
+
+
 def _display_run_result(result: dict) -> None:
     """Display run results to the user."""
-    status = result.get("status", "unknown")
-    run_id = result.get("runId", "unknown")
+    status = result.get("status", 0)
+    run_id = result.get("run_id", "unknown")
 
-    click.echo(f"\n📋 Run {run_id[:8]}... — status: {status}")
+    run_id_short = run_id[:8] if isinstance(run_id, str) and len(run_id) >= 8 else run_id
+    click.echo(f"\n📋 Run {run_id_short}... — status: {status}")
 
     results = result.get("results", [])
     if results:
         for item in results:
-            item_result = item.get("result", {})
-            outcome = item_result.get("outcome", "unknown")
-            if outcome == "success":
-                output = item_result.get("result", {})
+            item_index = item.get("item_index", "?")
+            if "output" in item:
                 click.echo("\n🎯 Output:")
-                click.echo(json.dumps(output, indent=2))
+                click.echo(json.dumps(item["output"], indent=2))
             else:
-                click.echo(f"\n❌ Item {item.get('itemIndex', '?')} failed: {outcome}")
-                error = item_result.get("error") or item_result.get("message")
-                if error:
-                    click.echo(f"   {error}")
+                error = item.get("error_message", "unknown error")
+                click.echo(f"\n❌ Item {item_index} failed: {error}", err=True)
     else:
         click.echo(json.dumps(result, indent=2))
 
-    if status.lower() == "completed":
+    if status == _EXECUTION_STATUS_COMPLETED:
         click.echo("\n🎉 Done!")
     else:
         click.echo(f"\n❌ Run ended with status: {status}", err=True)
