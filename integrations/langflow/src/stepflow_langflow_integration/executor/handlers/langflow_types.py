@@ -58,7 +58,7 @@ def _deserialize_single(obj: dict[str, Any]) -> Any:
 
     if langflow_type == "Message":
         return Message(**obj_data)
-    elif langflow_type == "Data":
+    elif langflow_type in ("Data", "JSON"):
         return Data(**obj_data)
     elif langflow_type == "DataFrame":
         return _deserialize_dataframe(obj_data, obj)
@@ -187,6 +187,15 @@ class LangflowTypeOutputHandler(OutputHandler):
             return False
 
     async def process(self, value: Any) -> Any:
+        from lfx.schema.data import Data
+        from lfx.schema.message import Message
+
         serialized = value.model_dump(mode="json")
-        serialized["__langflow_type__"] = value.__class__.__name__
+        if isinstance(value, Message):
+            type_name = "Message"
+        elif isinstance(value, Data):
+            type_name = "Data"
+        else:
+            type_name = value.__class__.__name__
+        serialized["__langflow_type__"] = type_name
         return serialized

@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
 
 from stepflow_langflow_integration.executor.base_executor import BaseExecutor
@@ -143,7 +144,7 @@ class TestDataFrameConversionInputHandler:
         }
         result = await handler.prepare(fields, None)
         assert "data_input" in result
-        assert result["data_input"].__class__.__name__ == "DataFrame"
+        assert isinstance(result["data_input"], pd.DataFrame)
 
     @pytest.mark.asyncio
     async def test_skips_empty_list(self):

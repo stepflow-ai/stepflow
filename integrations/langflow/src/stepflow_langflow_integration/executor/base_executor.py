@@ -295,8 +295,11 @@ class BaseExecutor(ABC):
             if model_name and provider:
                 metadata = {}
                 try:
-                    from lfx.base.models.unified_models import MODEL_PROVIDER_METADATA
+                    import lfx.base.models.unified_models as _unified_models
 
+                    MODEL_PROVIDER_METADATA = getattr(
+                        _unified_models, "MODEL_PROVIDER_METADATA", {}
+                    )
                     provider_meta = MODEL_PROVIDER_METADATA.get(provider, {})
                     mapping = provider_meta.get("mapping", {})
                     if mapping:
@@ -370,7 +373,7 @@ class BaseExecutor(ABC):
             # Only set default if not already in parameters
             if field_name not in result:
                 default_value = getattr(input_def, "value", None)
-                if default_value is not None and default_value != "":
+                if default_value is not None:
                     result[field_name] = default_value
 
         return result
